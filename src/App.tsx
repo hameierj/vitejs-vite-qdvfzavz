@@ -46,8 +46,9 @@ const mono = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 
 // ─── SCHEMA ──────────────────────────────────────────────────────────────────
 const COMPANY_FIELDS = [
-  { id:"co_name",    label:"Company Name",               type:"text",     ph:"Acme Corp",                                          required:true, hint:"Legal or trade name as it appears publicly" },
-  { id:"co_website", label:"Website",                    type:"text",     ph:"https://acme.com",                                   hint:"Primary marketing site" },
+  { id:"co_name",     label:"Company Name",               type:"text",     ph:"Acme Corp",                                          required:true, hint:"Legal or trade name as it appears publicly" },
+  { id:"co_industry", label:"Industry",                  type:"text",     ph:"B2B SaaS, FinTech, Healthcare IT…",                  hint:"The industry or vertical this company operates in" },
+  { id:"co_website",  label:"Website",                   type:"text",     ph:"https://acme.com",                                   hint:"Primary marketing site" },
   { id:"co_pitch",   label:"One-Line Pitch",             type:"textarea", ph:"We help [who] do [what] so they can [outcome].",      rows:2, hint:"What a rep says in the first 10 seconds of a cold call" },
   { id:"co_product", label:"What do you actually sell?", type:"textarea", ph:"Explain it plainly — no jargon. What does the buyer receive?", rows:3, hint:"If your grandmother couldn\'t follow it, simplify further" },
   { id:"co_diff",    label:"Real Differentiators",       type:"textarea", ph:"Not \'faster or cheaper.\' What do you do that no competitor can honestly claim?", rows:2, hint:"If every competitor could say it, it doesn\'t count" },
@@ -204,12 +205,14 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence }) {
 
   const [popOpen,  setPopOpen]  = useState(false);
   const [customTx, setCustomTx] = useState("");
+  const [hintOpen, setHintOpen] = useState(false);
+  const [fieldHov, setFieldHov] = useState(false);
   const popRef = useRef(null);
 
   // Close popover on outside click
   useEffect(() => {
     if (!popOpen) return;
-    const handler = e => { if (popRef.current && !popRef.current.contains(e.target)) setPopOpen(false); };
+    const handler = e => { if (popRef.current && !popRef.current.contains(e.target)) { setPopOpen(false); setFieldHov(false); } };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [popOpen]);
@@ -229,154 +232,170 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence }) {
   const focusOn  = e => { e.target.style.borderColor=accentColor+"66"; e.target.style.boxShadow=`0 0 0 3px ${accentColor}12`; };
   const focusOff = e => { e.target.style.borderColor=fieldFilled(f,val)?C.borderHi:C.border; e.target.style.boxShadow="none"; };
 
+  // AI icon button (rendered inside input wrapper on hover)
+  const aiIcon = canAI && (
+    <div style={{ position:"relative" }} ref={popRef}>
+      <button
+        onClick={() => { if (!aiOn) setPopOpen(p => !p); }}
+        disabled={!!aiOn}
+        title="AI fill"
+        style={{
+          width:32, height:32, borderRadius:8, border:"none",
+          background: isThinking ? C.border : accentColor,
+          color:"#fff", fontSize:20, fontFamily:mono, fontWeight:700,
+          cursor: isThinking ? "default" : "pointer",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          opacity: isThinking ? .5 : (fieldHov || popOpen) ? 1 : 0,
+          transition:"opacity .2s, box-shadow .2s",
+          flexShrink:0, position:"relative", overflow:"hidden",
+          boxShadow: popOpen ? `0 2px 12px ${accentColor}66` : (fieldHov ? `0 2px 8px ${accentColor}44` : "none"),
+        }}>
+        {(fieldHov || popOpen) && !isThinking && (
+          <span style={{
+            position:"absolute", top:0, left:0, width:"40%", height:"100%",
+            background:"linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.45) 50%, transparent 80%)",
+            animation:"aiSheen 2.4s ease-in-out infinite",
+            pointerEvents:"none",
+          }} />
+        )}
+        {isThinking
+          ? <span style={{ animation:"pulse 1.2s infinite", display:"inline-block" }}>✦</span>
+          : <span style={{ animation:(fieldHov||popOpen)?"aiSpark 2s linear infinite":"none", display:"inline-block", lineHeight:1 }}>✦</span>}
+      </button>
+
+      {/* ── Popover ── */}
+      {popOpen && !aiOn && (
+        <div style={{
+          position:"absolute", top:"calc(100% + 7px)", right:0, zIndex:9999,
+          width:260, background:C.canvas,
+          border:`1.5px solid ${accentColor}33`,
+          borderRadius:10, boxShadow:`0 8px 32px rgba(13,15,26,0.16), 0 0 0 1px ${accentColor}11`,
+          animation:"fadeIn .15s ease", overflow:"hidden",
+        }}>
+          <div style={{ padding:"10px 12px 8px", borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:accentColor, letterSpacing:.4 }}>
+              ✦ AI FILL — {f.label.toUpperCase()}
+            </div>
+          </div>
+          <div style={{ padding:"10px 12px" }}>
+            <button onClick={() => triggerAI(null)} style={{
+              display:"flex", alignItems:"center", justifyContent:"space-between",
+              width:"100%", padding:"9px 12px", borderRadius:7,
+              border:`1.5px solid ${accentColor}33`, background:accentColor+"0D",
+              cursor:"pointer", transition:"all .15s", marginBottom:10,
+            }}
+              onMouseEnter={e=>{ e.currentTarget.style.background=accentColor+"1A"; e.currentTarget.style.borderColor=accentColor+"66"; }}
+              onMouseLeave={e=>{ e.currentTarget.style.background=accentColor+"0D"; e.currentTarget.style.borderColor=accentColor+"33"; }}>
+              <div style={{ textAlign:"left" }}>
+                <div style={{ fontSize:11.5, fontFamily:head, fontWeight:700, color:accentColor }}>Generate now</div>
+                <div style={{ fontSize:10, color:C.muted, fontFamily:body, marginTop:1 }}>Use company + ICP context</div>
+              </div>
+              <span style={{ fontSize:16, color:accentColor }}>→</span>
+            </button>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+              <div style={{ flex:1, height:1, background:C.border }} />
+              <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>OR</span>
+              <div style={{ flex:1, height:1, background:C.border }} />
+            </div>
+            <div style={{ marginBottom:8 }}>
+              <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>Add instructions</div>
+              <textarea value={customTx} onChange={e=>setCustomTx(e.target.value)}
+                placeholder={`e.g. "Focus on mid-market SaaS. Keep it under 2 sentences."`}
+                rows={3} autoFocus
+                style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1.5px solid ${C.border}`,
+                  background:C.faint, color:C.text, fontSize:11.5, fontFamily:body, lineHeight:1.5,
+                  outline:"none", resize:"none", transition:"border-color .15s" }}
+                onFocus={e=>{e.target.style.borderColor=accentColor+"66";e.target.style.background=C.canvas;}}
+                onBlur={e=>{e.target.style.borderColor=C.border;e.target.style.background=C.faint;}}
+                onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey))triggerAI(customTx);}} />
+            </div>
+            <button onClick={()=>triggerAI(customTx)} disabled={!customTx.trim()}
+              style={{ width:"100%", padding:"8px", borderRadius:7, border:"none",
+                background:customTx.trim()?accentColor:C.border,
+                color:customTx.trim()?"#fff":C.muted,
+                fontSize:11, fontFamily:head, fontWeight:700,
+                cursor:customTx.trim()?"pointer":"default",
+                boxShadow:customTx.trim()?`0 2px 10px ${accentColor}40`:"none",
+                transition:"all .15s" }}>
+              Generate with instructions {customTx.trim()?"↵":""}
+            </button>
+            <div style={{ fontSize:9, color:C.muted, fontFamily:mono, textAlign:"center", marginTop:6 }}>⌘↵ to generate</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
-        <div style={{ display:"flex", alignItems:"center" }}>
-          <label style={{ fontSize:11, color:C.textSoft, fontFamily:mono, fontWeight:600, letterSpacing:.3 }}>
-            {f.label}{f.required && <span style={{ color:C.accent, marginLeft:2 }}>*</span>}
-          </label>
-          {confidence !== undefined && confidence !== null && <ConfPill score={confidence} />}
-        </div>
-
-        {canAI && (
-          <div style={{ position:"relative" }} ref={popRef}>
-            {/* ── AI fill trigger button ── */}
-            <button
-              onClick={() => { if (!aiOn) setPopOpen(p => !p); }}
-              disabled={!!aiOn}
-              style={{
-                display:"flex", alignItems:"center", gap:4, padding:"2px 8px", borderRadius:4,
-                border:`1px solid ${isThinking ? C.border : popOpen ? accentColor+"88" : accentColor+"44"}`,
-                background: isThinking ? "transparent" : popOpen ? accentColor+"14" : accentColor+"0A",
-                color: isThinking ? C.muted : accentColor,
-                fontSize:9, fontFamily:mono, fontWeight:700,
-                cursor: isThinking ? "default" : "pointer",
-                transition:"all .15s",
-              }}>
-              {isThinking
-                ? <><span style={{ display:"inline-block", animation:"pulse 1.2s infinite", marginRight:2 }}>✦</span>thinking…</>
-                : <>✦ AI fill{popOpen ? " ▴" : " ▾"}</>}
-            </button>
-
-            {/* ── Popover ── */}
-            {popOpen && !aiOn && (
-              <div style={{
-                position:"absolute", top:"calc(100% + 7px)", right:0, zIndex:300,
-                width:260, background:C.canvas,
-                border:`1.5px solid ${accentColor}33`,
-                borderRadius:10, boxShadow:`0 8px 32px rgba(13,15,26,0.16), 0 0 0 1px ${accentColor}11`,
-                animation:"fadeIn .15s ease",
-                overflow:"hidden",
-              }}>
-                {/* Header */}
-                <div style={{ padding:"10px 12px 8px", borderBottom:`1px solid ${C.border}` }}>
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:accentColor, letterSpacing:.4 }}>
-                    ✦ AI FILL — {f.label.toUpperCase()}
-                  </div>
-                </div>
-
-                {/* Quick generate */}
-                <div style={{ padding:"10px 12px" }}>
-                  <button onClick={() => triggerAI(null)} style={{
-                    display:"flex", alignItems:"center", justifyContent:"space-between",
-                    width:"100%", padding:"9px 12px", borderRadius:7,
-                    border:`1.5px solid ${accentColor}33`,
-                    background:accentColor+"0D",
-                    cursor:"pointer", transition:"all .15s", marginBottom:10,
-                  }}
-                    onMouseEnter={e=>{ e.currentTarget.style.background=accentColor+"1A"; e.currentTarget.style.borderColor=accentColor+"66"; }}
-                    onMouseLeave={e=>{ e.currentTarget.style.background=accentColor+"0D"; e.currentTarget.style.borderColor=accentColor+"33"; }}>
-                    <div style={{ textAlign:"left" }}>
-                      <div style={{ fontSize:11.5, fontFamily:head, fontWeight:700, color:accentColor }}>Generate now</div>
-                      <div style={{ fontSize:10, color:C.muted, fontFamily:body, marginTop:1 }}>Use company + ICP context</div>
-                    </div>
-                    <span style={{ fontSize:16, color:accentColor }}>→</span>
-                  </button>
-
-                  {/* Divider */}
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
-                    <div style={{ flex:1, height:1, background:C.border }} />
-                    <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>OR</span>
-                    <div style={{ flex:1, height:1, background:C.border }} />
-                  </div>
-
-                  {/* Custom instructions */}
-                  <div style={{ marginBottom:8 }}>
-                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
-                      Add instructions
-                    </div>
-                    <textarea
-                      value={customTx}
-                      onChange={e => setCustomTx(e.target.value)}
-                      placeholder={`e.g. "Focus on mid-market SaaS. Keep it under 2 sentences."`}
-                      rows={3}
-                      autoFocus
-                      style={{
-                        width:"100%", padding:"8px 10px", borderRadius:7,
-                        border:`1.5px solid ${C.border}`,
-                        background:C.faint, color:C.text,
-                        fontSize:11.5, fontFamily:body, lineHeight:1.5,
-                        outline:"none", resize:"none", transition:"border-color .15s",
-                      }}
-                      onFocus={e => { e.target.style.borderColor=accentColor+"66"; e.target.style.background=C.canvas; }}
-                      onBlur={e  => { e.target.style.borderColor=C.border; e.target.style.background=C.faint; }}
-                      onKeyDown={e => { if (e.key==="Enter" && (e.metaKey||e.ctrlKey)) triggerAI(customTx); }}
-                    />
-                  </div>
-                  <button
-                    onClick={() => triggerAI(customTx)}
-                    disabled={!customTx.trim()}
-                    style={{
-                      width:"100%", padding:"8px", borderRadius:7, border:"none",
-                      background: customTx.trim() ? accentColor : C.border,
-                      color: customTx.trim() ? "#fff" : C.muted,
-                      fontSize:11, fontFamily:head, fontWeight:700,
-                      cursor: customTx.trim() ? "pointer" : "default",
-                      boxShadow: customTx.trim() ? `0 2px 10px ${accentColor}40` : "none",
-                      transition:"all .15s",
-                    }}>
-                    Generate with instructions {customTx.trim() ? "↵" : ""}
-                  </button>
-                  <div style={{ fontSize:9, color:C.muted, fontFamily:mono, textAlign:"center", marginTop:6 }}>
-                    ⌘↵ to generate
-                  </div>
-                </div>
+      {/* Label row */}
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+        <label style={{ fontSize:13, color:C.text, fontFamily:head, fontWeight:700 }}>
+          {f.label}{f.required && <span style={{ color:C.accent, marginLeft:2 }}>*</span>}
+        </label>
+        {confidence !== undefined && confidence !== null && <ConfPill score={confidence} />}
+        {f.hint && (
+          <div style={{ position:"relative", display:"inline-flex" }}>
+            <div onMouseEnter={()=>setHintOpen(true)} onMouseLeave={()=>setHintOpen(false)}
+              style={{ width:15, height:15, borderRadius:"50%", border:`1px solid ${C.borderHi}`,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
+                cursor:"default", userSelect:"none" as const, flexShrink:0 }}>
+              i
+            </div>
+            {hintOpen && (
+              <div style={{ position:"absolute", left:0, top:"calc(100% + 6px)", zIndex:400,
+                width:220, background:C.canvas, border:`1px solid ${C.border}`,
+                borderRadius:8, padding:"8px 10px", boxShadow:"0 4px 16px rgba(13,15,26,.12)",
+                fontSize:11.5, color:C.textSoft, fontFamily:body, lineHeight:1.5,
+                pointerEvents:"none" as const }}>
+                {f.hint}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {f.hint && <div style={{ fontSize:11, color:C.muted, fontFamily:body, marginBottom:6, lineHeight:1.4 }}>{f.hint}</div>}
-      {f.type==="textarea" ? (
-        <textarea value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph} rows={f.rows||2}
-          style={{...base, resize:"vertical"}} onFocus={focusOn} onBlur={focusOff} />
-      ) : f.type==="select" ? (
-        <select value={val||""} onChange={e=>onChange(e.target.value)} style={{...base, cursor:"pointer"}}
-          onFocus={focusOn} onBlur={focusOff}>
-          <option value="">Select…</option>
-          {f.opts.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      ) : f.type==="chips" ? (
+      {/* Input wrapper with hover-reveal AI icon */}
+      {f.type==="chips" ? (
         <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
           {f.opts.map(o => {
             const on = (val||[]).includes(o);
             return (
-              <button key={o} onClick={() => onChange(on ? (val||[]).filter(v=>v!==o) : [...(val||[]),o])}
+              <button key={o} onClick={()=>onChange(on?(val||[]).filter(v=>v!==o):[...(val||[]),o])}
                 style={{ padding:"5px 14px", borderRadius:20, fontSize:12, fontFamily:mono,
-                  border:`1.5px solid ${on ? accentColor+"55" : C.border}`,
-                  background: on ? accentColor+"10" : C.canvas,
-                  color: on ? accentColor : C.muted,
-                  cursor:"pointer", transition:"all .15s", fontWeight: on ? 700 : 400 }}>
+                  border:`1.5px solid ${on?accentColor+"55":C.border}`,
+                  background:on?accentColor+"10":C.canvas, color:on?accentColor:C.muted,
+                  cursor:"pointer", transition:"all .15s", fontWeight:on?700:400 }}>
                 {o}
               </button>
             );
           })}
         </div>
+      ) : f.type==="select" ? (
+        <select value={val||""} onChange={e=>onChange(e.target.value)} style={{...base, cursor:"pointer"}}
+          onFocus={focusOn} onBlur={focusOff}>
+          <option value="">Select…</option>
+          {f.opts.map(o=><option key={o} value={o}>{o}</option>)}
+        </select>
       ) : (
-        <input type="text" value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph}
-          style={base} onFocus={focusOn} onBlur={focusOff} />
+        <div style={{ position:"relative" }}
+          onMouseEnter={()=>setFieldHov(true)}
+          onMouseLeave={()=>setFieldHov(false)}>
+          {f.type==="textarea"
+            ? <textarea value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph} rows={f.rows||2}
+                style={{...base, resize:"vertical", paddingRight: canAI ? 44 : 12}}
+                onFocus={focusOn} onBlur={focusOff} />
+            : <input type="text" value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph}
+                style={{...base, paddingRight: canAI ? 44 : 12}}
+                onFocus={focusOn} onBlur={focusOff} />
+          }
+          {canAI && (
+            <div style={{ position:"absolute", right:6, top:"50%", transform:"translateY(-50%)", zIndex:10 }}>
+              {aiIcon}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -966,7 +985,6 @@ function CompanyPanel({ data, confidence, onChange }) {
   return (
     <div>
       <div style={{ marginBottom:28 }}>
-        <div style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>SHARED FOUNDATION — APPLIES TO ALL ICPS</div>
         <h2 style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>Company Profile</h2>
         <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65 }}>
           Fill this once. Every ICP inherits this context when AI auto-drafts their profile.
@@ -1007,19 +1025,25 @@ function OutputsHub({ icps, companyData }) {
 
   return (
     <div style={{ animation:"fadeIn .3s ease" }}>
-      <div style={{ marginBottom:24 }}>
-        <div style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>CAMPAIGN PACKAGE</div>
-        <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", gap:12 }}>
-          <div>
-            <h1 style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head, marginBottom:4 }}>{companyData.co_name||"Client"} — Outputs</h1>
-            <div style={{ fontSize:12.5, color:C.muted, fontFamily:body }}>{ready} of {icps.length} ICPs ready · {allApproved} approved</div>
-          </div>
-          <button onClick={copyAll} style={{ padding:"8px 14px", borderRadius:7, border:`1px solid ${C.border}`,
-            background:copied==="all"?C.greenLo:C.canvas, color:copied==="all"?C.green:C.textSoft,
-            fontSize:11, fontFamily:mono, cursor:"pointer", flexShrink:0 }}>
-            {copied==="all"?"✓ Copied all":"Copy All"}
-          </button>
+      <div style={{ marginBottom:28 }}>
+        <h2 style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>{companyData.co_name||"Client"} — Outputs</h2>
+        <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65 }}>
+          AI-generated summaries, campaign briefs, and email sequences — ready to review and approve.
+        </p>
+        <div style={{ marginTop:14, display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ flex:1 }}><ProgressBar pct={icps.length>0?Math.round(ready/icps.length*100):0} color={C.green} height={3} /></div>
+          <span style={{ fontSize:11, color:ready===icps.length&&icps.length>0?C.green:C.muted, fontFamily:mono, fontWeight:600, flexShrink:0 }}>
+            {icps.length>0?Math.round(ready/icps.length*100):0}% complete
+          </span>
         </div>
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:16 }}>
+        <button onClick={copyAll} style={{ padding:"8px 14px", borderRadius:7, border:`1px solid ${C.border}`,
+          background:copied==="all"?C.greenLo:C.canvas, color:copied==="all"?C.green:C.textSoft,
+          fontSize:11, fontFamily:mono, cursor:"pointer" }}>
+          {copied==="all"?"✓ Copied all":"Copy All"}
+        </button>
       </div>
 
       <div style={{ display:"flex", gap:7, flexWrap:"wrap", marginBottom:16 }}>
@@ -1089,14 +1113,7 @@ function OutputsHub({ icps, companyData }) {
 }
 
 // ─── MOCK DATA ────────────────────────────────────────────────────────────────
-const MOCK_WORKSPACES = [
-  { id:"ws-1", name:"Acme Corp",       industry:"B2B SaaS",      status:"active",   icps:3, progress:78,  csm:"Sarah K.",  lastEdit:"2h ago"  },
-  { id:"ws-2", name:"HealthBridge",    industry:"Healthcare IT", status:"active",   icps:2, progress:55,  csm:"Marcus T.", lastEdit:"1d ago"  },
-  { id:"ws-3", name:"Nexus Logistics", industry:"Supply Chain",  status:"review",   icps:4, progress:92,  csm:"Sarah K.",  lastEdit:"3d ago"  },
-  { id:"ws-4", name:"Veritas Capital", industry:"FinTech",       status:"draft",    icps:1, progress:30,  csm:"James L.",  lastEdit:"5d ago"  },
-  { id:"ws-5", name:"Orion Retail",    industry:"E-Commerce",    status:"approved", icps:2, progress:100, csm:"Marcus T.", lastEdit:"1w ago"  },
-  { id:"ws-6", name:"Pulsar AI",       industry:"AI / ML",       status:"active",   icps:3, progress:61,  csm:"James L.",  lastEdit:"2d ago"  },
-];
+const MOCK_WORKSPACES = [];
 
 const WS_STATUS = {
   draft:    { label:"Draft",    dot:"#8892B0", bg:"#EEF0F8",   text:"#8892B0" },
@@ -1113,24 +1130,63 @@ const avatarColor = name => {
 };
 
 // ─── WORKSPACE PANEL ─────────────────────────────────────────────────────────
-function WorkspacePanel({ role, setRole, activeWorkspace, setActiveWorkspace }) {
+function WorkspacePanel({ role, setRole, activeWorkspace, setActiveWorkspace, loggedInUser }) {
   const isTeam   = role === "team";
   const [search,       setSearch]       = useState("");
   const [expanded,     setExpanded]     = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newWsData,    setNewWsData]    = useState({ name:"", industry:"", email:"", csm:"" });
+  const [panelHeight,  setPanelHeight]  = useState(340);
+  const [handleHover,  setHandleHover]  = useState(false);
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
-  // Team: filtered list. Client: always just their single workspace (ws-1 as mock)
-  const clientWs  = MOCK_WORKSPACES[0];
-  const filtered  = MOCK_WORKSPACES.filter(w =>
-    w.name.toLowerCase().includes(search.toLowerCase()) ||
-    w.industry.toLowerCase().includes(search.toLowerCase()) ||
-    w.csm.toLowerCase().includes(search.toLowerCase())
+  const onDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startY: e.clientY, startH: panelHeight };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = dragRef.current.startY - ev.clientY;
+      setPanelHeight(Math.max(120, Math.min(600, dragRef.current.startH + delta)));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Load clients from localStorage and filter by logged-in user
+  const allClients = loadClients();
+  const myClients  = loggedInUser
+    ? allClients.filter(c => c.assignedUserId === loggedInUser.id && c.status === "active")
+    : allClients.filter(c => c.status === "active");
+
+  const filtered = myClients.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    (c.industry||"").toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div style={{ borderTop:`1px solid ${C.border}`, marginTop:"auto",
-      display:"flex", flexDirection:"column", flexShrink:0, maxHeight: isTeam ? 340 : "auto" }}>
+    <div style={{ marginTop:"auto", display:"flex", flexDirection:"column", flexShrink:0, position:"relative" }}>
+      {/* Drag handle */}
+      {isTeam && expanded && (
+        <div
+          onMouseEnter={()=>setHandleHover(true)}
+          onMouseLeave={()=>setHandleHover(false)}
+          onMouseDown={onDragStart}
+          style={{ height:8, cursor:"ns-resize", display:"flex", alignItems:"center", justifyContent:"center",
+            flexShrink:0, userSelect:"none" }}>
+          <div style={{ width:32, height:3, borderRadius:99,
+            background: handleHover || dragRef.current ? C.accent : C.border,
+            transition:"background .15s, width .15s",
+            ...(handleHover ? { width:40 } : {}) }} />
+        </div>
+      )}
+    <div style={{ borderTop:`1px solid ${C.border}`,
+      display:"flex", flexDirection:"column", flexShrink:0, maxHeight: isTeam ? panelHeight : "auto",
+      overflow:"hidden" }}>
 
       {/* ── Section header ── */}
       <div style={{ padding:"10px 14px 6px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
@@ -1181,12 +1237,11 @@ function WorkspacePanel({ role, setRole, activeWorkspace, setActiveWorkspace }) 
                 {filtered.length === 0 && (
                   <div style={{ fontSize:10, color:C.muted, fontFamily:mono, padding:"8px 6px" }}>No accounts found</div>
                 )}
-                {filtered.map(ws => {
-                  const st  = WS_STATUS[ws.status] ?? WS_STATUS.draft;
-                  const on  = activeWorkspace?.id === ws.id;
-                  const av  = avatarColor(ws.name);
+                {filtered.map(c => {
+                  const on = activeWorkspace?.id === c.id;
+                  const av = avatarColor(c.name);
                   return (
-                    <button key={ws.id} onClick={()=>setActiveWorkspace(ws)}
+                    <button key={c.id} onClick={()=>setActiveWorkspace(c)}
                       style={{ display:"flex", alignItems:"center", gap:8, width:"100%",
                         padding:"7px 8px", borderRadius:7, border:"none",
                         background: on ? C.accentLo : "transparent",
@@ -1194,38 +1249,20 @@ function WorkspacePanel({ role, setRole, activeWorkspace, setActiveWorkspace }) 
                         cursor:"pointer", textAlign:"left", transition:"all .12s", marginBottom:2 }}
                       onMouseEnter={e=>{ if(!on) e.currentTarget.style.background=C.faint; }}
                       onMouseLeave={e=>{ if(!on) e.currentTarget.style.background="transparent"; }}>
-                      {/* Avatar */}
                       <div style={{ width:26, height:26, borderRadius:6, flexShrink:0,
                         background: on ? av : av+"22",
                         display:"flex", alignItems:"center", justifyContent:"center",
                         fontSize:10, fontWeight:800, color: on ? "#fff" : av,
                         fontFamily:mono, transition:"all .12s" }}>
-                        {ws.name.charAt(0)}
+                        {c.name.charAt(0)}
                       </div>
-                      {/* Info */}
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:11.5, fontWeight:on?700:500, color: on ? C.text : C.textSoft,
                           fontFamily:head, overflow:"hidden", textOverflow:"ellipsis",
-                          whiteSpace:"nowrap", lineHeight:1.3 }}>{ws.name}</div>
-                        <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:1.5 }}>
-                          <span style={{ display:"inline-flex", alignItems:"center", gap:3,
-                            fontSize:8.5, fontFamily:mono, fontWeight:700,
-                            color:st.text, background:st.bg, padding:"1px 5px", borderRadius:3 }}>
-                            <span style={{ width:4, height:4, borderRadius:"50%", background:st.dot, display:"inline-block" }} />
-                            {st.label}
-                          </span>
-                          <span style={{ fontSize:8.5, color:C.muted, fontFamily:mono }}>{ws.icps} ICPs</span>
-                        </div>
-                      </div>
-                      {/* Progress */}
-                      <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3, flexShrink:0 }}>
-                        <span style={{ fontSize:9, color: ws.progress===100 ? C.green : C.muted, fontFamily:mono, fontWeight:600 }}>
-                          {ws.progress}%
-                        </span>
-                        <div style={{ width:28, height:2, borderRadius:2, background:C.border, overflow:"hidden" }}>
-                          <div style={{ height:"100%", width:`${ws.progress}%`,
-                            background: ws.progress===100 ? C.green : av, borderRadius:2 }} />
-                        </div>
+                          whiteSpace:"nowrap", lineHeight:1.3 }}>{c.name}</div>
+                        {c.industry && (
+                          <div style={{ fontSize:8.5, color:C.muted, fontFamily:mono, marginTop:1 }}>{c.industry}</div>
+                        )}
                       </div>
                     </button>
                   );
@@ -1391,23 +1428,1242 @@ function WorkspacePanel({ role, setRole, activeWorkspace, setActiveWorkspace }) 
         </div>
       )}
     </div>
+    </div>
+  );
+}
+
+// ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
+type UserRecord = {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: "team" | "client";
+  status: "active" | "inactive";
+  createdAt: string;
+};
+
+const loadUsers = (): UserRecord[] => {
+  try { return JSON.parse(localStorage.getItem("b2br_users") || "[]"); } catch { return []; }
+};
+const saveUsers = (u: UserRecord[]) => {
+  try { localStorage.setItem("b2br_users", JSON.stringify(u)); } catch {}
+};
+
+const EMPTY_USER: Omit<UserRecord, "id"|"createdAt"> = { name:"", email:"", password:"", role:"team", status:"active" };
+
+type ClientRecord = {
+  id: string;
+  name: string;
+  industry: string;
+  status: "active" | "inactive";
+  assignedUserId: string | null;
+  createdAt: string;
+};
+
+const loadClients = (): ClientRecord[] => {
+  try { return JSON.parse(localStorage.getItem("b2br_clients") || "[]"); } catch { return []; }
+};
+const saveClients = (c: ClientRecord[]) => {
+  try { localStorage.setItem("b2br_clients", JSON.stringify(c)); } catch {}
+};
+
+const loadWorkspaceData = (clientId: string) => {
+  try { return JSON.parse(localStorage.getItem(`b2br_ws_${clientId}`) || "null"); } catch { return null; }
+};
+const saveWorkspaceData = (clientId: string, data: object) => {
+  try { localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(data)); } catch {}
+};
+
+const EMPTY_CLIENT: Omit<ClientRecord, "id"|"createdAt"> = { name:"", industry:"", status:"active", assignedUserId:null };
+
+function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () => void }) {
+  const [section,   setSection]   = useState<"users"|"clients">("users");
+
+  // ── Users state ──
+  const [users,     setUsers]     = useState<UserRecord[]>(loadUsers);
+  const [userModal, setUserModal] = useState<"add"|"edit"|null>(null);
+  const [editingUser, setEditingUser] = useState<UserRecord|null>(null);
+  const [userForm,  setUserForm]  = useState<typeof EMPTY_USER>({...EMPTY_USER});
+  const [deleteUserId, setDeleteUserId] = useState<string|null>(null);
+  const [userSearch, setUserSearch] = useState("");
+
+  const persistUsers = (next: UserRecord[]) => { setUsers(next); saveUsers(next); };
+  const openAddUser = () => { setUserForm({...EMPTY_USER}); setEditingUser(null); setUserModal("add"); };
+  const openEditUser = (u: UserRecord) => { setUserForm({ name:u.name, email:u.email, password:"", role:u.role, status:u.status }); setEditingUser(u); setUserModal("edit"); };
+
+  // ── Clients state ──
+  const [clients,      setClients]     = useState<ClientRecord[]>(loadClients);
+  const [clientModal,  setClientModal] = useState<"add"|"edit"|null>(null);
+  const [editingClient,setEditingClient] = useState<ClientRecord|null>(null);
+  const [clientForm,   setClientForm]  = useState<typeof EMPTY_CLIENT>({...EMPTY_CLIENT});
+  const [deleteClientId,    setDeleteClientId]    = useState<string|null>(null);
+  const [clientSearch,      setClientSearch]      = useState("");
+  const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
+  const [showBulkEdit,      setShowBulkEdit]      = useState(false);
+  const [bulkEditForm,      setBulkEditForm]       = useState<{industry:string; assignedUserId:string; status:string}>({ industry:"", assignedUserId:"", status:"" });
+
+  const toggleClientSelect = (id: string) => setSelectedClientIds(prev => {
+    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
+  });
+  const allFilteredSelected = filteredClients => filteredClients.length > 0 && filteredClients.every(c => selectedClientIds.has(c.id));
+  const toggleSelectAll = (filteredClients) => {
+    if (allFilteredSelected(filteredClients)) {
+      setSelectedClientIds(prev => { const next = new Set(prev); filteredClients.forEach(c => next.delete(c.id)); return next; });
+    } else {
+      setSelectedClientIds(prev => { const next = new Set(prev); filteredClients.forEach(c => next.add(c.id)); return next; });
+    }
+  };
+
+  const handleBulkEdit = () => {
+    setBulkEditForm({ industry:"", assignedUserId:"", status:"" });
+    setShowBulkEdit(true);
+  };
+  const handleBulkEditSave = () => {
+    persistClients(clients.map(c => {
+      if (!selectedClientIds.has(c.id)) return c;
+      const updates: Partial<ClientRecord> = {};
+      if (bulkEditForm.industry    !== "") updates.industry       = bulkEditForm.industry;
+      if (bulkEditForm.assignedUserId !== "") updates.assignedUserId = bulkEditForm.assignedUserId === "unassign" ? null : bulkEditForm.assignedUserId;
+      if (bulkEditForm.status      !== "") updates.status         = bulkEditForm.status as "active"|"inactive";
+      return { ...c, ...updates };
+    }));
+    setShowBulkEdit(false);
+    setSelectedClientIds(new Set());
+  };
+  const handleBulkDelete = () => {
+    if (!window.confirm(`Delete ${selectedClientIds.size} client${selectedClientIds.size!==1?"s":""}? This cannot be undone.`)) return;
+    persistClients(clients.filter(c => !selectedClientIds.has(c.id)));
+    setSelectedClientIds(new Set());
+  };
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [bulkStep,       setBulkStep]       = useState<"upload"|"review">("upload");
+  const [bulkLoading,    setBulkLoading]    = useState(false);
+  const [bulkNames,      setBulkNames]      = useState<{name:string; include:boolean}[]>([]);
+  const [bulkImageFile,  setBulkImageFile]  = useState<File|null>(null);
+  const [bulkImageUrl,   setBulkImageUrl]   = useState<string>("");
+  const [bulkDragOver,   setBulkDragOver]   = useState(false);
+
+  const openBulkImport = () => {
+    setBulkStep("upload"); setBulkNames([]); setBulkImageFile(null); setBulkImageUrl(""); setShowBulkImport(true);
+  };
+
+  useEffect(() => {
+    if (!showBulkImport || bulkStep !== "upload") return;
+    const onPaste = (e: ClipboardEvent) => {
+      const item = Array.from(e.clipboardData?.items ?? []).find(i => i.type.startsWith("image/"));
+      if (item) { const f = item.getAsFile(); if (f) handleBulkImageSelect(f); }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [showBulkImport, bulkStep]);
+
+  const handleBulkImageSelect = (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    setBulkImageFile(file);
+    setBulkImageUrl(URL.createObjectURL(file));
+  };
+
+  const runBulkExtract = async () => {
+    if (!bulkImageFile) return;
+    setBulkLoading(true);
+    const key = getApiKey();
+    if (!key) { alert("Please enter your Anthropic API key first."); setBulkLoading(false); return; }
+    try {
+      const b64 = await fileToBase64(bulkImageFile);
+      const mediaType = bulkImageFile.type as "image/png"|"image/jpeg"|"image/gif"|"image/webp";
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 800,
+          system: "You extract company or client names from screenshots. Return ONLY a JSON array of strings — one name per entry. No explanation, no markdown, just the raw JSON array.",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mediaType, data: b64 } },
+              { type: "text",  text: "Extract every company or client name you see in this image. Return ONLY a JSON array of strings, e.g. [\"Acme Corp\",\"Globex\"]." },
+            ],
+          }],
+        }),
+      });
+      const json = await r.json();
+      if (json.error) { alert(`API error: ${json.error.message}`); setBulkLoading(false); return; }
+      const raw = json.content?.[0]?.text ?? "[]";
+      const match = raw.match(/\[[\s\S]*\]/);
+      const names: string[] = match ? JSON.parse(match[0]) : [];
+      setBulkNames(names.map(n => ({ name: n.trim(), include: true })));
+      setBulkStep("review");
+    } catch(e) { console.error(e); alert("Failed to extract names. Check console for details."); }
+    setBulkLoading(false);
+  };
+
+  const handleBulkConfirm = () => {
+    const toAdd = bulkNames.filter(n => n.include && n.name.trim());
+    if (!toAdd.length) { setShowBulkImport(false); return; }
+    const newClients: ClientRecord[] = toAdd.map(n => ({
+      id: uid(), name: n.name.trim(), industry: "", status: "active", assignedUserId: null,
+      createdAt: new Date().toISOString(),
+    }));
+    persistClients([...clients, ...newClients]);
+    setShowBulkImport(false);
+  };
+
+  const persistClients = (next: ClientRecord[]) => { setClients(next); saveClients(next); };
+  const openAddClient = () => { setClientForm({...EMPTY_CLIENT}); setEditingClient(null); setClientModal("add"); };
+  const openEditClient = (c: ClientRecord) => { setClientForm({ name:c.name, industry:c.industry, status:c.status, assignedUserId:c.assignedUserId }); setEditingClient(c); setClientModal("edit"); };
+
+  // keep aliases for legacy code below
+  const modal = userModal; const setModal = setUserModal;
+  const editing = editingUser; const setEditing = setEditingUser;
+  const form = userForm; const setForm = setUserForm;
+  const deleteId = deleteUserId; const setDeleteId = setDeleteUserId;
+  const search = userSearch; const setSearch = setUserSearch;
+  const persist = persistUsers;
+  const openAdd = openAddUser; const openEdit = openEditUser;
+
+  const handleSaveUser = () => {
+    if (!userForm.name.trim() || !userForm.email.trim()) return;
+    if (userModal === "add") {
+      if (!userForm.password.trim()) return;
+      const next: UserRecord = { ...userForm, id: uid(), createdAt: new Date().toISOString() };
+      persistUsers([...users, next]);
+    } else if (userModal === "edit" && editingUser) {
+      const updated = { ...editingUser, ...userForm };
+      if (!userForm.password.trim()) updated.password = editingUser.password;
+      persistUsers(users.map(u => u.id === editingUser.id ? updated : u));
+    }
+    setUserModal(null);
+  };
+
+  const handleDeleteUser = () => {
+    if (deleteUserId) { persistUsers(users.filter(u => u.id !== deleteUserId)); setDeleteUserId(null); }
+  };
+
+  const handleSaveClient = () => {
+    if (!clientForm.name.trim()) return;
+    if (clientModal === "add") {
+      const next: ClientRecord = { ...clientForm, id: uid(), createdAt: new Date().toISOString() };
+      persistClients([...clients, next]);
+    } else if (clientModal === "edit" && editingClient) {
+      persistClients(clients.map(c => c.id === editingClient.id ? { ...editingClient, ...clientForm } : c));
+    }
+    setClientModal(null);
+  };
+
+  const handleDeleteClient = () => {
+    if (deleteClientId) { persistClients(clients.filter(c => c.id !== deleteClientId)); setDeleteClientId(null); }
+  };
+
+  // legacy aliases used in existing user table JSX below
+  const handleSave = handleSaveUser;
+  const handleDelete = handleDeleteUser;
+
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+    u.email.toLowerCase().includes(userSearch.toLowerCase())
+  );
+  const filtered = filteredUsers;
+
+  const filteredClients = clients.filter(c =>
+    c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+    c.industry.toLowerCase().includes(clientSearch.toLowerCase())
+  );
+
+  const roleColor   = (r: string) => r === "team"   ? { bg: C.accentLo,    text: C.accent } : { bg: C.greenLo,  text: C.green };
+  const statusColor = (s: string) => s === "active"  ? { bg: C.greenLo,    text: C.green  } : { bg: "#EEF0F8",  text: C.muted };
+
+  return (
+    <div style={{ display:"flex", height:"100vh", background:C.bg, overflow:"hidden" }}>
+      {/* Sidebar */}
+      <div style={{ width:224, background:C.canvas, borderRight:`1px solid ${C.border}`,
+        display:"flex", flexDirection:"column", flexShrink:0, padding:"18px 16px" }}>
+        <img src={LOGO_B64} alt="B2B Rocket" style={{ width:"100%", maxWidth:160, height:"auto", display:"block", marginBottom:20 }} />
+        <div style={{ fontSize:9, color:C.muted, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:12 }}>ADMIN</div>
+        {[
+          { id:"users",   label:"Users",   icon:"👤", count: users.length   },
+          { id:"clients", label:"Clients", icon:"🏢", count: clients.length },
+        ].map(item => {
+          const on = section === item.id;
+          return (
+            <button key={item.id} onClick={()=>setSection(item.id as any)}
+              style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 11px",
+                borderRadius:8, background: on ? C.accentLo : "transparent",
+                border:`1px solid ${on ? C.accentBorder : "transparent"}`,
+                cursor:"pointer", textAlign:"left", marginBottom:4, transition:"all .15s" }}
+              onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+              onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+              <span style={{ fontSize:13 }}>{item.icon}</span>
+              <span style={{ fontSize:12, fontFamily:head, fontWeight:on?700:500, color:on?C.text:C.muted, flex:1 }}>{item.label}</span>
+              <span style={{ fontSize:10, fontFamily:mono, color:on?C.accent:C.muted,
+                background: on?C.accentMid:"transparent", padding:"1px 6px", borderRadius:4 }}>{item.count}</span>
+            </button>
+          );
+        })}
+        <div style={{ marginTop:"auto" }}>
+          <button onClick={signOut ?? onClose} style={{ display:"flex", alignItems:"center", gap:8, width:"100%",
+            padding:"9px 11px", borderRadius:8, border:`1px solid ${C.border}`,
+            background:"transparent", cursor:"pointer", textAlign:"left" }}>
+            <span style={{ fontSize:12 }}>{signOut ? "⏻" : "←"}</span>
+            <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C.muted }}>{signOut ? "Sign Out" : "Back to App"}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div style={{ flex:1, overflow:"auto", padding:"40px 48px" }}>
+        <div style={{ maxWidth:860, margin:"0 auto" }}>
+
+          {/* Header */}
+          <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28 }}>
+            <div>
+              <div style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>
+                {section === "users" ? "USER MANAGEMENT" : "CLIENT MANAGEMENT"}
+              </div>
+              <h2 style={{ fontSize:26, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>
+                {section === "users" ? "Users" : "Clients"}
+              </h2>
+              <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body }}>
+                {section === "users" ? "Manage team members and client users." : "Manage clients and assign them to team members."}
+              </p>
+            </div>
+            <div style={{ display:"flex", gap:8, flexShrink:0, marginTop:4 }}>
+              {section === "clients" && (
+                <button onClick={openBulkImport}
+                  style={{ padding:"10px 16px", borderRadius:8, border:`1px solid ${C.border}`,
+                    background:C.canvas, color:C.text, fontSize:12, fontFamily:head, fontWeight:700,
+                    cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                  <span style={{ fontSize:14 }}>⬆</span> Bulk Import
+                </button>
+              )}
+              <button onClick={section === "users" ? openAdd : openAddClient}
+                style={{ padding:"10px 20px", borderRadius:8, border:"none",
+                  background:C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
+                  cursor:"pointer", boxShadow:`0 2px 10px ${C.accent}40` }}>
+                {section === "users" ? "+ Add User" : "+ Add Client"}
+              </button>
+            </div>
+          </div>
+
+          {/* ── USERS SECTION ── */}
+          {section === "users" && <>
+
+          {/* Search */}
+          <div style={{ position:"relative", marginBottom:16 }}>
+            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:13, color:C.muted, pointerEvents:"none" }}>⌕</span>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search users…"
+              style={{ width:"100%", padding:"9px 12px 9px 34px", borderRadius:8, border:`1px solid ${C.border}`,
+                background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
+          </div>
+
+          {/* Table */}
+          <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+            {/* Table header */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 90px",
+              padding:"10px 20px", borderBottom:`1px solid ${C.border}`, gap:12 }}>
+              {["Name","Email","Role","Status",""].map((h,i) => (
+                <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
+                  color:C.muted, letterSpacing:.5, textAlign: i===4?"right":"left" }}>{h}</div>
+              ))}
+            </div>
+
+            {/* Rows */}
+            {filtered.length === 0 && (
+              <div style={{ padding:"40px 20px", textAlign:"center", fontSize:13, color:C.muted, fontFamily:body }}>
+                {users.length === 0 ? "No users yet. Add your first user above." : "No users match your search."}
+              </div>
+            )}
+            {filtered.map((u, idx) => {
+              const rc = roleColor(u.role);
+              const sc = statusColor(u.status);
+              const initials = u.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+              const av = avatarColor(u.name);
+              return (
+                <div key={u.id} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 90px",
+                  padding:"13px 20px", gap:12, alignItems:"center",
+                  borderBottom: idx < filtered.length-1 ? `1px solid ${C.border}` : "none",
+                  transition:"background .12s" }}
+                  onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.background=C.faint}
+                  onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.background="transparent"}>
+                  {/* Name */}
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ width:30, height:30, borderRadius:8, flexShrink:0,
+                      background:av+"22", display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:10, fontWeight:800, color:av, fontFamily:mono }}>
+                      {initials || "?"}
+                    </div>
+                    <div>
+                      <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head }}>{u.name}</div>
+                      <div style={{ fontSize:10, color:C.muted, fontFamily:mono }}>
+                        {new Date(u.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Email */}
+                  <div style={{ fontSize:12.5, color:C.textSoft, fontFamily:body,
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.email}</div>
+                  {/* Role */}
+                  <div>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:4,
+                      fontSize:10, fontFamily:mono, fontWeight:700,
+                      color:rc.text, background:rc.bg, padding:"3px 8px", borderRadius:5 }}>
+                      {u.role === "team" ? "Team" : "Client"}
+                    </span>
+                  </div>
+                  {/* Status */}
+                  <div>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:4,
+                      fontSize:10, fontFamily:mono, fontWeight:700,
+                      color:sc.text, background:sc.bg, padding:"3px 8px", borderRadius:5 }}>
+                      <span style={{ width:4, height:4, borderRadius:"50%", background:sc.text, display:"inline-block" }} />
+                      {u.status === "active" ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                  {/* Actions */}
+                  <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
+                    <button onClick={()=>openEdit(u)} title="Edit"
+                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
+                        background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center" }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=C.accent;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                      ✎
+                    </button>
+                    <button onClick={()=>setDeleteId(u.id)} title="Delete"
+                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
+                        background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center" }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"66";(e.currentTarget as HTMLButtonElement).style.color=C.red;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Summary */}
+          {users.length > 0 && (
+            <div style={{ marginTop:12, fontSize:11, color:C.muted, fontFamily:mono }}>
+              {users.filter(u=>u.status==="active").length} active · {users.filter(u=>u.role==="team").length} team · {users.filter(u=>u.role==="client").length} client
+            </div>
+          )}
+          </>}
+
+          {/* ── CLIENTS SECTION ── */}
+          {section === "clients" && <>
+          <div style={{ position:"relative", marginBottom:selectedClientIds.size > 0 ? 8 : 16 }}>
+            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:13, color:C.muted, pointerEvents:"none" }}>⌕</span>
+            <input value={clientSearch} onChange={e=>{ setClientSearch(e.target.value); setSelectedClientIds(new Set()); }} placeholder="Search clients…"
+              style={{ width:"100%", padding:"9px 12px 9px 34px", borderRadius:8, border:`1px solid ${C.border}`,
+                background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
+          </div>
+
+          {/* Bulk action bar */}
+          {selectedClientIds.size > 0 && (
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", marginBottom:8,
+              background:C.accentLo, borderRadius:8, border:`1px solid ${C.accent}33` }}>
+              <span style={{ fontSize:12, fontFamily:mono, fontWeight:700, color:C.accent, marginRight:4 }}>
+                {selectedClientIds.size} selected
+              </span>
+              <button onClick={handleBulkEdit}
+                style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${C.accent}55`,
+                  background:C.accent, color:"#fff", fontSize:11.5, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                Edit Fields
+              </button>
+              <button onClick={handleBulkDelete}
+                style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${C.red}55`,
+                  background:"transparent", color:C.red, fontSize:11.5, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                Delete
+              </button>
+              <button onClick={()=>setSelectedClientIds(new Set())}
+                style={{ marginLeft:"auto", padding:"6px 12px", borderRadius:6, border:`1px solid ${C.border}`,
+                  background:"transparent", color:C.muted, fontSize:11.5, fontFamily:head, cursor:"pointer" }}>
+                Clear
+              </button>
+            </div>
+          )}
+
+          <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+            {/* Table header */}
+            <div style={{ display:"grid", gridTemplateColumns:"36px 1fr 140px 160px 90px 90px",
+              padding:"10px 16px", borderBottom:`1px solid ${C.border}`, gap:12, alignItems:"center" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <input type="checkbox" style={{ accentColor:C.accent, cursor:"pointer" }}
+                  checked={allFilteredSelected(filteredClients)}
+                  onChange={()=>toggleSelectAll(filteredClients)} />
+              </div>
+              {["Company","Industry","Assigned To","Status",""].map((h,i) => (
+                <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
+                  color:C.muted, letterSpacing:.5, textAlign:i===4?"right":"left" }}>{h}</div>
+              ))}
+            </div>
+            {filteredClients.length === 0 && (
+              <div style={{ padding:"40px 20px", textAlign:"center", fontSize:13, color:C.muted, fontFamily:body }}>
+                {clients.length === 0 ? "No clients yet. Add your first client above." : "No clients match your search."}
+              </div>
+            )}
+            {filteredClients.map((c, idx) => {
+              const sc  = statusColor(c.status);
+              const av  = avatarColor(c.name);
+              const assignedUser = users.find(u => u.id === c.assignedUserId);
+              const isSelected = selectedClientIds.has(c.id);
+              return (
+                <div key={c.id} style={{ display:"grid", gridTemplateColumns:"36px 1fr 140px 160px 90px 90px",
+                  padding:"13px 16px", gap:12, alignItems:"center",
+                  borderBottom: idx < filteredClients.length-1 ? `1px solid ${C.border}` : "none",
+                  background: isSelected ? C.accentLo : "transparent", transition:"background .12s" }}
+                  onMouseEnter={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=C.faint; }}
+                  onMouseLeave={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background="transparent"; }}>
+                  {/* Checkbox */}
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    <input type="checkbox" checked={isSelected} onChange={()=>toggleClientSelect(c.id)}
+                      style={{ accentColor:C.accent, cursor:"pointer" }} />
+                  </div>
+                  {/* Name */}
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ width:30, height:30, borderRadius:8, flexShrink:0,
+                      background:av+"22", display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:10, fontWeight:800, color:av, fontFamily:mono }}>
+                      {c.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head }}>{c.name}</div>
+                  </div>
+                  {/* Industry */}
+                  <div style={{ fontSize:12.5, color:C.textSoft, fontFamily:body }}>{c.industry || "—"}</div>
+                  {/* Assigned */}
+                  <div style={{ fontSize:12.5, fontFamily:body }}>
+                    {assignedUser
+                      ? <span style={{ color:C.text }}>{assignedUser.name}</span>
+                      : <span style={{ color:C.muted, fontStyle:"italic" }}>Unassigned</span>}
+                  </div>
+                  {/* Status */}
+                  <div>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:4,
+                      fontSize:10, fontFamily:mono, fontWeight:700,
+                      color:sc.text, background:sc.bg, padding:"3px 8px", borderRadius:5 }}>
+                      <span style={{ width:4, height:4, borderRadius:"50%", background:sc.text, display:"inline-block" }} />
+                      {c.status === "active" ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                  {/* Actions */}
+                  <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
+                    <button onClick={()=>openEditClient(c)} title="Edit"
+                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
+                        background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center" }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=C.accent;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                      ✎
+                    </button>
+                    <button onClick={()=>setDeleteClientId(c.id)} title="Delete"
+                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
+                        background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center" }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"66";(e.currentTarget as HTMLButtonElement).style.color=C.red;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {clients.length > 0 && (
+            <div style={{ marginTop:12, fontSize:11, color:C.muted, fontFamily:mono }}>
+              {clients.filter(c=>c.status==="active").length} active · {clients.filter(c=>c.assignedUserId).length} assigned · {clients.filter(c=>!c.assignedUserId).length} unassigned
+            </div>
+          )}
+          </>}
+
+        </div>
+      </div>
+
+      {/* ── Add / Edit Modal ── */}
+      {modal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
+          display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
+          onClick={e=>{ if(e.target===e.currentTarget) setModal(null); }}>
+          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            padding:"28px 32px", width:420, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:20 }}>
+              {modal === "add" ? "Add User" : "Edit User"}
+            </div>
+
+            {[
+              { label:"Full name", key:"name",  type:"text",   placeholder:"e.g. Sarah Kim" },
+              { label:"Email",     key:"email", type:"email",  placeholder:"e.g. sarah@company.com" },
+            ].map(f => (
+              <div key={f.key} style={{ marginBottom:14 }}>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>{f.label}</label>
+                <input type={f.type} value={(form as any)[f.key]} placeholder={f.placeholder}
+                  onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none",
+                    boxSizing:"border-box" as const }} />
+              </div>
+            ))}
+
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>
+                PASSWORD{modal === "edit" && <span style={{ fontWeight:400, marginLeft:6 }}>(leave blank to keep existing)</span>}
+              </label>
+              <input type="password" value={form.password} placeholder={modal === "edit" ? "••••••••" : "Set a password"}
+                onChange={e=>setForm(p=>({...p,password:e.target.value}))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none",
+                  boxSizing:"border-box" as const }} />
+            </div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:22 }}>
+              <div>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>Role</label>
+                <select value={form.role} onChange={e=>setForm(p=>({...p,role:e.target.value as "team"|"client"}))}
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                  <option value="team">Team</option>
+                  <option value="client">Client</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>Status</label>
+                <select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value as "active"|"inactive"}))}
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={handleSave}
+                disabled={!form.name.trim() || !form.email.trim() || (modal==="add" && !form.password.trim())}
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
+                  background:(form.name.trim()&&form.email.trim()&&(modal!=="add"||form.password.trim()))?C.accent:C.border,
+                  color:(form.name.trim()&&form.email.trim()&&(modal!=="add"||form.password.trim()))?"#fff":C.muted,
+                  fontSize:13, fontFamily:head, fontWeight:700,
+                  cursor:(form.name.trim()&&form.email.trim()&&(modal!=="add"||form.password.trim()))?"pointer":"default" }}>
+                {modal === "add" ? "Add User" : "Save Changes"}
+              </button>
+              <button onClick={()=>setModal(null)}
+                style={{ flex:1, padding:"11px 0", borderRadius:8,
+                  border:`1px solid ${C.border}`, background:"transparent",
+                  color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete User Confirm ── */}
+      {deleteId && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
+          display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}>
+          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            padding:"28px 32px", width:360, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:10 }}>Delete user?</div>
+            <div style={{ fontSize:13, color:C.textSoft, fontFamily:body, marginBottom:22, lineHeight:1.6 }}>
+              This will permanently remove <strong>{users.find(u=>u.id===deleteId)?.name}</strong> from the system.
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={handleDelete}
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
+                  background:C.red, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                Delete
+              </button>
+              <button onClick={()=>setDeleteId(null)}
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add / Edit Client Modal ── */}
+      {clientModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
+          display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
+          onClick={e=>{ if(e.target===e.currentTarget) setClientModal(null); }}>
+          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            padding:"28px 32px", width:440, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:20 }}>
+              {clientModal === "add" ? "Add Client" : "Edit Client"}
+            </div>
+
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>COMPANY NAME</label>
+              <input type="text" value={clientForm.name} placeholder="e.g. Acme Corp"
+                onChange={e=>setClientForm(p=>({...p,name:e.target.value}))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+            </div>
+
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>INDUSTRY</label>
+              <input type="text" value={clientForm.industry} placeholder="e.g. B2B SaaS"
+                onChange={e=>setClientForm(p=>({...p,industry:e.target.value}))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+            </div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:22 }}>
+              <div>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>ASSIGNED TO</label>
+                <select value={clientForm.assignedUserId ?? ""} onChange={e=>setClientForm(p=>({...p,assignedUserId:e.target.value||null}))}
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                  <option value="">Unassigned</option>
+                  {users.filter(u=>u.status==="active").map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>STATUS</label>
+                <select value={clientForm.status} onChange={e=>setClientForm(p=>({...p,status:e.target.value as "active"|"inactive"}))}
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={handleSaveClient} disabled={!clientForm.name.trim()}
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
+                  background:clientForm.name.trim()?C.accent:C.border,
+                  color:clientForm.name.trim()?"#fff":C.muted,
+                  fontSize:13, fontFamily:head, fontWeight:700,
+                  cursor:clientForm.name.trim()?"pointer":"default" }}>
+                {clientModal === "add" ? "Add Client" : "Save Changes"}
+              </button>
+              <button onClick={()=>setClientModal(null)}
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Client Confirm ── */}
+      {deleteClientId && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
+          display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}>
+          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            padding:"28px 32px", width:360, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:10 }}>Delete client?</div>
+            <div style={{ fontSize:13, color:C.textSoft, fontFamily:body, marginBottom:22, lineHeight:1.6 }}>
+              This will permanently remove <strong>{clients.find(c=>c.id===deleteClientId)?.name}</strong>.
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={handleDeleteClient}
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
+                  background:C.red, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                Delete
+              </button>
+              <button onClick={()=>setDeleteClientId(null)}
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Bulk Edit Modal ── */}
+      {showBulkEdit && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
+          display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
+          onClick={e=>{ if(e.target===e.currentTarget) setShowBulkEdit(false); }}>
+          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            padding:"28px 32px", width:440, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:6 }}>
+              Edit {selectedClientIds.size} Client{selectedClientIds.size!==1?"s":""}
+            </div>
+            <div style={{ fontSize:12.5, color:C.muted, fontFamily:body, marginBottom:22 }}>
+              Only filled fields will be updated — leave blank to keep existing values.
+            </div>
+
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>INDUSTRY</label>
+              <input type="text" value={bulkEditForm.industry} placeholder="e.g. B2B SaaS — leave blank to skip"
+                onChange={e=>setBulkEditForm(p=>({...p,industry:e.target.value}))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+            </div>
+
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>ASSIGN TO</label>
+              <select value={bulkEditForm.assignedUserId} onChange={e=>setBulkEditForm(p=>({...p,assignedUserId:e.target.value}))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                <option value="">— keep existing —</option>
+                <option value="unassign">Unassigned</option>
+                {users.filter(u=>u.status==="active"&&u.role==="team").map(u=>(
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom:24 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>STATUS</label>
+              <select value={bulkEditForm.status} onChange={e=>setBulkEditForm(p=>({...p,status:e.target.value}))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                <option value="">— keep existing —</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={handleBulkEditSave}
+                disabled={!bulkEditForm.industry && !bulkEditForm.assignedUserId && !bulkEditForm.status}
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
+                  background:(bulkEditForm.industry||bulkEditForm.assignedUserId||bulkEditForm.status)?C.accent:C.border,
+                  color:(bulkEditForm.industry||bulkEditForm.assignedUserId||bulkEditForm.status)?"#fff":C.muted,
+                  fontSize:13, fontFamily:head, fontWeight:700,
+                  cursor:(bulkEditForm.industry||bulkEditForm.assignedUserId||bulkEditForm.status)?"pointer":"default" }}>
+                Apply to {selectedClientIds.size} Client{selectedClientIds.size!==1?"s":""}
+              </button>
+              <button onClick={()=>setShowBulkEdit(false)}
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Import Modal ── */}
+      {showBulkImport && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.6)", backdropFilter:"blur(4px)",
+          display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
+          onClick={e=>{ if(e.target===e.currentTarget && !bulkLoading) setShowBulkImport(false); }}>
+          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            padding:"28px 32px", width:500, maxWidth:"95vw", boxShadow:"0 20px 60px rgba(0,0,0,.2)", animation:"slideUp .2s ease" }}>
+
+            {/* Header */}
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20 }}>
+              <div>
+                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text }}>Bulk Import Clients</div>
+                <div style={{ fontSize:12.5, color:C.muted, fontFamily:body, marginTop:3 }}>
+                  {bulkStep === "upload" ? "Upload a screenshot — AI will extract all company names." : `${bulkNames.filter(n=>n.include).length} of ${bulkNames.length} names selected`}
+                </div>
+              </div>
+              {!bulkLoading && (
+                <button onClick={()=>setShowBulkImport(false)}
+                  style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
+                    background:"transparent", color:C.muted, fontSize:14, cursor:"pointer",
+                    display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>✕</button>
+              )}
+            </div>
+
+            {/* Step 1: Upload */}
+            {bulkStep === "upload" && (
+              <>
+                <div
+                  onDragOver={e=>{ e.preventDefault(); setBulkDragOver(true); }}
+                  onDragLeave={()=>setBulkDragOver(false)}
+                  onDrop={e=>{ e.preventDefault(); setBulkDragOver(false); const f=e.dataTransfer.files[0]; if(f) handleBulkImageSelect(f); }}
+                  onClick={()=>{ const inp = document.getElementById("bulkFileInput") as HTMLInputElement; inp?.click(); }}
+                  style={{ border:`2px dashed ${bulkDragOver ? C.accent : bulkImageFile ? C.green : C.border}`,
+                    borderRadius:10, padding:"32px 20px", textAlign:"center", cursor:"pointer",
+                    background: bulkDragOver ? C.accentLo : bulkImageFile ? C.greenLo : C.bg,
+                    transition:"all .15s", marginBottom:16, position:"relative", minHeight:140,
+                    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10 }}>
+                  <input id="bulkFileInput" type="file" accept="image/*" style={{ display:"none" }}
+                    onChange={e=>{ const f=e.target.files?.[0]; if(f) handleBulkImageSelect(f); }} />
+                  {bulkImageFile ? (
+                    <>
+                      <img src={bulkImageUrl} alt="preview"
+                        style={{ maxHeight:120, maxWidth:"100%", borderRadius:6, objectFit:"contain" }} />
+                      <div style={{ fontSize:12, color:C.green, fontFamily:mono, fontWeight:700 }}>✓ {bulkImageFile.name}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:28 }}>🖼</div>
+                      <div style={{ fontSize:13.5, fontWeight:600, color:C.text, fontFamily:head }}>Paste, drop, or click to upload</div>
+                      <div style={{ fontSize:12, color:C.muted, fontFamily:body }}>⌘V to paste from clipboard · PNG, JPG, WebP</div>
+                    </>
+                  )}
+                </div>
+                <div style={{ display:"flex", gap:10 }}>
+                  <button onClick={runBulkExtract} disabled={!bulkImageFile || bulkLoading}
+                    style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
+                      background:bulkImageFile && !bulkLoading ? C.accent : C.border,
+                      color:bulkImageFile && !bulkLoading ? "#fff" : C.muted,
+                      fontSize:13, fontFamily:head, fontWeight:700,
+                      cursor:bulkImageFile && !bulkLoading ? "pointer" : "default",
+                      display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                    {bulkLoading ? <><span style={{ animation:"spin 1s linear infinite", display:"inline-block" }}>⟳</span> Extracting…</> : "✦ Extract Names"}
+                  </button>
+                  <button onClick={()=>setShowBulkImport(false)} disabled={bulkLoading}
+                    style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
+                      background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Step 2: Review */}
+            {bulkStep === "review" && (
+              <>
+                {bulkNames.length === 0 ? (
+                  <div style={{ padding:"24px 0", textAlign:"center", fontSize:13, color:C.muted, fontFamily:body }}>
+                    No names could be extracted. Try a clearer screenshot.
+                  </div>
+                ) : (
+                  <div style={{ maxHeight:300, overflowY:"auto", marginBottom:16, border:`1px solid ${C.border}`, borderRadius:8 }}>
+                    {/* Select all / none */}
+                    <div style={{ padding:"10px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:10,
+                      background:C.bg, position:"sticky", top:0 }}>
+                      <input type="checkbox"
+                        checked={bulkNames.every(n=>n.include)}
+                        onChange={e=>setBulkNames(p=>p.map(n=>({...n,include:e.target.checked})))}
+                        style={{ accentColor:C.accent, cursor:"pointer" }} />
+                      <span style={{ fontSize:11, fontFamily:mono, color:C.muted, fontWeight:700 }}>SELECT ALL</span>
+                      <span style={{ marginLeft:"auto", fontSize:11, color:C.muted, fontFamily:mono }}>
+                        {bulkNames.filter(n=>n.include).length}/{bulkNames.length}
+                      </span>
+                    </div>
+                    {bulkNames.map((n, i) => (
+                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px",
+                        borderBottom: i < bulkNames.length-1 ? `1px solid ${C.border}` : "none",
+                        background: n.include ? "transparent" : C.faint }}>
+                        <input type="checkbox" checked={n.include}
+                          onChange={e=>setBulkNames(p=>p.map((x,j)=>j===i?{...x,include:e.target.checked}:x))}
+                          style={{ accentColor:C.accent, cursor:"pointer", flexShrink:0 }} />
+                        <input value={n.name}
+                          onChange={e=>setBulkNames(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                          style={{ flex:1, fontSize:13, fontFamily:body, color:C.text,
+                            background:"transparent", border:"none", outline:"none",
+                            opacity: n.include ? 1 : 0.4 }} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display:"flex", gap:10 }}>
+                  <button onClick={handleBulkConfirm} disabled={!bulkNames.some(n=>n.include&&n.name.trim())}
+                    style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
+                      background:bulkNames.some(n=>n.include&&n.name.trim()) ? C.accent : C.border,
+                      color:bulkNames.some(n=>n.include&&n.name.trim()) ? "#fff" : C.muted,
+                      fontSize:13, fontFamily:head, fontWeight:700,
+                      cursor:bulkNames.some(n=>n.include&&n.name.trim()) ? "pointer" : "default" }}>
+                    Add {bulkNames.filter(n=>n.include&&n.name.trim()).length} Client{bulkNames.filter(n=>n.include&&n.name.trim()).length!==1?"s":""}
+                  </button>
+                  <button onClick={()=>setBulkStep("upload")}
+                    style={{ padding:"11px 18px", borderRadius:8, border:`1px solid ${C.border}`,
+                      background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                    ← Back
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── USER LOGIN GATE ──────────────────────────────────────────────────────────
+const USER_SESSION_KEY = "b2br_user_session";
+
+function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [error,    setError]    = useState(false);
+  const [loading,  setLoading]  = useState(false);
+
+  const handleLogin = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!email.trim() || !password.trim()) return;
+    setLoading(true); setError(false);
+    await new Promise(r => setTimeout(r, 300));
+    const users = loadUsers();
+    const match = users.find(u =>
+      u.email.toLowerCase() === email.trim().toLowerCase() &&
+      u.password === password &&
+      u.status === "active"
+    );
+    if (match) {
+      try { sessionStorage.setItem(USER_SESSION_KEY, match.id); } catch {}
+      onLogin(match);
+    } else {
+      setError(true);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+        body{background:${C.bg};-webkit-font-smoothing:antialiased;}
+        @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+      `}</style>
+
+      <div style={{ width:380, animation:"slideUp .3s ease" }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <img src={LOGO_B64} alt="B2B Rocket" style={{ maxWidth:140, height:"auto" }} />
+        </div>
+
+        <form onSubmit={handleLogin}
+          style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            padding:"32px 32px 28px", boxShadow:"0 4px 24px rgba(13,15,26,.08)",
+            animation: error ? "shake .35s ease" : "none" }}>
+
+          <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:C.text, marginBottom:4 }}>Welcome back</div>
+          <div style={{ fontSize:13, color:C.muted, fontFamily:body, marginBottom:24 }}>Sign in to your account.</div>
+
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>EMAIL</label>
+            <input type="email" value={email} autoFocus autoComplete="email"
+              onChange={e=>{ setEmail(e.target.value); setError(false); }}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:8,
+                border:`1px solid ${error ? C.red+"88" : C.border}`,
+                background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
+          </div>
+
+          <div style={{ marginBottom:20 }}>
+            <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>PASSWORD</label>
+            <input type="password" value={password} autoComplete="current-password"
+              onChange={e=>{ setPassword(e.target.value); setError(false); }}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:8,
+                border:`1px solid ${error ? C.red+"88" : C.border}`,
+                background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
+          </div>
+
+          {error && (
+            <div style={{ fontSize:12, color:C.red, fontFamily:body, marginBottom:14,
+              background:C.red+"11", padding:"8px 12px", borderRadius:7, border:`1px solid ${C.red}22` }}>
+              Incorrect email or password, or account is inactive.
+            </div>
+          )}
+
+          <button type="submit" disabled={loading || !email.trim() || !password.trim()}
+            style={{ width:"100%", padding:"12px 0", borderRadius:8, border:"none",
+              background: loading || !email.trim() || !password.trim() ? C.border : C.accent,
+              color: loading || !email.trim() || !password.trim() ? C.muted : "#fff",
+              fontSize:13, fontFamily:head, fontWeight:700,
+              cursor: loading || !email.trim() || !password.trim() ? "default" : "pointer",
+              transition:"all .15s",
+              boxShadow: !loading && email.trim() && password.trim() ? `0 2px 12px ${C.accent}40` : "none" }}>
+            {loading ? "Signing in…" : "Sign In"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN AUTH GATE ──────────────────────────────────────────────────────────
+const ADMIN_SESSION_KEY = "b2br_admin_auth";
+
+function AdminGate() {
+  const [authed,  setAuthed]  = useState(() => {
+    try { return sessionStorage.getItem(ADMIN_SESSION_KEY) === "1"; } catch { return false; }
+  });
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error,    setError]    = useState(false);
+  const [loading,  setLoading]  = useState(false);
+
+  const signOut = () => {
+    try { sessionStorage.removeItem(ADMIN_SESSION_KEY); } catch {}
+    setAuthed(false);
+    setUsername(""); setPassword(""); setError(false);
+  };
+
+  const handleLogin = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!username.trim() || !password.trim()) return;
+    setLoading(true); setError(false);
+    await new Promise(r => setTimeout(r, 350)); // subtle brute-force delay
+const ok =
+      username.trim().toLowerCase() === import.meta.env.VITE_ADMIN_USER?.trim().toLowerCase() &&
+      password.trim() === import.meta.env.VITE_ADMIN_PASS?.trim();
+    if (ok) {
+      try { sessionStorage.setItem(ADMIN_SESSION_KEY, "1"); } catch {}
+      setAuthed(true);
+    } else {
+      setError(true);
+    }
+    setLoading(false);
+  };
+
+  if (authed) return <AdminPanel onClose={signOut} signOut={signOut} />;
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+        body{background:${C.bg};-webkit-font-smoothing:antialiased;}
+        @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+      `}</style>
+
+      <div style={{ width:380, animation:"slideUp .3s ease" }}>
+        {/* Logo */}
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <img src={LOGO_B64} alt="B2B Rocket" style={{ maxWidth:140, height:"auto" }} />
+          <div style={{ marginTop:10, fontSize:10, fontFamily:mono, fontWeight:700,
+            color:C.muted, letterSpacing:.8 }}>ADMIN PORTAL</div>
+        </div>
+
+        {/* Card */}
+        <form onSubmit={handleLogin}
+          style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            padding:"32px 32px 28px",
+            boxShadow:"0 4px 24px rgba(13,15,26,.08)",
+            animation: error ? "shake .35s ease" : "none" }}>
+
+          <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:C.text, marginBottom:4 }}>Sign in</div>
+          <div style={{ fontSize:13, color:C.muted, fontFamily:body, marginBottom:24 }}>Admin access only.</div>
+
+          {/* Username */}
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>USERNAME</label>
+            <input
+              type="text" value={username} autoFocus autoComplete="username"
+              onChange={e=>{ setUsername(e.target.value); setError(false); }}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:8,
+                border:`1px solid ${error ? C.red+"88" : C.border}`,
+                background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none",
+                transition:"border-color .15s" }}
+            />
+          </div>
+
+          {/* Password */}
+          <div style={{ marginBottom:20 }}>
+            <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>PASSWORD</label>
+            <input
+              type="password" value={password} autoComplete="current-password"
+              onChange={e=>{ setPassword(e.target.value); setError(false); }}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:8,
+                border:`1px solid ${error ? C.red+"88" : C.border}`,
+                background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none",
+                transition:"border-color .15s" }}
+            />
+          </div>
+
+          {error && (
+            <div style={{ fontSize:12, color:C.red, fontFamily:body, marginBottom:14,
+              background:C.red+"11", padding:"8px 12px", borderRadius:7, border:`1px solid ${C.red}22` }}>
+              Incorrect username or password.
+            </div>
+          )}
+
+          <button type="submit" disabled={loading || !username.trim() || !password.trim()}
+            style={{ width:"100%", padding:"12px 0", borderRadius:8, border:"none",
+              background: loading || !username.trim() || !password.trim() ? C.border : C.accent,
+              color: loading || !username.trim() || !password.trim() ? C.muted : "#fff",
+              fontSize:13, fontFamily:head, fontWeight:700,
+              cursor: loading || !username.trim() || !password.trim() ? "default" : "pointer",
+              transition:"all .15s",
+              boxShadow: !loading && username.trim() && password.trim() ? `0 2px 12px ${C.accent}40` : "none" }}>
+            {loading ? "Signing in…" : "Sign In"}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
+const IS_ADMIN_DOMAIN = window.location.hostname.startsWith("admin.") ||
+  new URLSearchParams(window.location.search).get("admin") === "1";
+const IS_LOCALHOST    = ["localhost","127.0.0.1","app.local"].includes(window.location.hostname);
+
 export default function App() {
-  const [view,           setView]           = useState("company");
+  if (IS_ADMIN_DOMAIN) return <AdminGate />;
+  return <AppMain />;
+}
+
+function AppMain() {
+  const [loggedInUser,   setLoggedInUser]   = useState<UserRecord|null>(() => {
+    try {
+      const id = sessionStorage.getItem(USER_SESSION_KEY);
+      if (!id) return null;
+      return loadUsers().find(u => u.id === id) ?? null;
+    } catch { return null; }
+  });
+  const [view,           setView]           = useState("accounts");
+  const [acctSearch,     setAcctSearch]     = useState("");
   const [companyData,    setCompanyData]    = useState({});
   const [companyConf,    setCompanyConf]    = useState({});
-  const [icps,           setIcps]           = useState([newICP(0)]);
+  const [icps,           setIcps]           = useState([]);
   const [editingId,      setEditingId]      = useState(null);
   const [drafting,       setDrafting]       = useState(null);
   const [showQS,         setShowQS]         = useState(false);
   const [currentRole,    setCurrentRole]    = useState("team");
-  const [activeWorkspace,setActiveWorkspace]= useState(MOCK_WORKSPACES[0]);
+  const [activeWorkspace,setActiveWorkspace]= useState(null);
+  const [appMode,        setAppMode]        = useState<"app"|"admin">("app");
   const [apiKey,         setApiKey]         = useState(() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } });
   const [showKeyInput,   setShowKeyInput]   = useState(false);
   const [keyDraft,       setKeyDraft]       = useState("");
+  const loadingRef = useRef(false);
+
+  const handleUserLogin = (user: UserRecord) => {
+    setLoggedInUser(user);
+    setCurrentRole(user.role);
+  };
+
+  const handleUserSignOut = () => {
+    try { sessionStorage.removeItem(USER_SESSION_KEY); } catch {}
+    setLoggedInUser(null);
+  };
+
+  if (!loggedInUser) return <UserLoginGate onLogin={handleUserLogin} />;
+
+  // ── Workspace data: load when active client changes ──
+  useEffect(() => {
+    if (!activeWorkspace) return;
+    loadingRef.current = true;
+    const saved = loadWorkspaceData(activeWorkspace.id);
+    setCompanyData(saved?.companyData ?? {});
+    setCompanyConf(saved?.companyConf ?? {});
+    setIcps(saved?.icps ?? []);
+    setView("company");
+    setEditingId(null);
+    // Allow save effects to fire after state settles
+    requestAnimationFrame(() => { loadingRef.current = false; });
+  }, [activeWorkspace?.id]);
+
+  // ── Workspace data: save whenever data changes ──
+  useEffect(() => {
+    if (!activeWorkspace || loadingRef.current) return;
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps });
+    // Sync co_industry back to ClientRecord so admin panel stays current
+    const cd = companyData as Record<string,string>;
+    if (cd.co_industry) {
+      const cls = loadClients();
+      const match = cls.find(c => c.id === activeWorkspace.id);
+      if (match && match.industry !== cd.co_industry) {
+        saveClients(cls.map(c => c.id === activeWorkspace.id ? { ...c, industry: cd.co_industry } : c));
+      }
+    }
+  }, [companyData, companyConf, icps]);
 
   // sync key into global + localStorage
   useEffect(() => {
@@ -1456,6 +2712,8 @@ export default function App() {
         { id:"outputs", label:"Campaign Outputs", sub:`${icpsWithOutputs} of ${icps.length} ready`       },
       ];
 
+  if (appMode === "admin") return <AdminPanel onClose={() => setAppMode("app")} />; // localhost dev shortcut
+
   return (
     <>
       <style>{`
@@ -1467,135 +2725,379 @@ export default function App() {
         @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
+        @keyframes aiSpark{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes aiSheen{0%{left:-60%;opacity:0}10%{opacity:1}40%{left:130%;opacity:0}100%{left:130%;opacity:0}}
         ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
       `}</style>
 
       <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:C.bg }}>
 
         {/* ── SIDEBAR ── */}
-        <div style={{ width:224, background:C.canvas, borderRight:`1px solid ${C.border}`,
-          display:"flex", flexDirection:"column", flexShrink:0 }}>
+        {(() => {
+          const allAcctClients = loadClients().filter(c => c.status === "active" && (
+            currentRole !== "team" || !loggedInUser || loadClients().find(x=>x.id===c.id)
+          ));
+          const wsNavItems = currentRole === "client"
+            ? [{ id:"outputs", label:"Campaign Outputs", icon:"◈", sub:`${icpsWithOutputs} ready` }]
+            : [
+                { id:"company", label:"Company Profile",  icon:"◉", sub:`${companyPct}% complete` },
+                { id:"icps",    label:"ICP Profiles",     icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
+                { id:"outputs", label:"Campaign Outputs", icon:"◈", sub:`${icpsWithOutputs} of ${icps.length} ready` },
+              ];
+          return (
+          <div style={{ width:232, background:C.canvas, borderRight:`1px solid ${C.border}`,
+            display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden" }}>
 
-          {/* Logo */}
-          <div style={{ padding:"18px 16px 14px", borderBottom:`1px solid ${C.border}` }}>
-            <img src={LOGO_B64} alt="B2B Rocket" style={{ width:"100%", maxWidth:160, height:"auto", display:"block", marginBottom:12 }} />
-
-            {/* Quick Start CTA — team only */}
-            {currentRole === "team" && <button onClick={()=>setShowQS(true)} style={{
-              display:"flex", alignItems:"center", gap:9, width:"100%",
-              padding:"9px 12px", borderRadius:8,
-              border:`1.5px solid ${C.accentBorder}`, background:C.accentLo,
-              cursor:"pointer", transition:"all .2s", textAlign:"left" }}
-              onMouseEnter={e=>{e.currentTarget.style.background=C.accentMid;}}
-              onMouseLeave={e=>{e.currentTarget.style.background=C.accentLo;}}>
-              <span style={{ fontSize:15 }}>⚡</span>
-              <div>
-                <div style={{ fontSize:11.5, fontFamily:head, fontWeight:700, color:C.accent }}>Quick Start</div>
-                <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>URL + files → auto-fill</div>
+            {/* ── Logo + user ── */}
+            <div style={{ padding:"16px 14px 14px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:0 }}>
+                <img src={LOGO_B64} alt="B2B Rocket" style={{ maxWidth:120, height:"auto", display:"block" }} />
+                <button onClick={handleUserSignOut} title="Sign out"
+                  style={{ fontSize:12, color:C.muted, background:"none", border:"none",
+                    cursor:"pointer", padding:"4px 6px", borderRadius:5, transition:"color .15s", lineHeight:1 }}
+                  onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.color=C.red}
+                  onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.color=C.muted}>⏻</button>
               </div>
-            </button>}
+            </div>
 
-            {/* ── API Key widget ── */}
-            <div style={{ marginTop:10 }}>
-              {!showKeyInput ? (
-                <button onClick={()=>{ setKeyDraft(apiKey); setShowKeyInput(true); }} style={{
-                  display:"flex", alignItems:"center", gap:7, width:"100%",
-                  padding:"7px 10px", borderRadius:7, cursor:"pointer", textAlign:"left",
-                  border:`1px solid ${apiKey ? C.green+"55" : C.red+"66"}`,
-                  background: apiKey ? C.green+"11" : C.red+"11",
-                }}>
-                  <span style={{ fontSize:13 }}>{apiKey ? "🔑" : "⚠️"}</span>
-                  <div>
-                    <div style={{ fontSize:10.5, fontWeight:700, fontFamily:head, color: apiKey ? C.green : C.red }}>
-                      {apiKey ? "API key saved" : "Add API key"}
+            {/* ── Scrollable nav area ── */}
+            <div style={{ flex:1, overflowY:"auto", padding:"8px 8px 0" }}>
+
+              {/* Global nav */}
+              {currentRole === "team" && (
+                <div style={{ marginBottom:4 }}>
+                  <button onClick={()=>{ setActiveWorkspace(null); setView("accounts"); }}
+                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 10px",
+                      borderRadius:8, border:`1px solid ${view==="accounts"&&!activeWorkspace?C.accentBorder:"transparent"}`,
+                      background:view==="accounts"&&!activeWorkspace?C.accentLo:"transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .15s", marginBottom:2 }}
+                    onMouseEnter={e=>{ if(!(view==="accounts"&&!activeWorkspace))(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                    onMouseLeave={e=>{ if(!(view==="accounts"&&!activeWorkspace))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                    <span style={{ fontSize:14, width:18, textAlign:"center", flexShrink:0, color:view==="accounts"&&!activeWorkspace?C.accent:C.muted }}>⊞</span>
+                    <div>
+                      <div style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="accounts"&&!activeWorkspace?700:500,
+                        color:view==="accounts"&&!activeWorkspace?C.text:C.textSoft }}>Client Accounts</div>
                     </div>
-                    <div style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>
-                      {apiKey ? "sk-ant-…" + apiKey.slice(-4) : "Required for AI features"}
-                    </div>
-                  </div>
-                </button>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                  <div style={{ fontSize:10, color:C.muted, fontFamily:mono }}>Anthropic API key</div>
-                  <input
-                    type="password"
-                    value={keyDraft}
-                    onChange={e=>setKeyDraft(e.target.value)}
-                    onKeyDown={e=>{ if(e.key==="Enter"){ setApiKey(keyDraft); setShowKeyInput(false); } if(e.key==="Escape") setShowKeyInput(false); }}
-                    placeholder="sk-ant-api03-..."
-                    autoFocus
-                    style={{ width:"100%", padding:"6px 8px", borderRadius:6, border:`1px solid ${C.border}`,
-                      background:C.bg, color:C.text, fontFamily:mono, fontSize:10.5, boxSizing:"border-box" }}
-                  />
-                  <div style={{ display:"flex", gap:5 }}>
-                    <button onClick={()=>{ setApiKey(keyDraft); setShowKeyInput(false); }} style={{
-                      flex:1, padding:"5px 0", borderRadius:6, border:"none",
-                      background:C.accent, color:"#fff", fontFamily:head, fontWeight:700, fontSize:11, cursor:"pointer" }}>
-                      Save
-                    </button>
-                    <button onClick={()=>setShowKeyInput(false)} style={{
-                      flex:1, padding:"5px 0", borderRadius:6, border:`1px solid ${C.border}`,
-                      background:"transparent", color:C.muted, fontFamily:head, fontSize:11, cursor:"pointer" }}>
-                      Cancel
-                    </button>
-                  </div>
-                  <div style={{ fontSize:9, color:C.muted, fontFamily:mono, lineHeight:1.4 }}>
-                    Stored in browser only. Never sent anywhere except Anthropic.
-                  </div>
+                  </button>
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Dual progress */}
-          <div style={{ padding:"12px 16px", borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ marginBottom:10 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>Company</span>
-                <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>{companyPct}%</span>
-              </div>
-              <ProgressBar pct={companyPct} color={C.accent} height={3} />
-            </div>
-            <div>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>Outputs</span>
-                <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>{icpsWithOutputs}/{icps.length}</span>
-              </div>
-              <ProgressBar pct={icps.length>0?Math.round(icpsWithOutputs/icps.length*100):0} color={C.green} height={3} />
-            </div>
-          </div>
+              {/* Workspace section */}
+              {activeWorkspace && (
+                <>
+                  <div style={{ height:1, background:C.border, margin:"4px 2px 8px" }} />
 
-          {/* Nav */}
-          <div style={{ padding:"10px 10px 0" }}>
-            {navItems.map(n => {
-              const on = view===n.id;
-              return (
-                <button key={n.id} onClick={()=>setView(n.id)} style={{
-                  display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 11px",
-                  borderRadius:8, border:`1px solid ${on?C.accentBorder:"transparent"}`,
-                  background:on?C.accentLo:"transparent", cursor:"pointer", textAlign:"left",
-                  marginBottom:2, transition:"all .15s" }}>
-                  <div style={{ width:6, height:6, borderRadius:"50%", flexShrink:0,
-                    background: on ? C.accent : C.border,
-                    boxShadow: on ? `0 0 0 3px ${C.accentMid}` : "none" }} />
-                  <div>
-                    <div style={{ fontSize:12, fontFamily:head, fontWeight:on?700:500, color:on?C.text:C.muted }}>{n.label}</div>
-                    <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginTop:1 }}>{n.sub}</div>
+                  {/* Workspace header */}
+                  <div style={{ padding:"8px 10px", borderRadius:8, background:C.faint,
+                    border:`1px solid ${C.border}`, marginBottom:6 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ width:28, height:28, borderRadius:7, flexShrink:0,
+                        background:avatarColor(activeWorkspace.name)+"22",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:11, fontWeight:800, color:avatarColor(activeWorkspace.name), fontFamily:mono }}>
+                        {activeWorkspace.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ minWidth:0 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.text, fontFamily:head,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          {activeWorkspace.name}
+                        </div>
+                        {activeWorkspace.industry && (
+                          <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginTop:1,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {activeWorkspace.industry}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </button>
-              );
-            })}
-          </div>
 
-          {/* ── Accounts & Workspaces ── */}
-          <WorkspacePanel
-            role={currentRole} setRole={setCurrentRole}
-            activeWorkspace={activeWorkspace} setActiveWorkspace={setActiveWorkspace} />
-        </div>
+                  {/* Progress bars */}
+                  <div style={{ padding:"8px 10px 10px", marginBottom:4 }}>
+                    <div style={{ marginBottom:7 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                        <span style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>Company</span>
+                        <span style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>{companyPct}%</span>
+                      </div>
+                      <ProgressBar pct={companyPct} color={C.accent} height={3} />
+                    </div>
+                    <div>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                        <span style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>Outputs</span>
+                        <span style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>{icpsWithOutputs}/{icps.length}</span>
+                      </div>
+                      <ProgressBar pct={icps.length>0?Math.round(icpsWithOutputs/icps.length*100):0} color={C.green} height={3} />
+                    </div>
+                  </div>
+
+                  {/* Quick Start — inside workspace, team only */}
+                  {currentRole === "team" && (
+                    <button onClick={()=>setShowQS(true)}
+                      style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 10px",
+                        borderRadius:8, border:`1.5px solid ${C.accentBorder}`, background:C.accentLo,
+                        cursor:"pointer", transition:"all .2s", textAlign:"left", marginTop:4 }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.accentMid;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.accentLo;}}>
+                      <span style={{ fontSize:14, width:18, textAlign:"center" }}>⚡</span>
+                      <div>
+                        <div style={{ fontSize:12.5, fontFamily:head, fontWeight:700, color:C.accent }}>Quick Start</div>
+                        <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>URL + files → auto-fill</div>
+                      </div>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* ── Bottom footer ── */}
+            <div style={{ flexShrink:0, borderTop:`1px solid ${C.border}`, padding:"8px 8px 10px" }}>
+
+              {/* API Key widget */}
+              <div style={{ marginBottom:6 }}>
+                {!showKeyInput ? (
+                  <button onClick={()=>{ setKeyDraft(apiKey); setShowKeyInput(true); }}
+                    style={{ display:"flex", alignItems:"center", gap:7, width:"100%",
+                      padding:"7px 10px", borderRadius:7, cursor:"pointer", textAlign:"left",
+                      border:`1px solid ${apiKey?C.green+"55":C.red+"66"}`,
+                      background:apiKey?C.green+"11":C.red+"11" }}>
+                    <span style={{ fontSize:13 }}>{apiKey?"🔑":"⚠️"}</span>
+                    <div>
+                      <div style={{ fontSize:10.5, fontWeight:700, fontFamily:head, color:apiKey?C.green:C.red }}>
+                        {apiKey?"API key saved":"Add API key"}
+                      </div>
+                      <div style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>
+                        {apiKey?"sk-ant-…"+apiKey.slice(-4):"Required for AI features"}
+                      </div>
+                    </div>
+                  </button>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                    <div style={{ fontSize:10, color:C.muted, fontFamily:mono }}>Anthropic API key</div>
+                    <input type="password" value={keyDraft} onChange={e=>setKeyDraft(e.target.value)}
+                      onKeyDown={e=>{ if(e.key==="Enter"){setApiKey(keyDraft);setShowKeyInput(false);} if(e.key==="Escape")setShowKeyInput(false); }}
+                      placeholder="sk-ant-api03-..." autoFocus
+                      style={{ width:"100%", padding:"6px 8px", borderRadius:6, border:`1px solid ${C.border}`,
+                        background:C.bg, color:C.text, fontFamily:mono, fontSize:10.5, boxSizing:"border-box" as const }} />
+                    <div style={{ display:"flex", gap:5 }}>
+                      <button onClick={()=>{setApiKey(keyDraft);setShowKeyInput(false);}}
+                        style={{ flex:1, padding:"5px 0", borderRadius:6, border:"none",
+                          background:C.accent, color:"#fff", fontFamily:head, fontWeight:700, fontSize:11, cursor:"pointer" }}>Save</button>
+                      <button onClick={()=>setShowKeyInput(false)}
+                        style={{ flex:1, padding:"5px 0", borderRadius:6, border:`1px solid ${C.border}`,
+                          background:"transparent", color:C.muted, fontFamily:head, fontSize:11, cursor:"pointer" }}>Cancel</button>
+                    </div>
+                    <div style={{ fontSize:9, color:C.muted, fontFamily:mono, lineHeight:1.4 }}>
+                      Stored in browser only. Never sent anywhere except Anthropic.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Admin (localhost + team) */}
+              {currentRole === "team" && IS_LOCALHOST && (
+                <button onClick={()=>setAppMode("admin")}
+                  style={{ display:"flex", alignItems:"center", gap:9, width:"100%",
+                    padding:"7px 10px", borderRadius:7, border:`1px solid ${C.border}`,
+                    background:"transparent", cursor:"pointer", textAlign:"left", transition:"all .15s", marginBottom:6 }}
+                  onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.faint;(e.currentTarget as HTMLButtonElement).style.borderColor=C.accent+"44";}}
+                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background="transparent";(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;}}>
+                  <span style={{ fontSize:13 }}>⚙</span>
+                  <div style={{ fontSize:11.5, fontFamily:head, fontWeight:600, color:C.muted }}>Admin Panel</div>
+                </button>
+              )}
+
+              {/* Role switcher (PREVIEW AS) */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:5 }}>
+                {([
+                  { v:"team",   icon:"⚙", label:"Team"   },
+                  { v:"client", icon:"👤", label:"Client" },
+                ] as const).map(r => {
+                  const on = currentRole === r.v;
+                  return (
+                    <button key={r.v} onClick={()=>setCurrentRole(r.v)}
+                      style={{ padding:"6px 0", borderRadius:6, fontSize:10, fontFamily:mono, fontWeight:700,
+                        cursor:"pointer", transition:"all .15s",
+                        border:`1px solid ${on?C.accentBorder:C.border}`,
+                        background:on?C.accentLo:"transparent",
+                        color:on?C.accent:C.muted }}>
+                      {r.icon} {r.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* User info */}
+              <div style={{ marginTop:8, padding:"6px 4px 0", borderTop:`1px solid ${C.border}`,
+                display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ width:24, height:24, borderRadius:6, flexShrink:0,
+                  background:avatarColor(loggedInUser.name)+"22",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:9, fontWeight:800, color:avatarColor(loggedInUser.name), fontFamily:mono }}>
+                  {loggedInUser.name.split(" ").map((w:string)=>w[0]).join("").slice(0,2).toUpperCase()}
+                </div>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:11.5, fontWeight:600, color:C.textSoft, fontFamily:head,
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.name}</div>
+                  <div style={{ fontSize:9.5, color:C.muted, fontFamily:mono,
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.email}</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+          );
+        })()}
 
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex:1, overflow:"auto", padding:"40px 48px" }}>
+
+          {/* Accounts page */}
+          {view === "accounts" && currentRole === "team" && (() => {
+            const allClts = loadClients().filter(c => c.status === "active");
+            const allUsrs = loadUsers();
+            const myClts  = loggedInUser
+              ? allClts.filter(c => !loggedInUser || c.assignedUserId === loggedInUser.id || allClts.length > 0)
+              : allClts;
+            const filteredAccts = myClts.filter(c =>
+              c.name.toLowerCase().includes(acctSearch.toLowerCase()) ||
+              (c.industry||"").toLowerCase().includes(acctSearch.toLowerCase())
+            );
+            return (
+              <div style={{ maxWidth:820, margin:"0 auto", animation:"fadeIn .3s ease" }}>
+                <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28 }}>
+                  <div>
+                    <div style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>ACCOUNTS</div>
+                    <h1 style={{ fontSize:26, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>Client Accounts</h1>
+                    <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.6 }}>
+                      {allClts.length} account{allClts.length!==1?"s":""} · {allClts.filter(c=>c.assignedUserId).length} assigned
+                    </p>
+                  </div>
+                </div>
+
+                {/* Search */}
+                <div style={{ position:"relative", marginBottom:20 }}>
+                  <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:14, color:C.muted, pointerEvents:"none" }}>⌕</span>
+                  <input value={acctSearch} onChange={e=>setAcctSearch(e.target.value)}
+                    placeholder="Search accounts…"
+                    style={{ width:"100%", padding:"10px 14px 10px 38px", borderRadius:9,
+                      border:`1px solid ${C.border}`, background:C.canvas,
+                      color:C.text, fontSize:13.5, fontFamily:body, outline:"none" }} />
+                </div>
+
+                {/* Account list */}
+                {filteredAccts.length === 0 ? (
+                  <div style={{ padding:"60px 0", textAlign:"center" }}>
+                    <div style={{ fontSize:28, marginBottom:12 }}>🏢</div>
+                    <div style={{ fontSize:15, fontWeight:600, color:C.text, fontFamily:head, marginBottom:6 }}>
+                      {allClts.length === 0 ? "No accounts yet" : "No accounts match your search"}
+                    </div>
+                    <div style={{ fontSize:13, color:C.muted, fontFamily:body }}>
+                      {allClts.length === 0 ? "Add clients in the Admin Panel to get started." : "Try a different search term."}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+                    {/* Table header */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px",
+                      padding:"10px 20px", borderBottom:`1px solid ${C.border}`, gap:12 }}>
+                      {["Account","Industry","Assigned CSM","Profile","Outputs"].map((h,i) => (
+                        <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
+                          color:C.muted, letterSpacing:.5 }}>{h}</div>
+                      ))}
+                    </div>
+                    {filteredAccts.map((c, idx) => {
+                      const av = avatarColor(c.name);
+                      const assignedUser = allUsrs.find(u => u.id === c.assignedUserId);
+                      const wsData = loadWorkspaceData(c.id);
+                      const wsIcps: any[] = wsData?.icps ?? [];
+                      const wsCoData = wsData?.companyData ?? {};
+                      const wsPct = Math.round(COMPANY_FIELDS.filter(f => fieldFilled(f, (wsCoData as any)[f.id])).length / COMPANY_FIELDS.length * 100);
+                      const wsReady = wsIcps.filter(i => i.outputs).length;
+                      return (
+                        <div key={c.id}
+                          onClick={()=>{ setActiveWorkspace(c); setView("company"); }}
+                          style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px",
+                            padding:"13px 20px", gap:12, alignItems:"center", cursor:"pointer",
+                            borderBottom: idx < filteredAccts.length-1 ? `1px solid ${C.border}` : "none",
+                            transition:"background .12s" }}
+                          onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.background=C.faint}
+                          onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.background="transparent"}>
+                          {/* Name */}
+                          <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+                            <div style={{ width:32, height:32, borderRadius:8, flexShrink:0,
+                              background:av+"22", display:"flex", alignItems:"center", justifyContent:"center",
+                              fontSize:11, fontWeight:800, color:av, fontFamily:mono }}>
+                              {c.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div style={{ minWidth:0 }}>
+                              <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head,
+                                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.name}</div>
+                              <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginTop:1 }}>
+                                {new Date(c.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                              </div>
+                            </div>
+                          </div>
+                          {/* Industry */}
+                          <div style={{ fontSize:12.5, color:C.textSoft, fontFamily:body,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {c.industry || <span style={{ color:C.muted, fontStyle:"italic" }}>—</span>}
+                          </div>
+                          {/* CSM */}
+                          <div style={{ fontSize:12.5, fontFamily:body,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {assignedUser
+                              ? <span style={{ color:C.text }}>{assignedUser.name}</span>
+                              : <span style={{ color:C.muted, fontStyle:"italic" }}>Unassigned</span>}
+                          </div>
+                          {/* Profile % */}
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <div style={{ flex:1 }}><ProgressBar pct={wsPct} color={C.accent} height={4} /></div>
+                            <span style={{ fontSize:11, fontFamily:mono, fontWeight:700,
+                              color:wsPct>0?C.accent:C.muted, flexShrink:0 }}>{wsPct}%</span>
+                          </div>
+                          {/* Outputs */}
+                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                            <span style={{ fontSize:12.5, fontFamily:mono, fontWeight:700,
+                              color:wsReady>0?C.green:C.muted }}>{wsReady}</span>
+                            <span style={{ fontSize:11, color:C.muted, fontFamily:body }}>
+                              of {wsIcps.length} ready
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Workspace views */}
+          {view !== "accounts" && activeWorkspace && (
           <div style={{ maxWidth:view==="outputs"?820:680, margin:"0 auto" }}>
+
+            {/* Tab bar */}
+            <div style={{ display:"flex", gap:2, marginBottom:32, borderBottom:`1px solid ${C.border}`, paddingBottom:0 }}>
+              {(currentRole === "client"
+                ? [{ id:"outputs", label:"Campaign Outputs", pct: icps.length>0?Math.round(icpsWithOutputs/icps.length*100):0, color:C.green }]
+                : [
+                    { id:"company", label:"Company Profile",  pct: companyPct,                                                          color:C.accent },
+                    { id:"icps",    label:"ICP Profiles",     pct: icps.length>0?Math.round(icps.filter(i=>i.outputs).length/icps.length*100):0, color:C.accent },
+                    { id:"outputs", label:"Campaign Outputs", pct: icps.length>0?Math.round(icpsWithOutputs/icps.length*100):0,          color:C.green  },
+                  ]
+              ).map(n => {
+                const on = view === n.id;
+                return (
+                  <button key={n.id} onClick={()=>setView(n.id)}
+                    style={{ flex:1, padding:"10px 16px", border:"none", background:"transparent", cursor:"pointer",
+                      fontFamily:head, fontSize:13, fontWeight:on?700:500,
+                      color:on?C.text:C.muted, transition:"color .15s",
+                      borderBottom:`2px solid ${on?C.accent:"transparent"}`, marginBottom:-1 }}>
+                    {n.label}
+                  </button>
+                );
+              })}
+            </div>
 
             {view==="company" && (
               <div style={{ animation:"fadeIn .3s ease" }}>
@@ -1605,11 +3107,11 @@ export default function App() {
                   <span style={{ fontSize:13, color:C.textSoft, fontFamily:body }}>Ready to define your target profiles?</span>
                   <button onClick={()=>setView("icps")} style={{
                     padding:"10px 22px", borderRadius:8, border:"none",
-                    background:companyData.co_name?C.accent:C.border,
-                    color:companyData.co_name?"#fff":C.muted,
+                    background:(companyData as any).co_name?C.accent:C.border,
+                    color:(companyData as any).co_name?"#fff":C.muted,
                     fontSize:12, fontFamily:head, fontWeight:700,
-                    cursor:companyData.co_name?"pointer":"default",
-                    boxShadow:companyData.co_name?`0 2px 10px ${C.accent}40`:"none",
+                    cursor:(companyData as any).co_name?"pointer":"default",
+                    boxShadow:(companyData as any).co_name?`0 2px 10px ${C.accent}40`:"none",
                     transition:"all .2s" }}>Continue to ICPs →</button>
                 </div>
               </div>
@@ -1617,16 +3119,36 @@ export default function App() {
 
             {view==="icps" && (
               <div style={{ animation:"fadeIn .3s ease" }}>
-                <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:24 }}>
-                  <div>
-                    <div style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>ICP PROFILES</div>
-                    <h2 style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>{companyData.co_name||"Client"} — Target Profiles</h2>
-                    <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65, maxWidth:400 }}>
-                      Each ICP is fully independent. AI auto-drafts from company context — you refine.
-                    </p>
+                <div style={{ marginBottom:28 }}>
+                  <h2 style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>{(companyData as any).co_name||"Client"} — Target Profiles</h2>
+                  <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65 }}>
+                    Each ICP is fully independent. AI auto-drafts from company context — you refine.
+                  </p>
+                  <div style={{ marginTop:14, display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ flex:1 }}><ProgressBar pct={icps.length>0?Math.round(icps.filter(i=>i.outputs).length/icps.length*100):0} color={C.accent} height={3} /></div>
+                    <span style={{ fontSize:11, color:C.muted, fontFamily:mono, fontWeight:600, flexShrink:0 }}>
+                      {icps.length>0?Math.round(icps.filter(i=>i.outputs).length/icps.length*100):0}% complete
+                    </span>
                   </div>
+                </div>
+
+                {icpsWithOutputs > 0 && (
+                  <div style={{ padding:"12px 16px", borderRadius:9, background:C.greenLo,
+                    border:`1px solid ${C.greenBorder}`, display:"flex", alignItems:"center",
+                    justifyContent:"space-between", marginBottom:24 }}>
+                    <span style={{ fontSize:13, color:C.green, fontFamily:body, fontWeight:500 }}>
+                      {icpsWithOutputs} ICP{icpsWithOutputs!==1?"s":""} ready
+                    </span>
+                    <button onClick={()=>setView("outputs")} style={{
+                      padding:"7px 16px", borderRadius:7, border:"none",
+                      background:C.green, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
+                      cursor:"pointer", boxShadow:`0 2px 10px ${C.green}30` }}>View Campaign Outputs →</button>
+                  </div>
+                )}
+
+                <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:16 }}>
                   <button onClick={addICP} disabled={!!drafting} style={{
-                    display:"flex", alignItems:"center", gap:7, padding:"10px 18px", flexShrink:0, marginTop:4,
+                    display:"flex", alignItems:"center", gap:7, padding:"10px 18px",
                     borderRadius:8, border:"none", background:drafting?C.border:C.accent,
                     color:drafting?C.muted:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
                     cursor:drafting?"default":"pointer",
@@ -1634,43 +3156,110 @@ export default function App() {
                     opacity:drafting?.5:1, transition:"all .15s" }}>+ Add ICP</button>
                 </div>
 
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))", gap:12, marginBottom:16 }}>
-                  {icps.map((icp,i) => (
-                    <ICPCard key={icp.id} icp={icp} idx={i}
-                      onOpen={icp=>setEditingId(icp.id)}
-                      onDuplicate={icp=>{
-                        const c={...icp,id:uid(),color:ICP_COLORS[icps.length%ICP_COLORS.length],outputs:null,
-                                  approval:"draft",sectionApprovals:{},comments:[],
-                                  name:(icp.name||"ICP")+" (copy)",data:{...icp.data}};
-                        setIcps(p=>[...p,c]);
-                      }}
-                      onDelete={id=>setIcps(p=>p.filter(i=>i.id!==id))} />
-                  ))}
-                  <div onClick={addICP} style={{
-                    borderRadius:10, border:`1.5px dashed ${C.border}`, background:C.canvas,
-                    cursor:drafting?"default":"pointer", display:"flex", alignItems:"center",
-                    justifyContent:"center", minHeight:150, transition:"all .2s", opacity:drafting?.3:1 }}
-                    onMouseEnter={e=>{if(!drafting){e.currentTarget.style.borderColor=C.accent+"55";e.currentTarget.style.background=C.accentLo;}}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.background=C.canvas;}}>
-                    <div style={{ textAlign:"center" }}>
-                      <div style={{ fontSize:22, color:C.border, marginBottom:6 }}>+</div>
-                      <div style={{ fontSize:11, color:C.muted, fontFamily:mono }}>Add ICP</div>
-                    </div>
+                <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+                  {/* Table header */}
+                  <div style={{ display:"grid", gridTemplateColumns:"3px 1fr 120px 100px 140px 72px",
+                    padding:"10px 16px", borderBottom:`1px solid ${C.border}`, gap:12, alignItems:"center" }}>
+                    <div />
+                    {["ICP Name","Status","Intake","Outputs",""].map((h,i) => (
+                      <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
+                        color:C.muted, letterSpacing:.5, textAlign:i===4?"right":"left" }}>{h}</div>
+                    ))}
                   </div>
+
+                  {icps.length === 0 && (
+                    <div style={{ padding:"40px 20px", textAlign:"center", fontSize:13, color:C.muted, fontFamily:body }}>
+                      No ICPs yet. Click "+ Add ICP" to get started.
+                    </div>
+                  )}
+
+                  {(icps as any[]).map((icp, i) => {
+                    const filled  = ALL_ICP_FIELDS.filter(f=>fieldFilled(f,icp.data[f.id])).length;
+                    const pct     = Math.round(filled/TOTAL_FIELDS*100);
+                    const secAppr = Object.values(icp.sectionApprovals??{}).filter(v=>v==="approved").length;
+                    const lowConf = Object.values(icp.confidence??{}).filter((v:any)=>v<60).length;
+                    const openComm= (icp.comments??[]).filter((c:any)=>!c.resolved).length;
+                    return (
+                      <div key={icp.id}
+                        onClick={()=>setEditingId(icp.id)}
+                        style={{ display:"grid", gridTemplateColumns:"3px 1fr 120px 100px 140px 72px",
+                          gap:12, alignItems:"center", cursor:"pointer",
+                          borderBottom: i < icps.length-1 ? `1px solid ${C.border}` : "none",
+                          transition:"background .12s" }}
+                        onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.background=C.faint}
+                        onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.background="transparent"}>
+                        {/* Color strip */}
+                        <div style={{ height:"100%", minHeight:52, background:icp.color, borderRadius:0 }} />
+                        {/* Name */}
+                        <div style={{ padding:"13px 0", minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {icp.name || `ICP ${i+1}`}
+                          </div>
+                          {icp.data.industries && (
+                            <div style={{ fontSize:10.5, color:C.muted, fontFamily:mono, marginTop:2,
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              {icp.data.industries.split(",")[0].trim()}
+                            </div>
+                          )}
+                        </div>
+                        {/* Status */}
+                        <div><StatusBadge status={icp.approval} size="xs" /></div>
+                        {/* Intake */}
+                        <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                          <div style={{ flex:1 }}><ProgressBar pct={pct} color={icp.color} height={3} /></div>
+                          <span style={{ fontSize:10.5, fontFamily:mono, fontWeight:600,
+                            color:pct===100?C.green:C.muted, flexShrink:0 }}>{pct}%</span>
+                        </div>
+                        {/* Outputs */}
+                        <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                          {icp.outputs ? (
+                            <span style={{ fontSize:9, color:C.green, background:C.greenLo,
+                              border:`1px solid ${C.greenBorder}`, padding:"2px 7px", borderRadius:4, fontFamily:mono }}>
+                              {secAppr>0?`${secAppr}/4 approved`:"ready"}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>—</span>
+                          )}
+                          {lowConf>0 && (
+                            <span style={{ fontSize:9, color:C.amber, background:C.amberLo,
+                              border:`1px solid ${C.amberBorder}`, padding:"2px 7px", borderRadius:4, fontFamily:mono }}>
+                              {lowConf} low conf
+                            </span>
+                          )}
+                          {openComm>0 && (
+                            <span style={{ fontSize:9, color:C.amber, background:C.amberLo,
+                              border:`1px solid ${C.amberBorder}`, padding:"2px 7px", borderRadius:4, fontFamily:mono }}>
+                              💬 {openComm}
+                            </span>
+                          )}
+                        </div>
+                        {/* Actions */}
+                        <div style={{ display:"flex", gap:5, justifyContent:"flex-end", paddingRight:12 }}
+                          onClick={e=>e.stopPropagation()}>
+                          <button title="Duplicate"
+                            onClick={()=>{ const c={...icp,id:uid(),color:ICP_COLORS[icps.length%ICP_COLORS.length],outputs:null,approval:"draft",sectionApprovals:{},comments:[],name:(icp.name||"ICP")+" (copy)",data:{...icp.data}}; setIcps(p=>[...p,c]); }}
+                            style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
+                              background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                              display:"flex", alignItems:"center", justifyContent:"center" }}
+                            onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=C.accent;}}
+                            onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                            ⊕
+                          </button>
+                          <button title="Delete" onClick={()=>setIcps(p=>p.filter(x=>x.id!==icp.id))}
+                            style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
+                              background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                              display:"flex", alignItems:"center", justifyContent:"center" }}
+                            onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"66";(e.currentTarget as HTMLButtonElement).style.color=C.red;}}
+                            onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {icpsWithOutputs > 0 && (
-                  <div style={{ padding:"14px 18px", borderRadius:9, background:C.canvas,
-                    border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <span style={{ fontSize:13, color:C.textSoft, fontFamily:body }}>
-                      {icpsWithOutputs} ICP{icpsWithOutputs!==1?"s":""} ready
-                    </span>
-                    <button onClick={()=>setView("outputs")} style={{
-                      padding:"9px 20px", borderRadius:7, border:"none",
-                      background:C.green, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
-                      cursor:"pointer", boxShadow:`0 2px 10px ${C.green}30` }}>View Campaign Outputs →</button>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1678,6 +3267,22 @@ export default function App() {
               <OutputsHub icps={icps} companyData={companyData} />
             )}
           </div>
+          )}
+
+          {/* No workspace selected and not on accounts page */}
+          {view !== "accounts" && !activeWorkspace && (
+            <div style={{ height:"100%", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ textAlign:"center", animation:"fadeIn .3s ease" }}>
+                <div style={{ fontSize:32, marginBottom:16 }}>👈</div>
+                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:8 }}>
+                  Select a client account
+                </div>
+                <div style={{ fontSize:13, color:C.muted, fontFamily:body }}>
+                  Choose a client from the sidebar to view and edit their workspace.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
