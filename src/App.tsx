@@ -183,7 +183,7 @@ function fieldFilled(f, val) {
 }
 
 // ─── CONFIDENCE PILL ─────────────────────────────────────────────────────────
-function ConfPill({ score, locked = false, onReset = null }: { score:any, locked?:boolean, onReset?:any }) {
+function ConfPill({ score }: { score:any }) {
   if (score === undefined || score === null) return null;
   const { color, bg } = score >= 80 ? { color:C.green, bg:C.greenLo }
     : score >= 55 ? { color:C.amber, bg:C.amberLo }
@@ -191,17 +191,8 @@ function ConfPill({ score, locked = false, onReset = null }: { score:any, locked
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:3,
       fontSize:9, fontFamily:mono, fontWeight:700,
-      color, background:bg, padding:"1px 6px", borderRadius:4, marginLeft:5,
-      opacity: locked ? 0.75 : 1 }}>
+      color, background:bg, padding:"1px 6px", borderRadius:4, marginLeft:5 }}>
       {score}%
-      {locked && (
-        <span
-          onClick={e => { e.stopPropagation(); onReset?.(); }}
-          title="Score locked by your edit — click to reset"
-          style={{ fontSize:8, cursor: onReset ? "pointer" : "default", lineHeight:1 }}>
-          🔒
-        </span>
-      )}
     </span>
   );
 }
@@ -349,6 +340,21 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
     </div>
   );
 
+  const lockedStyle = { background:C.faint, color:C.textSoft, cursor:"default" as const };
+  const pencilBtn = locked && (
+    <button onClick={onResetLock} title="Edit field"
+      style={{ marginLeft:"auto", width:22, height:22, borderRadius:5, border:`1px solid ${C.border}`,
+        background:"transparent", color:C.muted, cursor:"pointer", flexShrink:0,
+        display:"flex", alignItems:"center", justifyContent:"center", transition:"all .15s" }}
+      onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.color=C.text; (e.currentTarget as HTMLElement).style.borderColor=C.borderHi; }}
+      onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.color=C.muted; (e.currentTarget as HTMLElement).style.borderColor=C.border; }}>
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+        <path d="M8.5 1.5L10.5 3.5L3.5 10.5H1.5V8.5L8.5 1.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M7 3L9 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      </svg>
+    </button>
+  );
+
   return (
     <div>
       {/* Label row */}
@@ -356,7 +362,7 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
         <label style={{ fontSize:13, color:C.text, fontFamily:head, fontWeight:700 }}>
           {f.label}{f.required && <span style={{ color:C.accent, marginLeft:2 }}>*</span>}
         </label>
-        {confidence !== undefined && confidence !== null && <ConfPill score={confidence} locked={locked} onReset={onResetLock} />}
+        {confidence !== undefined && confidence !== null && <ConfPill score={confidence} />}
         {f.hint && (
           <div style={{ position:"relative", display:"inline-flex" }}>
             <div onMouseEnter={()=>setHintOpen(true)} onMouseLeave={()=>setHintOpen(false)}
@@ -377,11 +383,12 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
             )}
           </div>
         )}
+        {pencilBtn}
       </div>
 
-      {/* Input wrapper with hover-reveal AI icon */}
+      {/* Input area */}
       {f.type==="chips" ? (
-        <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:7, pointerEvents: locked ? "none" : "auto", opacity: locked ? 0.5 : 1 }}>
           {f.opts.map(o => {
             const on = (val||[]).includes(o);
             return (
@@ -396,24 +403,29 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
           })}
         </div>
       ) : f.type==="select" ? (
-        <select value={val||""} onChange={e=>onChange(e.target.value)} style={{...base, cursor:"pointer"}}
-          onFocus={focusOn} onBlur={focusOff}>
-          <option value="">Select…</option>
-          {f.opts.map(o=><option key={o} value={o}>{o}</option>)}
-        </select>
+        <div style={{ pointerEvents: locked ? "none" : "auto", opacity: locked ? 0.5 : 1 }}>
+          <select value={val||""} onChange={e=>onChange(e.target.value)}
+            style={{...base, cursor:"pointer", ...(locked ? lockedStyle : {})}}
+            onFocus={focusOn} onBlur={focusOff}>
+            <option value="">Select…</option>
+            {f.opts.map(o=><option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
       ) : (
         <div style={{ position:"relative" }}
-          onMouseEnter={()=>setFieldHov(true)}
+          onMouseEnter={()=>{ if(!locked) setFieldHov(true); }}
           onMouseLeave={()=>setFieldHov(false)}>
           {f.type==="textarea"
             ? <textarea value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph} rows={f.rows||2}
-                style={{...base, resize:"vertical", paddingRight: canAI ? 44 : 12}}
+                readOnly={locked}
+                style={{...base, resize:"vertical", paddingRight: canAI ? 44 : 12, ...(locked ? lockedStyle : {})}}
                 onFocus={focusOn} onBlur={focusOff} />
             : <input type="text" value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph}
-                style={{...base, paddingRight: canAI ? 44 : 12}}
+                readOnly={locked}
+                style={{...base, paddingRight: canAI ? 44 : 12, ...(locked ? lockedStyle : {})}}
                 onFocus={focusOn} onBlur={focusOff} />
           }
-          {canAI && (
+          {canAI && !locked && (
             <div style={{ position:"absolute", right:6, top:"50%", transform:"translateY(-50%)", zIndex:10 }}>
               {aiIcon}
             </div>
@@ -726,7 +738,9 @@ function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
 function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast }) {
   const [data,           setData]          = useState({ ...icp.data });
   const [localConf,      setLocalConf]     = useState<any>({ ...(icp.confidence ?? {}) });
-  const [localConfLocked,setLocalConfLocked]= useState<Record<string,boolean>>({});
+  const [localConfLocked,setLocalConfLocked]= useState<Record<string,boolean>>(() =>
+    Object.fromEntries(Object.entries(icp.confidence ?? {}).filter(([,v]:any) => v > 0).map(([k]) => [k, true]))
+  );
   const [secTab,         setSecTab]        = useState("targeting");
   const [outTab,         setOutTab]        = useState("icp_summary");
   const [panel,          setPanel]         = useState("form");
@@ -747,13 +761,18 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   const upd = (id: string, v: any, f?: any, isAI = false) => {
     if (f !== undefined) {
       if (isAI) {
-        setLocalConfLocked(p => ({ ...p, [id]: false }));
-        scoreWithAI(f, v).then(score => setLocalConf((p: any) => ({ ...p, [id]: score })));
+        scoreWithAI(f, v).then(score => {
+          setLocalConf((p: any) => ({ ...p, [id]: score }));
+          setLocalConfLocked(p => ({ ...p, [id]: true }));
+        });
       } else {
-        setLocalConfLocked(p => ({ ...p, [id]: true }));
+        setLocalConfLocked(p => ({ ...p, [id]: false }));
         clearTimeout(timerRef.current[id]);
         timerRef.current[id] = setTimeout(() => {
-          scoreWithAI(f, v).then(score => setLocalConf((p: any) => ({ ...p, [id]: score })));
+          scoreWithAI(f, v).then(score => {
+            setLocalConf((p: any) => ({ ...p, [id]: score }));
+            setLocalConfLocked(p => ({ ...p, [id]: true }));
+          });
         }, 3000);
       }
     }
@@ -1009,13 +1028,12 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
     onChange({ ...data, [id]:v });
     if (f !== undefined) {
       if (isAI) {
-        onConfLock?.(id, false);
-        scoreWithAI(f, v).then(score => onConfChange?.(id, score));
+        scoreWithAI(f, v).then(score => { onConfChange?.(id, score); onConfLock?.(id, true); });
       } else {
-        onConfLock?.(id, true);
+        onConfLock?.(id, false);
         clearTimeout(timerRef.current[id]);
         timerRef.current[id] = setTimeout(() => {
-          scoreWithAI(f, v).then(score => onConfChange?.(id, score));
+          scoreWithAI(f, v).then(score => { onConfChange?.(id, score); onConfLock?.(id, true); });
         }, 3000);
       }
     }
@@ -2703,7 +2721,8 @@ function AppMain() {
     setCompanyData(saved?.companyData ?? {});
     setCompanyConf(saved?.companyConf ?? {});
     setIcps(saved?.icps ?? []);
-    setCompanyConfLocked({});
+    const savedConf = saved?.companyConf ?? {};
+    setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
     setView("company");
     setEditingId(null);
     // Allow save effects to fire after state settles
