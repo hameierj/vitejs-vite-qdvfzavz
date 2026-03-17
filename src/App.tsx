@@ -157,14 +157,18 @@ function fileToBase64(file) {
   });
 }
 
-function scoreManual(f: any, v: any): number {
+async function scoreWithAI(f: any, v: any): Promise<number> {
   if (!fieldFilled(f, v)) return 0;
-  if (f.type === "select" || f.type === "chips") return 90;
-  const str = Array.isArray(v) ? v.join(" ") : String(v ?? "");
-  const words = str.trim().split(/\s+/).filter(Boolean).length;
-  if (words <= 1) return 60;
-  if (words <= 5) return 78;
-  return 90;
+  if (f.type === "select" || f.type === "chips") return 92;
+  const str = Array.isArray(v) ? v.join(", ") : String(v ?? "").trim();
+  if (!str) return 0;
+  try {
+    const raw = await callAI(
+      `Score this B2B field value 0–100. Be strict and honest.\nField: "${f.label}"\nContext: "${f.hint||f.ph||""}"\nValue: "${str.slice(0,300)}"\nReturn ONLY a number.\n90–100: precise, specific, directly answers the field\n65–89: adequate but could be sharper\n40–64: vague or generic\n0–39: empty, off-topic, or irrelevant`,
+      "", 8);
+    const n = parseInt(raw.trim());
+    return isNaN(n) ? 70 : Math.min(100, Math.max(0, n));
+  } catch { return 70; }
 }
 
 function newICP(idx, data = {}, name = "", confidence = {}) {
@@ -179,7 +183,7 @@ function fieldFilled(f, val) {
 }
 
 // ─── CONFIDENCE PILL ─────────────────────────────────────────────────────────
-function ConfPill({ score }) {
+function ConfPill({ score, locked = false, onReset = null }: { score:any, locked?:boolean, onReset?:any }) {
   if (score === undefined || score === null) return null;
   const { color, bg } = score >= 80 ? { color:C.green, bg:C.greenLo }
     : score >= 55 ? { color:C.amber, bg:C.amberLo }
@@ -187,8 +191,17 @@ function ConfPill({ score }) {
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:3,
       fontSize:9, fontFamily:mono, fontWeight:700,
-      color, background:bg, padding:"1px 6px", borderRadius:4, marginLeft:5 }}>
+      color, background:bg, padding:"1px 6px", borderRadius:4, marginLeft:5,
+      opacity: locked ? 0.75 : 1 }}>
       {score}%
+      {locked && (
+        <span
+          onClick={e => { e.stopPropagation(); onReset?.(); }}
+          title="Score locked by your edit — click to reset"
+          style={{ fontSize:8, cursor: onReset ? "pointer" : "default", lineHeight:1 }}>
+          🔒
+        </span>
+      )}
     </span>
   );
 }
@@ -208,7 +221,7 @@ function StatusBadge({ status, size="sm" }) {
 }
 
 // ─── FIELD ────────────────────────────────────────────────────────────────────
-function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence }) {
+function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked = false, onResetLock = null }) {
   const filled  = fieldFilled(f, val);
   const canAI   = f.type !== "select" && f.type !== "chips";
   const isThinking = aiOn === f.id;
@@ -343,7 +356,7 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence }) {
         <label style={{ fontSize:13, color:C.text, fontFamily:head, fontWeight:700 }}>
           {f.label}{f.required && <span style={{ color:C.accent, marginLeft:2 }}>*</span>}
         </label>
-        {confidence !== undefined && confidence !== null && <ConfPill score={confidence} />}
+        {confidence !== undefined && confidence !== null && <ConfPill score={confidence} locked={locked} onReset={onResetLock} />}
         {f.hint && (
           <div style={{ position:"relative", display:"inline-flex" }}>
             <div onMouseEnter={()=>setHintOpen(true)} onMouseLeave={()=>setHintOpen(false)}
@@ -711,16 +724,18 @@ function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
 
 // ─── ICP EDITOR MODAL ─────────────────────────────────────────────────────────
 function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast }) {
-  const [data,      setData]     = useState({ ...icp.data });
-  const [localConf, setLocalConf]= useState<any>({ ...(icp.confidence ?? {}) });
-  const [secTab,    setSecTab]   = useState("targeting");
-  const [outTab,    setOutTab]   = useState("icp_summary");
-  const [panel,     setPanel]    = useState("form");
-  const [aiOn,      setAiOn]     = useState(null);
-  const [genState,  setGenState] = useState(null);
-  const [copied,    setCopied]   = useState(null);
-  const [newNote,   setNewNote]  = useState("");
-  const [noteAuth,  setNoteAuth] = useState("");
+  const [data,           setData]          = useState({ ...icp.data });
+  const [localConf,      setLocalConf]     = useState<any>({ ...(icp.confidence ?? {}) });
+  const [localConfLocked,setLocalConfLocked]= useState<Record<string,boolean>>({});
+  const [secTab,         setSecTab]        = useState("targeting");
+  const [outTab,         setOutTab]        = useState("icp_summary");
+  const [panel,          setPanel]         = useState("form");
+  const [aiOn,           setAiOn]          = useState(null);
+  const [genState,       setGenState]      = useState(null);
+  const [copied,         setCopied]        = useState(null);
+  const [newNote,        setNewNote]       = useState("");
+  const [noteAuth,       setNoteAuth]      = useState("");
+  const timerRef = useRef<Record<string,any>>({});
 
   useEffect(() => {
     const autoName = (data.buyer && data.industries)
@@ -729,8 +744,19 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
     onUpdate({ ...icp, data, name: autoName || icp.name, confidence: localConf });
   }, [data, localConf]); // eslint-disable-line
 
-  const upd = (id: string, v: any, f?: any) => {
-    if (f !== undefined) setLocalConf((p: any) => ({ ...p, [id]: scoreManual(f, v) }));
+  const upd = (id: string, v: any, f?: any, isAI = false) => {
+    if (f !== undefined) {
+      if (isAI) {
+        setLocalConfLocked(p => ({ ...p, [id]: false }));
+        scoreWithAI(f, v).then(score => setLocalConf((p: any) => ({ ...p, [id]: score })));
+      } else {
+        setLocalConfLocked(p => ({ ...p, [id]: true }));
+        clearTimeout(timerRef.current[id]);
+        timerRef.current[id] = setTimeout(() => {
+          scoreWithAI(f, v).then(score => setLocalConf((p: any) => ({ ...p, [id]: score })));
+        }, 1200);
+      }
+    }
     setData((p: any) => ({ ...p, [id]: v }));
   };
 
@@ -739,7 +765,7 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
     const extra = instructions ? `\nExtra instructions: ${instructions}` : "";
     const v = await callAI(
       `Fill this ICP field.\nCompany: ${JSON.stringify(companyData)}\nICP so far: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}\nReturn ONLY the answer. 1–3 sentences max.`, "", 200);
-    upd(f.id, v.trim(), f); setAiOn(null);
+    upd(f.id, v.trim(), f, true); setAiOn(null);
   };
 
   const generateAll = async () => {
@@ -889,7 +915,9 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
                 {sec.fields.map(f => (
                   <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v,f)}
                     onAI={handleAIFill} aiOn={aiOn} accentColor={icp.color}
-                    confidence={localConf[f.id]} />
+                    confidence={localConf[f.id]}
+                    locked={!!localConfLocked[f.id]}
+                    onResetLock={()=>setLocalConfLocked(p=>({...p,[f.id]:false}))} />
                 ))}
               </div>
             )}
@@ -973,19 +1001,33 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
 }
 
 // ─── COMPANY PANEL ────────────────────────────────────────────────────────────
-function CompanyPanel({ data, confidence, onChange, onConfChange }) {
+function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, onConfLock }) {
   const [aiOn, setAiOn] = useState(null);
-  const upd = (id, v, f?) => {
+  const timerRef = useRef<Record<string,any>>({});
+
+  const upd = (id, v, f?, isAI = false) => {
     onChange({ ...data, [id]:v });
-    if (onConfChange && f !== undefined) onConfChange(id, scoreManual(f, v));
+    if (f !== undefined) {
+      if (isAI) {
+        onConfLock?.(id, false);
+        scoreWithAI(f, v).then(score => onConfChange?.(id, score));
+      } else {
+        onConfLock?.(id, true);
+        clearTimeout(timerRef.current[id]);
+        timerRef.current[id] = setTimeout(() => {
+          scoreWithAI(f, v).then(score => onConfChange?.(id, score));
+        }, 1200);
+      }
+    }
   };
+
   const filled = COMPANY_FIELDS.filter(f=>fieldFilled(f,data[f.id])).length;
   const pct    = Math.round(filled/COMPANY_FIELDS.length*100);
   const handleAI = async (f, instructions) => {
     setAiOn(f.id);
     const extra = instructions ? `\nExtra instructions: ${instructions}` : "";
     const v = await callAI(`Fill this company field.\nContext: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}\nReturn ONLY the answer.`,"",180);
-    upd(f.id, v.trim(), f); setAiOn(null);
+    upd(f.id, v.trim(), f, true); setAiOn(null);
   };
   return (
     <div>
@@ -993,7 +1035,9 @@ function CompanyPanel({ data, confidence, onChange, onConfChange }) {
         {COMPANY_FIELDS.map(f => (
           <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v,f)}
             onAI={handleAI} aiOn={aiOn} accentColor={C.accent}
-            confidence={(confidence??{})[f.id]} />
+            confidence={(confidence??{})[f.id]}
+            locked={!!(confLocked??{})[f.id]}
+            onResetLock={()=>onConfLock?.(f.id, false)} />
         ))}
       </div>
     </div>
@@ -2622,7 +2666,8 @@ function AppMain() {
   const [apiKey,         setApiKey]         = useState(() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } });
   const [showKeyInput,   setShowKeyInput]   = useState(false);
   const [keyDraft,       setKeyDraft]       = useState("");
-  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [confirmSignOut,   setConfirmSignOut]  = useState(false);
+  const [companyConfLocked,setCompanyConfLocked]= useState<Record<string,boolean>>({});
   const loadingRef = useRef(false);
   const [toasts,         setToasts]         = useState<Toast[]>([]);
 
@@ -2658,6 +2703,7 @@ function AppMain() {
     setCompanyData(saved?.companyData ?? {});
     setCompanyConf(saved?.companyConf ?? {});
     setIcps(saved?.icps ?? []);
+    setCompanyConfLocked({});
     setView("company");
     setEditingId(null);
     // Allow save effects to fire after state settles
@@ -3214,8 +3260,10 @@ Raw JSON only.`, "", 1400);
                     <span style={{ fontSize:11, color:companyPct===100?C.green:C.muted, fontFamily:mono, fontWeight:600, flexShrink:0 }}>{companyPct}% complete</span>
                   </div>
                 </div>
-                <CompanyPanel data={companyData} confidence={companyConf} onChange={setCompanyData}
-                  onConfChange={(id, score) => setCompanyConf((p:any) => ({ ...p, [id]: score }))} />
+                <CompanyPanel data={companyData} confidence={companyConf} confLocked={companyConfLocked}
+                  onChange={setCompanyData}
+                  onConfChange={(id, score) => setCompanyConf((p:any) => ({ ...p, [id]: score }))}
+                  onConfLock={(id, locked) => setCompanyConfLocked((p:any) => ({ ...p, [id]: locked }))} />
                 <div style={{ marginTop:28, padding:"16px 20px", borderRadius:10, background:C.canvas,
                   border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                   <span style={{ fontSize:13, color:C.textSoft, fontFamily:body }}>Ready to define your target profiles?</span>
