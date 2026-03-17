@@ -454,35 +454,35 @@ function ProgressBar({ pct, color=C.accent, height=3 }) {
 }
 
 // ─── QUICK START MODAL ────────────────────────────────────────────────────────
-function QuickStartModal({ onComplete, onClose }) {
+function QuickStartModal({ onComplete, onClose, addToast, updateToast }) {
   const [url,      setUrl]     = useState("");
   const [linkedin, setLinkedin]= useState("");
   const [text,     setText]    = useState("");
   const [files,    setFiles]   = useState([]);
-  const [stage,    setStage]   = useState("input");
-  const [log,      setLog]     = useState([]);
-  const [result,   setResult]  = useState(null);
-  const fileRef = useRef();
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const addLog = msg => setLog(p => [...p, { msg, ts:Date.now() }]);
   const canRun = url || linkedin || text || files.length > 0;
 
   const run = async () => {
-    setStage("running"); setLog([]);
+    // Close modal immediately — run in background
+    onClose();
+    const toastId = addToast({ title:"Quick Start running…", status:"loading", message:"Analyzing sources" });
+
     let context = "";
     const sources = [];
     if (url)      { sources.push(`Website: ${url}`);      context += `\n\nWEBSITE URL:\n${url}`; }
     if (linkedin) { sources.push(`LinkedIn: ${linkedin}`);context += `\n\nLINKEDIN PAGE:\n${linkedin}`; }
     if (text)     { sources.push("Pasted text");          context += `\n\nPASTED TEXT:\n${text}`; }
-    addLog(`Analyzing ${sources.length} source${sources.length>1?"s":""}…`);
+
     if (files.length > 0) {
       for (const file of files) {
-        addLog(`Processing ${file.name}…`);
-        try { await fileToBase64(file); context += `\n\nFILE: ${file.name} (PDF)`; addLog(`✓ ${file.name}`); }
-        catch { addLog(`⚠ Could not read ${file.name}`); }
+        updateToast(toastId, { message:`Processing ${file.name}…` });
+        try { await fileToBase64(file); context += `\n\nFILE: ${file.name} (PDF)`; }
+        catch {}
       }
     }
-    addLog("Building company profile…");
+
+    updateToast(toastId, { message:"Building company profile…" });
     const coRaw = await callAI(`
 Analyze this company for B2B cold outreach. Sources: ${context||"(limited — use your best judgment based on any signals available)"}
 
@@ -499,16 +499,16 @@ co_deal: exactly one of "<$1K"|"$1K–$5K"|"$5K–$25K"|"$25K–$100K"|"$100K+"
 co_cycle: exactly one of "<1 week"|"1–4 weeks"|"1–3 months"|"3–6 months"|"6+ months"
 co_goal: exactly one of "1–5"|"5–10"|"10–20"|"20–30"|"30+"
 Raw JSON only.`, "", 1200);
-    let coFields = {}, coConf = {};
-    try { const p = JSON.parse(coRaw.replace(/\`\`\`json|\`\`\`/g,"").trim()); coFields=p.fields??{}; coConf=p.confidence??{}; }
-    catch { addLog("⚠ Partial company data"); }
-    addLog("✓ Company profile ready");
-    addLog("Identifying segments…");
+    let coFields: any = {}, coConf: any = {};
+    try { const p = JSON.parse(coRaw.replace(/```json|```/g,"").trim()); coFields=p.fields??{}; coConf=p.confidence??{}; }
+    catch {}
+
+    updateToast(toastId, { message:"Identifying segments…" });
     const countRaw = await callAI(`Company: ${JSON.stringify(coFields)}\nHow many distinct ICP segments for cold outreach? (2–4)\nReturn ONLY a number.`,"",20);
     const count = Math.min(4, Math.max(2, parseInt(countRaw.trim()) || 3));
-    const icps = [];
+    const icps: any[] = [];
     for (let i = 0; i < count; i++) {
-      addLog(`Drafting ICP ${i+1} of ${count}…`);
+      updateToast(toastId, { message:`Drafting ICP ${i+1} of ${count}…` });
       const existing = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
       const raw = await callAI(`
 Draft ICP #${i+1} for this company. Company: ${JSON.stringify(coFields)} Context: ${context.slice(0,600)}
@@ -525,21 +525,20 @@ Return ONLY JSON:
 "confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"pain1":0,"pain2":0,"triggers":0,"sq_cost":0,"tone":0,"hook":0,"cta":0,"icp_proof":0}}
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
 tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
-cta: exactly one of "15-min call ask"|"Soft permission (\'worth a chat?\')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
+cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
 Raw JSON only.`, "", 1400);
       try {
-        const p = JSON.parse(raw.replace(/\`\`\`json|\`\`\`/g,"").trim());
+        const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
         icps.push(newICP(i, p.fields??{}, p.name||`ICP ${i+1}`, p.confidence??{}));
-        addLog(`✓ ICP ${i+1}: ${p.name||`ICP ${i+1}`}`);
-      } catch { addLog(`⚠ ICP ${i+1} partial`); }
+      } catch {}
     }
-    addLog("Done ✓");
-    setResult({ coFields, coConf, icps });
-    setStage("done");
-  };
 
-  const lowConf  = result ? Object.values(result.coConf).filter(v=>v<60).length : 0;
-  const highConf = result ? Object.values(result.coConf).filter(v=>v>=80).length : 0;
+    const result = { coFields, coConf, icps };
+    onComplete(result);
+    updateToast(toastId, { status:"success", title:"Quick Start complete",
+      message:`${icps.length} ICP${icps.length!==1?"s":""} drafted`,
+      action:{ label:"View ICPs", onClick:()=>{} } });
+  };
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:300,
@@ -563,145 +562,69 @@ Raw JSON only.`, "", 1400);
         </div>
 
         <div style={{ padding:"20px 24px" }}>
-          {stage==="input" && (
-            <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                <div>
-                  <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>Website URL</label>
-                  <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://acme.com"
-                    style={{ width:"100%", padding:"9px 11px", borderRadius:7, border:`1.5px solid ${C.border}`,
-                    background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
-                </div>
-                <div>
-                  <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>LinkedIn Company Page</label>
-                  <input value={linkedin} onChange={e=>setLinkedin(e.target.value)} placeholder="linkedin.com/company/acme"
-                    style={{ width:"100%", padding:"9px 11px", borderRadius:7, border:`1.5px solid ${C.border}`,
-                    background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
-                </div>
-              </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
               <div>
-                <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
-                  Upload Files <span style={{ color:C.muted, fontWeight:400 }}>(pitch deck, one-pager, product docs — PDF)</span>
-                </label>
-                <div onClick={() => fileRef.current.click()} style={{
-                  padding:"16px 20px", borderRadius:8,
-                  border:`1.5px dashed ${files.length>0 ? C.accent+"55" : C.border}`,
-                  background: files.length>0 ? C.accentLo : C.faint,
-                  cursor:"pointer", textAlign:"center", transition:"all .2s" }}>
-                  <input ref={fileRef} type="file" multiple accept=".pdf" style={{ display:"none" }}
-                    onChange={e => setFiles(Array.from(e.target.files))} />
-                  {files.length > 0 ? (
-                    <div>
-                      {files.map(f=>(
-                        <div key={f.name} style={{ fontSize:12, color:C.accent, fontFamily:mono, marginBottom:2 }}>
-                          📄 {f.name} <span style={{ color:C.muted }}>({Math.round(f.size/1024)}KB)</span>
-                        </div>
-                      ))}
-                      <div style={{ fontSize:11, color:C.muted, fontFamily:body, marginTop:6 }}>Click to add more files</div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div style={{ fontSize:13, color:C.textSoft, fontFamily:body }}>Drop pitch deck, one-pager, or product docs</div>
-                      <div style={{ fontSize:11, color:C.muted, fontFamily:body, marginTop:3 }}>Click to browse · PDF only</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div>
-                <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
-                  Paste Text <span style={{ color:C.muted, fontWeight:400 }}>(notes, emails, briefs)</span>
-                </label>
-                <textarea value={text} onChange={e=>setText(e.target.value)} rows={3}
-                  placeholder="Paste discovery call notes, email threads, positioning docs…"
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>Website URL</label>
+                <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://acme.com"
                   style={{ width:"100%", padding:"9px 11px", borderRadius:7, border:`1.5px solid ${C.border}`,
-                    background:C.canvas, color:C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none" }} />
+                  background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
               </div>
-              <button onClick={run} disabled={!canRun} style={{
-                padding:"12px", borderRadius:9, border:"none",
-                background: canRun ? C.accent : C.faint,
-                color: canRun ? "#fff" : C.muted,
-                fontSize:13, fontFamily:head, fontWeight:700,
-                cursor: canRun ? "pointer" : "default",
-                boxShadow: canRun ? `0 2px 16px ${C.accent}40` : "none",
-                transition:"all .2s" }}>
-                ⚡ Analyze & Pre-fill Everything
-              </button>
-            </div>
-          )}
-
-          {stage==="running" && (
-            <div style={{ padding:"8px 0" }}>
-              <div style={{ fontSize:13, color:C.textSoft, fontFamily:body, marginBottom:14 }}>
-                Analyzing your sources — this takes about 30 seconds…
-              </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
-                {log.map((l,i) => (
-                  <div key={l.ts} style={{ display:"flex", alignItems:"center", gap:8,
-                    fontSize:12, fontFamily:mono,
-                    color: i===log.length-1 ? C.text : C.muted }}>
-                    <span>{i===log.length-1 ? "→" : "✓"}</span>
-                    <span>{l.msg}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ display:"flex", gap:5, marginTop:14 }}>
-                {[0,1,2].map(i => (
-                  <div key={i} style={{ width:6, height:6, borderRadius:"50%", background:C.accent,
-                    animation:`pulse .9s ${i*0.25}s infinite ease-in-out` }} />
-                ))}
+              <div>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>LinkedIn Company Page</label>
+                <input value={linkedin} onChange={e=>setLinkedin(e.target.value)} placeholder="linkedin.com/company/acme"
+                  style={{ width:"100%", padding:"9px 11px", borderRadius:7, border:`1.5px solid ${C.border}`,
+                  background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
               </div>
             </div>
-          )}
-
-          {stage==="done" && result && (
             <div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:18 }}>
-                {[
-                  { label:"Fields auto-filled",      value:Object.values(result.coFields).filter(Boolean).length, color:C.accent },
-                  { label:"High confidence (≥80%)",  value:highConf, color:C.green },
-                  { label:"Need review (<60%)",       value:lowConf,  color:lowConf>0?C.amber:C.green },
-                ].map(s => (
-                  <div key={s.label} style={{ textAlign:"center", padding:"12px 8px", borderRadius:8,
-                    border:`1px solid ${C.border}`, background:C.faint }}>
-                    <div style={{ fontSize:22, fontWeight:700, color:s.color, fontFamily:head }}>{s.value}</div>
-                    <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginTop:2, lineHeight:1.4 }}>{s.label}</div>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
+                Upload Files <span style={{ color:C.muted, fontWeight:400 }}>(pitch deck, one-pager, product docs — PDF)</span>
+              </label>
+              <div onClick={() => fileRef.current?.click()} style={{
+                padding:"16px 20px", borderRadius:8,
+                border:`1.5px dashed ${files.length>0 ? C.accent+"55" : C.border}`,
+                background: files.length>0 ? C.accentLo : C.faint,
+                cursor:"pointer", textAlign:"center", transition:"all .2s" }}>
+                <input ref={fileRef} type="file" multiple accept=".pdf" style={{ display:"none" }}
+                  onChange={e => setFiles(Array.from((e.target as HTMLInputElement).files ?? []))} />
+                {files.length > 0 ? (
+                  <div>
+                    {files.map((f:any)=>(
+                      <div key={f.name} style={{ fontSize:12, color:C.accent, fontFamily:mono, marginBottom:2 }}>
+                        📄 {f.name} <span style={{ color:C.muted }}>({Math.round(f.size/1024)}KB)</span>
+                      </div>
+                    ))}
+                    <div style={{ fontSize:11, color:C.muted, fontFamily:body, marginTop:6 }}>Click to add more files</div>
                   </div>
-                ))}
-              </div>
-              <div style={{ marginBottom:16 }}>
-                <div style={{ fontSize:11, color:C.muted, fontFamily:mono, fontWeight:600, letterSpacing:.3, marginBottom:8 }}>DRAFTED ICP PROFILES</div>
-                {result.icps.map(icp => {
-                  const confs = Object.values(icp.confidence);
-                  const avg = confs.length ? Math.round(confs.reduce((a,b)=>a+b,0)/confs.length) : 0;
-                  return (
-                    <div key={icp.id} style={{ display:"flex", alignItems:"center", gap:10,
-                      padding:"10px 14px", borderRadius:8, border:`1px solid ${C.border}`,
-                      background:C.faint, marginBottom:7 }}>
-                      <div style={{ width:8, height:8, borderRadius:"50%", background:icp.color, flexShrink:0 }} />
-                      <span style={{ fontSize:13, color:C.text, fontFamily:body, flex:1, fontWeight:500 }}>{icp.name}</span>
-                      <ConfPill score={avg} />
-                    </div>
-                  );
-                })}
-              </div>
-              {lowConf > 0 && (
-                <div style={{ padding:"10px 14px", borderRadius:8, background:C.amberLo,
-                  border:`1px solid ${C.amberBorder}`, marginBottom:16 }}>
-                  <div style={{ fontSize:11, color:C.amber, fontFamily:mono, fontWeight:700, marginBottom:3 }}>LOW CONFIDENCE FIELDS</div>
-                  <div style={{ fontSize:12, color:C.textSoft, fontFamily:body }}>
-                    {lowConf} fields scored below 60% — flagged in the form so you know exactly what to review.
+                ) : (
+                  <div>
+                    <div style={{ fontSize:13, color:C.textSoft, fontFamily:body }}>Drop pitch deck, one-pager, or product docs</div>
+                    <div style={{ fontSize:11, color:C.muted, fontFamily:body, marginTop:3 }}>Click to browse · PDF only</div>
                   </div>
-                </div>
-              )}
-              <button onClick={() => onComplete(result)} style={{
-                width:"100%", padding:"12px", borderRadius:9, border:"none",
-                background:C.accent, color:"#fff",
-                fontSize:13, fontFamily:head, fontWeight:700,
-                cursor:"pointer", boxShadow:`0 2px 16px ${C.accent}40` }}>
-                Review & Refine in Form →
-              </button>
+                )}
+              </div>
             </div>
-          )}
+            <div>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
+                Paste Text <span style={{ color:C.muted, fontWeight:400 }}>(notes, emails, briefs)</span>
+              </label>
+              <textarea value={text} onChange={e=>setText(e.target.value)} rows={3}
+                placeholder="Paste discovery call notes, email threads, positioning docs…"
+                style={{ width:"100%", padding:"9px 11px", borderRadius:7, border:`1.5px solid ${C.border}`,
+                  background:C.canvas, color:C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none" }} />
+            </div>
+            <button onClick={run} disabled={!canRun} style={{
+              padding:"12px", borderRadius:9, border:"none",
+              background: canRun ? C.accent : C.faint,
+              color: canRun ? "#fff" : C.muted,
+              fontSize:13, fontFamily:head, fontWeight:700,
+              cursor: canRun ? "pointer" : "default",
+              boxShadow: canRun ? `0 2px 16px ${C.accent}40` : "none",
+              transition:"all .2s" }}>
+              ⚡ Analyze & Pre-fill Everything
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2869,10 +2792,7 @@ Raw JSON only.`, "", 1400);
     setIcps(result.icps);
     setShowQS(false);
     setView("icps");
-    addToast({ status:"success", title:"Quick Start complete",
-      message:`${result.icps.length} ICP${result.icps.length!==1?"s":""} drafted`,
-      action:{ label:"View ICPs", onClick:()=>setView("icps") } });
-  }, [addToast]);
+  }, []);
 
   const updateICP = useCallback(updated => {
     setIcps(p => p.map(i=>i.id===updated.id?updated:i));
@@ -3643,7 +3563,7 @@ Raw JSON only.`, "", 1400);
         <ICPEditorModal icp={editingICP} companyData={companyData} onUpdate={updateICP} onClose={()=>setEditingId(null)}
           addToast={addToast} updateToast={updateToast} />
       )}
-      {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} />}
+      {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} />}
       <ToastStack toasts={toasts} onRemove={removeToast} />
     </>
   );
