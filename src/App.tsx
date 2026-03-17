@@ -401,6 +401,49 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence }) {
   );
 }
 
+// ─── TOAST STACK ──────────────────────────────────────────────────────────────
+type Toast = { id:string; title:string; message?:string; status:"loading"|"success"|"error"; action?:{ label:string; onClick:()=>void } };
+function ToastStack({ toasts, onRemove }: { toasts:Toast[]; onRemove:(id:string)=>void }) {
+  if (!toasts.length) return null;
+  return (
+    <div style={{ position:"fixed", bottom:24, right:24, zIndex:99999,
+      display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end", pointerEvents:"none" }}>
+      {[...toasts].reverse().map(t => (
+        <div key={t.id} style={{ pointerEvents:"all", display:"flex", alignItems:"flex-start", gap:10,
+          background:C.canvas, borderRadius:10, padding:"12px 14px",
+          border:`1.5px solid ${t.status==="success"?C.green+"55":t.status==="error"?C.red+"55":C.accentBorder}`,
+          boxShadow:"0 4px 24px rgba(13,15,26,.18)", minWidth:260, maxWidth:340,
+          animation:"slideUp .2s ease" }}>
+          {/* Icon */}
+          <div style={{ flexShrink:0, width:18, textAlign:"center", marginTop:1 }}>
+            {t.status==="loading" && <span style={{ animation:"aiSpark 1.2s linear infinite", display:"inline-block", color:C.accent, fontSize:13 }}>✦</span>}
+            {t.status==="success" && <span style={{ color:C.green, fontSize:14, fontWeight:700 }}>✓</span>}
+            {t.status==="error"   && <span style={{ color:C.red,   fontSize:14, fontWeight:700 }}>✕</span>}
+          </div>
+          {/* Body */}
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:12.5, fontWeight:700, color:C.text, fontFamily:head, lineHeight:1.3 }}>{t.title}</div>
+            {t.message && <div style={{ fontSize:11, color:C.muted, fontFamily:body, marginTop:2, lineHeight:1.4 }}>{t.message}</div>}
+            {t.action && (
+              <button onClick={()=>{ t.action!.onClick(); onRemove(t.id); }}
+                style={{ marginTop:6, fontSize:11, color:C.accent, fontFamily:head, fontWeight:700,
+                  background:"none", border:"none", cursor:"pointer", padding:0 }}>
+                {t.action.label} →
+              </button>
+            )}
+          </div>
+          {/* Close */}
+          <button onClick={()=>onRemove(t.id)}
+            style={{ flexShrink:0, background:"none", border:"none", cursor:"pointer",
+              color:C.muted, fontSize:14, padding:0, lineHeight:1, marginTop:1 }}
+            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.color=C.text}
+            onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.color=C.muted}>✕</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── PROGRESS BAR ─────────────────────────────────────────────────────────────
 function ProgressBar({ pct, color=C.accent, height=3 }) {
   return (
@@ -441,14 +484,21 @@ function QuickStartModal({ onComplete, onClose }) {
     }
     addLog("Building company profile…");
     const coRaw = await callAI(`
-Analyze this company for B2B cold outreach. Sources: ${context||"(limited)"}
+Analyze this company for B2B cold outreach. Sources: ${context||"(limited — use your best judgment based on any signals available)"}
+
+CRITICAL RULES:
+- Every single field MUST be filled. Never leave any field as an empty string.
+- If information is not explicitly stated, make a confident best guess based on context, company type, and industry norms.
+- Set confidence 85–100 for facts clearly stated, 55–79 for reasonable inferences, 30–54 for educated guesses.
+- co_exclude and co_avoid: infer sensible defaults based on the company's type and segment.
+
 Return ONLY JSON:
-{"fields":{"co_name":"","co_website":"","co_pitch":"","co_product":"","co_diff":"","co_proof":"","co_deal":"","co_cycle":"","co_goal":"","co_exclude":"","co_avoid":""},
-"confidence":{"co_name":0,"co_website":0,"co_pitch":0,"co_product":0,"co_diff":0,"co_proof":0,"co_deal":0,"co_cycle":0,"co_goal":0,"co_exclude":0,"co_avoid":0}}
-co_deal: "<$1K"|"$1K–$5K"|"$5K–$25K"|"$25K–$100K"|"$100K+"
-co_cycle: "<1 week"|"1–4 weeks"|"1–3 months"|"3–6 months"|"6+ months"
-co_goal: "1–5"|"5–10"|"10–20"|"20–30"|"30+"
-co_exclude and co_avoid: leave empty (confidence 0). Raw JSON only.`, "", 1000);
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_diff":"","co_proof":"","co_deal":"","co_cycle":"","co_goal":"","co_exclude":"","co_avoid":""},
+"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_diff":0,"co_proof":0,"co_deal":0,"co_cycle":0,"co_goal":0,"co_exclude":0,"co_avoid":0}}
+co_deal: exactly one of "<$1K"|"$1K–$5K"|"$5K–$25K"|"$25K–$100K"|"$100K+"
+co_cycle: exactly one of "<1 week"|"1–4 weeks"|"1–3 months"|"3–6 months"|"6+ months"
+co_goal: exactly one of "1–5"|"5–10"|"10–20"|"20–30"|"30+"
+Raw JSON only.`, "", 1200);
     let coFields = {}, coConf = {};
     try { const p = JSON.parse(coRaw.replace(/\`\`\`json|\`\`\`/g,"").trim()); coFields=p.fields??{}; coConf=p.confidence??{}; }
     catch { addLog("⚠ Partial company data"); }
@@ -461,15 +511,22 @@ co_exclude and co_avoid: leave empty (confidence 0). Raw JSON only.`, "", 1000);
       addLog(`Drafting ICP ${i+1} of ${count}…`);
       const existing = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
       const raw = await callAI(`
-Draft ICP #${i+1}. Company: ${JSON.stringify(coFields)} Context: ${context.slice(0,500)}
-Already drafted: ${existing}. Choose a DISTINCT segment.
+Draft ICP #${i+1} for this company. Company: ${JSON.stringify(coFields)} Context: ${context.slice(0,600)}
+Already drafted segments: ${existing}. Choose a DISTINCT, non-overlapping segment.
+
+CRITICAL RULES:
+- Every single field MUST be filled. Never leave any field as an empty string or empty array.
+- Use confident best guesses for anything not explicitly known — realistic, specific, and actionable.
+- Set confidence 85–100 for facts clearly inferred, 55–79 for reasonable assumptions, 30–54 for educated guesses.
+- Write fields as a real CSM would — specific, not generic. E.g. pain1 should name a real pain, not say "various challenges".
+
 Return ONLY JSON:
-{"name":"Short label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","triggers":"","sq_cost":"","tone":"","hook":"","cta":"","icp_proof":""},
+{"name":"Short descriptive segment label","fields":{"industries":"comma-separated industry list","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","triggers":"","sq_cost":"","tone":"","hook":"","cta":"","icp_proof":""},
 "confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"pain1":0,"pain2":0,"triggers":0,"sq_cost":0,"tone":0,"hook":0,"cta":0,"icp_proof":0}}
-co_sizes: array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
-tone: "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
-cta: "15-min call ask"|"Soft permission (\'worth a chat?\')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
-Raw JSON only.`, "", 1100);
+co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
+tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
+cta: exactly one of "15-min call ask"|"Soft permission (\'worth a chat?\')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
+Raw JSON only.`, "", 1400);
       try {
         const p = JSON.parse(raw.replace(/\`\`\`json|\`\`\`/g,"").trim());
         icps.push(newICP(i, p.fields??{}, p.name||`ICP ${i+1}`, p.confidence??{}));
@@ -720,7 +777,7 @@ function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
 }
 
 // ─── ICP EDITOR MODAL ─────────────────────────────────────────────────────────
-function ICPEditorModal({ icp, companyData, onUpdate, onClose }) {
+function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast }) {
   const [data,     setData]    = useState({ ...icp.data });
   const [secTab,   setSecTab]  = useState("targeting");
   const [outTab,   setOutTab]  = useState("icp_summary");
@@ -750,15 +807,23 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose }) {
 
   const generateAll = async () => {
     setGenState("running");
+    const toastId = addToast?.({ title:`Generating outputs: ${icp.name}`, status:"loading", message:"Running 4 outputs in parallel…" });
     const ctx = { company:companyData, icp:{ ...data, name:icp.name } };
-    const [s1,s2,s3,s4] = await Promise.all([
-      callAI(`Write an ICP Targeting Summary for a cold outreach team.\nData:${JSON.stringify(ctx)}\n\n**TARGET PROFILE**\nIndustries/Size/Revenue/Geo/Tech signals...\n\n**PRIMARY BUYER**\nTitle + 1 sharp sentence about their world.\n\n**QUALIFY IN** (5 criteria)\n\n**DISQUALIFY IF** (4 signals)\n\nSpecific and scannable.`,"",550),
-      callAI(`Write a Pain & Trigger Map.\nData:${JSON.stringify(ctx)}\n\n**LEAD PAIN** (sharp enough to stop a scroll)\n\n**PAIN LADDER** (3 pains + how to reference each)\n\n**TRIGGER EVENT MATRIX**\n| Trigger | Signal | Why Now | Outreach Angle |\n[4–5 rows]\n\n**STATUS QUO COST** (quarterly)\n\n**OBJECTION PLAYBOOK** (3 objections + responses)`,"",750),
-      callAI(`Write a Campaign Strategy Brief.\nData:${JSON.stringify(ctx)}\n\n**ICP SNAPSHOT** (2 sentences)\n\n**MESSAGE ARCHITECTURE** Hook/Value/Proof/CTA\n\n**SEQUENCE STRATEGY** Email 1/2/3 angles\n\n**PERSONALIZATION LAYERS** (4 layers)\n\n**A/B TEST QUEUE** (3 tests)\n\n**CSM NOTES**`,"",850),
-      callAI(`Write a 3-email cold outreach sequence. Real emails, not templates.\nData:${JSON.stringify(ctx)}\nTone: ${data.tone||"direct"}\nCTA: ${data.cta||"15-min call"}\nMax 100 words per body. No brackets. Each email a different angle.\n\n---\nEMAIL 1 — Initial\nSubject: ...\n\n[body]\n\n---\nEMAIL 2 — Day 3\nSubject: ...\n\n[body]\n\n---\nEMAIL 3 — Day 7\nSubject: ...\n\n[body]\n\n---\nSUBJECT LINE VARIANTS\n1.\n2.\n3.\n4.\n5.`,"",1100),
-    ]);
-    onUpdate({ ...icp, data, outputs:{ icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4 } });
-    setGenState("done"); setPanel("outputs");
+    try {
+      const [s1,s2,s3,s4] = await Promise.all([
+        callAI(`Write an ICP Targeting Summary for a cold outreach team.\nData:${JSON.stringify(ctx)}\n\n**TARGET PROFILE**\nIndustries/Size/Revenue/Geo/Tech signals...\n\n**PRIMARY BUYER**\nTitle + 1 sharp sentence about their world.\n\n**QUALIFY IN** (5 criteria)\n\n**DISQUALIFY IF** (4 signals)\n\nSpecific and scannable.`,"",550),
+        callAI(`Write a Pain & Trigger Map.\nData:${JSON.stringify(ctx)}\n\n**LEAD PAIN** (sharp enough to stop a scroll)\n\n**PAIN LADDER** (3 pains + how to reference each)\n\n**TRIGGER EVENT MATRIX**\n| Trigger | Signal | Why Now | Outreach Angle |\n[4–5 rows]\n\n**STATUS QUO COST** (quarterly)\n\n**OBJECTION PLAYBOOK** (3 objections + responses)`,"",750),
+        callAI(`Write a Campaign Strategy Brief.\nData:${JSON.stringify(ctx)}\n\n**ICP SNAPSHOT** (2 sentences)\n\n**MESSAGE ARCHITECTURE** Hook/Value/Proof/CTA\n\n**SEQUENCE STRATEGY** Email 1/2/3 angles\n\n**PERSONALIZATION LAYERS** (4 layers)\n\n**A/B TEST QUEUE** (3 tests)\n\n**CSM NOTES**`,"",850),
+        callAI(`Write a 3-email cold outreach sequence. Real emails, not templates.\nData:${JSON.stringify(ctx)}\nTone: ${data.tone||"direct"}\nCTA: ${data.cta||"15-min call"}\nMax 100 words per body. No brackets. Each email a different angle.\n\n---\nEMAIL 1 — Initial\nSubject: ...\n\n[body]\n\n---\nEMAIL 2 — Day 3\nSubject: ...\n\n[body]\n\n---\nEMAIL 3 — Day 7\nSubject: ...\n\n[body]\n\n---\nSUBJECT LINE VARIANTS\n1.\n2.\n3.\n4.\n5.`,"",1100),
+      ]);
+      onUpdate({ ...icp, data, outputs:{ icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4 } });
+      setGenState("done"); setPanel("outputs");
+      if (toastId) updateToast?.(toastId, { status:"success", title:`Outputs ready: ${icp.name}`, message:undefined,
+        action:{ label:"View outputs", onClick:()=>setPanel("outputs") } });
+    } catch {
+      setGenState(null);
+      if (toastId) updateToast?.(toastId, { status:"error", title:"Generation failed", message:"Check your API key and try again" });
+    }
   };
 
   const approveSection = tabId => {
@@ -984,16 +1049,6 @@ function CompanyPanel({ data, confidence, onChange }) {
   };
   return (
     <div>
-      <div style={{ marginBottom:28 }}>
-        <h2 style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>Company Profile</h2>
-        <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65 }}>
-          Fill this once. Every ICP inherits this context when AI auto-drafts their profile.
-        </p>
-        <div style={{ marginTop:14, display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ flex:1 }}><ProgressBar pct={pct} color={C.accent} height={3} /></div>
-          <span style={{ fontSize:11, color:pct===100?C.green:C.muted, fontFamily:mono, fontWeight:600, flexShrink:0 }}>{pct}% complete</span>
-        </div>
-      </div>
       <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
         {COMPANY_FIELDS.map(f => (
           <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
@@ -1026,7 +1081,7 @@ function OutputsHub({ icps, companyData }) {
   return (
     <div style={{ animation:"fadeIn .3s ease" }}>
       <div style={{ marginBottom:28 }}>
-        <h2 style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>{companyData.co_name||"Client"} — Outputs</h2>
+        <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 6px", textAlign:"left" }}>{companyData.co_name||"Client"} — Outputs</h2>
         <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65 }}>
           AI-generated summaries, campaign briefs, and email sequences — ready to review and approve.
         </p>
@@ -1684,7 +1739,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
       {/* Sidebar */}
       <div style={{ width:224, background:C.canvas, borderRight:`1px solid ${C.border}`,
         display:"flex", flexDirection:"column", flexShrink:0, padding:"18px 16px" }}>
-        <img src={LOGO_B64} alt="B2B Rocket" style={{ width:"100%", maxWidth:160, height:"auto", display:"block", marginBottom:20 }} />
+        <img src="/logo.svg" alt="B2B Rocket" style={{ width:"100%", maxWidth:160, height:"auto", display:"block", marginBottom:20 }} />
         <div style={{ fontSize:9, color:C.muted, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:12 }}>ADMIN</div>
         {[
           { id:"users",   label:"Users",   icon:"👤", count: users.length   },
@@ -1717,7 +1772,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
       </div>
 
       {/* Main content */}
-      <div style={{ flex:1, overflow:"auto", padding:"40px 48px" }}>
+      <div style={{ flex:1, overflow:"auto", padding:"36px clamp(20px, 3vw, 48px)" }}>
         <div style={{ maxWidth:860, margin:"0 auto" }}>
 
           {/* Header */}
@@ -2424,7 +2479,7 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
 
       <div style={{ width:380, animation:"slideUp .3s ease" }}>
         <div style={{ textAlign:"center", marginBottom:32 }}>
-          <img src={LOGO_B64} alt="B2B Rocket" style={{ maxWidth:140, height:"auto" }} />
+          <img src="/logo.svg" alt="B2B Rocket" style={{ maxWidth:140, height:"auto" }} />
         </div>
 
         <form onSubmit={handleLogin}
@@ -2526,7 +2581,7 @@ const ok =
       <div style={{ width:380, animation:"slideUp .3s ease" }}>
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:32 }}>
-          <img src={LOGO_B64} alt="B2B Rocket" style={{ maxWidth:140, height:"auto" }} />
+          <img src="/logo.svg" alt="B2B Rocket" style={{ maxWidth:140, height:"auto" }} />
           <div style={{ marginTop:10, fontSize:10, fontFamily:mono, fontWeight:700,
             color:C.muted, letterSpacing:.8 }}>ADMIN PORTAL</div>
         </div>
@@ -2615,6 +2670,11 @@ function AppMain() {
   const [icps,           setIcps]           = useState([]);
   const [editingId,      setEditingId]      = useState(null);
   const [drafting,       setDrafting]       = useState(null);
+  const [icpConfirm,     setIcpConfirm]     = useState<{id:string,action:"dup"|"del"}|null>(null);
+  const [icpFill,        setIcpFill]        = useState<{id:string,text:string}|null>(null);
+  const [icpFilling,     setIcpFilling]     = useState<string|null>(null);
+  const [showAddPop,     setShowAddPop]     = useState(false);
+  const [addIcpText,     setAddIcpText]     = useState("");
   const [showQS,         setShowQS]         = useState(false);
   const [currentRole,    setCurrentRole]    = useState("team");
   const [activeWorkspace,setActiveWorkspace]= useState(null);
@@ -2623,6 +2683,19 @@ function AppMain() {
   const [showKeyInput,   setShowKeyInput]   = useState(false);
   const [keyDraft,       setKeyDraft]       = useState("");
   const loadingRef = useRef(false);
+  const [toasts,         setToasts]         = useState<Toast[]>([]);
+
+  const addToast  = useCallback((t: Omit<Toast,"id">) => {
+    const id = uid();
+    setToasts(p => [...p, { ...t, id }]);
+    return id;
+  }, []);
+  const updateToast = useCallback((id: string, patch: Partial<Toast>) => {
+    setToasts(p => p.map(t => t.id===id ? { ...t, ...patch } : t));
+  }, []);
+  const removeToast = useCallback((id: string) => {
+    setToasts(p => p.filter(t => t.id!==id));
+  }, []);
 
   const handleUserLogin = (user: UserRecord) => {
     setLoggedInUser(user);
@@ -2671,26 +2744,124 @@ function AppMain() {
     try { if (apiKey) localStorage.setItem("b2br_api_key", apiKey); } catch {}
   }, [apiKey]);
 
+  // Close ICP confirm/fill popovers on outside click
+  useEffect(() => {
+    if (!icpConfirm) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (!target.closest(".icp-confirm-popover") && !target.closest(".row-action")) setIcpConfirm(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [icpConfirm]);
+
+  useEffect(() => {
+    if (!icpFill) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (!target.closest(".icp-fill-popover") && !target.closest(".row-action")) setIcpFill(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [icpFill]);
+
+  useEffect(() => {
+    if (!showAddPop) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (!target.closest("[data-add-icp-pop]")) { setShowAddPop(false); setAddIcpText(""); }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAddPop]);
+
   const icpsWithOutputs = icps.filter(i=>i.outputs).length;
   const companyPct = Math.round(COMPANY_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/COMPANY_FIELDS.length*100);
   const editingICP = icps.find(i=>i.id===editingId) ?? null;
 
-  const addICP = useCallback(async () => {
+  const addICP = useCallback(async (userContext?: string) => {
+    setShowAddPop(false);
+    setAddIcpText("");
     const fresh = newICP(icps.length);
     setIcps(p => [...p, fresh]);
     if (companyData.co_name) {
       setDrafting(fresh.id);
+      const toastId = addToast({ title:"Creating ICP…", status:"loading", message:"AI is building the profile" });
       const existing = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
-      const raw = await callAI(
-        `Draft ICP #${icps.length+1}. Company:${JSON.stringify(companyData)} Existing:${existing}\nPick DISTINCT segment.\nReturn ONLY JSON:{"name":"...","fields":{${ALL_ICP_FIELDS.map(f=>`"${f.id}":""`).join(",")}}}\nco_sizes=array. Raw JSON only.`, "", 900);
+      const contextLine = userContext?.trim()
+        ? `User's target segment description: "${userContext.trim()}"\n`
+        : `Pick the most logical DISTINCT segment not yet covered.\n`;
       try {
-        const p = JSON.parse(raw.replace(/\`\`\`json|\`\`\`/g,"").trim());
-        setIcps(prev => prev.map(i=>i.id===fresh.id?{...i,data:p.fields??{},name:p.name||`ICP ${icps.length+1}`}:i));
-      } catch {}
+        const raw = await callAI(`
+Draft a new ICP. Company: ${JSON.stringify(companyData)}
+Existing ICPs: ${existing}
+${contextLine}
+CRITICAL: Every field MUST be filled — never leave blank. Use best guesses where needed.
+Return ONLY JSON:
+{"name":"Short segment label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","triggers":"","sq_cost":"","tone":"","hook":"","cta":"","icp_proof":""},
+"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"pain1":0,"pain2":0,"triggers":0,"sq_cost":0,"tone":0,"hook":0,"cta":0,"icp_proof":0}}
+co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
+tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
+cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
+Raw JSON only.`, "", 1400);
+        let icpName = `ICP ${icps.length+1}`;
+        try {
+          const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
+          icpName = p.name || icpName;
+          setIcps(prev => prev.map(i => i.id===fresh.id
+            ? { ...i, data: p.fields??{}, name: icpName, confidence: p.confidence??{} }
+            : i));
+        } catch {}
+        updateToast(toastId, { status:"success", title:`ICP created: ${icpName}`, message:undefined,
+          action:{ label:"View profile", onClick:()=>setEditingId(fresh.id) } });
+      } catch {
+        updateToast(toastId, { status:"error", title:"Failed to create ICP", message:"Check your API key and try again" });
+      }
       setDrafting(null);
     }
     setEditingId(fresh.id);
-  }, [icps, companyData]);
+  }, [icps, companyData, addToast, updateToast]);
+
+  const fillICP = useCallback(async (icp: any, userContext: string) => {
+    setIcpFill(null);
+    setIcpFilling(icp.id);
+    const toastId = addToast({ title:`Filling fields: ${icp.name}`, status:"loading", message:"AI is populating all ICP fields" });
+    const existing = icps.filter(x=>x.id!==icp.id).map(x=>x.name).filter(Boolean).join(", ") || "none";
+    try {
+      const raw = await callAI(`
+Fill ALL fields for this ICP. Company: ${JSON.stringify(companyData)}
+Other ICPs already defined: ${existing}
+User's target segment description: "${userContext || "Not specified — choose the most logical distinct segment based on company context."}"
+
+CRITICAL RULES:
+- Every single field MUST be filled. Never leave any field as an empty string or empty array.
+- Use the user's description as the primary guide for the segment. Stay true to what they described.
+- Use confident best guesses for anything not explicitly known — realistic, specific, and actionable.
+- Set confidence 85–100 for facts clearly inferred, 55–79 for reasonable assumptions, 30–54 for educated guesses.
+- Write fields as a real GTM would — specific, not generic.
+
+Return ONLY JSON:
+{"name":"Short descriptive segment label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","triggers":"","sq_cost":"","tone":"","hook":"","cta":"","icp_proof":""},
+"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"pain1":0,"pain2":0,"triggers":0,"sq_cost":0,"tone":0,"hook":0,"cta":0,"icp_proof":0}}
+co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
+tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
+cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
+Raw JSON only.`, "", 1400);
+      let icpName = icp.name;
+      try {
+        const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
+        icpName = p.name || icp.name;
+        setIcps(prev => prev.map(i => i.id===icp.id
+          ? { ...i, data: p.fields??{}, name: icpName, confidence: p.confidence??{} }
+          : i));
+      } catch {}
+      updateToast(toastId, { status:"success", title:`Fields filled: ${icpName}`, message:undefined,
+        action:{ label:"View profile", onClick:()=>setEditingId(icp.id) } });
+    } catch {
+      updateToast(toastId, { status:"error", title:"Fill failed", message:"Check your API key and try again" });
+    }
+    setIcpFilling(null);
+  }, [icps, companyData, addToast, updateToast]);
 
   const handleQSComplete = useCallback(result => {
     setCompanyData(result.coFields);
@@ -2698,7 +2869,10 @@ function AppMain() {
     setIcps(result.icps);
     setShowQS(false);
     setView("icps");
-  }, []);
+    addToast({ status:"success", title:"Quick Start complete",
+      message:`${result.icps.length} ICP${result.icps.length!==1?"s":""} drafted`,
+      action:{ label:"View ICPs", onClick:()=>setView("icps") } });
+  }, [addToast]);
 
   const updateICP = useCallback(updated => {
     setIcps(p => p.map(i=>i.id===updated.id?updated:i));
@@ -2727,6 +2901,7 @@ function AppMain() {
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
         @keyframes aiSpark{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes aiSheen{0%{left:-60%;opacity:0}10%{opacity:1}40%{left:130%;opacity:0}100%{left:130%;opacity:0}}
+        @keyframes qsBolt{0%,100%{transform:translateY(0) scale(1)}40%{transform:translateY(-3px) scale(1.15)}60%{transform:translateY(1px) scale(0.95)}}
         ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
       `}</style>
 
@@ -2745,41 +2920,34 @@ function AppMain() {
                 { id:"outputs", label:"Campaign Outputs", icon:"◈", sub:`${icpsWithOutputs} of ${icps.length} ready` },
               ];
           return (
-          <div style={{ width:232, background:C.canvas, borderRight:`1px solid ${C.border}`,
+          <div style={{ width:"clamp(200px, 18vw, 260px)", background:C.canvas, borderRight:`1px solid ${C.border}`,
             display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden" }}>
 
-            {/* ── Logo + user ── */}
+            {/* ── Logo ── */}
             <div style={{ padding:"16px 14px 14px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:0 }}>
-                <img src={LOGO_B64} alt="B2B Rocket" style={{ maxWidth:120, height:"auto", display:"block" }} />
-                <button onClick={handleUserSignOut} title="Sign out"
-                  style={{ fontSize:12, color:C.muted, background:"none", border:"none",
-                    cursor:"pointer", padding:"4px 6px", borderRadius:5, transition:"color .15s", lineHeight:1 }}
-                  onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.color=C.red}
-                  onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.color=C.muted}>⏻</button>
-              </div>
+              <img src="/logo.svg" alt="B2B Rocket" style={{ maxWidth:120, height:"auto", display:"block" }} />
             </div>
 
             {/* ── Scrollable nav area ── */}
             <div style={{ flex:1, overflowY:"auto", padding:"8px 8px 0" }}>
 
-              {/* Global nav */}
-              {currentRole === "team" && (
-                <div style={{ marginBottom:4 }}>
-                  <button onClick={()=>{ setActiveWorkspace(null); setView("accounts"); }}
-                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 10px",
-                      borderRadius:8, border:`1px solid ${view==="accounts"&&!activeWorkspace?C.accentBorder:"transparent"}`,
-                      background:view==="accounts"&&!activeWorkspace?C.accentLo:"transparent",
-                      cursor:"pointer", textAlign:"left", transition:"all .15s", marginBottom:2 }}
-                    onMouseEnter={e=>{ if(!(view==="accounts"&&!activeWorkspace))(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
-                    onMouseLeave={e=>{ if(!(view==="accounts"&&!activeWorkspace))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                    <span style={{ fontSize:14, width:18, textAlign:"center", flexShrink:0, color:view==="accounts"&&!activeWorkspace?C.accent:C.muted }}>⊞</span>
-                    <div>
-                      <div style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="accounts"&&!activeWorkspace?700:500,
-                        color:view==="accounts"&&!activeWorkspace?C.text:C.textSoft }}>Client Accounts</div>
-                    </div>
-                  </button>
-                </div>
+              {/* Quick Start */}
+              {activeWorkspace && currentRole === "team" && (
+                <button onClick={()=>setShowQS(true)}
+                  style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 12px",
+                    borderRadius:8, border:"none", background:C.accent, color:"#fff",
+                    cursor:"pointer", textAlign:"left", marginBottom:8,
+                    position:"relative", overflow:"hidden",
+                    boxShadow:`0 2px 10px ${C.accent}44`, transition:"box-shadow .2s" }}
+                  onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 4px 16px ${C.accent}66`}
+                  onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 2px 10px ${C.accent}44`}>
+                  {/* Sheen */}
+                  <span style={{ position:"absolute", top:0, left:0, width:"40%", height:"100%",
+                    background:"linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.3) 50%, transparent 80%)",
+                    animation:"aiSheen 2.8s ease-in-out infinite", pointerEvents:"none" }} />
+                  <span style={{ fontSize:16, animation:"qsBolt 2s ease-in-out infinite", display:"inline-block" }}>⚡</span>
+                  <span style={{ fontSize:12.5, fontFamily:head, fontWeight:700 }}>Quick Start</span>
+                </button>
               )}
 
               {/* Workspace section */}
@@ -2787,64 +2955,25 @@ function AppMain() {
                 <>
                   <div style={{ height:1, background:C.border, margin:"4px 2px 8px" }} />
 
-                  {/* Workspace header */}
-                  <div style={{ padding:"8px 10px", borderRadius:8, background:C.faint,
-                    border:`1px solid ${C.border}`, marginBottom:6 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      <div style={{ width:28, height:28, borderRadius:7, flexShrink:0,
-                        background:avatarColor(activeWorkspace.name)+"22",
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        fontSize:11, fontWeight:800, color:avatarColor(activeWorkspace.name), fontFamily:mono }}>
-                        {activeWorkspace.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div style={{ minWidth:0 }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:C.text, fontFamily:head,
-                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                          {activeWorkspace.name}
-                        </div>
-                        {activeWorkspace.industry && (
-                          <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginTop:1,
-                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                            {activeWorkspace.industry}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                  {/* Sub-nav */}
+                  <div style={{ marginBottom:4 }}>
+                    {wsNavItems.map(n => {
+                      const on = view === n.id;
+                      return (
+                        <button key={n.id} onClick={()=>setView(n.id)}
+                          style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 10px",
+                            borderRadius:8, border:`1px solid ${on?C.accentBorder:"transparent"}`,
+                            background:on?C.accentLo:"transparent",
+                            cursor:"pointer", textAlign:"left", transition:"all .15s", marginBottom:2 }}
+                          onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                          onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                          <span style={{ fontSize:13, width:18, textAlign:"center", flexShrink:0, color:on?C.accent:C.muted }}>{n.icon}</span>
+                          <div style={{ fontSize:12.5, fontFamily:head, fontWeight:on?700:500, color:on?C.text:C.textSoft }}>{n.label}</div>
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  {/* Progress bars */}
-                  <div style={{ padding:"8px 10px 10px", marginBottom:4 }}>
-                    <div style={{ marginBottom:7 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                        <span style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>Company</span>
-                        <span style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>{companyPct}%</span>
-                      </div>
-                      <ProgressBar pct={companyPct} color={C.accent} height={3} />
-                    </div>
-                    <div>
-                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                        <span style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>Outputs</span>
-                        <span style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>{icpsWithOutputs}/{icps.length}</span>
-                      </div>
-                      <ProgressBar pct={icps.length>0?Math.round(icpsWithOutputs/icps.length*100):0} color={C.green} height={3} />
-                    </div>
-                  </div>
-
-                  {/* Quick Start — inside workspace, team only */}
-                  {currentRole === "team" && (
-                    <button onClick={()=>setShowQS(true)}
-                      style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 10px",
-                        borderRadius:8, border:`1.5px solid ${C.accentBorder}`, background:C.accentLo,
-                        cursor:"pointer", transition:"all .2s", textAlign:"left", marginTop:4 }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.accentMid;}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.accentLo;}}>
-                      <span style={{ fontSize:14, width:18, textAlign:"center" }}>⚡</span>
-                      <div>
-                        <div style={{ fontSize:12.5, fontFamily:head, fontWeight:700, color:C.accent }}>Quick Start</div>
-                        <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>URL + files → auto-fill</div>
-                      </div>
-                    </button>
-                  )}
                 </>
               )}
             </div>
@@ -2927,21 +3056,51 @@ function AppMain() {
               </div>
 
               {/* User info */}
-              <div style={{ marginTop:8, padding:"6px 4px 0", borderTop:`1px solid ${C.border}`,
+              <div style={{ marginTop:8, padding:"6px 8px", borderRadius:9,
+                background:C.faint, border:`1px solid ${C.border}`,
                 display:"flex", alignItems:"center", gap:8 }}>
-                <div style={{ width:24, height:24, borderRadius:6, flexShrink:0,
-                  background:avatarColor(loggedInUser.name)+"22",
+                {/* Avatar */}
+                <div style={{ width:34, height:34, borderRadius:9, flexShrink:0,
+                  background:avatarColor(loggedInUser.name),
                   display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:9, fontWeight:800, color:avatarColor(loggedInUser.name), fontFamily:mono }}>
+                  fontSize:11, fontWeight:800, color:"#fff", fontFamily:mono, letterSpacing:.5 }}>
                   {loggedInUser.name.split(" ").map((w:string)=>w[0]).join("").slice(0,2).toUpperCase()}
                 </div>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ fontSize:11.5, fontWeight:600, color:C.textSoft, fontFamily:head,
+                {/* Name + email */}
+                <div style={{ minWidth:0, flex:1, textAlign:"left" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.text, fontFamily:head, lineHeight:1.2,
                     overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.name}</div>
-                  <div style={{ fontSize:9.5, color:C.muted, fontFamily:mono,
+                  <div style={{ fontSize:10, color:C.muted, fontFamily:mono, lineHeight:1.2,
                     overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.email}</div>
                 </div>
+                {/* Sign out */}
+                <button onClick={handleUserSignOut} title="Sign out"
+                  style={{ width:28, height:28, borderRadius:7, border:`1px solid ${C.border}`,
+                    background:"transparent", color:C.muted, fontSize:13, cursor:"pointer",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    flexShrink:0, transition:"all .15s" }}
+                  onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.color=C.red; (e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"55"; (e.currentTarget as HTMLButtonElement).style.background=C.red+"11"; }}
+                  onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.color=C.muted; (e.currentTarget as HTMLButtonElement).style.borderColor=C.border; (e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                  ⏻
+                </button>
               </div>
+
+              {/* Client Accounts nav */}
+              {currentRole === "team" && (
+                <div style={{ marginTop:8 }}>
+                  <button onClick={()=>{ setActiveWorkspace(null); setView("accounts"); }}
+                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 10px",
+                      borderRadius:8, border:`1px solid ${view==="accounts"&&!activeWorkspace?C.accentBorder:"transparent"}`,
+                      background:view==="accounts"&&!activeWorkspace?C.accentLo:"transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .15s" }}
+                    onMouseEnter={e=>{ if(!(view==="accounts"&&!activeWorkspace))(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                    onMouseLeave={e=>{ if(!(view==="accounts"&&!activeWorkspace))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                    <span style={{ fontSize:14, width:18, textAlign:"center", flexShrink:0, color:view==="accounts"&&!activeWorkspace?C.accent:C.muted }}>⊞</span>
+                    <div style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="accounts"&&!activeWorkspace?700:500,
+                      color:view==="accounts"&&!activeWorkspace?C.text:C.textSoft }}>Client Accounts</div>
+                  </button>
+                </div>
+              )}
 
             </div>
           </div>
@@ -2949,7 +3108,7 @@ function AppMain() {
         })()}
 
         {/* ── MAIN CONTENT ── */}
-        <div style={{ flex:1, overflow:"auto", padding:"40px 48px" }}>
+        <div style={{ flex:1, overflow:"auto", padding:"36px clamp(20px, 3vw, 48px)" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -2963,7 +3122,7 @@ function AppMain() {
               (c.industry||"").toLowerCase().includes(acctSearch.toLowerCase())
             );
             return (
-              <div style={{ maxWidth:820, margin:"0 auto", animation:"fadeIn .3s ease" }}>
+              <div style={{ maxWidth:"100%", animation:"fadeIn .3s ease" }}>
                 <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28 }}>
                   <div>
                     <div style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>ACCOUNTS</div>
@@ -3074,33 +3233,34 @@ function AppMain() {
 
           {/* Workspace views */}
           {view !== "accounts" && activeWorkspace && (
-          <div style={{ maxWidth:view==="outputs"?820:680, margin:"0 auto" }}>
+          <div style={{ maxWidth:"100%" }}>
 
-            {/* Tab bar */}
-            <div style={{ display:"flex", gap:2, marginBottom:32, borderBottom:`1px solid ${C.border}`, paddingBottom:0 }}>
-              {(currentRole === "client"
-                ? [{ id:"outputs", label:"Campaign Outputs", pct: icps.length>0?Math.round(icpsWithOutputs/icps.length*100):0, color:C.green }]
-                : [
-                    { id:"company", label:"Company Profile",  pct: companyPct,                                                          color:C.accent },
-                    { id:"icps",    label:"ICP Profiles",     pct: icps.length>0?Math.round(icps.filter(i=>i.outputs).length/icps.length*100):0, color:C.accent },
-                    { id:"outputs", label:"Campaign Outputs", pct: icps.length>0?Math.round(icpsWithOutputs/icps.length*100):0,          color:C.green  },
-                  ]
-              ).map(n => {
-                const on = view === n.id;
-                return (
-                  <button key={n.id} onClick={()=>setView(n.id)}
-                    style={{ flex:1, padding:"10px 16px", border:"none", background:"transparent", cursor:"pointer",
-                      fontFamily:head, fontSize:13, fontWeight:on?700:500,
-                      color:on?C.text:C.muted, transition:"color .15s",
-                      borderBottom:`2px solid ${on?C.accent:"transparent"}`, marginBottom:-1 }}>
-                    {n.label}
-                  </button>
-                );
-              })}
+            {/* Client header banner */}
+            <div style={{ marginBottom:32, padding:"16px 20px", borderRadius:12,
+              background:C.canvas, border:`1px solid ${C.border}`, textAlign:"center" }}>
+              <div style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head }}>
+                {activeWorkspace.name}
+              </div>
+              {activeWorkspace.industry && (
+                <div style={{ fontSize:12, color:C.muted, fontFamily:mono, marginTop:4 }}>
+                  {activeWorkspace.industry}
+                </div>
+              )}
             </div>
 
             {view==="company" && (
-              <div style={{ animation:"fadeIn .3s ease" }}>
+              <div style={{ animation:"fadeIn .3s ease", textAlign:"left" }}>
+                {/* Header */}
+                <div style={{ marginBottom:28 }}>
+                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 6px", textAlign:"left" }}>Company Profile</h2>
+                  <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65, marginBottom:14 }}>
+                    Fill this once. Every ICP inherits this context when AI auto-drafts their profile.
+                  </p>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+                    <div style={{ flex:1 }}><ProgressBar pct={companyPct} color={C.accent} height={3} /></div>
+                    <span style={{ fontSize:11, color:companyPct===100?C.green:C.muted, fontFamily:mono, fontWeight:600, flexShrink:0 }}>{companyPct}% complete</span>
+                  </div>
+                </div>
                 <CompanyPanel data={companyData} confidence={companyConf} onChange={setCompanyData} />
                 <div style={{ marginTop:28, padding:"16px 20px", borderRadius:10, background:C.canvas,
                   border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -3118,148 +3278,341 @@ function AppMain() {
             )}
 
             {view==="icps" && (
-              <div style={{ animation:"fadeIn .3s ease" }}>
+              <div style={{ animation:"fadeIn .3s ease", textAlign:"left" }}>
+                {/* Header */}
                 <div style={{ marginBottom:28 }}>
-                  <h2 style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>{(companyData as any).co_name||"Client"} — Target Profiles</h2>
-                  <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65 }}>
+                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 6px", textAlign:"left" }}>Target Profiles</h2>
+                  <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65, marginBottom:14 }}>
                     Each ICP is fully independent. AI auto-drafts from company context — you refine.
                   </p>
-                  <div style={{ marginTop:14, display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
                     <div style={{ flex:1 }}><ProgressBar pct={icps.length>0?Math.round(icps.filter(i=>i.outputs).length/icps.length*100):0} color={C.accent} height={3} /></div>
                     <span style={{ fontSize:11, color:C.muted, fontFamily:mono, fontWeight:600, flexShrink:0 }}>
                       {icps.length>0?Math.round(icps.filter(i=>i.outputs).length/icps.length*100):0}% complete
                     </span>
+                  </div>
+                  <div style={{ display:"flex", justifyContent:"flex-end", position:"relative" }}>
+                    <button onClick={()=>{ if(!drafting) setShowAddPop(p=>!p); }} disabled={!!drafting}
+                      style={{ display:"flex", alignItems:"center", gap:7, padding:"10px 18px",
+                        borderRadius:8, border:"none", background:drafting?C.border:C.accent,
+                        color:drafting?C.muted:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
+                        cursor:drafting?"default":"pointer",
+                        boxShadow:drafting?"none":`0 2px 10px ${C.accent}40`,
+                        opacity:drafting?.5:1, transition:"all .15s" }}>
+                      {drafting ? "✦ Drafting…" : "+ Add ICP"}
+                    </button>
+
+                    {showAddPop && !drafting && (
+                      <div data-add-icp-pop style={{ position:"absolute", top:"calc(100% + 8px)", right:0, zIndex:9999,
+                        width:300, background:C.canvas, border:`1.5px solid ${C.accentBorder}`,
+                        borderRadius:10, boxShadow:`0 8px 32px rgba(13,15,26,.16)`,
+                        padding:"14px", animation:"fadeIn .15s ease" }}>
+                        <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.4, marginBottom:10 }}>
+                          + NEW ICP
+                        </div>
+                        {/* Option 1 */}
+                        <button onClick={()=>addICP()}
+                          style={{ display:"flex", alignItems:"center", gap:10, width:"100%",
+                            padding:"10px 12px", borderRadius:8, border:`1.5px solid ${C.accentBorder}`,
+                            background:C.accentLo, cursor:"pointer", textAlign:"left", marginBottom:10,
+                            transition:"all .15s" }}
+                          onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.accentMid}
+                          onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.accentLo}>
+                          <span style={{ fontSize:16, flexShrink:0 }}>✦</span>
+                          <div>
+                            <div style={{ fontSize:12, fontFamily:head, fontWeight:700, color:C.accent }}>AI picks the segment</div>
+                            <div style={{ fontSize:10.5, color:C.muted, fontFamily:body, marginTop:1 }}>AI chooses the best next distinct segment based on company context</div>
+                          </div>
+                        </button>
+                        {/* Divider */}
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                          <div style={{ flex:1, height:1, background:C.border }} />
+                          <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>OR</span>
+                          <div style={{ flex:1, height:1, background:C.border }} />
+                        </div>
+                        {/* Option 2 */}
+                        <div style={{ fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:6 }}>Describe your target</div>
+                        <textarea value={addIcpText} onChange={e=>setAddIcpText(e.target.value)}
+                          placeholder={`e.g. "Mid-market B2B SaaS companies in North America with a sales team struggling with pipeline quality"`}
+                          rows={3} autoFocus
+                          onKeyDown={e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)&&addIcpText.trim()) addICP(addIcpText); }}
+                          style={{ width:"100%", padding:"8px 10px", borderRadius:7,
+                            border:`1.5px solid ${C.border}`, background:C.faint, color:C.text,
+                            fontSize:11.5, fontFamily:body, lineHeight:1.5, outline:"none",
+                            resize:"none", boxSizing:"border-box" as const, marginBottom:8,
+                            transition:"border-color .15s" }}
+                          onFocus={e=>{e.target.style.borderColor=C.accent+"66"; e.target.style.background=C.canvas;}}
+                          onBlur={e=>{e.target.style.borderColor=C.border; e.target.style.background=C.faint;}} />
+                        <button onClick={()=>{ if(addIcpText.trim()) addICP(addIcpText); }} disabled={!addIcpText.trim()}
+                          style={{ width:"100%", padding:"8px", borderRadius:7, border:"none",
+                            background:addIcpText.trim()?C.accent:C.border,
+                            color:addIcpText.trim()?"#fff":C.muted, fontSize:11,
+                            fontFamily:head, fontWeight:700, cursor:addIcpText.trim()?"pointer":"default",
+                            boxShadow:addIcpText.trim()?`0 2px 8px ${C.accent}40`:"none",
+                            transition:"all .15s" }}>
+                          Generate from description {addIcpText.trim()?"↵":""}
+                        </button>
+                        <div style={{ fontSize:9, color:C.muted, fontFamily:mono, textAlign:"center", marginTop:6 }}>⌘↵ to generate</div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {icpsWithOutputs > 0 && (
                   <div style={{ padding:"12px 16px", borderRadius:9, background:C.greenLo,
                     border:`1px solid ${C.greenBorder}`, display:"flex", alignItems:"center",
-                    justifyContent:"space-between", marginBottom:24 }}>
+                    justifyContent:"space-between", marginBottom:20 }}>
                     <span style={{ fontSize:13, color:C.green, fontFamily:body, fontWeight:500 }}>
-                      {icpsWithOutputs} ICP{icpsWithOutputs!==1?"s":""} ready
+                      {icpsWithOutputs} ICP{icpsWithOutputs!==1?"s":""} ready for campaign outputs
                     </span>
                     <button onClick={()=>setView("outputs")} style={{
                       padding:"7px 16px", borderRadius:7, border:"none",
                       background:C.green, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
-                      cursor:"pointer", boxShadow:`0 2px 10px ${C.green}30` }}>View Campaign Outputs →</button>
+                      cursor:"pointer", boxShadow:`0 2px 10px ${C.green}30` }}>View Outputs →</button>
                   </div>
                 )}
 
-                <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:16 }}>
-                  <button onClick={addICP} disabled={!!drafting} style={{
-                    display:"flex", alignItems:"center", gap:7, padding:"10px 18px",
-                    borderRadius:8, border:"none", background:drafting?C.border:C.accent,
-                    color:drafting?C.muted:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
-                    cursor:drafting?"default":"pointer",
-                    boxShadow:drafting?"none":`0 2px 10px ${C.accent}40`,
-                    opacity:drafting?.5:1, transition:"all .15s" }}>+ Add ICP</button>
-                </div>
-
-                <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-                  {/* Table header */}
-                  <div style={{ display:"grid", gridTemplateColumns:"3px 1fr 120px 100px 140px 72px",
-                    padding:"10px 16px", borderBottom:`1px solid ${C.border}`, gap:12, alignItems:"center" }}>
-                    <div />
-                    {["ICP Name","Status","Intake","Outputs",""].map((h,i) => (
-                      <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
-                        color:C.muted, letterSpacing:.5, textAlign:i===4?"right":"left" }}>{h}</div>
-                    ))}
-                  </div>
-
-                  {icps.length === 0 && (
-                    <div style={{ padding:"40px 20px", textAlign:"center", fontSize:13, color:C.muted, fontFamily:body }}>
-                      No ICPs yet. Click "+ Add ICP" to get started.
+                {/* Empty state */}
+                {icps.length === 0 && (
+                  <div style={{ padding:"56px 20px", textAlign:"center", background:C.canvas,
+                    borderRadius:12, border:`1.5px dashed ${C.border}` }}>
+                    <div style={{ fontSize:28, marginBottom:12 }}>🎯</div>
+                    <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>No ICPs yet</div>
+                    <div style={{ fontSize:13, color:C.muted, fontFamily:body, marginBottom:20 }}>
+                      Add your first Ideal Customer Profile to get started.
                     </div>
-                  )}
+                    <button onClick={addICP} disabled={!!drafting} style={{
+                      padding:"10px 24px", borderRadius:8, border:"none", background:C.accent,
+                      color:"#fff", fontSize:13, fontFamily:head, fontWeight:700,
+                      cursor:"pointer", boxShadow:`0 2px 10px ${C.accent}40` }}>+ Add ICP</button>
+                  </div>
+                )}
 
-                  {(icps as any[]).map((icp, i) => {
-                    const filled  = ALL_ICP_FIELDS.filter(f=>fieldFilled(f,icp.data[f.id])).length;
-                    const pct     = Math.round(filled/TOTAL_FIELDS*100);
-                    const secAppr = Object.values(icp.sectionApprovals??{}).filter(v=>v==="approved").length;
-                    const lowConf = Object.values(icp.confidence??{}).filter((v:any)=>v<60).length;
-                    const openComm= (icp.comments??[]).filter((c:any)=>!c.resolved).length;
-                    return (
-                      <div key={icp.id}
-                        onClick={()=>setEditingId(icp.id)}
-                        style={{ display:"grid", gridTemplateColumns:"3px 1fr 120px 100px 140px 72px",
-                          gap:12, alignItems:"center", cursor:"pointer",
-                          borderBottom: i < icps.length-1 ? `1px solid ${C.border}` : "none",
-                          transition:"background .12s" }}
-                        onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.background=C.faint}
-                        onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.background="transparent"}>
-                        {/* Color strip */}
-                        <div style={{ height:"100%", minHeight:52, background:icp.color, borderRadius:0 }} />
-                        {/* Name */}
-                        <div style={{ padding:"13px 0", minWidth:0 }}>
-                          <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head,
-                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                            {icp.name || `ICP ${i+1}`}
-                          </div>
-                          {icp.data.industries && (
-                            <div style={{ fontSize:10.5, color:C.muted, fontFamily:mono, marginTop:2,
-                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                              {icp.data.industries.split(",")[0].trim()}
+                {/* Table */}
+                {icps.length > 0 && (
+                  <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}` }}>
+                    {/* Header row */}
+                    <div style={{ display:"grid", gridTemplateColumns:"8px 1fr 130px 110px 150px 100px",
+                      padding:"10px 16px 10px 0", borderBottom:`1px solid ${C.border}`, gap:12, alignItems:"center" }}>
+                      <div />
+                      {["ICP Name","Status","Profile","Outputs",""].map((h,i) => (
+                        <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
+                          color:C.muted, letterSpacing:.6, textAlign:i===4?"right":"left", paddingRight:i===4?16:0 }}>{h}</div>
+                      ))}
+                    </div>
+
+                    {(icps as any[]).map((icp, i) => {
+                      const filled   = ALL_ICP_FIELDS.filter(f=>fieldFilled(f,icp.data[f.id])).length;
+                      const pct      = Math.round(filled/TOTAL_FIELDS*100);
+                      const secAppr  = Object.values(icp.sectionApprovals??{}).filter(v=>v==="approved").length;
+                      const lowConf  = Object.values(icp.confidence??{}).filter((v:any)=>v<60).length;
+                      const openComm = (icp.comments??[]).filter((c:any)=>!c.resolved).length;
+
+                      const outputStatus = icp.outputs
+                        ? secAppr > 0 ? { label:`${secAppr}/4 approved`, color:C.green, bg:C.greenLo, border:C.greenBorder }
+                                      : { label:"Ready", color:C.green, bg:C.greenLo, border:C.greenBorder }
+                        : null;
+
+                      return (
+                        <div key={icp.id}
+                          onClick={()=>setEditingId(icp.id)}
+                          className="icp-row"
+                          style={{ display:"grid", gridTemplateColumns:"8px 1fr 130px 110px 150px 100px",
+                            gap:12, alignItems:"center", cursor:"pointer",
+                            borderBottom: i < icps.length-1 ? `1px solid ${C.border}` : "none",
+                            transition:"background .12s", position:"relative" }}
+                          onMouseEnter={e=>{ (e.currentTarget as HTMLDivElement).style.background=C.faint; (e.currentTarget as HTMLDivElement).querySelectorAll(".row-action").forEach((el:any)=>el.style.opacity="1"); }}
+                          onMouseLeave={e=>{ (e.currentTarget as HTMLDivElement).style.background="transparent"; if(icpConfirm?.id!==icp.id && icpFill?.id!==icp.id && icpFilling!==icp.id)(e.currentTarget as HTMLDivElement).querySelectorAll(".row-action").forEach((el:any)=>el.style.opacity="0"); }}>
+
+                          {/* Color strip — grey: untouched, amber: in progress, green: outputs ready */}
+                          <div style={{ height:"100%", minHeight:64,
+                            background: icp.outputs ? C.green : pct > 0 ? "#F59E0B" : C.border,
+                            borderRadius: i===0 ? "11px 0 0 0" : i===icps.length-1 ? "0 0 0 11px" : 0,
+                            transition:"background .3s" }} />
+
+                          {/* Name + subtitle */}
+                          <div style={{ padding:"16px 0", minWidth:0 }}>
+                            <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:head,
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", marginBottom:3 }}>
+                              {icp.name || `ICP ${i+1}`}
                             </div>
-                          )}
-                        </div>
-                        {/* Status */}
-                        <div><StatusBadge status={icp.approval} size="xs" /></div>
-                        {/* Intake */}
-                        <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-                          <div style={{ flex:1 }}><ProgressBar pct={pct} color={icp.color} height={3} /></div>
-                          <span style={{ fontSize:10.5, fontFamily:mono, fontWeight:600,
-                            color:pct===100?C.green:C.muted, flexShrink:0 }}>{pct}%</span>
-                        </div>
-                        {/* Outputs */}
-                        <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                          {icp.outputs ? (
-                            <span style={{ fontSize:9, color:C.green, background:C.greenLo,
-                              border:`1px solid ${C.greenBorder}`, padding:"2px 7px", borderRadius:4, fontFamily:mono }}>
-                              {secAppr>0?`${secAppr}/4 approved`:"ready"}
-                            </span>
-                          ) : (
-                            <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>—</span>
-                          )}
-                          {lowConf>0 && (
-                            <span style={{ fontSize:9, color:C.amber, background:C.amberLo,
-                              border:`1px solid ${C.amberBorder}`, padding:"2px 7px", borderRadius:4, fontFamily:mono }}>
-                              {lowConf} low conf
-                            </span>
-                          )}
-                          {openComm>0 && (
-                            <span style={{ fontSize:9, color:C.amber, background:C.amberLo,
-                              border:`1px solid ${C.amberBorder}`, padding:"2px 7px", borderRadius:4, fontFamily:mono }}>
-                              💬 {openComm}
-                            </span>
-                          )}
-                        </div>
-                        {/* Actions */}
-                        <div style={{ display:"flex", gap:5, justifyContent:"flex-end", paddingRight:12 }}
-                          onClick={e=>e.stopPropagation()}>
-                          <button title="Duplicate"
-                            onClick={()=>{ const c={...icp,id:uid(),color:ICP_COLORS[icps.length%ICP_COLORS.length],outputs:null,approval:"draft",sectionApprovals:{},comments:[],name:(icp.name||"ICP")+" (copy)",data:{...icp.data}}; setIcps(p=>[...p,c]); }}
-                            style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
-                              background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
-                              display:"flex", alignItems:"center", justifyContent:"center" }}
-                            onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=C.accent;}}
-                            onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
-                            ⊕
-                          </button>
-                          <button title="Delete" onClick={()=>setIcps(p=>p.filter(x=>x.id!==icp.id))}
-                            style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
-                              background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
-                              display:"flex", alignItems:"center", justifyContent:"center" }}
-                            onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"66";(e.currentTarget as HTMLButtonElement).style.color=C.red;}}
-                            onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              {openComm > 0 && (
+                                <span style={{ fontSize:10, color:C.amber, background:C.amberLo,
+                                  border:`1px solid ${C.amberBorder}`, padding:"1px 6px", borderRadius:4, fontFamily:mono, flexShrink:0 }}>
+                                  💬 {openComm}
+                                </span>
+                              )}
+                              {lowConf > 0 && (
+                                <span style={{ fontSize:10, color:C.amber, background:C.amberLo,
+                                  border:`1px solid ${C.amberBorder}`, padding:"1px 6px", borderRadius:4, fontFamily:mono, flexShrink:0 }}>
+                                  {lowConf} low conf
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
+                          {/* Status */}
+                          <div><StatusBadge status={icp.approval} size="xs" /></div>
+
+                          {/* Profile progress */}
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <div style={{ flex:1 }}><ProgressBar pct={pct} color={icp.outputs ? C.green : pct > 0 ? "#F59E0B" : C.border} height={4} /></div>
+                            <span style={{ fontSize:11, fontFamily:mono, fontWeight:700,
+                              color:pct===100?C.green:C.muted, flexShrink:0, minWidth:28, textAlign:"right" }}>{pct}%</span>
+                          </div>
+
+                          {/* Outputs */}
+                          <div>
+                            {outputStatus ? (
+                              <span style={{ fontSize:10, color:outputStatus.color, background:outputStatus.bg,
+                                border:`1px solid ${outputStatus.border}`, padding:"3px 9px",
+                                borderRadius:5, fontFamily:mono, fontWeight:600 }}>
+                                {outputStatus.label}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize:11, color:C.muted, fontFamily:mono }}>—</span>
+                            )}
+                          </div>
+
+                          {/* Actions — fade in on hover */}
+                          <div style={{ display:"flex", gap:5, justifyContent:"flex-end", paddingRight:14, position:"relative", zIndex:icpConfirm?.id===icp.id?9999:1 }}
+                            onClick={e=>e.stopPropagation()}>
+
+                            {/* Confirmation popover */}
+                            {icpConfirm?.id===icp.id && (
+                              <div className="icp-confirm-popover" style={{ position:"absolute", bottom:"calc(100% + 8px)", right:0, zIndex:9999,
+                                background:C.canvas, border:`1.5px solid ${C.border}`, borderRadius:10,
+                                boxShadow:"0 8px 24px rgba(13,15,26,.16)", padding:"12px 14px", width:200,
+                                animation:"fadeIn .15s ease" }}>
+                                <div style={{ fontSize:12, fontWeight:600, color:C.text, fontFamily:head, marginBottom:4 }}>
+                                  {icpConfirm.action==="del" ? "Delete this ICP?" : "Duplicate this ICP?"}
+                                </div>
+                                <div style={{ fontSize:11, color:C.muted, fontFamily:body, lineHeight:1.5, marginBottom:10 }}>
+                                  {icpConfirm.action==="del"
+                                    ? "This cannot be undone. All data and outputs will be lost."
+                                    : "A copy will be added to the bottom of your list."}
+                                </div>
+                                <div style={{ display:"flex", gap:6 }}>
+                                  <button onClick={()=>setIcpConfirm(null)}
+                                    style={{ flex:1, padding:"6px", borderRadius:6, border:`1px solid ${C.border}`,
+                                      background:"transparent", color:C.muted, fontSize:11, fontFamily:head,
+                                      fontWeight:600, cursor:"pointer" }}>
+                                    Cancel
+                                  </button>
+                                  <button onClick={()=>{
+                                    if(icpConfirm.action==="del") setIcps(p=>p.filter(x=>x.id!==icp.id));
+                                    else { const c={...icp,id:uid(),color:ICP_COLORS[icps.length%ICP_COLORS.length],outputs:null,approval:"draft",sectionApprovals:{},comments:[],name:(icp.name||"ICP")+" (copy)",data:{...icp.data}}; setIcps(p=>[...p,c]); }
+                                    setIcpConfirm(null);
+                                  }}
+                                    style={{ flex:1, padding:"6px", borderRadius:6, border:"none",
+                                      background:icpConfirm.action==="del"?C.red:C.accent,
+                                      color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                    {icpConfirm.action==="del" ? "Delete" : "Duplicate"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* AI Fill button + popover */}
+                            <div style={{ position:"relative" }}>
+                              <button title="AI Fill — generate all fields with AI" className="row-action"
+                                onClick={()=>{ if(!icpFilling) setIcpFill(icpFill?.id===icp.id?null:{id:icp.id,text:""}); }}
+                                disabled={!!icpFilling}
+                                style={{ width:28, height:28, borderRadius:6,
+                                  border:`1px solid ${icpFill?.id===icp.id ? C.accent+"66" : C.border}`,
+                                  background: icpFilling===icp.id ? C.accent : icpFill?.id===icp.id ? C.accent+"15" : "transparent",
+                                  color: icpFilling===icp.id ? "#fff" : icpFill?.id===icp.id ? C.accent : C.muted,
+                                  cursor: icpFilling ? "default" : "pointer",
+                                  display:"flex", alignItems:"center", justifyContent:"center", fontSize:13,
+                                  opacity:0, transition:"opacity .15s, border-color .15s, color .15s, background .15s" }}
+                                onMouseEnter={e=>{ if(!icpFilling){(e.currentTarget as HTMLButtonElement).style.borderColor=C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=C.accent;} }}
+                                onMouseLeave={e=>{ if(!(icpFill?.id===icp.id)){(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;} }}>
+                                {icpFilling===icp.id
+                                  ? <span style={{ animation:"aiSpark 1s linear infinite", display:"inline-block" }}>✦</span>
+                                  : "✦"}
+                              </button>
+
+                              {icpFill?.id===icp.id && (
+                                <div className="icp-fill-popover" style={{
+                                  position:"absolute", bottom:"calc(100% + 8px)", right:0, zIndex:9999,
+                                  background:C.canvas, border:`1.5px solid ${C.accentBorder}`, borderRadius:10,
+                                  boxShadow:`0 8px 24px rgba(13,15,26,.16), 0 0 0 1px ${C.accent}11`,
+                                  padding:"14px", width:280, animation:"fadeIn .15s ease" }}>
+                                  <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.4, marginBottom:8 }}>
+                                    ✦ AI FILL — {(icp.name||"ICP").toUpperCase()}
+                                  </div>
+                                  <div style={{ fontSize:11.5, color:C.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:10 }}>
+                                    Describe the target segment you have in mind. The AI will use this plus the company profile to fill every field.
+                                  </div>
+                                  <textarea
+                                    value={icpFill.text}
+                                    onChange={e=>setIcpFill({...icpFill, text:e.target.value})}
+                                    placeholder={`e.g. "Mid-market SaaS companies in the US with a sales team of 10–50 reps, struggling with lead quality"`}
+                                    rows={4} autoFocus
+                                    onKeyDown={e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)) fillICP(icp, icpFill.text); }}
+                                    style={{ width:"100%", padding:"8px 10px", borderRadius:7,
+                                      border:`1.5px solid ${C.border}`, background:C.faint,
+                                      color:C.text, fontSize:11.5, fontFamily:body, lineHeight:1.5,
+                                      outline:"none", resize:"none", boxSizing:"border-box" as const,
+                                      transition:"border-color .15s" }}
+                                    onFocus={e=>{e.target.style.borderColor=C.accent+"66"; e.target.style.background=C.canvas;}}
+                                    onBlur={e=>{e.target.style.borderColor=C.border; e.target.style.background=C.faint;}}
+                                  />
+                                  <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                                    <button onClick={()=>setIcpFill(null)}
+                                      style={{ flex:1, padding:"7px", borderRadius:6, border:`1px solid ${C.border}`,
+                                        background:"transparent", color:C.muted, fontSize:11,
+                                        fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                                      Cancel
+                                    </button>
+                                    <button onClick={()=>fillICP(icp, icpFill.text)}
+                                      style={{ flex:2, padding:"7px", borderRadius:6, border:"none",
+                                        background:C.accent, color:"#fff", fontSize:11,
+                                        fontFamily:head, fontWeight:700, cursor:"pointer",
+                                        boxShadow:`0 2px 8px ${C.accent}40`,
+                                        display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                                      <span style={{ fontSize:12 }}>✦</span> Generate All Fields
+                                    </button>
+                                  </div>
+                                  <div style={{ fontSize:9, color:C.muted, fontFamily:mono, textAlign:"center", marginTop:6 }}>⌘↵ to generate</div>
+                                </div>
+                              )}
+                            </div>
+
+                            <button title="Duplicate ICP — creates a copy with all fields preserved" className="row-action"
+                              onClick={()=>setIcpConfirm(icpConfirm?.id===icp.id&&icpConfirm.action==="dup"?null:{id:icp.id,action:"dup"})}
+                              style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
+                                background: icpConfirm?.id===icp.id&&icpConfirm.action==="dup" ? C.accent+"15" : "transparent",
+                                color: icpConfirm?.id===icp.id&&icpConfirm.action==="dup" ? C.accent : C.muted,
+                                cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                                opacity:0, transition:"opacity .15s, border-color .15s, color .15s, background .15s" }}
+                              onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=C.accent;}}
+                              onMouseLeave={e=>{if(!(icpConfirm?.id===icp.id&&icpConfirm?.action==="dup")){(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}}>
+                              <svg width="13" height="13" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="4" y="4" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+                                <path d="M2 10V2.5A1.5 1.5 0 013.5 1H10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                              </svg>
+                            </button>
+
+                            <button title="Delete ICP — permanently removes this profile and all its data" className="row-action"
+                              onClick={()=>setIcpConfirm(icpConfirm?.id===icp.id&&icpConfirm.action==="del"?null:{id:icp.id,action:"del"})}
+                              style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
+                                background: icpConfirm?.id===icp.id&&icpConfirm.action==="del" ? C.red+"15" : "transparent",
+                                color: icpConfirm?.id===icp.id&&icpConfirm.action==="del" ? C.red : C.muted,
+                                cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                                opacity:0, transition:"opacity .15s, border-color .15s, color .15s, background .15s",
+                                fontSize:12 }}
+                              onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"66";(e.currentTarget as HTMLButtonElement).style.color=C.red;}}
+                              onMouseLeave={e=>{if(!(icpConfirm?.id===icp.id&&icpConfirm?.action==="del")){(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}}>
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -3287,9 +3640,11 @@ function AppMain() {
       </div>
 
       {editingICP && (
-        <ICPEditorModal icp={editingICP} companyData={companyData} onUpdate={updateICP} onClose={()=>setEditingId(null)} />
+        <ICPEditorModal icp={editingICP} companyData={companyData} onUpdate={updateICP} onClose={()=>setEditingId(null)}
+          addToast={addToast} updateToast={updateToast} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} />}
+      <ToastStack toasts={toasts} onRemove={removeToast} />
     </>
   );
 }
