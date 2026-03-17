@@ -212,7 +212,7 @@ function StatusBadge({ status, size="sm" }) {
 }
 
 // ─── FIELD ────────────────────────────────────────────────────────────────────
-function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked = false, onResetLock = null }) {
+function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked = false, onUnlock = null, onSave = null, onCancel = null }) {
   const filled  = fieldFilled(f, val);
   const canAI   = f.type !== "select" && f.type !== "chips";
   const isThinking = aiOn === f.id;
@@ -341,8 +341,8 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
   );
 
   const lockedStyle = { background:C.faint, color:C.textSoft, cursor:"default" as const };
-  const pencilBtn = locked && (
-    <button onClick={onResetLock} title="Edit field"
+  const pencilBtn = locked ? (
+    <button onClick={onUnlock} title="Edit field"
       style={{ marginLeft:"auto", width:22, height:22, borderRadius:5, border:`1px solid ${C.border}`,
         background:"transparent", color:C.muted, cursor:"pointer", flexShrink:0,
         display:"flex", alignItems:"center", justifyContent:"center", transition:"all .15s" }}
@@ -353,7 +353,26 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
         <path d="M7 3L9 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
       </svg>
     </button>
-  );
+  ) : onSave ? (
+    <div style={{ display:"flex", gap:4, marginLeft:"auto" }}>
+      <button onClick={onSave} title="Save field"
+        style={{ width:22, height:22, borderRadius:5, border:`1px solid ${C.greenBorder}`,
+          background:"transparent", color:C.green, cursor:"pointer", flexShrink:0,
+          display:"flex", alignItems:"center", justifyContent:"center", transition:"all .15s" }}
+        onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.background=C.greenLo; }}
+        onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.background="transparent"; }}>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </button>
+      <button onClick={onCancel} title="Discard changes"
+        style={{ width:22, height:22, borderRadius:5, border:`1px solid ${C.border}`,
+          background:"transparent", color:C.muted, cursor:"pointer", flexShrink:0,
+          display:"flex", alignItems:"center", justifyContent:"center", transition:"all .15s", fontSize:11 }}
+        onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.color=C.text; (e.currentTarget as HTMLElement).style.borderColor=C.borderHi; }}
+        onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.color=C.muted; (e.currentTarget as HTMLElement).style.borderColor=C.border; }}>
+        ✕
+      </button>
+    </div>
+  ) : null;
 
   return (
     <div>
@@ -749,7 +768,8 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   const [copied,         setCopied]        = useState(null);
   const [newNote,        setNewNote]       = useState("");
   const [noteAuth,       setNoteAuth]      = useState("");
-  const timerRef = useRef<Record<string,any>>({});
+  const [confirmClose,   setConfirmClose]  = useState(false);
+  const origRef = useRef<Record<string,any>>({});
 
   useEffect(() => {
     const autoName = (data.buyer && data.industries)
@@ -759,32 +779,37 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   }, [data, localConf]); // eslint-disable-line
 
   const upd = (id: string, v: any, f?: any, isAI = false) => {
-    if (f !== undefined) {
-      if (isAI) {
-        scoreWithAI(f, v).then(score => {
-          setLocalConf((p: any) => ({ ...p, [id]: score }));
-          setLocalConfLocked(p => ({ ...p, [id]: true }));
-        });
-      } else {
-        setLocalConfLocked(p => ({ ...p, [id]: false }));
-        clearTimeout(timerRef.current[id]);
-        timerRef.current[id] = setTimeout(() => {
-          scoreWithAI(f, v).then(score => {
-            setLocalConf((p: any) => ({ ...p, [id]: score }));
-            setLocalConfLocked(p => ({ ...p, [id]: true }));
-          });
-        }, 3000);
-      }
+    if (f !== undefined && isAI) {
+      setLocalConfLocked(p => ({ ...p, [id]: true }));
+      scoreWithAI(f, v).then(score => setLocalConf((p: any) => ({ ...p, [id]: score })));
     }
     setData((p: any) => ({ ...p, [id]: v }));
   };
+
+  const handleUnlock = (id: string) => {
+    origRef.current[id] = data[id];
+    setLocalConfLocked(p => ({ ...p, [id]: false }));
+  };
+  const handleSave = async (f: any, id: string) => {
+    setLocalConfLocked(p => ({ ...p, [id]: true }));
+    const score = await scoreWithAI(f, data[id]);
+    setLocalConf((p: any) => ({ ...p, [id]: score }));
+  };
+  const handleCancel = (id: string) => {
+    const orig = origRef.current[id];
+    if (orig !== undefined) { setData((p: any) => ({ ...p, [id]: orig })); delete origRef.current[id]; }
+    setLocalConfLocked(p => ({ ...p, [id]: true }));
+  };
+
+  const isModalDirty = Object.values(localConfLocked).some(v => v === false);
 
   const handleAIFill = async (f, instructions) => {
     setAiOn(f.id);
     const extra = instructions ? `\nExtra instructions: ${instructions}` : "";
     const v = await callAI(
       `Fill this ICP field.\nCompany: ${JSON.stringify(companyData)}\nICP so far: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}\nReturn ONLY the answer. 1–3 sentences max.`, "", 200);
-    upd(f.id, v.trim(), f, true); setAiOn(null);
+    upd(f.id, v.trim(), f, true);
+    setAiOn(null);
   };
 
   const generateAll = async () => {
@@ -844,7 +869,7 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
 
         {/* Header */}
         <div style={{ display:"flex", alignItems:"center", gap:12, padding:"16px 22px",
-          borderBottom:`1px solid ${C.border}`, background:C.surface, borderRadius:"13px 13px 0 0" }}>
+          borderBottom:`1px solid ${C.border}`, background:C.surface, borderRadius:"13px 13px 0 0", position:"relative" }}>
           <div style={{ width:10, height:10, borderRadius:"50%", background:icp.color, flexShrink:0 }} />
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:head,
@@ -872,8 +897,26 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
               border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green,
               fontSize:11, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve All</button>
           )}
-          <button onClick={onClose} style={{ padding:"6px 10px", borderRadius:7,
+          <button onClick={()=> isModalDirty ? setConfirmClose(true) : onClose()} style={{ padding:"6px 10px", borderRadius:7,
             border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:12, cursor:"pointer" }}>✕ Close</button>
+          {confirmClose && (
+            <div style={{ position:"absolute", inset:0, background:"rgba(13,15,26,0.5)", borderRadius:"13px 13px 0 0",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:12, zIndex:10 }}>
+              <span style={{ fontSize:12, color:C.text, fontFamily:head, fontWeight:600 }}>You have unsaved fields.</span>
+              <button onClick={()=>{ setLocalConfLocked(p=>Object.fromEntries(Object.entries(p).map(([k])=>[k,true]))); setConfirmClose(false); onClose(); }}
+                style={{ padding:"6px 14px", borderRadius:7, border:"none", background:C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                Save all & close
+              </button>
+              <button onClick={()=>{ setConfirmClose(false); onClose(); }}
+                style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                Close without saving
+              </button>
+              <button onClick={()=>setConfirmClose(false)}
+                style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                Stay
+              </button>
+            </div>
+          )}
         </div>
 
         <div style={{ display:"flex", minHeight:580 }}>
@@ -932,11 +975,13 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
                   <span style={{ fontSize:11, color:C.muted, fontFamily:mono }}>{secFill}/{sec.fields.length} filled</span>
                 </div>
                 {sec.fields.map(f => (
-                  <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v,f)}
+                  <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
                     onAI={handleAIFill} aiOn={aiOn} accentColor={icp.color}
                     confidence={localConf[f.id]}
                     locked={!!localConfLocked[f.id]}
-                    onResetLock={()=>setLocalConfLocked(p=>({...p,[f.id]:false}))} />
+                    onUnlock={()=>handleUnlock(f.id)}
+                    onSave={()=>handleSave(f, f.id)}
+                    onCancel={()=>handleCancel(f.id)} />
                 ))}
               </div>
             )}
@@ -1022,21 +1067,23 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
 // ─── COMPANY PANEL ────────────────────────────────────────────────────────────
 function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, onConfLock }) {
   const [aiOn, setAiOn] = useState(null);
-  const timerRef = useRef<Record<string,any>>({});
+  const origRef = useRef<Record<string,any>>({});
 
-  const upd = (id, v, f?, isAI = false) => {
-    onChange({ ...data, [id]:v });
-    if (f !== undefined) {
-      if (isAI) {
-        scoreWithAI(f, v).then(score => { onConfChange?.(id, score); onConfLock?.(id, true); });
-      } else {
-        onConfLock?.(id, false);
-        clearTimeout(timerRef.current[id]);
-        timerRef.current[id] = setTimeout(() => {
-          scoreWithAI(f, v).then(score => { onConfChange?.(id, score); onConfLock?.(id, true); });
-        }, 3000);
-      }
-    }
+  const upd = (id, v) => onChange({ ...data, [id]: v });
+
+  const handleUnlock = (id: string) => {
+    origRef.current[id] = data[id];
+    onConfLock?.(id, false);
+  };
+  const handleSave = async (f: any, id: string) => {
+    onConfLock?.(id, true);
+    const score = await scoreWithAI(f, data[id]);
+    onConfChange?.(id, score);
+  };
+  const handleCancel = (id: string) => {
+    const orig = origRef.current[id];
+    if (orig !== undefined) { onChange({ ...data, [id]: orig }); delete origRef.current[id]; }
+    onConfLock?.(id, true);
   };
 
   const filled = COMPANY_FIELDS.filter(f=>fieldFilled(f,data[f.id])).length;
@@ -1045,17 +1092,23 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
     setAiOn(f.id);
     const extra = instructions ? `\nExtra instructions: ${instructions}` : "";
     const v = await callAI(`Fill this company field.\nContext: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}\nReturn ONLY the answer.`,"",180);
-    upd(f.id, v.trim(), f, true); setAiOn(null);
+    const trimmed = v.trim();
+    upd(f.id, trimmed);
+    onConfLock?.(f.id, true);
+    scoreWithAI(f, trimmed).then(score => onConfChange?.(f.id, score));
+    setAiOn(null);
   };
   return (
     <div>
       <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
         {COMPANY_FIELDS.map(f => (
-          <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v,f)}
+          <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
             onAI={handleAI} aiOn={aiOn} accentColor={C.accent}
             confidence={(confidence??{})[f.id]}
             locked={!!(confLocked??{})[f.id]}
-            onResetLock={()=>onConfLock?.(f.id, false)} />
+            onUnlock={()=>handleUnlock(f.id)}
+            onSave={()=>handleSave(f, f.id)}
+            onCancel={()=>handleCancel(f.id)} />
         ))}
       </div>
     </div>
@@ -2686,6 +2739,7 @@ function AppMain() {
   const [keyDraft,       setKeyDraft]       = useState("");
   const [confirmSignOut,   setConfirmSignOut]  = useState(false);
   const [companyConfLocked,setCompanyConfLocked]= useState<Record<string,boolean>>({});
+  const [pendingNav,     setPendingNav]     = useState<(()=>void)|null>(null);
   const loadingRef = useRef(false);
   const [toasts,         setToasts]         = useState<Toast[]>([]);
 
@@ -2881,6 +2935,11 @@ Raw JSON only.`, "", 1400);
     setIcps(p => p.map(i=>i.id===updated.id?updated:i));
   }, []);
 
+  const guardedNav = (action: ()=>void) => {
+    const dirty = Object.values(companyConfLocked).some(v => v === false);
+    if (dirty) { setPendingNav(() => action); } else { action(); }
+  };
+
   const navItems = currentRole === "client"
     ? [{ id:"outputs", label:"Campaign Outputs", sub:`${icpsWithOutputs} of ${icps.length} ready` }]
     : [
@@ -2963,7 +3022,7 @@ Raw JSON only.`, "", 1400);
                     {wsNavItems.map(n => {
                       const on = view === n.id;
                       return (
-                        <button key={n.id} onClick={()=>setView(n.id)}
+                        <button key={n.id} onClick={()=>guardedNav(()=>setView(n.id))}
                           style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 10px",
                             borderRadius:8, border:`1px solid ${on?C.accentBorder:"transparent"}`,
                             background:on?C.accentLo:"transparent",
@@ -3111,7 +3170,7 @@ Raw JSON only.`, "", 1400);
               {/* Client Accounts nav */}
               {currentRole === "team" && (
                 <div style={{ marginTop:8 }}>
-                  <button onClick={()=>{ setActiveWorkspace(null); setView("accounts"); }}
+                  <button onClick={()=>guardedNav(()=>{ setActiveWorkspace(null); setView("accounts"); })}
                     style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 10px",
                       borderRadius:8, border:`1px solid ${view==="accounts"&&!activeWorkspace?C.accentBorder:"transparent"}`,
                       background:view==="accounts"&&!activeWorkspace?C.accentLo:"transparent",
@@ -3665,6 +3724,40 @@ Raw JSON only.`, "", 1400);
           addToast={addToast} updateToast={updateToast} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} />}
+      {pendingNav && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:50000,
+          display:"flex", alignItems:"center", justifyContent:"center",
+          backdropFilter:"blur(4px)" }}>
+          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            boxShadow:"0 24px 64px rgba(13,15,26,0.22)", padding:"28px 32px", maxWidth:400, width:"100%",
+            animation:"slideUp .2s ease" }}>
+            <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:head, marginBottom:8 }}>Unsaved changes</div>
+            <div style={{ fontSize:13, color:C.textSoft, fontFamily:body, marginBottom:24, lineHeight:1.6 }}>
+              You have fields that are being edited. Save them before leaving or your AI confidence scores won't be updated.
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <button onClick={()=>{
+                setCompanyConfLocked(p=>Object.fromEntries(Object.entries(p).map(([k])=>[k,true])));
+                pendingNav(); setPendingNav(null);
+              }} style={{ padding:"10px 16px", borderRadius:8, border:"none", background:C.accent, color:"#fff",
+                fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer",
+                boxShadow:`0 2px 12px ${C.accent}40` }}>
+                Save all & continue
+              </button>
+              <button onClick={()=>{ pendingNav(); setPendingNav(null); }}
+                style={{ padding:"10px 16px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent",
+                  color:C.muted, fontSize:13, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                Leave without saving
+              </button>
+              <button onClick={()=>setPendingNav(null)}
+                style={{ padding:"10px 16px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent",
+                  color:C.muted, fontSize:13, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                Stay on page
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ToastStack toasts={toasts} onRemove={removeToast} />
     </>
   );
