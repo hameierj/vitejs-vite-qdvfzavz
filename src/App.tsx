@@ -754,7 +754,7 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
         clearTimeout(timerRef.current[id]);
         timerRef.current[id] = setTimeout(() => {
           scoreWithAI(f, v).then(score => setLocalConf((p: any) => ({ ...p, [id]: score })));
-        }, 1200);
+        }, 3000);
       }
     }
     setData((p: any) => ({ ...p, [id]: v }));
@@ -1016,7 +1016,7 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
         clearTimeout(timerRef.current[id]);
         timerRef.current[id] = setTimeout(() => {
           scoreWithAI(f, v).then(score => onConfChange?.(id, score));
-        }, 1200);
+        }, 3000);
       }
     }
   };
