@@ -157,6 +157,16 @@ function fileToBase64(file) {
   });
 }
 
+function scoreManual(f: any, v: any): number {
+  if (!fieldFilled(f, v)) return 0;
+  if (f.type === "select" || f.type === "chips") return 90;
+  const str = Array.isArray(v) ? v.join(" ") : String(v ?? "");
+  const words = str.trim().split(/\s+/).filter(Boolean).length;
+  if (words <= 1) return 60;
+  if (words <= 5) return 78;
+  return 90;
+}
+
 function newICP(idx, data = {}, name = "", confidence = {}) {
   return { id:uid(), color:ICP_COLORS[idx%ICP_COLORS.length], name, data, outputs:null,
            approval:"draft", sectionApprovals:{}, comments:[], confidence };
@@ -701,31 +711,35 @@ function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
 
 // ─── ICP EDITOR MODAL ─────────────────────────────────────────────────────────
 function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast }) {
-  const [data,     setData]    = useState({ ...icp.data });
-  const [secTab,   setSecTab]  = useState("targeting");
-  const [outTab,   setOutTab]  = useState("icp_summary");
-  const [panel,    setPanel]   = useState("form");
-  const [aiOn,     setAiOn]    = useState(null);
-  const [genState, setGenState]= useState(null);
-  const [copied,   setCopied]  = useState(null);
-  const [newNote,  setNewNote] = useState("");
-  const [noteAuth, setNoteAuth]= useState("");
+  const [data,      setData]     = useState({ ...icp.data });
+  const [localConf, setLocalConf]= useState<any>({ ...(icp.confidence ?? {}) });
+  const [secTab,    setSecTab]   = useState("targeting");
+  const [outTab,    setOutTab]   = useState("icp_summary");
+  const [panel,     setPanel]    = useState("form");
+  const [aiOn,      setAiOn]     = useState(null);
+  const [genState,  setGenState] = useState(null);
+  const [copied,    setCopied]   = useState(null);
+  const [newNote,   setNewNote]  = useState("");
+  const [noteAuth,  setNoteAuth] = useState("");
 
   useEffect(() => {
     const autoName = (data.buyer && data.industries)
       ? `${data.industries.split(",")[0].trim()} — ${data.buyer.split(",")[0].trim()}`
       : icp.name;
-    onUpdate({ ...icp, data, name: autoName || icp.name });
-  }, [data]); // eslint-disable-line
+    onUpdate({ ...icp, data, name: autoName || icp.name, confidence: localConf });
+  }, [data, localConf]); // eslint-disable-line
 
-  const upd = (id, v) => setData(p => ({ ...p, [id]:v }));
+  const upd = (id: string, v: any, f?: any) => {
+    if (f !== undefined) setLocalConf((p: any) => ({ ...p, [id]: scoreManual(f, v) }));
+    setData((p: any) => ({ ...p, [id]: v }));
+  };
 
   const handleAIFill = async (f, instructions) => {
     setAiOn(f.id);
     const extra = instructions ? `\nExtra instructions: ${instructions}` : "";
     const v = await callAI(
       `Fill this ICP field.\nCompany: ${JSON.stringify(companyData)}\nICP so far: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}\nReturn ONLY the answer. 1–3 sentences max.`, "", 200);
-    upd(f.id, v.trim()); setAiOn(null);
+    upd(f.id, v.trim(), f); setAiOn(null);
   };
 
   const generateAll = async () => {
@@ -873,9 +887,9 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
                   <span style={{ fontSize:11, color:C.muted, fontFamily:mono }}>{secFill}/{sec.fields.length} filled</span>
                 </div>
                 {sec.fields.map(f => (
-                  <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
+                  <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v,f)}
                     onAI={handleAIFill} aiOn={aiOn} accentColor={icp.color}
-                    confidence={(icp.confidence??{})[f.id]} />
+                    confidence={localConf[f.id]} />
                 ))}
               </div>
             )}
@@ -959,22 +973,25 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
 }
 
 // ─── COMPANY PANEL ────────────────────────────────────────────────────────────
-function CompanyPanel({ data, confidence, onChange }) {
+function CompanyPanel({ data, confidence, onChange, onConfChange }) {
   const [aiOn, setAiOn] = useState(null);
-  const upd = (id, v) => onChange({ ...data, [id]:v });
+  const upd = (id, v, f?) => {
+    onChange({ ...data, [id]:v });
+    if (onConfChange && f !== undefined) onConfChange(id, scoreManual(f, v));
+  };
   const filled = COMPANY_FIELDS.filter(f=>fieldFilled(f,data[f.id])).length;
   const pct    = Math.round(filled/COMPANY_FIELDS.length*100);
   const handleAI = async (f, instructions) => {
     setAiOn(f.id);
     const extra = instructions ? `\nExtra instructions: ${instructions}` : "";
     const v = await callAI(`Fill this company field.\nContext: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}\nReturn ONLY the answer.`,"",180);
-    upd(f.id, v.trim()); setAiOn(null);
+    upd(f.id, v.trim(), f); setAiOn(null);
   };
   return (
     <div>
       <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
         {COMPANY_FIELDS.map(f => (
-          <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
+          <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v,f)}
             onAI={handleAI} aiOn={aiOn} accentColor={C.accent}
             confidence={(confidence??{})[f.id]} />
         ))}
@@ -3176,7 +3193,8 @@ Raw JSON only.`, "", 1400);
                     <span style={{ fontSize:11, color:companyPct===100?C.green:C.muted, fontFamily:mono, fontWeight:600, flexShrink:0 }}>{companyPct}% complete</span>
                   </div>
                 </div>
-                <CompanyPanel data={companyData} confidence={companyConf} onChange={setCompanyData} />
+                <CompanyPanel data={companyData} confidence={companyConf} onChange={setCompanyData}
+                  onConfChange={(id, score) => setCompanyConf((p:any) => ({ ...p, [id]: score }))} />
                 <div style={{ marginTop:28, padding:"16px 20px", borderRadius:10, background:C.canvas,
                   border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                   <span style={{ fontSize:13, color:C.textSoft, fontFamily:body }}>Ready to define your target profiles?</span>
