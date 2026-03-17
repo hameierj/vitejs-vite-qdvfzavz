@@ -2622,6 +2622,7 @@ function AppMain() {
   const [apiKey,         setApiKey]         = useState(() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } });
   const [showKeyInput,   setShowKeyInput]   = useState(false);
   const [keyDraft,       setKeyDraft]       = useState("");
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   const loadingRef = useRef(false);
   const [toasts,         setToasts]         = useState<Toast[]>([]);
 
@@ -2993,34 +2994,54 @@ Raw JSON only.`, "", 1400);
               </div>
 
               {/* User info */}
-              <div style={{ marginTop:8, padding:"6px 8px", borderRadius:9,
-                background:C.faint, border:`1px solid ${C.border}`,
-                display:"flex", alignItems:"center", gap:8 }}>
-                {/* Avatar */}
-                <div style={{ width:34, height:34, borderRadius:9, flexShrink:0,
-                  background:avatarColor(loggedInUser.name),
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:11, fontWeight:800, color:"#fff", fontFamily:mono, letterSpacing:.5 }}>
-                  {loggedInUser.name.split(" ").map((w:string)=>w[0]).join("").slice(0,2).toUpperCase()}
+              {confirmSignOut ? (
+                <div style={{ marginTop:8, padding:"10px 12px", borderRadius:9,
+                  background:C.redLo, border:`1px solid ${C.red}44`,
+                  display:"flex", alignItems:"center", gap:8, animation:"fadeIn .15s ease" }}>
+                  <span style={{ flex:1, fontSize:11.5, color:C.text, fontFamily:head, fontWeight:600 }}>Sign out?</span>
+                  <button onClick={handleUserSignOut}
+                    style={{ padding:"4px 10px", borderRadius:6, border:"none",
+                      background:C.red, color:"#fff", fontSize:11, fontFamily:head,
+                      fontWeight:700, cursor:"pointer" }}>
+                    Yes
+                  </button>
+                  <button onClick={()=>setConfirmSignOut(false)}
+                    style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${C.border}`,
+                      background:"transparent", color:C.muted, fontSize:11, fontFamily:head,
+                      fontWeight:600, cursor:"pointer" }}>
+                    Cancel
+                  </button>
                 </div>
-                {/* Name + email */}
-                <div style={{ minWidth:0, flex:1, textAlign:"left" }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:C.text, fontFamily:head, lineHeight:1.2,
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.name}</div>
-                  <div style={{ fontSize:10, color:C.muted, fontFamily:mono, lineHeight:1.2,
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.email}</div>
-                </div>
-                {/* Sign out */}
-                <button onClick={handleUserSignOut} title="Sign out"
-                  style={{ width:28, height:28, borderRadius:7, border:`1px solid ${C.border}`,
-                    background:"transparent", color:C.muted, fontSize:13, cursor:"pointer",
+              ) : (
+                <div style={{ marginTop:8, padding:"6px 8px", borderRadius:9,
+                  background:C.faint, border:`1px solid ${C.border}`,
+                  display:"flex", alignItems:"center", gap:8 }}>
+                  {/* Avatar */}
+                  <div style={{ width:34, height:34, borderRadius:9, flexShrink:0,
+                    background:avatarColor(loggedInUser.name),
                     display:"flex", alignItems:"center", justifyContent:"center",
-                    flexShrink:0, transition:"all .15s" }}
-                  onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.color=C.red; (e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"55"; (e.currentTarget as HTMLButtonElement).style.background=C.red+"11"; }}
-                  onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.color=C.muted; (e.currentTarget as HTMLButtonElement).style.borderColor=C.border; (e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                  ⏻
-                </button>
-              </div>
+                    fontSize:11, fontWeight:800, color:"#fff", fontFamily:mono, letterSpacing:.5 }}>
+                    {loggedInUser.name.split(" ").map((w:string)=>w[0]).join("").slice(0,2).toUpperCase()}
+                  </div>
+                  {/* Name + email */}
+                  <div style={{ minWidth:0, flex:1, textAlign:"left" }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.text, fontFamily:head, lineHeight:1.2,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.name}</div>
+                    <div style={{ fontSize:10, color:C.muted, fontFamily:mono, lineHeight:1.2,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.email}</div>
+                  </div>
+                  {/* Sign out */}
+                  <button onClick={()=>setConfirmSignOut(true)} title="Sign out"
+                    style={{ width:28, height:28, borderRadius:7, border:`1px solid ${C.border}`,
+                      background:"transparent", color:C.muted, fontSize:13, cursor:"pointer",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      flexShrink:0, transition:"all .15s" }}
+                    onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.color=C.red; (e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"55"; (e.currentTarget as HTMLButtonElement).style.background=C.red+"11"; }}
+                    onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.color=C.muted; (e.currentTarget as HTMLButtonElement).style.borderColor=C.border; (e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                    ⏻
+                  </button>
+                </div>
+              )}
 
               {/* Client Accounts nav */}
               {currentRole === "team" && (
