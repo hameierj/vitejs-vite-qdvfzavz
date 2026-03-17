@@ -3161,11 +3161,6 @@ Raw JSON only.`, "", 1400);
               <div style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head }}>
                 {activeWorkspace.name}
               </div>
-              {activeWorkspace.industry && (
-                <div style={{ fontSize:12, color:C.muted, fontFamily:mono, marginTop:4 }}>
-                  {activeWorkspace.industry}
-                </div>
-              )}
             </div>
 
             {view==="company" && (
