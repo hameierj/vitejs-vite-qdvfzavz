@@ -183,8 +183,10 @@ async function callGemini(prompt: string, tokens = 1000): Promise<string> {
     }
   );
   const j = await r.json();
+  console.log("Gemini raw response:", j);
   if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
-  return j.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  if (!j.candidates?.length) throw new Error(`Gemini returned no candidates. Full response: ${JSON.stringify(j).slice(0,300)}`);
+  return j.candidates[0]?.content?.parts?.[0]?.text ?? "";
 }
 
 function fileToBase64(file) {
@@ -1284,12 +1286,25 @@ SUBJECT LINE VARIANTS
 5.`;
 
     try {
-      // Phase 1: All 3 draft independently
-      const [claudeEmails, gptEmails, geminiEmails] = await Promise.all([
+      // Phase 1: All 3 draft independently — use allSettled to get per-model errors
+      const p1 = await Promise.allSettled([
         callAI(emailPrompt("Claude"), "", 1100),
         callOpenAI(emailPrompt("GPT-4o"), "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.", 1100),
         callGemini(emailPrompt("Gemini"), 1100),
       ]);
+      const p1Errors = [
+        p1[0].status==="rejected" && `Claude: ${(p1[0] as PromiseRejectedResult).reason?.message}`,
+        p1[1].status==="rejected" && `GPT-4o: ${(p1[1] as PromiseRejectedResult).reason?.message}`,
+        p1[2].status==="rejected" && `Gemini: ${(p1[2] as PromiseRejectedResult).reason?.message}`,
+      ].filter(Boolean);
+      if (p1Errors.length) {
+        console.error("AI Council phase 1 errors:", p1Errors, p1);
+        throw new Error(`Draft phase failed —\n${p1Errors.join("\n")}`);
+      }
+      const claudeEmails = (p1[0] as PromiseFulfilledResult<string>).value;
+      const gptEmails    = (p1[1] as PromiseFulfilledResult<string>).value;
+      const geminiEmails = (p1[2] as PromiseFulfilledResult<string>).value;
+      console.log("AI Council phase 1 complete", { claudeEmails: claudeEmails.slice(0,100), gptEmails: gptEmails.slice(0,100), geminiEmails: geminiEmails.slice(0,100) });
 
       setCouncilState({ status:"running", phase:"Models reviewing each other's drafts…" });
 
@@ -1320,11 +1335,23 @@ Write a structured critique:
 
 Be specific. Quote actual lines. Justify every choice.`;
 
-      const [claudeCritique, gptCritique, geminiCritique] = await Promise.all([
+      const p2 = await Promise.allSettled([
         callAI(critiquePrompt("Claude", claudeEmails, gptEmails, "GPT-4o", geminiEmails, "Gemini"), "", 1400),
         callOpenAI(critiquePrompt("GPT-4o", gptEmails, claudeEmails, "Claude", geminiEmails, "Gemini"), "You are a senior B2B cold outreach strategist.", 1400),
         callGemini(critiquePrompt("Gemini", geminiEmails, claudeEmails, "Claude", gptEmails, "GPT-4o"), 1400),
       ]);
+      const p2Errors = [
+        p2[0].status==="rejected" && `Claude: ${(p2[0] as PromiseRejectedResult).reason?.message}`,
+        p2[1].status==="rejected" && `GPT-4o: ${(p2[1] as PromiseRejectedResult).reason?.message}`,
+        p2[2].status==="rejected" && `Gemini: ${(p2[2] as PromiseRejectedResult).reason?.message}`,
+      ].filter(Boolean);
+      if (p2Errors.length) {
+        console.error("AI Council phase 2 errors:", p2Errors, p2);
+        throw new Error(`Critique phase failed —\n${p2Errors.join("\n")}`);
+      }
+      const claudeCritique = (p2[0] as PromiseFulfilledResult<string>).value;
+      const gptCritique    = (p2[1] as PromiseFulfilledResult<string>).value;
+      const geminiCritique = (p2[2] as PromiseFulfilledResult<string>).value;
 
       setCouncilState({ status:"running", phase:"Synthesizing consensus campaign…" });
 
@@ -1404,7 +1431,8 @@ In 3–4 sentences: what you took from each model and why. Name specific lines o
       setCouncilState({ status:"idle", phase:"" });
     } catch (e: any) {
       setCouncilState({ status:"idle", phase:"" });
-      alert(`AI Council failed: ${e.message || "Unknown error"}. Check your API keys.`);
+      console.error("AI Council failed:", e);
+      alert(`AI Council failed:\n\n${e.message || "Unknown error"}\n\nCheck the browser console (F12 → Console) for details.`);
     }
   };
 
@@ -3790,9 +3818,9 @@ Raw JSON only.`, "", 1400);
                     ].map(k => (
                       <div key={k.label}>
                         <div style={{ fontSize:9, color:C.muted, fontFamily:mono, marginBottom:3 }}>{k.label}</div>
-                        <input type="password" defaultValue={k.val}
-                          onBlur={e=>k.set(e.target.value)}
-                          onKeyDown={e=>{ if(e.key==="Enter"){ k.set((e.target as HTMLInputElement).value); } }}
+                        <input type="password" value={k.val}
+                          onChange={e=>k.set(e.target.value)}
+                          onKeyDown={e=>{ if(e.key==="Enter") setShowKeyInput(false); }}
                           placeholder={k.ph}
                           style={{ width:"100%", padding:"5px 7px", borderRadius:5, border:`1px solid ${C.border}`,
                             background:C.canvas, color:C.text, fontFamily:mono, fontSize:10, boxSizing:"border-box" as const }} />
