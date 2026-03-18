@@ -490,6 +490,18 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
               {aiIcon}
             </div>
           )}
+          {f.type==="textarea" && !locked && (
+            <div style={{ position:"absolute", bottom:5, right:5, pointerEvents:"none", zIndex:5, opacity:.45 }}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <circle cx="14" cy="4"  r="1.6" fill={C.muted}/>
+                <circle cx="9"  cy="9"  r="1.6" fill={C.muted}/>
+                <circle cx="14" cy="9"  r="1.6" fill={C.muted}/>
+                <circle cx="4"  cy="14" r="1.6" fill={C.muted}/>
+                <circle cx="9"  cy="14" r="1.6" fill={C.muted}/>
+                <circle cx="14" cy="14" r="1.6" fill={C.muted}/>
+              </svg>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -105,3 +105,10 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+textarea::-webkit-resizer {
+  background-color: transparent;
+  background-image: none;
+  width: 20px;
+  height: 20px;
+}
