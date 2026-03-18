@@ -753,6 +753,76 @@ function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
   );
 }
 
+// ─── INTELLIGENCE PANEL ───────────────────────────────────────────────────────
+function IntelligencePanel({ result, date, onClose }: { result:string; date:string; onClose:()=>void }) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Simple section parser: split on ## headers
+  const sections = result.split(/\n(?=## )/).map(block => {
+    const lines = block.trim().split("\n");
+    const header = lines[0].replace(/^##\s*/, "").trim();
+    const body   = lines.slice(1).join("\n").trim();
+    return { header, body };
+  });
+
+  const sectionColors: Record<string, { color:string; bg:string; border:string }> = {
+    "CRITICAL GAPS":           { color:C.red,   bg:C.redLo,   border:`${C.red}33`   },
+    "FIELD IMPROVEMENTS":      { color:C.amber, bg:C.amberLo, border:C.amberBorder  },
+    "MISSING DATA THAT MATTERS":{ color:C.blue, bg:C.blueLo,  border:C.blueBorder   },
+    "CROSS-REFERENCE FINDINGS":{ color:C.accent,bg:C.accentLo,border:C.accentBorder },
+    "PRIORITY ACTION LIST":    { color:C.green, bg:C.greenLo, border:C.greenBorder  },
+  };
+
+  const cfg = (h: string) => sectionColors[h.toUpperCase()] ?? { color:C.muted, bg:C.faint, border:C.border };
+
+  return (
+    <div style={{ borderRadius:10, border:`1px solid ${C.accentBorder}`, background:C.accentLo,
+      marginBottom:24, overflow:"hidden", animation:"fadeIn .3s ease" }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 16px",
+        background:`${C.accent}12`, borderBottom:`1px solid ${C.accentBorder}` }}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="6" stroke={C.accent} strokeWidth="1.4"/>
+          <path d="M7 4v3.5l2 1.5" stroke={C.accent} strokeWidth="1.4" strokeLinecap="round"/>
+        </svg>
+        <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.5 }}>
+          CAMPAIGN INTELLIGENCE REPORT
+        </span>
+        {date && <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>· {date}</span>}
+        <div style={{ flex:1 }} />
+        <button onClick={()=>setCollapsed(p=>!p)} style={{ fontSize:10, color:C.muted, background:"transparent",
+          border:"none", cursor:"pointer", fontFamily:mono, padding:"2px 6px" }}>
+          {collapsed ? "▾ Show" : "▴ Collapse"}
+        </button>
+        <button onClick={onClose} style={{ fontSize:10, color:C.muted, background:"transparent",
+          border:"none", cursor:"pointer", fontFamily:mono }}>✕</button>
+      </div>
+
+      {!collapsed && (
+        <div style={{ padding:"16px", display:"flex", flexDirection:"column", gap:14 }}>
+          {sections.length > 1 ? sections.map((s, i) => {
+            const { color, bg, border } = cfg(s.header);
+            return (
+              <div key={i} style={{ borderRadius:8, border:`1px solid ${border}`, background:bg, overflow:"hidden" }}>
+                <div style={{ padding:"7px 12px", borderBottom:`1px solid ${border}`,
+                  display:"flex", alignItems:"center", gap:6 }}>
+                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:800, color, letterSpacing:.6 }}>{s.header}</span>
+                </div>
+                <div style={{ padding:"10px 12px", fontSize:12.5, color:C.textSoft, lineHeight:1.85,
+                  fontFamily:body, whiteSpace:"pre-wrap" }}>{s.body}</div>
+              </div>
+            );
+          }) : (
+            <div style={{ fontSize:12.5, color:C.textSoft, lineHeight:1.85, fontFamily:body, whiteSpace:"pre-wrap" }}>
+              {result}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ICP EDITOR MODAL ─────────────────────────────────────────────────────────
 function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast }) {
   const [data,           setData]          = useState({ ...icp.data });
@@ -770,6 +840,7 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   const [noteAuth,       setNoteAuth]      = useState("");
   const [confirmClose,   setConfirmClose]  = useState(false);
   const [emailScoring,   setEmailScoring]  = useState<"idle"|"running">("idle");
+  const [intelligence,   setIntelligence]  = useState<{ status:"idle"|"running"|"done"; result:string; phase:string }>({ status:"idle", result:"", phase:"" });
   const origRef = useRef<Record<string,any>>({});
 
   useEffect(() => {
@@ -901,6 +972,106 @@ Scoring guide:
         onUpdate({ ...icp, data, emailScores: withTotals });
       }
     } catch { /* best-effort */ } finally { setEmailScoring("idle"); }
+  };
+
+  const runDeepAnalysis = async () => {
+    if (intelligence.status === "running") return;
+    setIntelligence({ status:"running", result:"", phase:"Reading company & ICP data…" });
+
+    // Build a labeled field dump — skip empty values
+    const coFields = COMPANY_FIELDS.map(f => {
+      const v = companyData?.[f.id];
+      if (!v || (Array.isArray(v) && v.length === 0)) return null;
+      const display = Array.isArray(v) ? v.join(", ") : String(v);
+      return `${f.label}: ${display}`;
+    }).filter(Boolean).join("\n");
+
+    const icpFields = ALL_ICP_FIELDS.map(f => {
+      const v = data[f.id];
+      if (!v || (Array.isArray(v) && v.length === 0)) return null;
+      const display = Array.isArray(v) ? v.join(", ") : String(v);
+      return `${f.label}: ${display}`;
+    }).filter(Boolean).join("\n");
+
+    const missingCompany = COMPANY_FIELDS.filter(f => {
+      const v = companyData?.[f.id];
+      return !v || (Array.isArray(v) && v.length === 0) || String(v).trim() === "";
+    }).map(f => f.label);
+
+    const missingICP = ALL_ICP_FIELDS.filter(f => {
+      const v = data[f.id];
+      return !v || (Array.isArray(v) && v.length === 0) || String(v).trim() === "";
+    }).map(f => f.label);
+
+    const scoreSection = icp.emailScores
+      ? (icp.emailScores as any[]).map((s, i) =>
+          `Email ${i+1}: ${s.total}/10 — Opening ${s.opening}/2, Pain ${s.pain}/2, Tone ${s.tone}/2, Credibility ${s.credibility}/2, CTA ${s.cta}/2\nVerdict: ${s.verdict||"—"}`
+        ).join("\n\n")
+      : "No scores yet — generate outputs first.";
+
+    try {
+      setTimeout(() => setIntelligence(p => p.status==="running" ? { ...p, phase:"Cross-referencing fields against email scores…" } : p), 3000);
+      setTimeout(() => setIntelligence(p => p.status==="running" ? { ...p, phase:"Identifying high-impact gaps…" } : p), 7000);
+      setTimeout(() => setIntelligence(p => p.status==="running" ? { ...p, phase:"Writing prescriptions…" } : p), 12000);
+
+      const result = await callAI(
+        `You are a senior GTM strategist conducting a deep campaign intelligence audit.
+
+Your job: analyze every piece of intake data and the email engagement scores, then write a precise, actionable report that tells this CSM exactly what to fix, in which fields, and why — with concrete rewrite examples.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMPANY PROFILE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${coFields || "(empty)"}
+
+Missing company fields: ${missingCompany.length > 0 ? missingCompany.join(", ") : "none"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ICP PROFILE — ${icp.name}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${icpFields || "(empty)"}
+
+Missing ICP fields: ${missingICP.length > 0 ? missingICP.join(", ") : "none"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EMAIL ENGAGEMENT SCORES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${scoreSection}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EMAIL COPY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${icp.outputs?.email_copy?.slice(0, 2500) || "(not generated yet)"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Write a Campaign Intelligence Report using EXACTLY this structure (use these headers verbatim):
+
+## CRITICAL GAPS
+For each dimension scoring below 1.5/2 average across emails: identify the root cause in the intake data, quote the exact weak field content (in quotes), explain why it's producing low scores, and give a specific rewrite for that field.
+
+## FIELD IMPROVEMENTS
+For fields that are filled but could be sharper — quote what's there and give a concrete upgrade. Focus on fields that directly feed email quality: pain1, hook, icp_proof, co_proof, co_diff, triggers.
+
+## MISSING DATA THAT MATTERS
+List specific missing fields and explain exactly what intelligence each one unlocks. Don't list fields that wouldn't materially change the emails. For each, give an example of the kind of content that would help.
+
+## CROSS-REFERENCE FINDINGS
+Note any mismatches: e.g., pain1 mentions X but emails don't use it, or co_proof exists but wasn't reflected in email credibility. These are quick wins.
+
+## PRIORITY ACTION LIST
+Numbered list of the top 6 actions, most impactful first. Each action: field name → what to change → expected score improvement.
+
+Be surgical. Quote actual content. Give real rewrite examples, not generic advice.`,
+        "You are a senior GTM strategist. Be specific, analytical, and direct. Use plain text formatting.",
+        2200
+      );
+
+      setIntelligence({ status:"done", result, phase:"" });
+      onUpdate({ ...icp, data, intelligence: result, intelligenceDate: new Date().toLocaleDateString() });
+    } catch {
+      setIntelligence({ status:"idle", result:"Analysis failed. Check your API key.", phase:"" });
+    }
   };
 
   const approveSection = tabId => {
@@ -1083,6 +1254,26 @@ Scoring guide:
                       ✦ Rescore
                     </button>
                   )}
+                  {outTab==="email_copy" && icp.outputs.email_copy && intelligence.status!=="running" && (
+                    <button onClick={runDeepAnalysis} style={{ padding:"5px 13px", borderRadius:6,
+                      border:`1px solid ${C.accentBorder}`, background:C.accentLo,
+                      color:C.accent, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700,
+                      display:"flex", alignItems:"center", gap:5 }}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.2"/>
+                        <path d="M5 3v2.5l1.5 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                      </svg>
+                      {intelligence.status==="done" ? "Re-analyze" : "Campaign Intelligence"}
+                    </button>
+                  )}
+                  {outTab==="email_copy" && intelligence.status==="running" && (
+                    <span style={{ fontSize:10, color:C.accent, fontFamily:mono, display:"flex", alignItems:"center", gap:5 }}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" style={{ animation:"spin 1s linear infinite" }}>
+                        <circle cx="5" cy="5" r="4" stroke={C.accent} strokeWidth="1.5" strokeDasharray="12 6" fill="none"/>
+                      </svg>
+                      {intelligence.phase || "Analyzing…"}
+                    </span>
+                  )}
                   {secApproved
                     ? <span style={{ fontSize:10, color:C.green, background:C.greenLo, border:`1px solid ${C.greenBorder}`, padding:"3px 9px", borderRadius:5, fontFamily:mono, fontWeight:700 }}>✓ Approved</span>
                     : <button onClick={()=>approveSection(outTab)} style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve Section</button>
@@ -1141,6 +1332,13 @@ Scoring guide:
                       );
                     })}
                   </div>
+                )}
+                {outTab==="email_copy" && (intelligence.status==="done" || icp.intelligence) && (
+                  <IntelligencePanel
+                    result={intelligence.status==="done" ? intelligence.result : (icp.intelligence||"")}
+                    date={intelligence.status==="done" ? new Date().toLocaleDateString() : (icp.intelligenceDate||"")}
+                    onClose={()=>setIntelligence({ status:"idle", result:"", phase:"" })}
+                  />
                 )}
                 <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
                   {icp.outputs[outTab]}
@@ -3105,6 +3303,7 @@ Raw JSON only.`, "", 1400);
         @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
         @keyframes aiSpark{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes aiSheen{0%{left:-60%;opacity:0}10%{opacity:1}40%{left:130%;opacity:0}100%{left:130%;opacity:0}}
         @keyframes qsBolt{0%,100%{transform:translateY(0) scale(1)}40%{transform:translateY(-3px) scale(1.15)}60%{transform:translateY(1px) scale(0.95)}}
         ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
