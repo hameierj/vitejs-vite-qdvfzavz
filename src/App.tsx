@@ -1035,44 +1035,31 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
       const newOutputs = { icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4 };
       onUpdate({ ...icp, data, outputs:newOutputs });
       setGenState("done"); setPanel("outputs"); setOutTab("email_copy");
-      if (toastId) updateToast?.(toastId, { status:"success", title:`Outputs ready: ${icp.name}`, message:undefined,
-        action:{ label:"View outputs", onClick:()=>{ setPanel("outputs"); setOutTab("email_copy"); } } });
-      // Score emails in background
-      setEmailScoring("running");
+      if (toastId) updateToast?.(toastId, { status:"loading", title:`Refining emails to 10/10…`, message:"Grading initial draft…" });
+
+      // Refine email copy to 10/10 automatically
+      setCouncilState({ status:"running", phase:"Grading initial draft…" });
       try {
-        const scoreRaw = await callAI(
-          `Score these 3 cold outreach emails on 5 dimensions (0–2 each, 10 total).
-ICP context: ${data.buyer||""} in ${data.industries||""}, tone: ${data.tone||"direct"}, CTA: ${data.cta||"15-min call"}
-
-Emails:
-${s4.slice(0, 3000)}
-
-Return ONLY a JSON array of exactly 3 objects — one per email in order:
-[
-  {"opening":0-2,"pain":0-2,"tone":0-2,"credibility":0-2,"cta":0-2,"verdict":"one specific improvement note"},
-  ...
-]
-
-Scoring guide:
-- opening (0-2): 0=generic/predictable, 1=relevant but safe, 2=specific hook that creates curiosity
-- pain (0-2): 0=vague/generic, 1=recognizable pain, 2=precise visceral pain this persona feels daily
-- tone (0-2): 0=salesy/formal, 1=conversational, 2=peer-level authentic voice
-- credibility (0-2): 0=no proof, 1=vague claim, 2=specific metric/client/outcome
-- cta (0-2): 0=high commitment ask, 1=ok ask, 2=single frictionless low-commitment ask`, "", 500);
-        const jsonMatch = scoreRaw.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          const scores = JSON.parse(jsonMatch[0]);
-          const withTotals = scores.slice(0, 3).map((s: any) => ({
-            opening: s.opening ?? 0, pain: s.pain ?? 0, tone: s.tone ?? 0,
-            credibility: s.credibility ?? 0, cta: s.cta ?? 0,
-            verdict: s.verdict ?? "",
-            total: (s.opening??0)+(s.pain??0)+(s.tone??0)+(s.credibility??0)+(s.cta??0)
-          }));
-          onUpdate({ ...icp, data, outputs: newOutputs, emailScores: withTotals });
-        }
-      } catch { /* scoring is best-effort */ } finally { setEmailScoring("idle"); }
+        const council = await runRefinementLoop(s4, phase => {
+          setCouncilState({ status:"running", phase });
+          if (toastId) updateToast?.(toastId, { status:"loading", title:`Refining emails to 10/10…`, message:phase });
+        });
+        onUpdate({ ...icp, data, outputs:newOutputs, aiCouncil:council });
+        setCouncilState({ status:"idle", phase:"" });
+        if (toastId) updateToast?.(toastId, { status:"success",
+          title:`${council.finalScore >= 10 ? "✦ 10/10" : `${council.finalScore}/10`} emails ready: ${icp.name}`,
+          message:`${council.iterations.length} round${council.iterations.length!==1?"s":""}`,
+          action:{ label:"View emails", onClick:()=>{ setPanel("outputs"); setOutTab("email_copy"); } } });
+      } catch (e: any) {
+        setCouncilState({ status:"idle", phase:"" });
+        // Refinement failed — outputs already saved, just show a warning toast
+        if (toastId) updateToast?.(toastId, { status:"success", title:`Outputs ready: ${icp.name}`,
+          message:"Email refinement failed — showing initial draft",
+          action:{ label:"View outputs", onClick:()=>{ setPanel("outputs"); setOutTab("email_copy"); } } });
+      }
     } catch {
       setGenState(null);
+      setCouncilState({ status:"idle", phase:"" });
       if (toastId) updateToast?.(toastId, { status:"error", title:"Generation failed", message:"Check your API key and try again" });
     }
   };
@@ -1211,12 +1198,13 @@ Be surgical. Quote actual content. Give real rewrite examples, not generic advic
     }
   };
 
-  const runAICouncil = async () => {
-    if (councilState.status === "running") return;
-    if (!getApiKey()) { alert("Please enter your Anthropic API key first."); return; }
-
+  // Shared refinement loop — takes an initial draft, iterates until 10/10 or max rounds.
+  // onPhase is called with a human-readable status string each step.
+  const runRefinementLoop = async (
+    initialDraft: string,
+    onPhase: (p: string) => void
+  ): Promise<any> => {
     const MAX_ROUNDS = 6;
-    const iterations: any[] = [];
     const emailFormat = `---
 EMAIL 1 — Initial
 Subject: ...
@@ -1243,134 +1231,95 @@ SUBJECT LINE VARIANTS
 4.
 5.`;
 
-    try {
-      let currentEmails = "";
-      let lastScore = 0;
-      let lastImprovements = "";
+    const iterations: any[] = [];
+    let currentEmails = initialDraft;
+    let lastScore = 0;
+    let lastImprovements = "";
 
-      for (let round = 0; round < MAX_ROUNDS; round++) {
-        // ── Generate / refine ──────────────────────────────────────────────────
-        setCouncilState({ status:"running",
-          phase: round === 0
-            ? "Round 1: Generating initial draft…"
-            : `Round ${round + 1}: Rewriting — targeting 10/10…` });
-
-        const genPrompt = round === 0
-          ? `You are a world-class B2B cold outreach copywriter. Write the best possible 3-email sequence for this ICP. Real emails, ready to send. No brackets, no templates.
-
-ICP: ${data.buyer||""} in ${data.industries||""}
-Tone: ${data.tone||"direct"} | CTA: ${data.cta||"15-min call"}
-Primary pain: ${(data.pain1||"").slice(0,300)}
-Opening hook angle: ${data.hook||"derive from pain"}
-Best proof for this ICP: ${data.icp_proof||companyData?.co_proof||""}
-Differentiator: ${companyData?.co_diff||""}
-Max 100 words per email body. Each email a completely different angle.
-
-${emailFormat}`
-          : `These emails scored ${lastScore}/10. The grader identified these specific problems:
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      // ── Rewrite (skip on round 0 — use initialDraft as-is) ────────────────
+      if (round > 0) {
+        onPhase(`Round ${round + 1}: Rewriting…`);
+        currentEmails = await callAI(
+          `These emails scored ${lastScore}/10. The grader found these problems:
 
 ${lastImprovements}
 
-Fix every issue listed above. Be surgical — rewrite the weak lines directly. Do not change what's working.
+Fix every issue. Be surgical — rewrite only the weak lines. Do not touch what's working.
 
 ICP context: ${data.buyer||""} in ${data.industries||""} | Pain: ${(data.pain1||"").slice(0,200)}
 Proof: ${data.icp_proof||companyData?.co_proof||""} | Differentiator: ${companyData?.co_diff||""}
-Previous emails (for reference only — rewrite, don't copy):
+Previous emails (reference only):
 ${currentEmails.slice(0, 2000)}
 
-${emailFormat}`;
+${emailFormat}`,
+          "You are a world-class B2B cold outreach copywriter. Output only the emails in the exact format requested.", 1200);
+      }
 
-        currentEmails = await callAI(genPrompt,
-          "You are a world-class B2B cold outreach copywriter. Only output the emails in the exact format requested.", 1200);
+      // ── Grade ─────────────────────────────────────────────────────────────
+      onPhase(`Round ${round + 1}: Grading strictly…`);
 
-        // ── Grade ──────────────────────────────────────────────────────────────
-        setCouncilState({ status:"running", phase: `Round ${round + 1}: Grading strictly…` });
-
-        const gradePrompt = `You are a brutally honest B2B email quality judge. Your standard: would an experienced SDR at a top SaaS company send this right now without editing a single word?
+      const gradeRaw = await callAI(
+        `You are a brutally honest B2B email quality judge. Standard: would an experienced SDR send this right now without editing a word?
 
 ICP: ${data.buyer||""} in ${data.industries||""}
-Tone target: ${data.tone||"direct"} | CTA: ${data.cta||"15-min call"}
+Tone: ${data.tone||"direct"} | CTA: ${data.cta||"15-min call"}
 Primary pain: ${(data.pain1||"(not provided)").slice(0,300)}
 Hook angle: ${data.hook||"(not provided)"}
 Best proof: ${data.icp_proof||companyData?.co_proof||"(not provided)"}
 Differentiator: ${companyData?.co_diff||"(not provided)"}
-Fears/what keeps them up: ${data.fears||"(not provided)"}
+Fears: ${data.fears||"(not provided)"}
 
-EMAILS TO GRADE:
+EMAILS:
 ${currentEmails.slice(0, 2500)}
 
-Score each email on 5 dimensions (0–2 each, max 10 per email):
-- opening (0–2): 0=generic/predictable opener that any SDR would write, 1=relevant but safe, 2=specific hook causing genuine curiosity or pattern interruption
-- pain (0–2): 0=vague "you probably struggle with X" generality, 1=recognizable pain, 2=precise visceral pain this exact title feels daily — specific enough to feel personal
-- tone (0–2): 0=salesy/corporate/"I wanted to reach out", 1=conversational, 2=peer-level — one expert addressing another, zero desperation
-- credibility (0–2): 0=no proof or social proof, 1=vague claim like "many companies", 2=specific named client, metric, or concrete outcome
-- cta (0–2): 0=high-friction demand (demo, call, meeting), 1=acceptable, 2=single frictionless low-commitment ask that costs them almost nothing
+Score each email 0–2 per dimension (max 10 per email):
+- opening: 0=generic/predictable, 1=relevant but safe, 2=specific hook creating real curiosity
+- pain: 0=vague "you probably struggle with X", 1=recognizable, 2=precise visceral pain this exact title feels daily
+- tone: 0=salesy/corporate, 1=conversational, 2=peer-level — one expert to another, zero desperation
+- credibility: 0=no proof, 1=vague claim, 2=specific named client/metric/outcome
+- cta: 0=high-friction demand, 1=acceptable, 2=single frictionless low-commitment ask
 
-Return ONLY valid JSON — no other text:
+Return ONLY valid JSON:
 {
-  "e1": {"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
-  "e2": {"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
-  "e3": {"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
-  "campaign_score": N,
-  "is_10": false,
-  "reasoning": "2–3 sentences: what's strong, what still falls short. Be specific — quote the weak lines.",
-  "improvements": "Exact rewrite instructions if not 10/10. Quote each weak phrase and say precisely what to replace it with. Leave blank if 10/10."
+  "e1":{"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
+  "e2":{"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
+  "e3":{"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
+  "campaign_score":N,
+  "is_10":false,
+  "reasoning":"2–3 sentences. What's strong, what still falls short. Quote the weak lines.",
+  "improvements":"If not 10/10: exact rewrite instructions. Quote each weak phrase, say what to replace it with. Omit if 10/10."
 }
 
-campaign_score rules:
-- 10 only if ALL 3 emails would be sent without editing a single word by an experienced SDR
-- is_10 must be true only when campaign_score === 10 AND you can cite specific evidence for every dimension being 2/2
-- Be strict. Most first drafts deserve 6–7. A genuinely great cold email campaign is rare.`;
+campaign_score: 10 only if ALL 3 emails pass the SDR test. is_10 true only with evidence for every 2/2 dimension. Most first drafts score 6–7.`,
+        "You are a strict B2B email grader. Return only valid JSON.", 900);
 
-        const gradeRaw = await callAI(gradePrompt,
-          "You are a strict B2B email grader. Return only valid JSON. No markdown, no explanation outside the JSON.", 900);
+      const jm = gradeRaw.match(/\{[\s\S]*\}/);
+      let g: any = { e1:{}, e2:{}, e3:{}, campaign_score: Math.min(lastScore+2,9), is_10:false,
+        reasoning:"Could not parse grade.", improvements: gradeRaw };
+      if (jm) { try { g = JSON.parse(jm[0]); } catch {} }
 
-        const jsonMatch = gradeRaw.match(/\{[\s\S]*\}/);
-        let gradeData: any = {
-          e1:{}, e2:{}, e3:{},
-          campaign_score: Math.min(lastScore + 2, 9),
-          is_10: false,
-          reasoning: "Could not parse grade.",
-          improvements: gradeRaw,
-        };
-        if (jsonMatch) {
-          try { gradeData = JSON.parse(jsonMatch[0]); } catch {}
-        }
+      const score = typeof g.campaign_score === "number" ? Math.min(10, Math.max(0, g.campaign_score)) : lastScore+1;
+      iterations.push({ round:round+1, emails:currentEmails, score, reasoning:g.reasoning||"",
+        improvements:g.improvements||"", dims:{e1:g.e1,e2:g.e2,e3:g.e3}, is10:!!g.is_10 });
 
-        const score = typeof gradeData.campaign_score === "number"
-          ? Math.min(10, Math.max(0, gradeData.campaign_score)) : lastScore + 1;
-
-        iterations.push({
-          round: round + 1,
-          emails: currentEmails,
-          score,
-          reasoning: gradeData.reasoning || "",
-          improvements: gradeData.improvements || "",
-          dims: { e1: gradeData.e1, e2: gradeData.e2, e3: gradeData.e3 },
-          is10: !!gradeData.is_10,
-        });
-
-        if (gradeData.is_10 || score >= 10) break;
-        lastScore = score;
-        lastImprovements = gradeData.improvements || gradeData.reasoning || "";
-      }
-
-      const final = iterations[iterations.length - 1];
-      onUpdate({ ...icp, data, aiCouncil: {
-        date: new Date().toLocaleDateString(),
-        iterations,
-        synthesis: final.emails,
-        rationale: final.reasoning,
-        finalScore: final.score,
-      }});
-      setCouncilState({ status:"idle", phase:"" });
-
-    } catch (e: any) {
-      setCouncilState({ status:"idle", phase:"" });
-      console.error("Refinement failed:", e);
-      alert(`Refinement failed:\n\n${e.message || "Unknown error"}`);
+      if (g.is_10 || score >= 10) break;
+      lastScore = score;
+      lastImprovements = g.improvements || g.reasoning || "";
     }
+
+    const final = iterations[iterations.length - 1];
+    return {
+      date: new Date().toLocaleDateString(),
+      iterations,
+      synthesis: final.emails,
+      rationale: final.reasoning,
+      finalScore: final.score,
+    };
   };
+
+  // AI Council button handler — reserved for multi-model when GPT-4o + Gemini are available
+  const runAICouncil = async () => { /* disabled — greyed out in UI */ };
 
   const approveSection = tabId => {
     const next = { ...(icp.sectionApprovals||{}), [tabId]:"approved" };
@@ -1542,16 +1491,7 @@ campaign_score rules:
                       </span>
                     );
                   })()}
-                  {outTab==="email_copy" && emailScoring==="running" && (
-                    <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>Scoring…</span>
-                  )}
                   <div style={{ flex:1 }} />
-                  {outTab==="email_copy" && icp.outputs.email_copy && emailScoring!=="running" && (
-                    <button onClick={rescoreEmails} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`,
-                      background:"transparent", color:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
-                      ✦ Rescore
-                    </button>
-                  )}
                   {outTab==="email_copy" && icp.outputs.email_copy && intelligence.status!=="running" && (
                     <button onClick={runDeepAnalysis} style={{ padding:"5px 13px", borderRadius:6,
                       border:`1px solid ${C.accentBorder}`, background:C.accentLo,
@@ -1572,15 +1512,6 @@ campaign_score rules:
                       {intelligence.phase || "Analyzing…"}
                     </span>
                   )}
-                  {outTab==="email_copy" && icp.outputs.email_copy && councilState.status!=="running" && (
-                    <button onClick={runAICouncil} style={{ padding:"5px 13px", borderRadius:6,
-                      border:`2px solid ${C.accent}55`, background:`linear-gradient(135deg, ${C.accent}14, ${C.accentLo})`,
-                      color:C.accent, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:800,
-                      display:"flex", alignItems:"center", gap:5 }}>
-                      <span style={{ fontSize:11 }}>✦</span>
-                      {icp.aiCouncil ? "Re-refine to 10/10" : "Refine to 10/10"}
-                    </button>
-                  )}
                   {outTab==="email_copy" && councilState.status==="running" && (
                     <span style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700,
                       display:"flex", alignItems:"center", gap:5 }}>
@@ -1588,6 +1519,15 @@ campaign_score rules:
                         <circle cx="5" cy="5" r="4" stroke={C.accent} strokeWidth="1.5" strokeDasharray="12 6" fill="none"/>
                       </svg>
                       {councilState.phase}
+                    </span>
+                  )}
+                  {outTab==="email_copy" && councilState.status!=="running" && (
+                    <span title="Coming soon — requires OpenAI (GPT-4o) + Google (Gemini) API keys"
+                      style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${C.border}`,
+                        background:C.faint, color:C.muted, fontSize:10, fontFamily:mono,
+                        fontWeight:700, opacity:.5, cursor:"not-allowed",
+                        display:"flex", alignItems:"center", gap:5 }}>
+                      ◈◉◇ AI Council
                     </span>
                   )}
                   {secApproved
