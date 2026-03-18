@@ -171,7 +171,7 @@ async function callGemini(prompt: string, tokens = 1000): Promise<string> {
   const key = getGeminiKey();
   if (!key) throw new Error("No Gemini API key configured");
   const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
     {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
@@ -826,7 +826,7 @@ function AICouncilPanel({ council, onClose }: { council:any; onClose:()=>void })
             AI COUNCIL — CONSENSUS CAMPAIGN
           </div>
           <div style={{ fontSize:9, color:C.muted, fontFamily:mono }}>
-            Claude × GPT-4o × Gemini · {council.date}
+            Claude × GPT-4o × Gemini 1.5 · {council.date}
           </div>
         </div>
         <div style={{ flex:1 }} />
@@ -3814,7 +3814,7 @@ Raw JSON only.`, "", 1400);
                     {[
                       { label:"Anthropic (Claude)", ph:"sk-ant-api03-…", val:apiKey, set:setApiKey, hint:"Required for core AI features" },
                       { label:"OpenAI (GPT-4o)", ph:"sk-…", val:openaiKey, set:setOpenaiKey, hint:"Required for AI Council" },
-                      { label:"Google (Gemini 2.0)", ph:"AIza…", val:geminiKey, set:setGeminiKey, hint:"Required for AI Council" },
+                      { label:"Google (Gemini 1.5 Flash)", ph:"AIza…", val:geminiKey, set:setGeminiKey, hint:"Required for AI Council" },
                     ].map(k => (
                       <div key={k.label}>
                         <div style={{ fontSize:9, color:C.muted, fontFamily:mono, marginBottom:3 }}>{k.label}</div>
