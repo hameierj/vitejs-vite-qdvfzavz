@@ -769,6 +769,7 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   const [newNote,        setNewNote]       = useState("");
   const [noteAuth,       setNoteAuth]      = useState("");
   const [confirmClose,   setConfirmClose]  = useState(false);
+  const [emailScoring,   setEmailScoring]  = useState<"idle"|"running">("idle");
   const origRef = useRef<Record<string,any>>({});
 
   useEffect(() => {
@@ -823,14 +824,83 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
         callAI(`Write a Campaign Strategy Brief.\nData:${JSON.stringify(ctx)}\n\n**ICP SNAPSHOT** (2 sentences)\n\n**MESSAGE ARCHITECTURE** Hook/Value/Proof/CTA\n\n**SEQUENCE STRATEGY** Email 1/2/3 angles\n\n**PERSONALIZATION LAYERS** (4 layers)\n\n**A/B TEST QUEUE** (3 tests)\n\n**CSM NOTES**`,"",850),
         callAI(`Write a 3-email cold outreach sequence. Real emails, not templates.\nData:${JSON.stringify(ctx)}\nTone: ${data.tone||"direct"}\nCTA: ${data.cta||"15-min call"}\nMax 100 words per body. No brackets. Each email a different angle.\n\n---\nEMAIL 1 — Initial\nSubject: ...\n\n[body]\n\n---\nEMAIL 2 — Day 3\nSubject: ...\n\n[body]\n\n---\nEMAIL 3 — Day 7\nSubject: ...\n\n[body]\n\n---\nSUBJECT LINE VARIANTS\n1.\n2.\n3.\n4.\n5.`,"",1100),
       ]);
-      onUpdate({ ...icp, data, outputs:{ icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4 } });
-      setGenState("done"); setPanel("outputs");
+      const newOutputs = { icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4 };
+      onUpdate({ ...icp, data, outputs:newOutputs });
+      setGenState("done"); setPanel("outputs"); setOutTab("email_copy");
       if (toastId) updateToast?.(toastId, { status:"success", title:`Outputs ready: ${icp.name}`, message:undefined,
-        action:{ label:"View outputs", onClick:()=>setPanel("outputs") } });
+        action:{ label:"View outputs", onClick:()=>{ setPanel("outputs"); setOutTab("email_copy"); } } });
+      // Score emails in background
+      setEmailScoring("running");
+      try {
+        const scoreRaw = await callAI(
+          `Score these 3 cold outreach emails on 5 dimensions (0–2 each, 10 total).
+ICP context: ${data.buyer||""} in ${data.industries||""}, tone: ${data.tone||"direct"}, CTA: ${data.cta||"15-min call"}
+
+Emails:
+${s4.slice(0, 3000)}
+
+Return ONLY a JSON array of exactly 3 objects — one per email in order:
+[
+  {"opening":0-2,"pain":0-2,"tone":0-2,"credibility":0-2,"cta":0-2,"verdict":"one specific improvement note"},
+  ...
+]
+
+Scoring guide:
+- opening (0-2): 0=generic/predictable, 1=relevant but safe, 2=specific hook that creates curiosity
+- pain (0-2): 0=vague/generic, 1=recognizable pain, 2=precise visceral pain this persona feels daily
+- tone (0-2): 0=salesy/formal, 1=conversational, 2=peer-level authentic voice
+- credibility (0-2): 0=no proof, 1=vague claim, 2=specific metric/client/outcome
+- cta (0-2): 0=high commitment ask, 1=ok ask, 2=single frictionless low-commitment ask`, "", 500);
+        const jsonMatch = scoreRaw.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const scores = JSON.parse(jsonMatch[0]);
+          const withTotals = scores.slice(0, 3).map((s: any) => ({
+            opening: s.opening ?? 0, pain: s.pain ?? 0, tone: s.tone ?? 0,
+            credibility: s.credibility ?? 0, cta: s.cta ?? 0,
+            verdict: s.verdict ?? "",
+            total: (s.opening??0)+(s.pain??0)+(s.tone??0)+(s.credibility??0)+(s.cta??0)
+          }));
+          onUpdate({ ...icp, data, outputs: newOutputs, emailScores: withTotals });
+        }
+      } catch { /* scoring is best-effort */ } finally { setEmailScoring("idle"); }
     } catch {
       setGenState(null);
       if (toastId) updateToast?.(toastId, { status:"error", title:"Generation failed", message:"Check your API key and try again" });
     }
+  };
+
+  const rescoreEmails = async () => {
+    if (!icp.outputs?.email_copy || emailScoring === "running") return;
+    setEmailScoring("running");
+    try {
+      const scoreRaw = await callAI(
+        `Score these 3 cold outreach emails on 5 dimensions (0–2 each, 10 total).
+ICP context: ${data.buyer||""} in ${data.industries||""}, tone: ${data.tone||"direct"}, CTA: ${data.cta||"15-min call"}
+
+Emails:
+${icp.outputs.email_copy.slice(0, 3000)}
+
+Return ONLY a JSON array of exactly 3 objects:
+[{"opening":0-2,"pain":0-2,"tone":0-2,"credibility":0-2,"cta":0-2,"verdict":"one specific improvement note"},...]
+
+Scoring guide:
+- opening: 0=generic, 1=relevant, 2=specific hook
+- pain: 0=vague, 1=recognizable, 2=precise visceral pain
+- tone: 0=salesy, 1=conversational, 2=peer-level authentic
+- credibility: 0=no proof, 1=vague claim, 2=specific metric/outcome
+- cta: 0=high commitment, 1=ok, 2=frictionless low-commitment`, "", 500);
+      const jsonMatch = scoreRaw.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const scores = JSON.parse(jsonMatch[0]);
+        const withTotals = scores.slice(0, 3).map((s: any) => ({
+          opening: s.opening ?? 0, pain: s.pain ?? 0, tone: s.tone ?? 0,
+          credibility: s.credibility ?? 0, cta: s.cta ?? 0,
+          verdict: s.verdict ?? "",
+          total: (s.opening??0)+(s.pain??0)+(s.tone??0)+(s.credibility??0)+(s.cta??0)
+        }));
+        onUpdate({ ...icp, data, emailScores: withTotals });
+      }
+    } catch { /* best-effort */ } finally { setEmailScoring("idle"); }
   };
 
   const approveSection = tabId => {
@@ -990,7 +1060,29 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18 }}>
                   <span style={{ fontSize:15, color:curOT.color }}>{curOT.icon}</span>
                   <span style={{ fontSize:13, fontWeight:700, color:C.text, fontFamily:head }}>{curOT.label}</span>
+                  {outTab==="email_copy" && icp.emailScores && (() => {
+                    const worst = Math.min(...icp.emailScores.map((s:any)=>s.total));
+                    const avg = Math.round(icp.emailScores.reduce((a:any,s:any)=>a+s.total,0)/icp.emailScores.length*10)/10;
+                    const ok = worst >= 8;
+                    return (
+                      <span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:10, fontFamily:mono, fontWeight:700,
+                        color:ok?C.green:C.amber, background:ok?C.greenLo:C.amberLo,
+                        border:`1px solid ${ok?C.greenBorder:C.amberBorder}`,
+                        padding:"2px 8px", borderRadius:5 }}>
+                        {ok?"✓":"⚠"} {avg}/10 avg
+                      </span>
+                    );
+                  })()}
+                  {outTab==="email_copy" && emailScoring==="running" && (
+                    <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>Scoring…</span>
+                  )}
                   <div style={{ flex:1 }} />
+                  {outTab==="email_copy" && icp.outputs.email_copy && emailScoring!=="running" && (
+                    <button onClick={rescoreEmails} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`,
+                      background:"transparent", color:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
+                      ✦ Rescore
+                    </button>
+                  )}
                   {secApproved
                     ? <span style={{ fontSize:10, color:C.green, background:C.greenLo, border:`1px solid ${C.greenBorder}`, padding:"3px 9px", borderRadius:5, fontFamily:mono, fontWeight:700 }}>✓ Approved</span>
                     : <button onClick={()=>approveSection(outTab)} style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve Section</button>
@@ -999,6 +1091,57 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
                     {copied===outTab?"✓ Copied":"Copy"}
                   </button>
                 </div>
+                {outTab==="email_copy" && icp.emailScores && (
+                  <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:22 }}>
+                    {(icp.emailScores as any[]).map((s, i) => {
+                      const needsRevision = s.total < 8;
+                      const scoreColor = s.total >= 8 ? C.green : s.total >= 6 ? C.amber : C.red;
+                      const scoreBg    = s.total >= 8 ? C.greenLo : s.total >= 6 ? C.amberLo : C.redLo;
+                      const scoreBorder= s.total >= 8 ? C.greenBorder : s.total >= 6 ? C.amberBorder : `${C.red}44`;
+                      const dims = [
+                        { key:"opening",    label:"Opening"     },
+                        { key:"pain",       label:"Pain"        },
+                        { key:"tone",       label:"Tone"        },
+                        { key:"credibility",label:"Credibility" },
+                        { key:"cta",        label:"CTA"         },
+                      ];
+                      return (
+                        <div key={i} style={{ borderRadius:8, border:`1px solid ${needsRevision?scoreBorder:C.border}`,
+                          background:needsRevision?scoreBg:C.faint, padding:"10px 14px" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:7 }}>
+                            <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.text }}>Email {i+1}</span>
+                            <span style={{ fontSize:12, fontFamily:mono, fontWeight:800, color:scoreColor,
+                              background:"transparent", minWidth:32 }}>{s.total}/10</span>
+                            {needsRevision && (
+                              <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:scoreColor,
+                                background:scoreBg, border:`1px solid ${scoreBorder}`,
+                                padding:"1px 6px", borderRadius:4, letterSpacing:.3 }}>NEEDS REVISION</span>
+                            )}
+                            <div style={{ flex:1 }} />
+                            {s.verdict && (
+                              <span style={{ fontSize:10, color:C.muted, fontFamily:body, fontStyle:"italic",
+                                maxWidth:260, textAlign:"right", lineHeight:1.4 }}>{s.verdict}</span>
+                            )}
+                          </div>
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                            {dims.map(d => {
+                              const v = s[d.key] ?? 0;
+                              const dc = v >= 2 ? C.green : v >= 1 ? C.amber : C.red;
+                              return (
+                                <span key={d.key} style={{ fontSize:9, fontFamily:mono, fontWeight:600,
+                                  color:dc, background:`${dc}18`,
+                                  border:`1px solid ${dc}44`, padding:"2px 7px", borderRadius:4,
+                                  display:"inline-flex", gap:4, alignItems:"center" }}>
+                                  {d.label} {v}/2
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
                   {icp.outputs[outTab]}
                 </div>
