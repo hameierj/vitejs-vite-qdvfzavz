@@ -148,6 +148,45 @@ async function callAI(prompt, sys = "", tokens = 800) {
   } catch(e) { console.error("callAI failed:", e); return ""; }
 }
 
+function getOpenAIKey() { return localStorage.getItem("b2br_openai_key") || ""; }
+function getGeminiKey() { return localStorage.getItem("b2br_gemini_key") || ""; }
+
+async function callOpenAI(prompt: string, sys = "", tokens = 1000): Promise<string> {
+  const key = getOpenAIKey();
+  if (!key) throw new Error("No OpenAI API key configured");
+  const msgs: any[] = [];
+  if (sys) msgs.push({ role:"system", content:sys });
+  msgs.push({ role:"user", content:prompt });
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${key}` },
+    body: JSON.stringify({ model:"gpt-4o", messages:msgs, max_tokens:tokens }),
+  });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message);
+  return j.choices?.[0]?.message?.content ?? "";
+}
+
+async function callGemini(prompt: string, tokens = 1000): Promise<string> {
+  const key = getGeminiKey();
+  if (!key) throw new Error("No Gemini API key configured");
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+    {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        contents:[{ parts:[{ text: prompt }] }],
+        generationConfig:{ maxOutputTokens:tokens },
+        systemInstruction:{ parts:[{ text:"You are a senior B2B cold outreach strategist. Be direct, specific, no filler." }] },
+      }),
+    }
+  );
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+  return j.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+}
+
 function fileToBase64(file) {
   return new Promise((res, rej) => {
     const reader = new FileReader();
@@ -753,6 +792,129 @@ function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
   );
 }
 
+// ─── AI COUNCIL PANEL ─────────────────────────────────────────────────────────
+const MODEL_CFG = {
+  claude:  { label:"Claude",  color:"#7C3AED", bg:"#7C3AED12", border:"#7C3AED44", logo:"◈" },
+  gpt4:    { label:"GPT-4o",  color:"#10A37F", bg:"#10A37F12", border:"#10A37F44", logo:"◉" },
+  gemini:  { label:"Gemini",  color:"#1A73E8", bg:"#1A73E812", border:"#1A73E844", logo:"◇" },
+};
+
+function AICouncilPanel({ council, onClose }: { council:any; onClose:()=>void }) {
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditTab,  setAuditTab]  = useState<"claude"|"gpt4"|"gemini">("claude");
+
+  if (!council) return null;
+
+  return (
+    <div style={{ borderRadius:12, border:`2px solid ${C.accent}55`, background:C.canvas,
+      marginBottom:24, overflow:"hidden", animation:"fadeIn .3s ease",
+      boxShadow:`0 4px 24px ${C.accent}18` }}>
+
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 16px",
+        background:`linear-gradient(135deg, ${C.accent}10, ${C.accentLo})`,
+        borderBottom:`1px solid ${C.accentBorder}` }}>
+        <div style={{ display:"flex", gap:-2 }}>
+          {(["claude","gpt4","gemini"] as const).map(m => (
+            <span key={m} style={{ fontSize:14, marginRight:2 }}>{MODEL_CFG[m].logo}</span>
+          ))}
+        </div>
+        <div>
+          <div style={{ fontSize:11, fontFamily:mono, fontWeight:800, color:C.accent, letterSpacing:.5 }}>
+            AI COUNCIL — CONSENSUS CAMPAIGN
+          </div>
+          <div style={{ fontSize:9, color:C.muted, fontFamily:mono }}>
+            Claude × GPT-4o × Gemini · {council.date}
+          </div>
+        </div>
+        <div style={{ flex:1 }} />
+        <button onClick={()=>setAuditOpen(p=>!p)}
+          style={{ fontSize:10, color:C.muted, background:"transparent", border:`1px solid ${C.border}`,
+            borderRadius:5, cursor:"pointer", fontFamily:mono, padding:"3px 8px" }}>
+          {auditOpen ? "▴ Hide audit trail" : "▾ View audit trail"}
+        </button>
+        <button onClick={onClose} style={{ fontSize:10, color:C.muted, background:"transparent",
+          border:"none", cursor:"pointer", fontFamily:mono }}>✕</button>
+      </div>
+
+      {/* Consensus rationale banner */}
+      {council.rationale && (
+        <div style={{ padding:"10px 16px", background:`${C.accent}08`,
+          borderBottom:`1px solid ${C.accentBorder}`, fontSize:11.5, color:C.textSoft,
+          fontFamily:body, lineHeight:1.65, fontStyle:"italic" }}>
+          {council.rationale}
+        </div>
+      )}
+
+      {/* Final emails */}
+      <div style={{ padding:"20px 20px 16px" }}>
+        <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.accent,
+          letterSpacing:.8, marginBottom:12 }}>FINAL CONSENSUS EMAILS</div>
+        <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
+          {council.synthesis}
+        </div>
+      </div>
+
+      {/* Audit trail */}
+      {auditOpen && (
+        <div style={{ borderTop:`1px solid ${C.border}`, background:C.faint }}>
+          <div style={{ padding:"10px 16px 0" }}>
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
+              letterSpacing:.6, marginBottom:8 }}>DEBATE AUDIT TRAIL</div>
+            <div style={{ display:"flex", gap:4, marginBottom:12 }}>
+              {(["claude","gpt4","gemini"] as const).map(m => {
+                const cfg = MODEL_CFG[m];
+                const on  = auditTab === m;
+                return (
+                  <button key={m} onClick={()=>setAuditTab(m)}
+                    style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${on?cfg.border:C.border}`,
+                      background:on?cfg.bg:"transparent", color:on?cfg.color:C.muted,
+                      fontSize:10, fontFamily:mono, fontWeight:on?700:400, cursor:"pointer" }}>
+                    {cfg.logo} {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {(["claude","gpt4","gemini"] as const).filter(m=>m===auditTab).map(m => {
+            const cfg = MODEL_CFG[m];
+            const emails   = council[`${m}Emails`]   || "";
+            const critique = council[`${m}Critique`] || "";
+            return (
+              <div key={m} style={{ padding:"0 16px 16px", display:"flex", flexDirection:"column", gap:12 }}>
+                {emails && (
+                  <div style={{ borderRadius:8, border:`1px solid ${cfg.border}`, background:cfg.bg, overflow:"hidden" }}>
+                    <div style={{ padding:"6px 12px", borderBottom:`1px solid ${cfg.border}`,
+                      fontSize:9, fontFamily:mono, fontWeight:700, color:cfg.color, letterSpacing:.5 }}>
+                      {cfg.logo} {cfg.label.toUpperCase()} — INITIAL DRAFT
+                    </div>
+                    <div style={{ padding:"12px", fontSize:12.5, color:C.textSoft,
+                      lineHeight:1.8, whiteSpace:"pre-wrap", fontFamily:body }}>
+                      {emails}
+                    </div>
+                  </div>
+                )}
+                {critique && (
+                  <div style={{ borderRadius:8, border:`1px solid ${C.border}`, background:C.canvas, overflow:"hidden" }}>
+                    <div style={{ padding:"6px 12px", borderBottom:`1px solid ${C.border}`,
+                      fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5 }}>
+                      {cfg.logo} {cfg.label.toUpperCase()} — CRITIQUE & DEBATE NOTES
+                    </div>
+                    <div style={{ padding:"12px", fontSize:12.5, color:C.textSoft,
+                      lineHeight:1.8, whiteSpace:"pre-wrap", fontFamily:body }}>
+                      {critique}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── INTELLIGENCE PANEL ───────────────────────────────────────────────────────
 function IntelligencePanel({ result, date, onClose }: { result:string; date:string; onClose:()=>void }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -841,6 +1003,7 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   const [confirmClose,   setConfirmClose]  = useState(false);
   const [emailScoring,   setEmailScoring]  = useState<"idle"|"running">("idle");
   const [intelligence,   setIntelligence]  = useState<{ status:"idle"|"running"|"done"; result:string; phase:string }>({ status:"idle", result:"", phase:"" });
+  const [councilState,   setCouncilState]  = useState<{ status:"idle"|"running"; phase:string }>({ status:"idle", phase:"" });
   const origRef = useRef<Record<string,any>>({});
 
   useEffect(() => {
@@ -1074,6 +1237,177 @@ Be surgical. Quote actual content. Give real rewrite examples, not generic advic
     }
   };
 
+  const runAICouncil = async () => {
+    if (councilState.status === "running") return;
+    const missingKeys = [
+      !getApiKey()    && "Anthropic (Claude)",
+      !getOpenAIKey() && "OpenAI (GPT-4o)",
+      !getGeminiKey() && "Google (Gemini)",
+    ].filter(Boolean);
+    if (missingKeys.length) {
+      alert(`AI Council needs API keys for: ${missingKeys.join(", ")}.\n\nAdd them in the sidebar (API Keys section).`);
+      return;
+    }
+
+    setCouncilState({ status:"running", phase:"Briefing all three models…" });
+    const ctx = { company: companyData, icp: { ...data, name: icp.name } };
+    const emailPrompt = (model: string) =>
+      `You are a senior GTM strategist (${model}). Write the BEST possible 3-email cold outreach sequence for this ICP.
+Data: ${JSON.stringify(ctx)}
+Tone: ${data.tone||"direct"} | CTA: ${data.cta||"15-min call"}
+Max 100 words per email body. No brackets. No templates. Real, send-ready emails. Different angle per email.
+
+---
+EMAIL 1 — Initial
+Subject: ...
+
+[body]
+
+---
+EMAIL 2 — Day 3
+Subject: ...
+
+[body]
+
+---
+EMAIL 3 — Day 7
+Subject: ...
+
+[body]
+
+---
+SUBJECT LINE VARIANTS
+1.
+2.
+3.
+4.
+5.`;
+
+    try {
+      // Phase 1: All 3 draft independently
+      const [claudeEmails, gptEmails, geminiEmails] = await Promise.all([
+        callAI(emailPrompt("Claude"), "", 1100),
+        callOpenAI(emailPrompt("GPT-4o"), "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.", 1100),
+        callGemini(emailPrompt("Gemini"), 1100),
+      ]);
+
+      setCouncilState({ status:"running", phase:"Models reviewing each other's drafts…" });
+
+      // Phase 2: Cross-critique — each model reviews all 3 drafts
+      const critiquePrompt = (myModel: string, myDraft: string, otherA: string, nameA: string, otherB: string, nameB: string) =>
+        `You are ${myModel}, a senior GTM strategist. Review all 3 email campaigns below for this ICP:
+ICP: ${data.buyer||""} in ${data.industries||""} | Tone: ${data.tone||"direct"} | CTA: ${data.cta||"15-min call"}
+Company context: ${companyData?.co_pitch||""} | Proof: ${companyData?.co_proof||""}
+Pain: ${data.pain1||""}
+
+YOUR DRAFT (${myModel}):
+${myDraft}
+
+${nameA}'s DRAFT:
+${otherA}
+
+${nameB}'s DRAFT:
+${otherB}
+
+Write a structured critique:
+1. Your draft — what's strongest, what's weakest
+2. ${nameA}'s draft — what's strongest, what you'd borrow
+3. ${nameB}'s draft — what's strongest, what you'd borrow
+4. The single best opening line across all 3 drafts (quote it exactly)
+5. The single best pain framing across all 3 drafts (quote it exactly)
+6. The single best CTA across all 3 drafts (quote it exactly)
+7. Your revised Email 1 incorporating the best elements — must be better than all 3 originals
+
+Be specific. Quote actual lines. Justify every choice.`;
+
+      const [claudeCritique, gptCritique, geminiCritique] = await Promise.all([
+        callAI(critiquePrompt("Claude", claudeEmails, gptEmails, "GPT-4o", geminiEmails, "Gemini"), "", 1400),
+        callOpenAI(critiquePrompt("GPT-4o", gptEmails, claudeEmails, "Claude", geminiEmails, "Gemini"), "You are a senior B2B cold outreach strategist.", 1400),
+        callGemini(critiquePrompt("Gemini", geminiEmails, claudeEmails, "Claude", gptEmails, "GPT-4o"), 1400),
+      ]);
+
+      setCouncilState({ status:"running", phase:"Synthesizing consensus campaign…" });
+
+      // Phase 3: Claude synthesizes the final campaign
+      const synthesis = await callAI(
+        `You are the chief GTM strategist. Three expert models have independently drafted and critiqued email campaigns. Your job: synthesize the DEFINITIVE consensus email sequence — one that all three models would agree is 10/10.
+
+ICP CONTEXT:
+${JSON.stringify(ctx)}
+
+CLAUDE'S DRAFT:
+${claudeEmails}
+
+CLAUDE'S CRITIQUE & REVISED EMAIL 1:
+${claudeCritique}
+
+GPT-4o'S DRAFT:
+${gptEmails}
+
+GPT-4o'S CRITIQUE & REVISED EMAIL 1:
+${gptCritique}
+
+GEMINI'S DRAFT:
+${geminiEmails}
+
+GEMINI'S CRITIQUE & REVISED EMAIL 1:
+${geminiCritique}
+
+Write the final definitive 3-email sequence. For each element you choose, silently pick the best version from any of the three models' work. This must score 10/10 on: opening hook specificity, pain viscerality, tone authenticity, proof credibility, CTA frictionlessness.
+
+Format exactly:
+---
+EMAIL 1 — Initial
+Subject: ...
+
+[body]
+
+---
+EMAIL 2 — Day 3
+Subject: ...
+
+[body]
+
+---
+EMAIL 3 — Day 7
+Subject: ...
+
+[body]
+
+---
+SUBJECT LINE VARIANTS
+1.
+2.
+3.
+4.
+5.
+
+---
+SYNTHESIS RATIONALE
+In 3–4 sentences: what you took from each model and why. Name specific lines or angles.`,
+        "", 1600
+      );
+
+      // Split off rationale
+      const parts      = synthesis.split(/---\s*SYNTHESIS RATIONALE/i);
+      const finalEmails  = parts[0].trim();
+      const rationale  = parts[1]?.trim() || "";
+
+      const council = {
+        date: new Date().toLocaleDateString(),
+        claudeEmails, gptEmails, geminiEmails,
+        claudeCritique, gptCritique, geminiCritique,
+        synthesis: finalEmails,
+        rationale,
+      };
+      onUpdate({ ...icp, data, aiCouncil: council });
+      setCouncilState({ status:"idle", phase:"" });
+    } catch (e: any) {
+      setCouncilState({ status:"idle", phase:"" });
+      alert(`AI Council failed: ${e.message || "Unknown error"}. Check your API keys.`);
+    }
+  };
+
   const approveSection = tabId => {
     const next = { ...(icp.sectionApprovals||{}), [tabId]:"approved" };
     const allDone = OUTPUT_TABS.every(t=>next[t.id]==="approved");
@@ -1274,6 +1608,24 @@ Be surgical. Quote actual content. Give real rewrite examples, not generic advic
                       {intelligence.phase || "Analyzing…"}
                     </span>
                   )}
+                  {outTab==="email_copy" && icp.outputs.email_copy && councilState.status!=="running" && (
+                    <button onClick={runAICouncil} style={{ padding:"5px 13px", borderRadius:6,
+                      border:`2px solid ${C.accent}55`, background:`linear-gradient(135deg, ${C.accent}14, ${C.accentLo})`,
+                      color:C.accent, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:800,
+                      display:"flex", alignItems:"center", gap:5 }}>
+                      <span style={{ display:"flex", gap:1, fontSize:11 }}>◈◉◇</span>
+                      {icp.aiCouncil ? "Re-run Council" : "AI Council"}
+                    </button>
+                  )}
+                  {outTab==="email_copy" && councilState.status==="running" && (
+                    <span style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700,
+                      display:"flex", alignItems:"center", gap:5 }}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" style={{ animation:"spin 1s linear infinite" }}>
+                        <circle cx="5" cy="5" r="4" stroke={C.accent} strokeWidth="1.5" strokeDasharray="12 6" fill="none"/>
+                      </svg>
+                      {councilState.phase}
+                    </span>
+                  )}
                   {secApproved
                     ? <span style={{ fontSize:10, color:C.green, background:C.greenLo, border:`1px solid ${C.greenBorder}`, padding:"3px 9px", borderRadius:5, fontFamily:mono, fontWeight:700 }}>✓ Approved</span>
                     : <button onClick={()=>approveSection(outTab)} style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve Section</button>
@@ -1333,6 +1685,10 @@ Be surgical. Quote actual content. Give real rewrite examples, not generic advic
                     })}
                   </div>
                 )}
+                {outTab==="email_copy" && icp.aiCouncil && (
+                  <AICouncilPanel council={icp.aiCouncil}
+                    onClose={()=>onUpdate({ ...icp, data, aiCouncil:undefined })} />
+                )}
                 {outTab==="email_copy" && (intelligence.status==="done" || icp.intelligence) && (
                   <IntelligencePanel
                     result={intelligence.status==="done" ? intelligence.result : (icp.intelligence||"")}
@@ -1340,9 +1696,23 @@ Be surgical. Quote actual content. Give real rewrite examples, not generic advic
                     onClose={()=>setIntelligence({ status:"idle", result:"", phase:"" })}
                   />
                 )}
-                <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
-                  {icp.outputs[outTab]}
-                </div>
+                {outTab!=="email_copy" || !icp.aiCouncil ? (
+                  <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
+                    {icp.outputs[outTab]}
+                  </div>
+                ) : (
+                  <details style={{ marginTop:8 }}>
+                    <summary style={{ fontSize:11, color:C.muted, fontFamily:mono, cursor:"pointer",
+                      padding:"6px 10px", borderRadius:6, border:`1px solid ${C.border}`,
+                      background:C.faint, listStyle:"none", display:"flex", alignItems:"center", gap:6 }}>
+                      <span>▾</span> View original email copy (pre-council)
+                    </summary>
+                    <div style={{ fontSize:13, color:C.muted, lineHeight:1.85, whiteSpace:"pre-wrap",
+                      fontFamily:body, marginTop:10, opacity:.75 }}>
+                      {icp.outputs.email_copy}
+                    </div>
+                  </details>
+                )}
               </div>
             )}
             {panel==="comments" && (
@@ -3076,6 +3446,8 @@ function AppMain() {
   const [activeWorkspace,setActiveWorkspace]= useState(null);
   const [appMode,        setAppMode]        = useState<"app"|"admin">("app");
   const [apiKey,         setApiKey]         = useState(() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } });
+  const [openaiKey,      setOpenaiKey]      = useState(() => { try { return localStorage.getItem("b2br_openai_key") || ""; } catch { return ""; } });
+  const [geminiKey,      setGeminiKey]      = useState(() => { try { return localStorage.getItem("b2br_gemini_key") || ""; } catch { return ""; } });
   const [showKeyInput,   setShowKeyInput]   = useState(false);
   const [keyDraft,       setKeyDraft]       = useState("");
   const [confirmSignOut,   setConfirmSignOut]  = useState(false);
@@ -3139,11 +3511,13 @@ function AppMain() {
     }
   }, [companyData, companyConf, icps]);
 
-  // sync key into global + localStorage
+  // sync keys into global + localStorage
   useEffect(() => {
     window.__B2BR_API_KEY__ = apiKey;
     try { if (apiKey) localStorage.setItem("b2br_api_key", apiKey); } catch {}
   }, [apiKey]);
+  useEffect(() => { try { localStorage.setItem("b2br_openai_key", openaiKey); } catch {} }, [openaiKey]);
+  useEffect(() => { try { localStorage.setItem("b2br_gemini_key", geminiKey); } catch {} }, [geminiKey]);
 
   // Close ICP confirm/fill popovers on outside click
   useEffect(() => {
@@ -3385,7 +3759,7 @@ Raw JSON only.`, "", 1400);
             {/* ── Bottom footer ── */}
             <div style={{ flexShrink:0, borderTop:`1px solid ${C.border}`, padding:"8px 8px 10px" }}>
 
-              {/* API Key widget */}
+              {/* API Keys widget — all 3 models */}
               <div style={{ marginBottom:6 }}>
                 {!showKeyInput ? (
                   <button onClick={()=>{ setKeyDraft(apiKey); setShowKeyInput(true); }}
@@ -3394,33 +3768,44 @@ Raw JSON only.`, "", 1400);
                       border:`1px solid ${apiKey?C.green+"55":C.red+"66"}`,
                       background:apiKey?C.green+"11":C.red+"11" }}>
                     <span style={{ fontSize:13 }}>{apiKey?"🔑":"⚠️"}</span>
-                    <div>
+                    <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:10.5, fontWeight:700, fontFamily:head, color:apiKey?C.green:C.red }}>
-                        {apiKey?"API key saved":"Add API key"}
+                        {apiKey?"API keys":"Add API keys"}
                       </div>
-                      <div style={{ fontSize:9.5, color:C.muted, fontFamily:mono }}>
-                        {apiKey?"sk-ant-…"+apiKey.slice(-4):"Required for AI features"}
+                      <div style={{ fontSize:9, color:C.muted, fontFamily:mono, display:"flex", gap:6 }}>
+                        <span style={{ color:apiKey?C.green:C.red }}>Claude {apiKey?"✓":"✗"}</span>
+                        <span style={{ color:openaiKey?C.green:C.muted }}>GPT {openaiKey?"✓":"○"}</span>
+                        <span style={{ color:geminiKey?C.green:C.muted }}>Gemini {geminiKey?"✓":"○"}</span>
                       </div>
                     </div>
                   </button>
                 ) : (
-                  <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-                    <div style={{ fontSize:10, color:C.muted, fontFamily:mono }}>Anthropic API key</div>
-                    <input type="password" value={keyDraft} onChange={e=>setKeyDraft(e.target.value)}
-                      onKeyDown={e=>{ if(e.key==="Enter"){setApiKey(keyDraft);setShowKeyInput(false);} if(e.key==="Escape")setShowKeyInput(false); }}
-                      placeholder="sk-ant-api03-..." autoFocus
-                      style={{ width:"100%", padding:"6px 8px", borderRadius:6, border:`1px solid ${C.border}`,
-                        background:C.bg, color:C.text, fontFamily:mono, fontSize:10.5, boxSizing:"border-box" as const }} />
-                    <div style={{ display:"flex", gap:5 }}>
-                      <button onClick={()=>{setApiKey(keyDraft);setShowKeyInput(false);}}
-                        style={{ flex:1, padding:"5px 0", borderRadius:6, border:"none",
-                          background:C.accent, color:"#fff", fontFamily:head, fontWeight:700, fontSize:11, cursor:"pointer" }}>Save</button>
+                  <div style={{ display:"flex", flexDirection:"column", gap:8, padding:"8px 10px",
+                    borderRadius:8, border:`1px solid ${C.border}`, background:C.faint }}>
+                    <div style={{ fontSize:10, color:C.muted, fontFamily:mono, fontWeight:700 }}>API KEYS</div>
+                    {[
+                      { label:"Anthropic (Claude)", ph:"sk-ant-api03-…", val:apiKey, set:setApiKey, hint:"Required for core AI features" },
+                      { label:"OpenAI (GPT-4o)", ph:"sk-…", val:openaiKey, set:setOpenaiKey, hint:"Required for AI Council" },
+                      { label:"Google (Gemini 2.0)", ph:"AIza…", val:geminiKey, set:setGeminiKey, hint:"Required for AI Council" },
+                    ].map(k => (
+                      <div key={k.label}>
+                        <div style={{ fontSize:9, color:C.muted, fontFamily:mono, marginBottom:3 }}>{k.label}</div>
+                        <input type="password" defaultValue={k.val}
+                          onBlur={e=>k.set(e.target.value)}
+                          onKeyDown={e=>{ if(e.key==="Enter"){ k.set((e.target as HTMLInputElement).value); } }}
+                          placeholder={k.ph}
+                          style={{ width:"100%", padding:"5px 7px", borderRadius:5, border:`1px solid ${C.border}`,
+                            background:C.canvas, color:C.text, fontFamily:mono, fontSize:10, boxSizing:"border-box" as const }} />
+                        <div style={{ fontSize:8.5, color:C.muted, fontFamily:mono, marginTop:2 }}>{k.hint}</div>
+                      </div>
+                    ))}
+                    <div style={{ display:"flex", gap:5, marginTop:2 }}>
                       <button onClick={()=>setShowKeyInput(false)}
-                        style={{ flex:1, padding:"5px 0", borderRadius:6, border:`1px solid ${C.border}`,
-                          background:"transparent", color:C.muted, fontFamily:head, fontSize:11, cursor:"pointer" }}>Cancel</button>
+                        style={{ flex:1, padding:"5px 0", borderRadius:6, border:"none",
+                          background:C.accent, color:"#fff", fontFamily:head, fontWeight:700, fontSize:11, cursor:"pointer" }}>Done</button>
                     </div>
-                    <div style={{ fontSize:9, color:C.muted, fontFamily:mono, lineHeight:1.4 }}>
-                      Stored in browser only. Never sent anywhere except Anthropic.
+                    <div style={{ fontSize:8.5, color:C.muted, fontFamily:mono }}>
+                      Stored in your browser only. Never sent to B2B Rocket servers.
                     </div>
                   </div>
                 )}
