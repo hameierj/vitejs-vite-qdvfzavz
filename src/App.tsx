@@ -794,8 +794,37 @@ function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
   );
 }
 
+// ─── EMAIL PARSING HELPERS ────────────────────────────────────────────────────
+function parseEmailsFromSynthesis(synthesis: string): string[] {
+  const blocks: string[] = [];
+  const sections = synthesis.split(/^---\s*$/m).map((s: string) => s.trim()).filter(Boolean);
+  for (const s of sections) {
+    if (/^EMAIL \d/i.test(s) && blocks.length < 3) blocks.push(s);
+  }
+  return blocks;
+}
+
+function replaceEmailInSynthesis(synthesis: string, idx: number, newText: string): string {
+  let emailCount = 0;
+  const sections = synthesis.split(/^---\s*$/m);
+  const updated = sections.map((s: string) => {
+    const trimmed = s.trim();
+    if (/^EMAIL \d/i.test(trimmed)) {
+      if (emailCount === idx) { emailCount++; return `\n${newText}\n`; }
+      emailCount++;
+    }
+    return s;
+  });
+  return updated.join('---');
+}
+
 // ─── AI COUNCIL PANEL ─────────────────────────────────────────────────────────
-function AICouncilPanel({ council, onClose }: { council:any; onClose:()=>void }) {
+function AICouncilPanel({ council, onClose, onRefineEmail, refiningEmail }: {
+  council: any;
+  onClose: () => void;
+  onRefineEmail?: (index: number) => void;
+  refiningEmail?: number | null;
+}) {
   const [auditOpen,     setAuditOpen]     = useState(false);
   const [expandedRound, setExpandedRound] = useState<number|null>(null);
 
@@ -805,12 +834,89 @@ function AICouncilPanel({ council, onClose }: { council:any; onClose:()=>void })
   const is10 = council.finalScore >= 10 || iterations.some((it:any) => it.is10);
   const scoreColor = is10 ? C.green : C.amber;
 
+  // Parse individual emails for per-email display
+  const emails: string[] = council.emails?.length
+    ? council.emails
+    : parseEmailsFromSynthesis(council.synthesis || "");
+  const emailScores: number[] = council.emailScores || [];
+  const lastIter = iterations[iterations.length - 1];
+  const dims = lastIter?.dims || {};
+  const dimKeys = ['opening','pain','tone','credibility','cta'] as const;
+
   return (
     <div style={{ animation:"fadeIn .25s ease" }}>
-      {/* Emails — clean, same style as normal output */}
-      <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
-        {council.synthesis}
-      </div>
+      {/* Per-email blocks with scores + refine buttons */}
+      {emails.length > 0 ? emails.map((emailText, i) => {
+        const eDims = dims[`e${i+1}`] as Record<string,number> | undefined;
+        const sc = emailScores[i] ?? (eDims ? dimKeys.reduce((a,k) => a + (eDims[k] ?? 0), 0) : null);
+        const is10Email = sc !== null && sc >= 10;
+        const scolor = sc === null ? C.muted : sc >= 10 ? C.green : sc >= 8 ? C.amber : C.red;
+        const sbg    = sc === null ? C.faint : sc >= 10 ? C.greenLo : sc >= 8 ? C.amberLo : C.redLo;
+        const sborder= sc === null ? C.border : sc >= 10 ? C.greenBorder : sc >= 8 ? C.amberBorder : `${C.red}44`;
+        const headerLine = emailText.split('\n')[0]; // "EMAIL 1 — Initial"
+        const bodyText   = emailText.includes('\n') ? emailText.slice(emailText.indexOf('\n') + 1) : emailText;
+        const isRefining = refiningEmail === i;
+        return (
+          <div key={i} style={{ marginBottom: i < emails.length - 1 ? 28 : 0 }}>
+            {/* Email header row */}
+            <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10,
+              paddingBottom:8, borderBottom:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:9, fontFamily:mono, fontWeight:800, color:C.muted,
+                letterSpacing:.5, textTransform:"uppercase" }}>{headerLine}</span>
+              {sc !== null && (
+                <span style={{ fontSize:9, fontFamily:mono, fontWeight:800,
+                  color:scolor, background:sbg, border:`1px solid ${sborder}`,
+                  padding:"1px 6px", borderRadius:3 }}>{sc}/10</span>
+              )}
+              {eDims && (
+                <div style={{ display:"flex", gap:3, flexWrap:"wrap" }}>
+                  {dimKeys.map(k => {
+                    const v = eDims[k] ?? 0;
+                    const dc = v >= 2 ? C.green : v >= 1 ? C.amber : C.red;
+                    return (
+                      <span key={k} style={{ fontSize:8, fontFamily:mono, color:dc,
+                        background:`${dc}15`, border:`1px solid ${dc}33`,
+                        padding:"1px 5px", borderRadius:3 }}>
+                        {k.slice(0,3).toUpperCase()} {v}/2
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ flex:1 }} />
+              {!is10Email && onRefineEmail && !isRefining && refiningEmail == null && (
+                <button onClick={() => onRefineEmail(i)}
+                  style={{ padding:"3px 9px", borderRadius:5, border:`1px solid ${C.accentBorder}`,
+                    background:C.accentLo, color:C.accent, fontSize:9, fontFamily:mono,
+                    cursor:"pointer", fontWeight:700, display:"flex", alignItems:"center", gap:4 }}>
+                  ↻ Refine to 10/10
+                </button>
+              )}
+              {isRefining && (
+                <span style={{ fontSize:9, color:C.accent, fontFamily:mono,
+                  display:"flex", alignItems:"center", gap:4 }}>
+                  <svg width="9" height="9" viewBox="0 0 10 10" style={{ animation:"spin 1s linear infinite" }}>
+                    <circle cx="5" cy="5" r="4" stroke={C.accent} strokeWidth="1.5" strokeDasharray="12 6" fill="none"/>
+                  </svg>
+                  refining…
+                </span>
+              )}
+              {!is10Email && onRefineEmail && refiningEmail != null && !isRefining && (
+                <span style={{ fontSize:9, color:C.muted, fontFamily:mono, opacity:.5 }}>↻ Refine to 10/10</span>
+              )}
+            </div>
+            {/* Email body */}
+            <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
+              {bodyText}
+            </div>
+          </div>
+        );
+      }) : (
+        /* Fallback: no parseable emails — render synthesis as-is */
+        <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
+          {council.synthesis}
+        </div>
+      )}
 
       {/* Minimal footer */}
       <div style={{ marginTop:20, paddingTop:14, borderTop:`1px solid ${C.border}`,
@@ -978,6 +1084,7 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   const [emailScoring,   setEmailScoring]  = useState<"idle"|"running">("idle");
   const [intelligence,   setIntelligence]  = useState<{ status:"idle"|"running"|"done"; result:string; phase:string }>({ status:"idle", result:"", phase:"" });
   const [councilState,   setCouncilState]  = useState<{ status:"idle"|"running"; phase:string }>({ status:"idle", phase:"" });
+  const [refiningEmail,  setRefiningEmail] = useState<number | null>(null);
   const origRef = useRef<Record<string,any>>({});
 
   useEffect(() => {
@@ -1309,13 +1416,125 @@ campaign_score: 10 only if ALL 3 emails pass the SDR test. is_10 true only with 
     }
 
     const final = iterations[iterations.length - 1];
+    const parsedEmails = parseEmailsFromSynthesis(final.emails);
+    const finalDims = final.dims || {};
+    const dimKeys = ['opening','pain','tone','credibility','cta'] as const;
+    const emailScores = ['e1','e2','e3'].map(k =>
+      dimKeys.reduce((a, d) => a + ((finalDims[k]?.[d]) ?? 0), 0)
+    );
     return {
       date: new Date().toLocaleDateString(),
       iterations,
       synthesis: final.emails,
+      emails: parsedEmails,
+      emailScores,
       rationale: final.reasoning,
       finalScore: final.score,
     };
+  };
+
+  // ── Per-email targeted refinement ─────────────────────────────────────────
+  const runSingleEmailRefinement = async (emailIndex: number) => {
+    const council = icp.aiCouncil;
+    if (!council) return;
+    const emails: string[] = council.emails?.length
+      ? council.emails
+      : parseEmailsFromSynthesis(council.synthesis || "");
+    if (!emails[emailIndex]) return;
+
+    const MAX_ROUNDS = 5;
+    const dimKeys = ['opening','pain','tone','credibility','cta'] as const;
+    setRefiningEmail(emailIndex);
+    setCouncilState({ status:"running", phase:`Email ${emailIndex+1}: Grading…` });
+
+    let currentEmail = emails[emailIndex];
+    let lastScore = council.emailScores?.[emailIndex] ?? 0;
+    let lastImprovements = "";
+
+    try {
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        if (round > 0) {
+          setCouncilState({ status:"running", phase:`Email ${emailIndex+1}: Round ${round+1} rewriting…` });
+          currentEmail = await callAI(
+            `This single cold outreach email scored ${lastScore}/10. Fix these issues exactly:
+
+${lastImprovements}
+
+Be surgical — only rewrite the weak lines. Keep what's working.
+
+ICP: ${data.buyer||""} in ${data.industries||""} | Pain: ${(data.pain1||"").slice(0,200)}
+Proof: ${data.icp_proof||companyData?.co_proof||""} | Differentiator: ${companyData?.co_diff||""}
+
+CURRENT EMAIL:
+${currentEmail}
+
+Output only the revised email in the same format (keep the EMAIL N header line, Subject:, then body).`,
+            "You are a world-class B2B cold outreach copywriter. Output only the single revised email, no commentary.", 400
+          );
+        }
+
+        setCouncilState({ status:"running", phase:`Email ${emailIndex+1}: Grading strictly…` });
+        const gradeRaw = await callAI(
+          `Grade this single B2B cold email. Standard: would an experienced SDR send this right now without changing a word?
+
+ICP: ${data.buyer||""} in ${data.industries||""} | CTA: ${data.cta||"15-min call"}
+Primary pain: ${(data.pain1||"(not provided)").slice(0,200)}
+Proof: ${data.icp_proof||companyData?.co_proof||"(not provided)"}
+
+EMAIL:
+${currentEmail}
+
+Score 0–2 each (max 10):
+- opening: 0=generic, 1=relevant, 2=specific hook creating real curiosity
+- pain: 0=vague, 1=recognizable, 2=precise visceral pain this exact title feels daily
+- tone: 0=salesy, 1=conversational, 2=peer-level expert, zero desperation
+- credibility: 0=no proof, 1=vague claim, 2=specific named client/metric/outcome
+- cta: 0=high-friction, 1=acceptable, 2=frictionless low-commitment ask
+
+Return ONLY valid JSON:
+{"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N,"total":N,"is_10":false,"reasoning":"...","improvements":"exact line-by-line rewrites: quote weak phrase → what to replace it with"}
+
+total=10 only if you'd send this today without any edits. is_10=true only with evidence.`,
+          "Strict B2B email grader. Return only valid JSON.", 400
+        );
+
+        const jm = gradeRaw.match(/\{[\s\S]*\}/);
+        let g: any = { total: Math.min(lastScore + 1, 9), is_10: false, improvements: gradeRaw };
+        if (jm) { try { g = JSON.parse(jm[0]); } catch {} }
+
+        const score = typeof g.total === "number" ? Math.min(10, Math.max(0, g.total)) : lastScore + 1;
+        const dims = { opening:g.opening??0, pain:g.pain??0, tone:g.tone??0, credibility:g.credibility??0, cta:g.cta??0 };
+
+        if (g.is_10 || score >= 10 || round === MAX_ROUNDS - 1) {
+          const newEmails = [...emails];
+          newEmails[emailIndex] = currentEmail;
+          const newScores = [...(council.emailScores || [0,0,0])];
+          newScores[emailIndex] = score;
+          // Rebuild per-email dims in last iteration
+          const updatedIters = [...(council.iterations || [])];
+          if (updatedIters.length > 0) {
+            const last = { ...updatedIters[updatedIters.length - 1] };
+            last.dims = { ...last.dims, [`e${emailIndex+1}`]: dims };
+            updatedIters[updatedIters.length - 1] = last;
+          }
+          onUpdate({ ...icp, data, aiCouncil: {
+            ...council,
+            emails: newEmails,
+            emailScores: newScores,
+            synthesis: replaceEmailInSynthesis(council.synthesis || "", emailIndex, currentEmail),
+            iterations: updatedIters,
+            finalScore: Math.max(council.finalScore ?? 0, score === 10 ? 10 : council.finalScore ?? 0),
+          }});
+          break;
+        }
+
+        lastScore = score;
+        lastImprovements = g.improvements || g.reasoning || "";
+      }
+    } catch { /* best-effort */ } finally {
+      setRefiningEmail(null);
+      setCouncilState({ status:"idle", phase:"" });
+    }
   };
 
   // AI Council button handler — reserved for multi-model when GPT-4o + Gemini are available
@@ -1598,7 +1817,9 @@ campaign_score: 10 only if ALL 3 emails pass the SDR test. is_10 true only with 
                 )}
                 {outTab==="email_copy" && icp.aiCouncil ? (
                   <AICouncilPanel council={icp.aiCouncil}
-                    onClose={()=>onUpdate({ ...icp, data, aiCouncil:undefined })} />
+                    onClose={()=>onUpdate({ ...icp, data, aiCouncil:undefined })}
+                    onRefineEmail={councilState.status==="idle" ? runSingleEmailRefinement : undefined}
+                    refiningEmail={refiningEmail} />
                 ) : (
                   <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
                     {icp.outputs[outTab]}
