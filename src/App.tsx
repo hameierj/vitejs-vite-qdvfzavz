@@ -795,116 +795,129 @@ function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
 }
 
 // ─── AI COUNCIL PANEL ─────────────────────────────────────────────────────────
-const MODEL_CFG = {
-  claude:  { label:"Claude",  color:"#7C3AED", bg:"#7C3AED12", border:"#7C3AED44", logo:"◈" },
-  gpt4:    { label:"GPT-4o",  color:"#10A37F", bg:"#10A37F12", border:"#10A37F44", logo:"◉" },
-  gemini:  { label:"Gemini",  color:"#1A73E8", bg:"#1A73E812", border:"#1A73E844", logo:"◇" },
-};
-
 function AICouncilPanel({ council, onClose }: { council:any; onClose:()=>void }) {
-  const [auditOpen, setAuditOpen] = useState(false);
-  const [auditTab,  setAuditTab]  = useState<"claude"|"gpt4"|"gemini">("claude");
+  const [auditOpen,    setAuditOpen]    = useState(false);
+  const [expandedRound, setExpandedRound] = useState<number|null>(null);
 
   if (!council) return null;
 
+  const iterations: any[] = council.iterations || [];
+  const is10 = council.finalScore >= 10 || iterations.some((it:any) => it.is10);
+  const borderColor = is10 ? C.green : C.amber;
+  const bgColor     = is10 ? C.greenLo : C.amberLo;
+
   return (
-    <div style={{ borderRadius:12, border:`2px solid ${C.accent}55`, background:C.canvas,
+    <div style={{ borderRadius:12, border:`2px solid ${borderColor}55`, background:C.canvas,
       marginBottom:24, overflow:"hidden", animation:"fadeIn .3s ease",
-      boxShadow:`0 4px 24px ${C.accent}18` }}>
+      boxShadow:`0 4px 24px ${borderColor}18` }}>
 
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 16px",
-        background:`linear-gradient(135deg, ${C.accent}10, ${C.accentLo})`,
-        borderBottom:`1px solid ${C.accentBorder}` }}>
-        <div style={{ display:"flex", gap:-2 }}>
-          {(["claude","gpt4","gemini"] as const).map(m => (
-            <span key={m} style={{ fontSize:14, marginRight:2 }}>{MODEL_CFG[m].logo}</span>
-          ))}
-        </div>
+        background:bgColor, borderBottom:`1px solid ${borderColor}44` }}>
+        <span style={{ fontSize:16 }}>{is10 ? "✦" : "◌"}</span>
         <div>
-          <div style={{ fontSize:11, fontFamily:mono, fontWeight:800, color:C.accent, letterSpacing:.5 }}>
-            AI COUNCIL — CONSENSUS CAMPAIGN
+          <div style={{ fontSize:11, fontFamily:mono, fontWeight:800,
+            color:is10?C.green:C.amber, letterSpacing:.5 }}>
+            {is10 ? "10/10 CAMPAIGN — READY TO SEND" : `${council.finalScore}/10 — BEST AVAILABLE`}
           </div>
           <div style={{ fontSize:9, color:C.muted, fontFamily:mono }}>
-            Claude × GPT-4o × Gemini 1.5 · {council.date}
+            Claude self-refined · {iterations.length} round{iterations.length!==1?"s":""} · {council.date}
           </div>
         </div>
         <div style={{ flex:1 }} />
         <button onClick={()=>setAuditOpen(p=>!p)}
           style={{ fontSize:10, color:C.muted, background:"transparent", border:`1px solid ${C.border}`,
             borderRadius:5, cursor:"pointer", fontFamily:mono, padding:"3px 8px" }}>
-          {auditOpen ? "▴ Hide audit trail" : "▾ View audit trail"}
+          {auditOpen ? "▴ Hide rounds" : `▾ View ${iterations.length} round${iterations.length!==1?"s":""}`}
         </button>
         <button onClick={onClose} style={{ fontSize:10, color:C.muted, background:"transparent",
           border:"none", cursor:"pointer", fontFamily:mono }}>✕</button>
       </div>
 
-      {/* Consensus rationale banner */}
+      {/* 10/10 reasoning banner */}
       {council.rationale && (
-        <div style={{ padding:"10px 16px", background:`${C.accent}08`,
-          borderBottom:`1px solid ${C.accentBorder}`, fontSize:11.5, color:C.textSoft,
-          fontFamily:body, lineHeight:1.65, fontStyle:"italic" }}>
+        <div style={{ padding:"10px 16px", background:`${borderColor}08`,
+          borderBottom:`1px solid ${borderColor}33`, fontSize:11.5, color:C.textSoft,
+          fontFamily:body, lineHeight:1.7 }}>
+          <span style={{ fontSize:9, fontFamily:mono, fontWeight:700,
+            color:is10?C.green:C.amber, marginRight:8 }}>{is10?"WHY 10/10:":"GRADE REASONING:"}</span>
           {council.rationale}
         </div>
       )}
 
       {/* Final emails */}
       <div style={{ padding:"20px 20px 16px" }}>
-        <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.accent,
-          letterSpacing:.8, marginBottom:12 }}>FINAL CONSENSUS EMAILS</div>
+        <div style={{ fontSize:9, fontFamily:mono, fontWeight:700,
+          color:is10?C.green:C.amber, letterSpacing:.8, marginBottom:12 }}>
+          {is10 ? "✦ FINAL 10/10 EMAILS" : "BEST VERSION PRODUCED"}
+        </div>
         <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
           {council.synthesis}
         </div>
       </div>
 
-      {/* Audit trail */}
-      {auditOpen && (
-        <div style={{ borderTop:`1px solid ${C.border}`, background:C.faint }}>
-          <div style={{ padding:"10px 16px 0" }}>
-            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
-              letterSpacing:.6, marginBottom:8 }}>DEBATE AUDIT TRAIL</div>
-            <div style={{ display:"flex", gap:4, marginBottom:12 }}>
-              {(["claude","gpt4","gemini"] as const).map(m => {
-                const cfg = MODEL_CFG[m];
-                const on  = auditTab === m;
-                return (
-                  <button key={m} onClick={()=>setAuditTab(m)}
-                    style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${on?cfg.border:C.border}`,
-                      background:on?cfg.bg:"transparent", color:on?cfg.color:C.muted,
-                      fontSize:10, fontFamily:mono, fontWeight:on?700:400, cursor:"pointer" }}>
-                    {cfg.logo} {cfg.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {(["claude","gpt4","gemini"] as const).filter(m=>m===auditTab).map(m => {
-            const cfg = MODEL_CFG[m];
-            const emails   = council[`${m}Emails`]   || "";
-            const critique = council[`${m}Critique`] || "";
+      {/* Refinement round audit */}
+      {auditOpen && iterations.length > 0 && (
+        <div style={{ borderTop:`1px solid ${C.border}`, background:C.faint, padding:"12px 16px",
+          display:"flex", flexDirection:"column", gap:8 }}>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
+            letterSpacing:.6, marginBottom:4 }}>REFINEMENT AUDIT TRAIL</div>
+          {iterations.map((it: any, idx: number) => {
+            const sc = it.score ?? 0;
+            const scolor = sc >= 10 ? C.green : sc >= 8 ? C.amber : C.red;
+            const sbg    = sc >= 10 ? C.greenLo : sc >= 8 ? C.amberLo : C.redLo;
+            const sborder= sc >= 10 ? C.greenBorder : sc >= 8 ? C.amberBorder : `${C.red}44`;
+            const open   = expandedRound === idx;
             return (
-              <div key={m} style={{ padding:"0 16px 16px", display:"flex", flexDirection:"column", gap:12 }}>
-                {emails && (
-                  <div style={{ borderRadius:8, border:`1px solid ${cfg.border}`, background:cfg.bg, overflow:"hidden" }}>
-                    <div style={{ padding:"6px 12px", borderBottom:`1px solid ${cfg.border}`,
-                      fontSize:9, fontFamily:mono, fontWeight:700, color:cfg.color, letterSpacing:.5 }}>
-                      {cfg.logo} {cfg.label.toUpperCase()} — INITIAL DRAFT
-                    </div>
-                    <div style={{ padding:"12px", fontSize:12.5, color:C.textSoft,
-                      lineHeight:1.8, whiteSpace:"pre-wrap", fontFamily:body }}>
-                      {emails}
-                    </div>
-                  </div>
-                )}
-                {critique && (
-                  <div style={{ borderRadius:8, border:`1px solid ${C.border}`, background:C.canvas, overflow:"hidden" }}>
-                    <div style={{ padding:"6px 12px", borderBottom:`1px solid ${C.border}`,
-                      fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5 }}>
-                      {cfg.logo} {cfg.label.toUpperCase()} — CRITIQUE & DEBATE NOTES
-                    </div>
-                    <div style={{ padding:"12px", fontSize:12.5, color:C.textSoft,
-                      lineHeight:1.8, whiteSpace:"pre-wrap", fontFamily:body }}>
-                      {critique}
+              <div key={idx} style={{ borderRadius:8, border:`1px solid ${open?sborder:C.border}`,
+                background:open?sbg:C.canvas, overflow:"hidden", transition:"all .2s" }}>
+                <button onClick={()=>setExpandedRound(open?null:idx)}
+                  style={{ display:"flex", alignItems:"center", gap:10, width:"100%",
+                    padding:"9px 12px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left" }}>
+                  <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, minWidth:52 }}>
+                    Round {it.round}
+                  </span>
+                  <span style={{ fontSize:11, fontFamily:mono, fontWeight:800, color:scolor,
+                    background:sbg, border:`1px solid ${sborder}`,
+                    padding:"1px 7px", borderRadius:4 }}>{sc}/10</span>
+                  {it.is10 && <span style={{ fontSize:9, fontFamily:mono, fontWeight:700,
+                    color:C.green }}>✦ 10/10 ACHIEVED</span>}
+                  <span style={{ flex:1, fontSize:11, color:C.muted, fontFamily:body,
+                    fontStyle:"italic", textAlign:"left", overflow:"hidden",
+                    textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {it.reasoning?.slice(0,80)}…
+                  </span>
+                  <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>{open?"▴":"▾"}</span>
+                </button>
+                {open && (
+                  <div style={{ padding:"0 12px 12px", display:"flex", flexDirection:"column", gap:10 }}>
+                    {it.reasoning && (
+                      <div style={{ padding:"8px 10px", borderRadius:6, background:sbg,
+                        border:`1px solid ${sborder}`, fontSize:12, color:C.textSoft,
+                        fontFamily:body, lineHeight:1.7 }}>
+                        <div style={{ fontSize:8.5, fontFamily:mono, fontWeight:700, color:scolor,
+                          marginBottom:4, letterSpacing:.4 }}>GRADE REASONING</div>
+                        {it.reasoning}
+                      </div>
+                    )}
+                    {it.improvements && !it.is10 && (
+                      <div style={{ padding:"8px 10px", borderRadius:6, background:C.redLo,
+                        border:`1px solid ${C.red}33`, fontSize:12, color:C.textSoft,
+                        fontFamily:body, lineHeight:1.7 }}>
+                        <div style={{ fontSize:8.5, fontFamily:mono, fontWeight:700, color:C.red,
+                          marginBottom:4, letterSpacing:.4 }}>WHAT NEEDS TO CHANGE</div>
+                        {it.improvements}
+                      </div>
+                    )}
+                    <div style={{ borderRadius:6, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+                      <div style={{ padding:"5px 10px", background:C.faint, fontSize:8.5,
+                        fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4 }}>
+                        EMAILS — ROUND {it.round}
+                      </div>
+                      <div style={{ padding:"10px", fontSize:12, color:C.muted,
+                        lineHeight:1.8, whiteSpace:"pre-wrap", fontFamily:body }}>
+                        {it.emails}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1241,25 +1254,11 @@ Be surgical. Quote actual content. Give real rewrite examples, not generic advic
 
   const runAICouncil = async () => {
     if (councilState.status === "running") return;
-    const missingKeys = [
-      !getApiKey()    && "Anthropic (Claude)",
-      !getOpenAIKey() && "OpenAI (GPT-4o)",
-      !getGeminiKey() && "Google (Gemini)",
-    ].filter(Boolean);
-    if (missingKeys.length) {
-      alert(`AI Council needs API keys for: ${missingKeys.join(", ")}.\n\nAdd them in the sidebar (API Keys section).`);
-      return;
-    }
+    if (!getApiKey()) { alert("Please enter your Anthropic API key first."); return; }
 
-    setCouncilState({ status:"running", phase:"Briefing all three models…" });
-    const ctx = { company: companyData, icp: { ...data, name: icp.name } };
-    const emailPrompt = (model: string) =>
-      `You are a senior GTM strategist (${model}). Write the BEST possible 3-email cold outreach sequence for this ICP.
-Data: ${JSON.stringify(ctx)}
-Tone: ${data.tone||"direct"} | CTA: ${data.cta||"15-min call"}
-Max 100 words per email body. No brackets. No templates. Real, send-ready emails. Different angle per email.
-
----
+    const MAX_ROUNDS = 6;
+    const iterations: any[] = [];
+    const emailFormat = `---
 EMAIL 1 — Initial
 Subject: ...
 
@@ -1286,153 +1285,131 @@ SUBJECT LINE VARIANTS
 5.`;
 
     try {
-      // Phase 1: All 3 draft independently — use allSettled to get per-model errors
-      const p1 = await Promise.allSettled([
-        callAI(emailPrompt("Claude"), "", 1100),
-        callOpenAI(emailPrompt("GPT-4o"), "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.", 1100),
-        callGemini(emailPrompt("Gemini"), 1100),
-      ]);
-      const p1Errors = [
-        p1[0].status==="rejected" && `Claude: ${(p1[0] as PromiseRejectedResult).reason?.message}`,
-        p1[1].status==="rejected" && `GPT-4o: ${(p1[1] as PromiseRejectedResult).reason?.message}`,
-        p1[2].status==="rejected" && `Gemini: ${(p1[2] as PromiseRejectedResult).reason?.message}`,
-      ].filter(Boolean);
-      if (p1Errors.length) {
-        console.error("AI Council phase 1 errors:", p1Errors, p1);
-        throw new Error(`Draft phase failed —\n${p1Errors.join("\n")}`);
+      let currentEmails = "";
+      let lastScore = 0;
+      let lastImprovements = "";
+
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        // ── Generate / refine ──────────────────────────────────────────────────
+        setCouncilState({ status:"running",
+          phase: round === 0
+            ? "Round 1: Generating initial draft…"
+            : `Round ${round + 1}: Rewriting — targeting 10/10…` });
+
+        const genPrompt = round === 0
+          ? `You are a world-class B2B cold outreach copywriter. Write the best possible 3-email sequence for this ICP. Real emails, ready to send. No brackets, no templates.
+
+ICP: ${data.buyer||""} in ${data.industries||""}
+Tone: ${data.tone||"direct"} | CTA: ${data.cta||"15-min call"}
+Primary pain: ${(data.pain1||"").slice(0,300)}
+Opening hook angle: ${data.hook||"derive from pain"}
+Best proof for this ICP: ${data.icp_proof||companyData?.co_proof||""}
+Differentiator: ${companyData?.co_diff||""}
+Max 100 words per email body. Each email a completely different angle.
+
+${emailFormat}`
+          : `These emails scored ${lastScore}/10. The grader identified these specific problems:
+
+${lastImprovements}
+
+Fix every issue listed above. Be surgical — rewrite the weak lines directly. Do not change what's working.
+
+ICP context: ${data.buyer||""} in ${data.industries||""} | Pain: ${(data.pain1||"").slice(0,200)}
+Proof: ${data.icp_proof||companyData?.co_proof||""} | Differentiator: ${companyData?.co_diff||""}
+Previous emails (for reference only — rewrite, don't copy):
+${currentEmails.slice(0, 2000)}
+
+${emailFormat}`;
+
+        currentEmails = await callAI(genPrompt,
+          "You are a world-class B2B cold outreach copywriter. Only output the emails in the exact format requested.", 1200);
+
+        // ── Grade ──────────────────────────────────────────────────────────────
+        setCouncilState({ status:"running", phase: `Round ${round + 1}: Grading strictly…` });
+
+        const gradePrompt = `You are a brutally honest B2B email quality judge. Your standard: would an experienced SDR at a top SaaS company send this right now without editing a single word?
+
+ICP: ${data.buyer||""} in ${data.industries||""}
+Tone target: ${data.tone||"direct"} | CTA: ${data.cta||"15-min call"}
+Primary pain: ${(data.pain1||"(not provided)").slice(0,300)}
+Hook angle: ${data.hook||"(not provided)"}
+Best proof: ${data.icp_proof||companyData?.co_proof||"(not provided)"}
+Differentiator: ${companyData?.co_diff||"(not provided)"}
+Fears/what keeps them up: ${data.fears||"(not provided)"}
+
+EMAILS TO GRADE:
+${currentEmails.slice(0, 2500)}
+
+Score each email on 5 dimensions (0–2 each, max 10 per email):
+- opening (0–2): 0=generic/predictable opener that any SDR would write, 1=relevant but safe, 2=specific hook causing genuine curiosity or pattern interruption
+- pain (0–2): 0=vague "you probably struggle with X" generality, 1=recognizable pain, 2=precise visceral pain this exact title feels daily — specific enough to feel personal
+- tone (0–2): 0=salesy/corporate/"I wanted to reach out", 1=conversational, 2=peer-level — one expert addressing another, zero desperation
+- credibility (0–2): 0=no proof or social proof, 1=vague claim like "many companies", 2=specific named client, metric, or concrete outcome
+- cta (0–2): 0=high-friction demand (demo, call, meeting), 1=acceptable, 2=single frictionless low-commitment ask that costs them almost nothing
+
+Return ONLY valid JSON — no other text:
+{
+  "e1": {"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
+  "e2": {"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
+  "e3": {"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
+  "campaign_score": N,
+  "is_10": false,
+  "reasoning": "2–3 sentences: what's strong, what still falls short. Be specific — quote the weak lines.",
+  "improvements": "Exact rewrite instructions if not 10/10. Quote each weak phrase and say precisely what to replace it with. Leave blank if 10/10."
+}
+
+campaign_score rules:
+- 10 only if ALL 3 emails would be sent without editing a single word by an experienced SDR
+- is_10 must be true only when campaign_score === 10 AND you can cite specific evidence for every dimension being 2/2
+- Be strict. Most first drafts deserve 6–7. A genuinely great cold email campaign is rare.`;
+
+        const gradeRaw = await callAI(gradePrompt,
+          "You are a strict B2B email grader. Return only valid JSON. No markdown, no explanation outside the JSON.", 900);
+
+        const jsonMatch = gradeRaw.match(/\{[\s\S]*\}/);
+        let gradeData: any = {
+          e1:{}, e2:{}, e3:{},
+          campaign_score: Math.min(lastScore + 2, 9),
+          is_10: false,
+          reasoning: "Could not parse grade.",
+          improvements: gradeRaw,
+        };
+        if (jsonMatch) {
+          try { gradeData = JSON.parse(jsonMatch[0]); } catch {}
+        }
+
+        const score = typeof gradeData.campaign_score === "number"
+          ? Math.min(10, Math.max(0, gradeData.campaign_score)) : lastScore + 1;
+
+        iterations.push({
+          round: round + 1,
+          emails: currentEmails,
+          score,
+          reasoning: gradeData.reasoning || "",
+          improvements: gradeData.improvements || "",
+          dims: { e1: gradeData.e1, e2: gradeData.e2, e3: gradeData.e3 },
+          is10: !!gradeData.is_10,
+        });
+
+        if (gradeData.is_10 || score >= 10) break;
+        lastScore = score;
+        lastImprovements = gradeData.improvements || gradeData.reasoning || "";
       }
-      const claudeEmails = (p1[0] as PromiseFulfilledResult<string>).value;
-      const gptEmails    = (p1[1] as PromiseFulfilledResult<string>).value;
-      const geminiEmails = (p1[2] as PromiseFulfilledResult<string>).value;
-      console.log("AI Council phase 1 complete", { claudeEmails: claudeEmails.slice(0,100), gptEmails: gptEmails.slice(0,100), geminiEmails: geminiEmails.slice(0,100) });
 
-      setCouncilState({ status:"running", phase:"Models reviewing each other's drafts…" });
-
-      // Phase 2: Cross-critique — each model reviews all 3 drafts
-      const critiquePrompt = (myModel: string, myDraft: string, otherA: string, nameA: string, otherB: string, nameB: string) =>
-        `You are ${myModel}, a senior GTM strategist. Review all 3 email campaigns below for this ICP:
-ICP: ${data.buyer||""} in ${data.industries||""} | Tone: ${data.tone||"direct"} | CTA: ${data.cta||"15-min call"}
-Company context: ${companyData?.co_pitch||""} | Proof: ${companyData?.co_proof||""}
-Pain: ${data.pain1||""}
-
-YOUR DRAFT (${myModel}):
-${myDraft}
-
-${nameA}'s DRAFT:
-${otherA}
-
-${nameB}'s DRAFT:
-${otherB}
-
-Write a structured critique:
-1. Your draft — what's strongest, what's weakest
-2. ${nameA}'s draft — what's strongest, what you'd borrow
-3. ${nameB}'s draft — what's strongest, what you'd borrow
-4. The single best opening line across all 3 drafts (quote it exactly)
-5. The single best pain framing across all 3 drafts (quote it exactly)
-6. The single best CTA across all 3 drafts (quote it exactly)
-7. Your revised Email 1 incorporating the best elements — must be better than all 3 originals
-
-Be specific. Quote actual lines. Justify every choice.`;
-
-      const p2 = await Promise.allSettled([
-        callAI(critiquePrompt("Claude", claudeEmails, gptEmails, "GPT-4o", geminiEmails, "Gemini"), "", 1400),
-        callOpenAI(critiquePrompt("GPT-4o", gptEmails, claudeEmails, "Claude", geminiEmails, "Gemini"), "You are a senior B2B cold outreach strategist.", 1400),
-        callGemini(critiquePrompt("Gemini", geminiEmails, claudeEmails, "Claude", gptEmails, "GPT-4o"), 1400),
-      ]);
-      const p2Errors = [
-        p2[0].status==="rejected" && `Claude: ${(p2[0] as PromiseRejectedResult).reason?.message}`,
-        p2[1].status==="rejected" && `GPT-4o: ${(p2[1] as PromiseRejectedResult).reason?.message}`,
-        p2[2].status==="rejected" && `Gemini: ${(p2[2] as PromiseRejectedResult).reason?.message}`,
-      ].filter(Boolean);
-      if (p2Errors.length) {
-        console.error("AI Council phase 2 errors:", p2Errors, p2);
-        throw new Error(`Critique phase failed —\n${p2Errors.join("\n")}`);
-      }
-      const claudeCritique = (p2[0] as PromiseFulfilledResult<string>).value;
-      const gptCritique    = (p2[1] as PromiseFulfilledResult<string>).value;
-      const geminiCritique = (p2[2] as PromiseFulfilledResult<string>).value;
-
-      setCouncilState({ status:"running", phase:"Synthesizing consensus campaign…" });
-
-      // Phase 3: Claude synthesizes the final campaign
-      const synthesis = await callAI(
-        `You are the chief GTM strategist. Three expert models have independently drafted and critiqued email campaigns. Your job: synthesize the DEFINITIVE consensus email sequence — one that all three models would agree is 10/10.
-
-ICP CONTEXT:
-${JSON.stringify(ctx)}
-
-CLAUDE'S DRAFT:
-${claudeEmails}
-
-CLAUDE'S CRITIQUE & REVISED EMAIL 1:
-${claudeCritique}
-
-GPT-4o'S DRAFT:
-${gptEmails}
-
-GPT-4o'S CRITIQUE & REVISED EMAIL 1:
-${gptCritique}
-
-GEMINI'S DRAFT:
-${geminiEmails}
-
-GEMINI'S CRITIQUE & REVISED EMAIL 1:
-${geminiCritique}
-
-Write the final definitive 3-email sequence. For each element you choose, silently pick the best version from any of the three models' work. This must score 10/10 on: opening hook specificity, pain viscerality, tone authenticity, proof credibility, CTA frictionlessness.
-
-Format exactly:
----
-EMAIL 1 — Initial
-Subject: ...
-
-[body]
-
----
-EMAIL 2 — Day 3
-Subject: ...
-
-[body]
-
----
-EMAIL 3 — Day 7
-Subject: ...
-
-[body]
-
----
-SUBJECT LINE VARIANTS
-1.
-2.
-3.
-4.
-5.
-
----
-SYNTHESIS RATIONALE
-In 3–4 sentences: what you took from each model and why. Name specific lines or angles.`,
-        "", 1600
-      );
-
-      // Split off rationale
-      const parts      = synthesis.split(/---\s*SYNTHESIS RATIONALE/i);
-      const finalEmails  = parts[0].trim();
-      const rationale  = parts[1]?.trim() || "";
-
-      const council = {
+      const final = iterations[iterations.length - 1];
+      onUpdate({ ...icp, data, aiCouncil: {
         date: new Date().toLocaleDateString(),
-        claudeEmails, gptEmails, geminiEmails,
-        claudeCritique, gptCritique, geminiCritique,
-        synthesis: finalEmails,
-        rationale,
-      };
-      onUpdate({ ...icp, data, aiCouncil: council });
+        iterations,
+        synthesis: final.emails,
+        rationale: final.reasoning,
+        finalScore: final.score,
+      }});
       setCouncilState({ status:"idle", phase:"" });
+
     } catch (e: any) {
       setCouncilState({ status:"idle", phase:"" });
-      console.error("AI Council failed:", e);
-      alert(`AI Council failed:\n\n${e.message || "Unknown error"}\n\nCheck the browser console (F12 → Console) for details.`);
+      console.error("Refinement failed:", e);
+      alert(`Refinement failed:\n\n${e.message || "Unknown error"}`);
     }
   };
 
@@ -1641,8 +1618,8 @@ In 3–4 sentences: what you took from each model and why. Name specific lines o
                       border:`2px solid ${C.accent}55`, background:`linear-gradient(135deg, ${C.accent}14, ${C.accentLo})`,
                       color:C.accent, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:800,
                       display:"flex", alignItems:"center", gap:5 }}>
-                      <span style={{ display:"flex", gap:1, fontSize:11 }}>◈◉◇</span>
-                      {icp.aiCouncil ? "Re-run Council" : "AI Council"}
+                      <span style={{ fontSize:11 }}>✦</span>
+                      {icp.aiCouncil ? "Re-refine to 10/10" : "Refine to 10/10"}
                     </button>
                   )}
                   {outTab==="email_copy" && councilState.status==="running" && (
