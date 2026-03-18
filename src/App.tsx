@@ -1697,7 +1697,19 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18 }}>
                   <span style={{ fontSize:15, color:curOT.color }}>{curOT.icon}</span>
                   <span style={{ fontSize:13, fontWeight:700, color:C.text, fontFamily:head }}>{curOT.label}</span>
-                  {outTab==="email_copy" && icp.emailScores && (() => {
+                  {outTab==="email_copy" && icp.aiCouncil && (() => {
+                    const sc = icp.aiCouncil.finalScore ?? 0;
+                    const ok = sc >= 10;
+                    return (
+                      <span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:10, fontFamily:mono, fontWeight:700,
+                        color:ok?C.green:C.amber, background:ok?C.greenLo:C.amberLo,
+                        border:`1px solid ${ok?C.greenBorder:C.amberBorder}`,
+                        padding:"2px 8px", borderRadius:5 }}>
+                        {ok?"✦ 10/10":"⚠ "+sc+"/10"}
+                      </span>
+                    );
+                  })()}
+                  {outTab==="email_copy" && !icp.aiCouncil && icp.emailScores && (() => {
                     const worst = Math.min(...icp.emailScores.map((s:any)=>s.total));
                     const avg = Math.round(icp.emailScores.reduce((a:any,s:any)=>a+s.total,0)/icp.emailScores.length*10)/10;
                     const ok = worst >= 8;
@@ -1757,7 +1769,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     {copied===outTab?"✓ Copied":"Copy"}
                   </button>
                 </div>
-                {outTab==="email_copy" && icp.emailScores && (
+                {outTab==="email_copy" && icp.emailScores && !icp.aiCouncil && (
                   <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:22 }}>
                     {(icp.emailScores as any[]).map((s, i) => {
                       const needsRevision = s.total < 8;
