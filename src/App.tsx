@@ -796,72 +796,46 @@ function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
 
 // ─── AI COUNCIL PANEL ─────────────────────────────────────────────────────────
 function AICouncilPanel({ council, onClose }: { council:any; onClose:()=>void }) {
-  const [auditOpen,    setAuditOpen]    = useState(false);
+  const [auditOpen,     setAuditOpen]     = useState(false);
   const [expandedRound, setExpandedRound] = useState<number|null>(null);
 
   if (!council) return null;
 
   const iterations: any[] = council.iterations || [];
   const is10 = council.finalScore >= 10 || iterations.some((it:any) => it.is10);
-  const borderColor = is10 ? C.green : C.amber;
-  const bgColor     = is10 ? C.greenLo : C.amberLo;
+  const scoreColor = is10 ? C.green : C.amber;
 
   return (
-    <div style={{ borderRadius:12, border:`2px solid ${borderColor}55`, background:C.canvas,
-      marginBottom:24, overflow:"hidden", animation:"fadeIn .3s ease",
-      boxShadow:`0 4px 24px ${borderColor}18` }}>
+    <div style={{ animation:"fadeIn .25s ease" }}>
+      {/* Emails — clean, same style as normal output */}
+      <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
+        {council.synthesis}
+      </div>
 
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 16px",
-        background:bgColor, borderBottom:`1px solid ${borderColor}44` }}>
-        <span style={{ fontSize:16 }}>{is10 ? "✦" : "◌"}</span>
-        <div>
-          <div style={{ fontSize:11, fontFamily:mono, fontWeight:800,
-            color:is10?C.green:C.amber, letterSpacing:.5 }}>
-            {is10 ? "10/10 CAMPAIGN — READY TO SEND" : `${council.finalScore}/10 — BEST AVAILABLE`}
-          </div>
-          <div style={{ fontSize:9, color:C.muted, fontFamily:mono }}>
-            Claude self-refined · {iterations.length} round{iterations.length!==1?"s":""} · {council.date}
-          </div>
-        </div>
-        <div style={{ flex:1 }} />
+      {/* Minimal footer */}
+      <div style={{ marginTop:20, paddingTop:14, borderTop:`1px solid ${C.border}`,
+        display:"flex", alignItems:"center", gap:10 }}>
+        <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:scoreColor,
+          background:is10?C.greenLo:C.amberLo, border:`1px solid ${is10?C.greenBorder:C.amberBorder}`,
+          padding:"2px 7px", borderRadius:4 }}>
+          {is10?"✦ 10/10":"⚠ "+council.finalScore+"/10"} · {iterations.length} round{iterations.length!==1?"s":""}
+        </span>
         <button onClick={()=>setAuditOpen(p=>!p)}
-          style={{ fontSize:10, color:C.muted, background:"transparent", border:`1px solid ${C.border}`,
-            borderRadius:5, cursor:"pointer", fontFamily:mono, padding:"3px 8px" }}>
-          {auditOpen ? "▴ Hide rounds" : `▾ View ${iterations.length} round${iterations.length!==1?"s":""}`}
+          style={{ fontSize:9, color:C.muted, background:"transparent", border:"none",
+            cursor:"pointer", fontFamily:mono, padding:0, textDecoration:"underline" }}>
+          {auditOpen ? "hide refinement history" : "view refinement history"}
         </button>
-        <button onClick={onClose} style={{ fontSize:10, color:C.muted, background:"transparent",
-          border:"none", cursor:"pointer", fontFamily:mono }}>✕</button>
+        <div style={{ flex:1 }} />
+        <button onClick={onClose}
+          style={{ fontSize:9, color:C.muted, background:"transparent", border:"none",
+            cursor:"pointer", fontFamily:mono, textDecoration:"underline" }}>
+          clear
+        </button>
       </div>
 
-      {/* 10/10 reasoning banner */}
-      {council.rationale && (
-        <div style={{ padding:"10px 16px", background:`${borderColor}08`,
-          borderBottom:`1px solid ${borderColor}33`, fontSize:11.5, color:C.textSoft,
-          fontFamily:body, lineHeight:1.7 }}>
-          <span style={{ fontSize:9, fontFamily:mono, fontWeight:700,
-            color:is10?C.green:C.amber, marginRight:8 }}>{is10?"WHY 10/10:":"GRADE REASONING:"}</span>
-          {council.rationale}
-        </div>
-      )}
-
-      {/* Final emails */}
-      <div style={{ padding:"20px 20px 16px" }}>
-        <div style={{ fontSize:9, fontFamily:mono, fontWeight:700,
-          color:is10?C.green:C.amber, letterSpacing:.8, marginBottom:12 }}>
-          {is10 ? "✦ FINAL 10/10 EMAILS" : "BEST VERSION PRODUCED"}
-        </div>
-        <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
-          {council.synthesis}
-        </div>
-      </div>
-
-      {/* Refinement round audit */}
-      {auditOpen && iterations.length > 0 && (
-        <div style={{ borderTop:`1px solid ${C.border}`, background:C.faint, padding:"12px 16px",
-          display:"flex", flexDirection:"column", gap:8 }}>
-          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
-            letterSpacing:.6, marginBottom:4 }}>REFINEMENT AUDIT TRAIL</div>
+      {/* Audit trail — hidden by default */}
+      {auditOpen && (
+        <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:6 }}>
           {iterations.map((it: any, idx: number) => {
             const sc = it.score ?? 0;
             const scolor = sc >= 10 ? C.green : sc >= 8 ? C.amber : C.red;
@@ -869,55 +843,40 @@ function AICouncilPanel({ council, onClose }: { council:any; onClose:()=>void })
             const sborder= sc >= 10 ? C.greenBorder : sc >= 8 ? C.amberBorder : `${C.red}44`;
             const open   = expandedRound === idx;
             return (
-              <div key={idx} style={{ borderRadius:8, border:`1px solid ${open?sborder:C.border}`,
-                background:open?sbg:C.canvas, overflow:"hidden", transition:"all .2s" }}>
+              <div key={idx} style={{ borderRadius:7, border:`1px solid ${open?sborder:C.border}`,
+                overflow:"hidden" }}>
                 <button onClick={()=>setExpandedRound(open?null:idx)}
-                  style={{ display:"flex", alignItems:"center", gap:10, width:"100%",
-                    padding:"9px 12px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left" }}>
-                  <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, minWidth:52 }}>
-                    Round {it.round}
+                  style={{ display:"flex", alignItems:"center", gap:8, width:"100%",
+                    padding:"7px 10px", background:open?sbg:C.faint,
+                    border:"none", cursor:"pointer", textAlign:"left" }}>
+                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted }}>Round {it.round}</span>
+                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:800, color:scolor,
+                    background:sbg, border:`1px solid ${sborder}`, padding:"1px 6px", borderRadius:3 }}>{sc}/10</span>
+                  <span style={{ flex:1, fontSize:10, color:C.muted, fontFamily:body, fontStyle:"italic",
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {it.reasoning?.slice(0,90)}
                   </span>
-                  <span style={{ fontSize:11, fontFamily:mono, fontWeight:800, color:scolor,
-                    background:sbg, border:`1px solid ${sborder}`,
-                    padding:"1px 7px", borderRadius:4 }}>{sc}/10</span>
-                  {it.is10 && <span style={{ fontSize:9, fontFamily:mono, fontWeight:700,
-                    color:C.green }}>✦ 10/10 ACHIEVED</span>}
-                  <span style={{ flex:1, fontSize:11, color:C.muted, fontFamily:body,
-                    fontStyle:"italic", textAlign:"left", overflow:"hidden",
-                    textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {it.reasoning?.slice(0,80)}…
-                  </span>
-                  <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>{open?"▴":"▾"}</span>
+                  <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>{open?"▴":"▾"}</span>
                 </button>
                 {open && (
-                  <div style={{ padding:"0 12px 12px", display:"flex", flexDirection:"column", gap:10 }}>
+                  <div style={{ padding:"10px", display:"flex", flexDirection:"column", gap:8,
+                    background:C.canvas, borderTop:`1px solid ${C.border}` }}>
                     {it.reasoning && (
-                      <div style={{ padding:"8px 10px", borderRadius:6, background:sbg,
-                        border:`1px solid ${sborder}`, fontSize:12, color:C.textSoft,
-                        fontFamily:body, lineHeight:1.7 }}>
-                        <div style={{ fontSize:8.5, fontFamily:mono, fontWeight:700, color:scolor,
-                          marginBottom:4, letterSpacing:.4 }}>GRADE REASONING</div>
-                        {it.reasoning}
+                      <div style={{ fontSize:11.5, color:C.textSoft, fontFamily:body, lineHeight:1.7 }}>
+                        <span style={{ fontSize:8.5, fontFamily:mono, fontWeight:700, color:scolor,
+                          marginRight:6 }}>GRADE:</span>{it.reasoning}
                       </div>
                     )}
                     {it.improvements && !it.is10 && (
-                      <div style={{ padding:"8px 10px", borderRadius:6, background:C.redLo,
-                        border:`1px solid ${C.red}33`, fontSize:12, color:C.textSoft,
-                        fontFamily:body, lineHeight:1.7 }}>
-                        <div style={{ fontSize:8.5, fontFamily:mono, fontWeight:700, color:C.red,
-                          marginBottom:4, letterSpacing:.4 }}>WHAT NEEDS TO CHANGE</div>
-                        {it.improvements}
+                      <div style={{ fontSize:11.5, color:C.textSoft, fontFamily:body, lineHeight:1.7,
+                        borderLeft:`2px solid ${C.red}55`, paddingLeft:8 }}>
+                        <span style={{ fontSize:8.5, fontFamily:mono, fontWeight:700, color:C.red,
+                          marginRight:6 }}>FIXES:</span>{it.improvements}
                       </div>
                     )}
-                    <div style={{ borderRadius:6, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-                      <div style={{ padding:"5px 10px", background:C.faint, fontSize:8.5,
-                        fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4 }}>
-                        EMAILS — ROUND {it.round}
-                      </div>
-                      <div style={{ padding:"10px", fontSize:12, color:C.muted,
-                        lineHeight:1.8, whiteSpace:"pre-wrap", fontFamily:body }}>
-                        {it.emails}
-                      </div>
+                    <div style={{ fontSize:11.5, color:C.muted, lineHeight:1.8, whiteSpace:"pre-wrap",
+                      fontFamily:body, marginTop:4, borderTop:`1px solid ${C.border}`, paddingTop:8 }}>
+                      {it.emails}
                     </div>
                   </div>
                 )}
@@ -1690,10 +1649,6 @@ campaign_score rules:
                     })}
                   </div>
                 )}
-                {outTab==="email_copy" && icp.aiCouncil && (
-                  <AICouncilPanel council={icp.aiCouncil}
-                    onClose={()=>onUpdate({ ...icp, data, aiCouncil:undefined })} />
-                )}
                 {outTab==="email_copy" && (intelligence.status==="done" || icp.intelligence) && (
                   <IntelligencePanel
                     result={intelligence.status==="done" ? intelligence.result : (icp.intelligence||"")}
@@ -1701,22 +1656,13 @@ campaign_score rules:
                     onClose={()=>setIntelligence({ status:"idle", result:"", phase:"" })}
                   />
                 )}
-                {outTab!=="email_copy" || !icp.aiCouncil ? (
+                {outTab==="email_copy" && icp.aiCouncil ? (
+                  <AICouncilPanel council={icp.aiCouncil}
+                    onClose={()=>onUpdate({ ...icp, data, aiCouncil:undefined })} />
+                ) : (
                   <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
                     {icp.outputs[outTab]}
                   </div>
-                ) : (
-                  <details style={{ marginTop:8 }}>
-                    <summary style={{ fontSize:11, color:C.muted, fontFamily:mono, cursor:"pointer",
-                      padding:"6px 10px", borderRadius:6, border:`1px solid ${C.border}`,
-                      background:C.faint, listStyle:"none", display:"flex", alignItems:"center", gap:6 }}>
-                      <span>▾</span> View original email copy (pre-council)
-                    </summary>
-                    <div style={{ fontSize:13, color:C.muted, lineHeight:1.85, whiteSpace:"pre-wrap",
-                      fontFamily:body, marginTop:10, opacity:.75 }}>
-                      {icp.outputs.email_copy}
-                    </div>
-                  </details>
                 )}
               </div>
             )}
