@@ -819,14 +819,19 @@ function replaceEmailInSynthesis(synthesis: string, idx: number, newText: string
 }
 
 // ─── AI COUNCIL PANEL ─────────────────────────────────────────────────────────
-function AICouncilPanel({ council, onClose, onRefineEmail, refiningEmail }: {
+function AICouncilPanel({ council, onClose, onRefineEmail, refiningEmail, onRefineAll }: {
   council: any;
   onClose: () => void;
-  onRefineEmail?: (index: number) => void;
+  onRefineEmail?: (index: number, feedback?: string) => void;
   refiningEmail?: number | null;
+  onRefineAll?: (feedback: string) => void;
 }) {
-  const [auditOpen,     setAuditOpen]     = useState(false);
-  const [expandedRound, setExpandedRound] = useState<number|null>(null);
+  const [auditOpen,       setAuditOpen]       = useState(false);
+  const [expandedRound,   setExpandedRound]   = useState<number|null>(null);
+  const [emailFeedbacks,  setEmailFeedbacks]  = useState<string[]>(["","",""]);
+  const [openFeedbackIdx, setOpenFeedbackIdx] = useState<number | null>(null);
+  const [globalFeedback,  setGlobalFeedback]  = useState("");
+  const [globalFbOpen,    setGlobalFbOpen]    = useState(false);
 
   if (!council) return null;
 
@@ -909,6 +914,49 @@ function AICouncilPanel({ council, onClose, onRefineEmail, refiningEmail }: {
             <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
               {bodyText}
             </div>
+            {/* Per-email feedback */}
+            {onRefineEmail && refiningEmail == null && (
+              <div style={{ marginTop:10 }}>
+                {openFeedbackIdx === i ? (
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    <textarea
+                      value={emailFeedbacks[i]}
+                      onChange={e => setEmailFeedbacks(prev => { const n=[...prev]; n[i]=e.target.value; return n; })}
+                      placeholder={`e.g. "open with a specific stat", "soften the CTA to an email reply, not a call", "reference Q2 budget cycles"…`}
+                      rows={2}
+                      style={{ width:"100%", fontSize:11.5, fontFamily:body, color:C.text,
+                        background:C.faint, border:`1px solid ${C.border}`, borderRadius:6,
+                        padding:"7px 10px", resize:"vertical", outline:"none", boxSizing:"border-box",
+                        lineHeight:1.6 }}
+                    />
+                    <div style={{ display:"flex", gap:6 }}>
+                      <button
+                        onClick={() => {
+                          if (emailFeedbacks[i].trim()) { onRefineEmail(i, emailFeedbacks[i].trim()); }
+                          else { onRefineEmail(i); }
+                          setOpenFeedbackIdx(null);
+                        }}
+                        style={{ padding:"4px 11px", borderRadius:5, border:`1px solid ${C.accentBorder}`,
+                          background:C.accentLo, color:C.accent, fontSize:9, fontFamily:mono,
+                          cursor:"pointer", fontWeight:700 }}>
+                        ↻ Apply & refine to 10/10
+                      </button>
+                      <button onClick={() => setOpenFeedbackIdx(null)}
+                        style={{ padding:"4px 9px", borderRadius:5, border:`1px solid ${C.border}`,
+                          background:"transparent", color:C.muted, fontSize:9, fontFamily:mono, cursor:"pointer" }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setOpenFeedbackIdx(i)}
+                    style={{ fontSize:9, color:C.muted, background:"transparent", border:"none",
+                      cursor:"pointer", fontFamily:mono, padding:0, textDecoration:"underline" }}>
+                    + give feedback on this email
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         );
       }) : (
@@ -918,8 +966,53 @@ function AICouncilPanel({ council, onClose, onRefineEmail, refiningEmail }: {
         </div>
       )}
 
+      {/* "Apply to all" global feedback */}
+      {onRefineAll && refiningEmail == null && (
+        <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${C.border}` }}>
+          {globalFbOpen ? (
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
+                letterSpacing:.4, marginBottom:2 }}>FEEDBACK FOR ALL 3 EMAILS</div>
+              <textarea
+                value={globalFeedback}
+                onChange={e => setGlobalFeedback(e.target.value)}
+                placeholder={`e.g. "make all CTAs an email reply instead of a call", "sharpen the pain angle to focus on churn", "cut each email to under 80 words"…`}
+                rows={2}
+                style={{ width:"100%", fontSize:11.5, fontFamily:body, color:C.text,
+                  background:C.faint, border:`1px solid ${C.border}`, borderRadius:6,
+                  padding:"7px 10px", resize:"vertical", outline:"none", boxSizing:"border-box",
+                  lineHeight:1.6 }}
+              />
+              <div style={{ display:"flex", gap:6 }}>
+                <button
+                  onClick={() => {
+                    if (globalFeedback.trim()) onRefineAll(globalFeedback.trim());
+                    setGlobalFbOpen(false);
+                  }}
+                  style={{ padding:"4px 11px", borderRadius:5, border:`1px solid ${C.accentBorder}`,
+                    background:C.accentLo, color:C.accent, fontSize:9, fontFamily:mono,
+                    cursor:"pointer", fontWeight:700 }}>
+                  ↻ Apply to all 3 emails & refine to 10/10
+                </button>
+                <button onClick={() => setGlobalFbOpen(false)}
+                  style={{ padding:"4px 9px", borderRadius:5, border:`1px solid ${C.border}`,
+                    background:"transparent", color:C.muted, fontSize:9, fontFamily:mono, cursor:"pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setGlobalFbOpen(true)}
+              style={{ fontSize:9, color:C.muted, background:"transparent", border:"none",
+                cursor:"pointer", fontFamily:mono, padding:0, textDecoration:"underline" }}>
+              + give feedback for all 3 emails
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Minimal footer */}
-      <div style={{ marginTop:20, paddingTop:14, borderTop:`1px solid ${C.border}`,
+      <div style={{ marginTop:14, paddingTop:14, borderTop:`1px solid ${C.border}`,
         display:"flex", alignItems:"center", gap:10 }}>
         <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:scoreColor,
           background:is10?C.greenLo:C.amberLo, border:`1px solid ${is10?C.greenBorder:C.amberBorder}`,
@@ -1309,7 +1402,8 @@ Be surgical. Quote actual content. Give real rewrite examples, not generic advic
   // onPhase is called with a human-readable status string each step.
   const runRefinementLoop = async (
     initialDraft: string,
-    onPhase: (p: string) => void
+    onPhase: (p: string) => void,
+    userFeedback?: string
   ): Promise<any> => {
     const MAX_ROUNDS = 6;
     const emailFormat = `---
@@ -1344,16 +1438,18 @@ SUBJECT LINE VARIANTS
     let lastImprovements = "";
 
     for (let round = 0; round < MAX_ROUNDS; round++) {
-      // ── Rewrite (skip on round 0 — use initialDraft as-is) ────────────────
-      if (round > 0) {
+      // ── Rewrite (skip on round 0 unless user feedback is provided) ─────────
+      if (round > 0 || userFeedback) {
         onPhase(`Round ${round + 1}: Rewriting…`);
+        const feedbackBlock = userFeedback
+          ? `\n⚠ USER FEEDBACK (hard requirement — incorporate this exactly):\n"${userFeedback}"\n`
+          : "";
+        const qualityBlock = round > 0
+          ? `These emails scored ${lastScore}/10. The grader found these problems:\n\n${lastImprovements}\n\nFix every issue. Be surgical — rewrite only the weak lines. Do not touch what's working.`
+          : "Rewrite these emails incorporating the user feedback below. Keep what's strong.";
         currentEmails = await callAI(
-          `These emails scored ${lastScore}/10. The grader found these problems:
-
-${lastImprovements}
-
-Fix every issue. Be surgical — rewrite only the weak lines. Do not touch what's working.
-
+          `${qualityBlock}
+${feedbackBlock}
 ICP context: ${data.buyer||""} in ${data.industries||""} | Pain: ${(data.pain1||"").slice(0,200)}
 Proof: ${data.icp_proof||companyData?.co_proof||""} | Differentiator: ${companyData?.co_diff||""}
 Previous emails (reference only):
@@ -1434,7 +1530,7 @@ campaign_score: 10 only if ALL 3 emails pass the SDR test. is_10 true only with 
   };
 
   // ── Per-email targeted refinement ─────────────────────────────────────────
-  const runSingleEmailRefinement = async (emailIndex: number) => {
+  const runSingleEmailRefinement = async (emailIndex: number, userFeedback?: string) => {
     const council = icp.aiCouncil;
     if (!council) return;
     const emails: string[] = council.emails?.length
@@ -1453,15 +1549,17 @@ campaign_score: 10 only if ALL 3 emails pass the SDR test. is_10 true only with 
 
     try {
       for (let round = 0; round < MAX_ROUNDS; round++) {
-        if (round > 0) {
+        if (round > 0 || userFeedback) {
           setCouncilState({ status:"running", phase:`Email ${emailIndex+1}: Round ${round+1} rewriting…` });
+          const feedbackBlock = userFeedback
+            ? `\n⚠ USER FEEDBACK (hard requirement — incorporate this exactly):\n"${userFeedback}"\n`
+            : "";
+          const qualityBlock = round > 0
+            ? `This single cold outreach email scored ${lastScore}/10. Fix these issues exactly:\n\n${lastImprovements}\n\nBe surgical — only rewrite the weak lines. Keep what's working.`
+            : "Rewrite this email incorporating the user feedback below. Keep what's strong.";
           currentEmail = await callAI(
-            `This single cold outreach email scored ${lastScore}/10. Fix these issues exactly:
-
-${lastImprovements}
-
-Be surgical — only rewrite the weak lines. Keep what's working.
-
+            `${qualityBlock}
+${feedbackBlock}
 ICP: ${data.buyer||""} in ${data.industries||""} | Pain: ${(data.pain1||"").slice(0,200)}
 Proof: ${data.icp_proof||companyData?.co_proof||""} | Differentiator: ${companyData?.co_diff||""}
 
@@ -1533,6 +1631,21 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
       }
     } catch { /* best-effort */ } finally {
       setRefiningEmail(null);
+      setCouncilState({ status:"idle", phase:"" });
+    }
+  };
+
+  // ── Apply feedback to all 3 emails ────────────────────────────────────────
+  const runAllWithFeedback = async (userFeedback: string) => {
+    const currentSynthesis = icp.aiCouncil?.synthesis || icp.outputs?.email_copy || "";
+    if (!currentSynthesis) return;
+    setCouncilState({ status:"running", phase:"Applying feedback…" });
+    try {
+      const council = await runRefinementLoop(currentSynthesis, phase => {
+        setCouncilState({ status:"running", phase });
+      }, userFeedback);
+      onUpdate({ ...icp, data, aiCouncil: council });
+    } catch { /* best-effort */ } finally {
       setCouncilState({ status:"idle", phase:"" });
     }
   };
@@ -1831,7 +1944,8 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   <AICouncilPanel council={icp.aiCouncil}
                     onClose={()=>onUpdate({ ...icp, data, aiCouncil:undefined })}
                     onRefineEmail={councilState.status==="idle" ? runSingleEmailRefinement : undefined}
-                    refiningEmail={refiningEmail} />
+                    refiningEmail={refiningEmail}
+                    onRefineAll={councilState.status==="idle" ? runAllWithFeedback : undefined} />
                 ) : (
                   <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
                     {icp.outputs[outTab]}
