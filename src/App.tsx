@@ -46,20 +46,59 @@ const body = "'Inter', 'Source Sans 3', system-ui, sans-serif";
 const mono = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 
 // ─── SCHEMA ──────────────────────────────────────────────────────────────────
-const COMPANY_FIELDS = [
-  { id:"co_name",     label:"Company Name",               type:"text",     ph:"Acme Corp",                                          required:true, hint:"Legal or trade name as it appears publicly" },
-  { id:"co_industry", label:"Industry",                  type:"text",     ph:"B2B SaaS, FinTech, Healthcare IT…",                  hint:"The industry or vertical this company operates in" },
-  { id:"co_website",  label:"Website",                   type:"text",     ph:"https://acme.com",                                   hint:"Primary marketing site" },
-  { id:"co_pitch",   label:"One-Line Pitch",             type:"textarea", ph:"We help [who] do [what] so they can [outcome].",      rows:2, hint:"What a rep says in the first 10 seconds of a cold call" },
-  { id:"co_product", label:"What do you actually sell?", type:"textarea", ph:"Explain it plainly — no jargon. What does the buyer receive?", rows:3, hint:"If your grandmother couldn\'t follow it, simplify further" },
-  { id:"co_diff",    label:"Real Differentiators",       type:"textarea", ph:"Not \'faster or cheaper.\' What do you do that no competitor can honestly claim?", rows:2, hint:"If every competitor could say it, it doesn\'t count" },
-  { id:"co_proof",   label:"Proof That Works",           type:"textarea", ph:"\'3× pipeline in 90 days for Acme.\' Logos, stats, G2 ratings, case study numbers.", rows:2, hint:"The single stat or name that makes skeptics pause" },
-  { id:"co_deal",    label:"Avg Deal Size",              type:"select",   opts:["<$1K","$1K–$5K","$5K–$25K","$25K–$100K","$100K+"] },
-  { id:"co_cycle",   label:"Sales Cycle",                type:"select",   opts:["<1 week","1–4 weeks","1–3 months","3–6 months","6+ months"] },
-  { id:"co_goal",    label:"Monthly Meetings Goal",      type:"select",   opts:["1–5","5–10","10–20","20–30","30+"] },
-  { id:"co_exclude", label:"Global Exclude List",        type:"textarea", ph:"Current customers, investors, specific domains.",     hint:"Anyone we should never contact — applies to all ICPs" },
-  { id:"co_avoid",   label:"Copy — Always Avoid",        type:"textarea", ph:"Competitor names, pricing language, banned phrases.", hint:"Topics or angles that are off-limits in email copy" },
-];
+const COMPANY_SECTIONS = {
+  contact: { label:"Contact Info", icon:"◎",
+    fields:[
+      { id:"co_name",         label:"Company Name",               type:"text",     ph:"Acme Corp",                                          required:true, hint:"Exactly as you want it to appear in outreach messages" },
+      { id:"co_contact_first",label:"Contact First Name",         type:"text",     ph:"Jane",                                               hint:"Primary point of contact for this account" },
+      { id:"co_contact_last", label:"Contact Last Name",          type:"text",     ph:"Smith" },
+      { id:"co_contact_title",label:"Contact Job Title / Role",   type:"text",     ph:"VP of Marketing, Head of Growth…" },
+      { id:"co_contact_phone",label:"Contact Phone Number",       type:"text",     ph:"+1 (555) 123-4567" },
+      { id:"co_contact_email",label:"Contact Business Email",     type:"text",     ph:"jane@acme.com",                                      hint:"Primary business email address" },
+      { id:"co_login_email",  label:"B2B Rocket Login Email",     type:"text",     ph:"jane@acme.com",                                      hint:"Email used to login to app.b2brocket.ai" },
+    ]
+  },
+  overview: { label:"Company Overview", icon:"◉",
+    fields:[
+      { id:"co_industry",     label:"Industry",                   type:"text",     ph:"B2B SaaS, FinTech, Healthcare IT…",                  hint:"The industry or vertical this company operates in" },
+      { id:"co_website",      label:"Website",                    type:"text",     ph:"https://acme.com",                                   hint:"Primary marketing site" },
+      { id:"co_pitch",        label:"Value Proposition",          type:"textarea", ph:"A clear statement explaining the unique benefits your product offers, why customers should choose you over competitors, and how you solve their problems.", rows:3, hint:"The core promise of value delivered — goes beyond a one-liner" },
+      { id:"co_product",      label:"What do you actually sell?",  type:"textarea", ph:"Describe each product/service in detail — what it is, how it works, components, functionality, variations, pricing, delivery.", rows:4, hint:"If your grandmother couldn\'t follow it, simplify further" },
+    ]
+  },
+  edge: { label:"Competitive Edge", icon:"◆",
+    fields:[
+      { id:"co_ksp",          label:"Key Selling Points",          type:"textarea", ph:"Unique benefits that make you stand out. E.g. \'melts in your mouth, not in your hand\' (product feature), guaranteed uptime SLA (reliability), 24/7 white-glove support (service).", rows:3, hint:"Quality, price, convenience, guarantees, or solving a specific problem competitors can\'t" },
+      { id:"co_diff",         label:"Real Differentiators",        type:"textarea", ph:"Not \'faster or cheaper.\' What do you do that no competitor can honestly claim?", rows:2, hint:"If every competitor could say it, it doesn\'t count" },
+      { id:"co_proof",        label:"Proof That Works",            type:"textarea", ph:"\'3× pipeline in 90 days for Acme.\' Logos, stats, G2 ratings, case study numbers, testimonials.", rows:2, hint:"The single stat or name that makes skeptics pause" },
+      { id:"co_customers",    label:"Current Customers",           type:"textarea", ph:"List a few current customers with website/LinkedIn URLs.", rows:2, hint:"Used for social proof and lookalike targeting" },
+      { id:"co_dream",        label:"Dream Customers",             type:"textarea", ph:"Companies you\'d love to land — website/LinkedIn URLs.", rows:2, hint:"Helps define the ideal profile and targeting criteria" },
+    ]
+  },
+  sales: { label:"Sales Profile", icon:"◈",
+    fields:[
+      { id:"co_deal",         label:"Avg Deal Size",               type:"select",   opts:["<$1K","$1K–$5K","$5K–$25K","$25K–$100K","$100K+"] },
+      { id:"co_cycle",        label:"Sales Cycle",                 type:"select",   opts:["<1 week","1–4 weeks","1–3 months","3–6 months","6+ months"] },
+      { id:"co_goal",         label:"Monthly Meetings Goal",       type:"select",   opts:["1–5","5–10","10–20","20–30","30+"] },
+      { id:"co_past_emails",  label:"Past Email Examples",         type:"textarea", ph:"Paste your best-performing email copy here — subject lines and body text.", rows:4, hint:"Helps us match your proven style and tone" },
+    ]
+  },
+  campaign: { label:"Campaign Setup", icon:"◑",
+    fields:[
+      { id:"co_channels",     label:"Outreach Channels",           type:"chips",    opts:["Email","LinkedIn","AI Calls"] },
+      { id:"co_num_campaigns",label:"Number of Campaigns",         type:"select",   opts:["1","2","3","4","5+"],                            hint:"How many campaigns to start with" },
+      { id:"co_campaign_purpose",label:"Campaign Purpose",         type:"textarea", ph:"Describe the purpose of each campaign — e.g. \'Campaign 1: target enterprise CFOs for demo bookings\'", rows:3 },
+      { id:"co_outcomes",     label:"Expected Outcomes",           type:"chips",    opts:["Book demos","Schedule follow-up calls","Drive replies","Upsell existing customers","Re-engage inactive users","Activate trial users","Book renewal meetings","Drive event sign-ups","Collect feedback"] },
+      { id:"co_timezone",     label:"Campaign Timezone",           type:"text",     ph:"(UTC -05:00) America/New_York" },
+      { id:"co_days",         label:"Campaign Days",               type:"chips",    opts:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] },
+      { id:"co_start_time",   label:"Daily Start Time",            type:"text",     ph:"9:00 AM" },
+      { id:"co_end_time",     label:"Daily End Time",              type:"text",     ph:"5:00 PM" },
+      { id:"co_exclude",      label:"Global Exclude List",         type:"textarea", ph:"Current customers, investors, specific domains.",     hint:"Anyone we should never contact — applies to all ICPs" },
+      { id:"co_avoid",        label:"Copy — Always Avoid",         type:"textarea", ph:"Competitor names, pricing language, banned phrases.", hint:"Topics or angles that are off-limits in email copy" },
+    ]
+  },
+};
+const COMPANY_FIELDS = Object.values(COMPANY_SECTIONS).flatMap(s => s.fields);
 
 const ICP_SECTIONS = {
   targeting: { label:"Targeting", icon:"◎",
@@ -69,6 +108,8 @@ const ICP_SECTIONS = {
       { id:"geo",        label:"Geographies",                type:"text",     ph:"North America, UK, DACH, ANZ…" },
       { id:"revenue",    label:"Revenue Range",              type:"select",   opts:["Any","<$1M","$1M–$10M","$10M–$50M","$50M–$250M","$250M+"] },
       { id:"tech",       label:"Tech Stack Signals",         type:"textarea", ph:"Uses Salesforce, HubSpot, SAP, Workday…", rows:2, hint:"Tools they use that indicate they\'re a fit" },
+      { id:"keywords",   label:"Search Keywords",            type:"textarea", ph:"Terms that indicate fit — job post keywords, tech mentions, industry jargon.", rows:2, hint:"Keywords used to find and qualify prospects" },
+      { id:"dream_accts",label:"Dream Accounts",             type:"textarea", ph:"Specific companies you\'d love to land — names, websites, LinkedIn URLs.", rows:2, hint:"Helps define the ideal profile for lookalike targeting" },
       { id:"neg",        label:"Exclude Within Segment",     type:"textarea", ph:"Sub-types that churn or aren\'t a fit.", rows:2 },
     ]
   },
@@ -96,6 +137,7 @@ const ICP_SECTIONS = {
       { id:"hook",      label:"Opening Hook That Gets Replies", type:"textarea", ph:"The specific angle that works for THIS profile. Not generic.", rows:2 },
       { id:"cta",       label:"CTA Style",                      type:"select",   opts:["15-min call ask","Soft permission (\'worth a chat?\')","Video/resource share","Direct demo ask","Open-ended question"] },
       { id:"icp_proof", label:"Best Proof for This ICP",        type:"textarea", ph:"Which case study, logo, or stat lands hardest for this audience?", hint:"One targeted proof point beats five generic ones" },
+      { id:"ref_emails",label:"Reference Email Copy",           type:"textarea", ph:"Paste examples of emails that have worked well for this audience — subject lines and body.", rows:4, hint:"Gives the AI a proven style to build from" },
     ]
   },
 };
@@ -125,78 +167,105 @@ function getApiKey() {
   return window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || "";
 }
 
-async function callAI(prompt, sys = "", tokens = 800) {
+async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
   const key = getApiKey();
   if (!key) { alert("Please enter your Anthropic API key first (top-right corner)."); return ""; }
-  try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model:"claude-sonnet-4-20250514", max_tokens: tokens,
-        system: sys || "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.",
-        messages:[{ role:"user", content:prompt }],
-      }),
-    });
-    const json = await r.json();
-    if (json.error) { console.error("Anthropic error:", json.error); return `Error: ${json.error.message}`; }
-    return json.content?.[0]?.text ?? "";
-  } catch(e) { console.error("callAI failed:", e); return ""; }
+  for (let attempt = 0; attempt <= _retries; attempt++) {
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514", max_tokens: tokens,
+          system: sys || "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.",
+          messages:[{ role:"user", content:prompt }],
+        }),
+      });
+      if (r.status === 429 || r.status === 529 || r.status >= 500) {
+        const retryAfter = parseFloat(r.headers.get("retry-after") || "0");
+        const delay = Math.max(retryAfter * 1000, Math.min(1000 * Math.pow(2, attempt), 30000));
+        console.warn(`callAI rate-limited (${r.status}), retrying in ${delay}ms (attempt ${attempt + 1}/${_retries})`);
+        if (attempt < _retries) { await new Promise(ok => setTimeout(ok, delay)); continue; }
+        return `Error: Rate limited after ${_retries} retries`;
+      }
+      const json = await r.json();
+      if (json.error) { console.error("Anthropic error:", json.error); return `Error: ${json.error.message}`; }
+      return json.content?.[0]?.text ?? "";
+    } catch(e) {
+      if (attempt < _retries) { await new Promise(ok => setTimeout(ok, 1000 * Math.pow(2, attempt))); continue; }
+      console.error("callAI failed:", e); return "";
+    }
+  }
+  return "";
 }
 
 async function callAIStream(
   messages: { role: "user" | "assistant"; content: string }[],
   sys: string,
   tokens: number,
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
+  _retries = 5
 ): Promise<void> {
   const key = getApiKey();
   if (!key) { alert("Please enter your Anthropic API key first."); return; }
-  try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: tokens,
-        system: sys,
-        messages,
-        stream: true,
-      }),
-    });
-    if (!r.body) return;
-    const reader = r.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const data = line.slice(6).trim();
-        if (data === "[DONE]") continue;
-        try {
-          const evt = JSON.parse(data);
-          if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
-            onChunk(evt.delta.text);
-          }
-        } catch {}
+  for (let attempt = 0; attempt <= _retries; attempt++) {
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: tokens,
+          system: sys,
+          messages,
+          stream: true,
+        }),
+      });
+      if (r.status === 429 || r.status === 529 || r.status >= 500) {
+        const retryAfter = parseFloat(r.headers.get("retry-after") || "0");
+        const delay = Math.max(retryAfter * 1000, Math.min(1000 * Math.pow(2, attempt), 30000));
+        console.warn(`callAIStream rate-limited (${r.status}), retrying in ${delay}ms (attempt ${attempt + 1}/${_retries})`);
+        if (attempt < _retries) { await new Promise(ok => setTimeout(ok, delay)); continue; }
+        return;
       }
+      if (!r.body) return;
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(data);
+            if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+              onChunk(evt.delta.text);
+            }
+          } catch {}
+        }
+      }
+      return;
+    } catch (e) {
+      if (attempt < _retries) { await new Promise(ok => setTimeout(ok, 1000 * Math.pow(2, attempt))); continue; }
+      console.error("callAIStream failed:", e);
     }
-  } catch (e) { console.error("callAIStream failed:", e); }
+  }
 }
 
 function getOpenAIKey() { return localStorage.getItem("b2br_openai_key") || ""; }
@@ -693,12 +762,18 @@ CRITICAL RULES:
 - co_exclude and co_avoid: infer sensible defaults based on the company's type and segment.
 
 Return ONLY JSON:
-{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_diff":"","co_proof":"","co_deal":"","co_cycle":"","co_goal":"","co_exclude":"","co_avoid":""},
-"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_diff":0,"co_proof":0,"co_deal":0,"co_cycle":0,"co_goal":0,"co_exclude":0,"co_avoid":0}}
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_goal":"","co_channels":"","co_outcomes":"","co_exclude":"","co_avoid":""},
+"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0,"co_deal":0,"co_cycle":0,"co_goal":0,"co_channels":0,"co_outcomes":0,"co_exclude":0,"co_avoid":0}}
 co_deal: exactly one of "<$1K"|"$1K–$5K"|"$5K–$25K"|"$25K–$100K"|"$100K+"
 co_cycle: exactly one of "<1 week"|"1–4 weeks"|"1–3 months"|"3–6 months"|"6+ months"
 co_goal: exactly one of "1–5"|"5–10"|"10–20"|"20–30"|"30+"
-Raw JSON only.`, "", 1200);
+co_channels: array from ["Email","LinkedIn","AI Calls"]
+co_outcomes: array from ["Book demos","Schedule follow-up calls","Drive replies","Upsell existing customers","Re-engage inactive users","Activate trial users","Book renewal meetings","Drive event sign-ups","Collect feedback"]
+co_pitch: full value proposition, not just a one-liner
+co_ksp: key selling points — unique benefits that make the product stand out
+co_customers: known current customers if any
+co_dream: ideal target companies
+Raw JSON only.`, "", 1800);
     let coFields: any = {}, coConf: any = {};
     try { const p = JSON.parse(coRaw.replace(/```json|```/g,"").trim()); coFields=p.fields??{}; coConf=p.confidence??{}; }
     catch {}
@@ -721,16 +796,20 @@ CRITICAL RULES:
 - Write fields as a real CSM would — specific, not generic. E.g. pain1 should name a real pain, not say "various challenges".
 
 Return ONLY JSON:
-{"name":"Short descriptive segment label","fields":{"industries":"comma-separated industry list","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","triggers":"","sq_cost":"","tone":"","hook":"","cta":"","icp_proof":""},
-"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"pain1":0,"pain2":0,"triggers":0,"sq_cost":0,"tone":0,"hook":0,"cta":0,"icp_proof":0}}
+{"name":"Short descriptive segment label","fields":{"industries":"comma-separated industry list","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","triggers":"","sq_cost":"","tone":"","hook":"","cta":"","icp_proof":"","ref_emails":""},
+"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"keywords":0,"dream_accts":0,"neg":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"pain1":0,"pain2":0,"triggers":0,"sq_cost":0,"tone":0,"hook":0,"cta":0,"icp_proof":0,"ref_emails":0}}
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
 tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
 cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
-Raw JSON only.`, "", 1400);
+keywords: search terms or keywords that indicate a company is a fit
+dream_accts: specific dream companies for this segment
+ref_emails: leave empty unless example emails were provided
+Raw JSON only.`, "", 1600);
       try {
         const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
         icps.push(newICP(i, p.fields??{}, p.name||`ICP ${i+1}`, p.confidence??{}));
       } catch {}
+      if (i < count - 1) await new Promise(ok => setTimeout(ok, 1000));
     }
 
     const result = { coFields, coConf, icps };
@@ -1267,9 +1346,12 @@ function IntelligencePanel({ result, date, onClose }: { result:string; date:stri
 function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast, inline = false }) {
   const [data,           setData]          = useState({ ...icp.data });
   const [localConf,      setLocalConf]     = useState<any>({ ...(icp.confidence ?? {}) });
-  const [localConfLocked,setLocalConfLocked]= useState<Record<string,boolean>>(() =>
-    Object.fromEntries(Object.entries(icp.confidence ?? {}).filter(([,v]:any) => v > 0).map(([k]) => [k, true]))
-  );
+  const [localConfLocked,setLocalConfLocked]= useState<Record<string,boolean>>(() => {
+    const locked: Record<string,boolean> = {};
+    for (const [k,v] of Object.entries(icp.confidence ?? {})) { if ((v as number) > 0) locked[k] = true; }
+    for (const [k,v] of Object.entries(icp.data ?? {})) { if (v && String(v).trim().length > 0) locked[k] = true; }
+    return locked;
+  });
   const [secTab,         setSecTab]        = useState("targeting");
   const [outTab,         setOutTab]        = useState("icp_summary");
   const [panel,          setPanel]         = useState("form");
@@ -1331,11 +1413,20 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
     const toastId = addToast?.({ title:`Generating outputs: ${icp.name}`, status:"loading", message:"Running 4 outputs in parallel…" });
     const ctx = { company:companyData, icp:{ ...data, name:icp.name } };
     try {
+      const stagger = (fn, delayMs) => new Promise<string>(res => setTimeout(() => fn().then(res), delayMs));
+      const refEmails = data.ref_emails || companyData?.co_past_emails || "";
+      const ksp = companyData?.co_ksp || "";
+      const valProp = companyData?.co_pitch || "";
+      const dreamAccts = data.dream_accts || companyData?.co_dream || "";
+      const customers = companyData?.co_customers || "";
+      const outcomes = Array.isArray(companyData?.co_outcomes) ? companyData.co_outcomes.join(", ") : (companyData?.co_outcomes || "");
+      const channels = Array.isArray(companyData?.co_channels) ? companyData.co_channels.join(", ") : (companyData?.co_channels || "");
+      const enrichment = `\nKey Selling Points: ${ksp}\nValue Proposition: ${valProp}\nCurrent Customers: ${customers}\nDream Accounts: ${dreamAccts}\nOutreach Channels: ${channels}\nExpected Outcomes: ${outcomes}\nKeywords: ${data.keywords||""}\n${refEmails ? `Reference Emails (match this style):\n${refEmails}` : ""}`;
       const [s1,s2,s3,s4] = await Promise.all([
-        callAI(`Write an ICP Targeting Summary for a cold outreach team.\nData:${JSON.stringify(ctx)}\n\n**TARGET PROFILE**\nIndustries/Size/Revenue/Geo/Tech signals...\n\n**PRIMARY BUYER**\nTitle + 1 sharp sentence about their world.\n\n**QUALIFY IN** (5 criteria)\n\n**DISQUALIFY IF** (4 signals)\n\nSpecific and scannable.`,"",550),
-        callAI(`Write a Pain & Trigger Map.\nData:${JSON.stringify(ctx)}\n\n**LEAD PAIN** (sharp enough to stop a scroll)\n\n**PAIN LADDER** (3 pains + how to reference each)\n\n**TRIGGER EVENT MATRIX**\n| Trigger | Signal | Why Now | Outreach Angle |\n[4–5 rows]\n\n**STATUS QUO COST** (quarterly)\n\n**OBJECTION PLAYBOOK** (3 objections + responses)`,"",750),
-        callAI(`Write a Campaign Strategy Brief.\nData:${JSON.stringify(ctx)}\n\n**ICP SNAPSHOT** (2 sentences)\n\n**MESSAGE ARCHITECTURE** Hook/Value/Proof/CTA\n\n**SEQUENCE STRATEGY** Email 1/2/3 angles\n\n**PERSONALIZATION LAYERS** (4 layers)\n\n**A/B TEST QUEUE** (3 tests)\n\n**CSM NOTES**`,"",850),
-        callAI(`Write a 3-email cold outreach sequence. Real emails, not templates.\nData:${JSON.stringify(ctx)}\nTone: ${data.tone||"direct"}\nCTA: ${data.cta||"15-min call"}\nMax 100 words per body. No brackets. Each email a different angle.\n\n---\nEMAIL 1 — Initial\nSubject: ...\n\n[body]\n\n---\nEMAIL 2 — Day 3\nSubject: ...\n\n[body]\n\n---\nEMAIL 3 — Day 7\nSubject: ...\n\n[body]\n\n---\nSUBJECT LINE VARIANTS\n1.\n2.\n3.\n4.\n5.`,"",1100),
+        callAI(`Write an ICP Targeting Summary for a cold outreach team.\nData:${JSON.stringify(ctx)}${enrichment}\n\n**TARGET PROFILE**\nIndustries/Size/Revenue/Geo/Tech signals/Keywords...\n\n**PRIMARY BUYER**\nTitle + 1 sharp sentence about their world.\n\n**QUALIFY IN** (5 criteria — use keywords and tech signals)\n\n**DISQUALIFY IF** (4 signals)\n\n**DREAM ACCOUNTS** (if provided, list them and explain why they fit)\n\nSpecific and scannable.`,"",700),
+        stagger(() => callAI(`Write a Pain & Trigger Map.\nData:${JSON.stringify(ctx)}${enrichment}\n\nUse the key selling points and value proposition to connect pains to solutions.\n\n**LEAD PAIN** (sharp enough to stop a scroll)\n\n**PAIN LADDER** (3 pains + how to reference each, tied to the product\'s key selling points)\n\n**TRIGGER EVENT MATRIX**\n| Trigger | Signal | Why Now | Outreach Angle |\n[4–5 rows]\n\n**STATUS QUO COST** (quarterly — in dollars, time, or risk)\n\n**OBJECTION PLAYBOOK** (3 objections + responses leveraging proof and differentiators)`,"",900), 500),
+        stagger(() => callAI(`Write a Campaign Strategy Brief.\nData:${JSON.stringify(ctx)}${enrichment}\n\nTailor to the selected outreach channels: ${channels||"Email"}.\nAlign with expected outcomes: ${outcomes||"book demos"}.\n\n**ICP SNAPSHOT** (2 sentences)\n\n**MESSAGE ARCHITECTURE** Hook/Value/Proof/CTA — weave in key selling points and value prop\n\n**SEQUENCE STRATEGY** Email 1/2/3 angles (use different selling points per email)\n\n**PERSONALIZATION LAYERS** (4 layers — use keywords, triggers, dream accounts)\n\n**A/B TEST QUEUE** (3 tests)\n\n**CSM NOTES** (include campaign purpose and expected outcomes)`,"",1000), 1000),
+        stagger(() => callAI(`Write a 3-email cold outreach sequence. Real emails, not templates.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\nCTA: ${data.cta||"15-min call"}\nOutreach channels: ${channels||"Email"}\nExpected outcomes: ${outcomes||"book demos"}\n\nIMPORTANT:\n- Weave in key selling points and value proposition naturally\n- Use proof points and current customer examples for credibility\n- Reference specific pains and triggers from the ICP data\n- Each email must use a DIFFERENT selling point or angle\n${refEmails ? `- Match the style and tone of these reference emails:\n${refEmails.slice(0,800)}\n` : ""}\nMax 100 words per body. No brackets.\n\n---\nEMAIL 1 — Initial\nSubject: ...\n\n[body]\n\n---\nEMAIL 2 — Day 3\nSubject: ...\n\n[body]\n\n---\nEMAIL 3 — Day 7\nSubject: ...\n\n[body]\n\n---\nSUBJECT LINE VARIANTS\n1.\n2.\n3.\n4.\n5.`,"",1200), 1500),
       ]);
       const newOutputs = { icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4 };
       onUpdate({ ...icp, data, outputs:newOutputs });
@@ -1552,12 +1643,15 @@ SUBJECT LINE VARIANTS
         const qualityBlock = round > 0
           ? `These emails scored ${lastScore}/10. The grader found these problems:\n\n${lastImprovements}\n\nFix every issue. Be surgical — rewrite only the weak lines. Do not touch what's working.`
           : "Rewrite these emails incorporating the user feedback below. Keep what's strong.";
+        const refStyle = data.ref_emails || companyData?.co_past_emails || "";
         currentEmails = await callAI(
           `${qualityBlock}
 ${feedbackBlock}
 ICP context: ${data.buyer||""} in ${data.industries||""} | Pain: ${(data.pain1||"").slice(0,200)}
 Proof: ${data.icp_proof||companyData?.co_proof||""} | Differentiator: ${companyData?.co_diff||""}
-Previous emails (reference only):
+Key Selling Points: ${companyData?.co_ksp||""}
+Value Proposition: ${companyData?.co_pitch||""}
+${refStyle ? `Reference style (match this tone/approach):\n${refStyle.slice(0,600)}\n` : ""}Previous emails (reference only):
 ${currentEmails.slice(0, 2000)}
 
 ${emailFormat}`,
@@ -1576,6 +1670,8 @@ Primary pain: ${(data.pain1||"(not provided)").slice(0,300)}
 Hook angle: ${data.hook||"(not provided)"}
 Best proof: ${data.icp_proof||companyData?.co_proof||"(not provided)"}
 Differentiator: ${companyData?.co_diff||"(not provided)"}
+Key Selling Points: ${companyData?.co_ksp||"(not provided)"}
+Value Proposition: ${companyData?.co_pitch||"(not provided)"}
 Fears: ${data.fears||"(not provided)"}
 
 EMAILS:
@@ -1789,7 +1885,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
       display:"flex", alignItems:"flex-start", justifyContent:"center",
       padding:"20px 16px", overflowY:"auto", backdropFilter:"blur(4px)" }}>
       <div style={inline
-        ? { width:"100%", height:"100%", background:C.canvas, display:"flex", flexDirection:"column", overflow:"hidden" }
+        ? { position:"absolute" as const, inset:0, background:C.canvas, display:"flex", flexDirection:"column" as const, overflow:"hidden" }
         : { width:"100%", maxWidth:980, background:C.canvas, borderRadius:14,
             border:`1px solid ${C.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.18)",
             animation:"slideUp .3s cubic-bezier(.2,0,.1,1)" }}>
@@ -1849,7 +1945,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           )}
         </div>
 
-        <div style={{ display:"flex", minHeight: inline ? 0 : 580, flex: inline ? 1 : "unset" as const, overflow: inline ? "hidden" : "visible", minWidth:0 }}>
+        <div style={{ display:"flex", minHeight: inline ? 0 : 580, flex: inline ? "1 1 0%" : "unset", overflow: inline ? "hidden" : "visible", minWidth:0 }}>
           {/* Left nav */}
           <div style={{ width:160, background:C.surface, borderRight:`1px solid ${C.border}`, flexShrink:0, padding:"10px 0", overflowY:"auto", minHeight:0 }}>
             {panel==="form" && (
@@ -1897,7 +1993,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           </div>
 
           {/* Main content */}
-          <div style={{ flex:1, padding:"24px 28px", overflowY:"auto", minHeight:0, maxHeight: inline ? undefined : "74vh" }}>
+          <div style={{ flex:"1 1 0%", padding:"24px 28px", overflowY:"auto" as const, maxHeight: inline ? undefined : "74vh" }}>
             {panel==="form" && (
               <div style={{ display:"flex", flexDirection:"column", gap:18, animation:"fadeIn .25s ease" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
@@ -2135,12 +2231,6 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           </div>
         </div>
 
-        {/* Footer */}
-        <div style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 22px",
-          borderTop:`1px solid ${C.border}`, background:C.surface,
-          borderRadius: inline ? 0 : "0 0 13px 13px", flexShrink:0 }}>
-          <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>{totFill}/{TOTAL_FIELDS} fields filled</span>
-        </div>
       </div>
     </div>
   );
@@ -2150,6 +2240,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
 function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, onConfLock }) {
   const [aiOn, setAiOn] = useState(null);
   const [aiOptions, setAiOptions] = useState<Record<string,any[]>>({});
+  const [secTab, setSecTab] = useState("contact");
   const origRef = useRef<Record<string,any>>({});
 
   const upd = (id, v) => onChange({ ...data, [id]: v });
@@ -2169,8 +2260,6 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
     onConfLock?.(id, true);
   };
 
-  const filled = COMPANY_FIELDS.filter(f=>fieldFilled(f,data[f.id])).length;
-  const pct    = Math.round(filled/COMPANY_FIELDS.length*100);
   const handleAI = async (f, instructions) => {
     setAiOn(f.id);
     const extra = instructions ? `\nExtra instructions: ${instructions}` : "";
@@ -2194,26 +2283,57 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
 
   const handleOptionPick = (fieldId: string, opt: any) => {
     setAiOptions(p => { const n = {...p}; delete n[fieldId]; return n; });
-    if (!opt) return; // dismissed
+    if (!opt) return;
     upd(fieldId, opt.text);
     onConfChange?.(fieldId, opt.conf);
     onConfLock?.(fieldId, true);
   };
 
+  const sec = COMPANY_SECTIONS[secTab];
+  const secFill = sec?.fields.filter(f => fieldFilled(f, data[f.id])).length ?? 0;
+
   return (
-    <div>
-      <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
-        {COMPANY_FIELDS.map(f => (
-          <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
-            onAI={handleAI} aiOn={aiOn} accentColor={C.accent}
-            confidence={(confidence??{})[f.id]}
-            locked={!!(confLocked??{})[f.id]}
-            onUnlock={()=>handleUnlock(f.id)}
-            onSave={()=>handleSave(f, f.id)}
-            onCancel={()=>handleCancel(f.id)}
-            aiOptions={aiOptions[f.id] ?? null}
-            onOptionPick={(opt) => handleOptionPick(f.id, opt)} />
-        ))}
+    <div style={{ display:"flex", height:"100%", overflow:"hidden", borderRadius:10, border:`1px solid ${C.border}` }}>
+      {/* Section nav */}
+      <div style={{ width:170, background:C.surface, borderRight:`1px solid ${C.border}`, flexShrink:0, padding:"10px 0", overflowY:"auto" }}>
+        <div style={{ padding:"8px 14px 5px", fontSize:9, color:C.muted, fontFamily:mono, letterSpacing:.5, fontWeight:600 }}>SECTIONS</div>
+        {Object.entries(COMPANY_SECTIONS).map(([key, s]) => {
+          const gf = s.fields.filter(f => fieldFilled(f, data[f.id])).length;
+          const on = secTab === key;
+          return (
+            <button key={key} onClick={() => setSecTab(key)} style={{
+              display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 14px",
+              background: on ? C.accentLo : "transparent", border:"none",
+              borderLeft:`2px solid ${on ? C.accent : "transparent"}`, cursor:"pointer", textAlign:"left" }}>
+              <span style={{ fontSize:13, color: on ? C.accent : C.muted }}>{s.icon}</span>
+              <div>
+                <div style={{ fontSize:11, fontFamily:mono, fontWeight: on ? 700 : 400, color: on ? C.text : C.muted }}>{s.label}</div>
+                <div style={{ fontSize:9, color:C.muted, fontFamily:mono }}>{gf}/{s.fields.length}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Fields */}
+      <div style={{ flex:1, padding:"24px 28px", overflowY:"auto", minHeight:0 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:18, animation:"fadeIn .25s ease" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head }}>{sec.label}</div>
+            <span style={{ fontSize:11, color:C.muted, fontFamily:mono }}>{secFill}/{sec.fields.length} filled</span>
+          </div>
+          {sec.fields.map(f => (
+            <Field key={f.id} f={f} val={data[f.id]} onChange={v => upd(f.id, v)}
+              onAI={handleAI} aiOn={aiOn} accentColor={C.accent}
+              confidence={(confidence ?? {})[f.id]}
+              locked={!!(confLocked ?? {})[f.id]}
+              onUnlock={() => handleUnlock(f.id)}
+              onSave={() => handleSave(f, f.id)}
+              onCancel={() => handleCancel(f.id)}
+              aiOptions={aiOptions[f.id] ?? null}
+              onOptionPick={(opt) => handleOptionPick(f.id, opt)} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -5466,7 +5586,7 @@ Raw JSON only.`, "", 1400);
   const navItems = currentRole === "client"
     ? [{ id:"outputs", label:"Campaign Outputs", sub:`${icpsWithOutputs} of ${icps.length} ready` }]
     : [
-        { id:"company", label:"Company Profile",  sub:`${companyPct}% complete`                         },
+        { id:"company", label:"Client Profile",  sub:`${companyPct}% complete`                         },
         { id:"icps",    label:"ICP Profiles",     sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
         { id:"outputs", label:"Campaign Outputs", sub:`${icpsWithOutputs} of ${icps.length} ready`       },
       ];
@@ -5503,7 +5623,7 @@ Raw JSON only.`, "", 1400);
           const wsNavItems = currentRole === "client"
             ? [{ id:"outputs", label:"Campaign Outputs", icon:"◈", sub:`${icpsWithOutputs} ready` }]
             : [
-                { id:"company", label:"Company Profile",  icon:"◉", sub:`${companyPct}% complete` },
+                { id:"company", label:"Client Profile",  icon:"◉", sub:`${companyPct}% complete` },
                 { id:"icps",    label:"ICP Profiles",     icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
                 { id:"outputs", label:"Campaign Outputs", icon:"◈", sub:`${icpsWithOutputs} of ${icps.length} ready` },
                 { id:"perf",    label:"Performance",      icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
@@ -5782,7 +5902,7 @@ Raw JSON only.`, "", 1400);
             </div>
           )}
 
-          <div style={{ flex:1, minHeight:0, overflow: view==="icps" ? "hidden" : "auto", padding: view==="icps" ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: (view==="icps"||view==="company") ? "relative" as const : undefined, overflow: (view==="icps"||view==="company") ? "hidden" : "auto", padding: (view==="icps"||view==="company") ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -5910,39 +6030,39 @@ Raw JSON only.`, "", 1400);
           <div style={{ maxWidth:"100%" }}>
 
             {view==="company" && (
-              <div style={{ animation:"fadeIn .3s ease", textAlign:"left" }}>
+              <div style={{ position:"absolute" as const, inset:0, animation:"fadeIn .3s ease", textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)" }}>
                 {/* Header */}
-                <div style={{ marginBottom:28 }}>
-                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 6px", textAlign:"left" }}>Company Profile</h2>
-                  <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body, lineHeight:1.65, marginBottom:14 }}>
+                <div style={{ padding:"16px 0 12px", flexShrink:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                    <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:0, textAlign:"left" }}>Client Profile</h2>
+                    <button onClick={()=>setView("icps")} style={{
+                      padding:"8px 18px", borderRadius:8, border:"none",
+                      background:(companyData as any).co_name?C.accent:C.border,
+                      color:(companyData as any).co_name?"#fff":C.muted,
+                      fontSize:11, fontFamily:head, fontWeight:700,
+                      cursor:(companyData as any).co_name?"pointer":"default",
+                      boxShadow:(companyData as any).co_name?`0 2px 10px ${C.accent}40`:"none",
+                      transition:"all .2s" }}>Continue to ICPs →</button>
+                  </div>
+                  <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, lineHeight:1.5, margin:"0 0 10px" }}>
                     Fill this once. Every ICP inherits this context when AI auto-drafts their profile.
                   </p>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                     <div style={{ flex:1 }}><ProgressBar pct={companyPct} color={C.accent} height={3} /></div>
                     <span style={{ fontSize:11, color:companyPct===100?C.green:C.muted, fontFamily:mono, fontWeight:600, flexShrink:0 }}>{companyPct}% complete</span>
                   </div>
                 </div>
-                <CompanyPanel data={companyData} confidence={companyConf} confLocked={companyConfLocked}
-                  onChange={setCompanyData}
-                  onConfChange={(id, score) => setCompanyConf((p:any) => ({ ...p, [id]: score }))}
-                  onConfLock={(id, locked) => setCompanyConfLocked((p:any) => ({ ...p, [id]: locked }))} />
-                <div style={{ marginTop:28, padding:"16px 20px", borderRadius:10, background:C.canvas,
-                  border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                  <span style={{ fontSize:13, color:C.textSoft, fontFamily:body }}>Ready to define your target profiles?</span>
-                  <button onClick={()=>setView("icps")} style={{
-                    padding:"10px 22px", borderRadius:8, border:"none",
-                    background:(companyData as any).co_name?C.accent:C.border,
-                    color:(companyData as any).co_name?"#fff":C.muted,
-                    fontSize:12, fontFamily:head, fontWeight:700,
-                    cursor:(companyData as any).co_name?"pointer":"default",
-                    boxShadow:(companyData as any).co_name?`0 2px 10px ${C.accent}40`:"none",
-                    transition:"all .2s" }}>Continue to ICPs →</button>
+                <div style={{ flex:1, minHeight:0, marginBottom:16 }}>
+                  <CompanyPanel data={companyData} confidence={companyConf} confLocked={companyConfLocked}
+                    onChange={setCompanyData}
+                    onConfChange={(id, score) => setCompanyConf((p:any) => ({ ...p, [id]: score }))}
+                    onConfLock={(id, locked) => setCompanyConfLocked((p:any) => ({ ...p, [id]: locked }))} />
                 </div>
               </div>
             )}
 
             {view==="icps" && (
-              <div style={{ display:"flex", flex:1, minHeight:0, overflow:"hidden", animation:"fadeIn .3s ease" }}>
+              <div style={{ display:"flex", position:"absolute" as const, inset:0, overflow:"hidden", animation:"fadeIn .3s ease" }}>
 
                 {/* ── ICP list sidebar ── */}
                 <div style={{ width:242, flexShrink:0, display:"flex", flexDirection:"column",
@@ -6148,9 +6268,9 @@ Raw JSON only.`, "", 1400);
                 </div>
 
                 {/* ── Inline editor ── */}
-                <div style={{ flex:1, minHeight:0, minWidth:0, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                <div style={{ flex:"1 1 0%", minWidth:0, overflow:"hidden", position:"relative" }}>
                   {editingICP ? (
-                    <ICPEditorModal inline={true} icp={editingICP} companyData={companyData}
+                    <ICPEditorModal key={editingICP.id} inline={true} icp={editingICP} companyData={companyData}
                       onUpdate={updateICP} onClose={()=>setEditingId(null)}
                       addToast={addToast} updateToast={updateToast} />
                   ) : (
@@ -6220,7 +6340,7 @@ Raw JSON only.`, "", 1400);
       </div>
 
       {editingICP && view !== "icps" && (
-        <ICPEditorModal icp={editingICP} companyData={companyData} onUpdate={updateICP} onClose={()=>setEditingId(null)}
+        <ICPEditorModal key={editingICP.id} icp={editingICP} companyData={companyData} onUpdate={updateICP} onClose={()=>setEditingId(null)}
           addToast={addToast} updateToast={updateToast} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} />}
