@@ -66,6 +66,15 @@ const COMPANY_SECTIONS = {
       { id:"co_product",      label:"What do you actually sell?",  type:"textarea", ph:"Describe each product/service in detail — what it is, how it works, components, functionality, variations, pricing, delivery.", rows:4, hint:"If your grandmother couldn\'t follow it, simplify further" },
     ]
   },
+  products: { label:"Products & Services", icon:"◇",
+    fields:[
+      { id:"co_prod_breakdown", label:"Product/Service Decomposition", type:"textarea", ph:"Product 1: Equipment Financing\n- Ideal buyer: Small construction business owners\n- Pains it solves: Can\'t take on more jobs without equipment\n- Gains it delivers: More jobs, more revenue, faster project completion\n- Triggers: Winning a bid, seasonal ramp, equipment breakdown\n- Buying signals: Searching equipment financing, requesting quotes\n- Objections: Rate sensitivity, trust concerns\n- Positioning: Speed + flexibility + human underwriting\n\nProduct 2: ...", rows:12, hint:"Break down each product/service — who buys it, why, when, what pain, what gain, what signal" },
+      { id:"co_category",       label:"Market Category / Position",    type:"textarea", ph:"Equipment financing for SMB construction — speed and flexibility play against slow banks.", rows:2, hint:"Where you sit in the market and how buyers categorize you" },
+      { id:"co_competitors",    label:"Competitors / Alternatives",    type:"textarea", ph:"Banks (slow, rigid), dealer financing (limited), competitor lenders. What buyers do instead of buying from you.", rows:2, hint:"Include both direct competitors and the status quo" },
+      { id:"co_buying_motion",  label:"Likely Buying Motion",          type:"textarea", ph:"Direct sales, inbound leads, partner/channel referrals, self-serve…", rows:2, hint:"How deals actually happen — direct vs channel vs inbound" },
+      { id:"co_trust_risks",    label:"Trust / Risk Factors",          type:"textarea", ph:"Prospects worry about hidden fees, legitimacy, process friction, rate bait-and-switch…", rows:2, hint:"What makes prospects hesitate before engaging" },
+    ]
+  },
   edge: { label:"Competitive Edge", icon:"◆",
     fields:[
       { id:"co_ksp",          label:"Key Selling Points",          type:"textarea", ph:"Unique benefits that make you stand out. E.g. \'melts in your mouth, not in your hand\' (product feature), guaranteed uptime SLA (reliability), 24/7 white-glove support (service).", rows:3, hint:"Quality, price, convenience, guarantees, or solving a specific problem competitors can\'t" },
@@ -111,6 +120,8 @@ const ICP_SECTIONS = {
       { id:"keywords",   label:"Search Keywords",            type:"textarea", ph:"Terms that indicate fit — job post keywords, tech mentions, industry jargon.", rows:2, hint:"Keywords used to find and qualify prospects" },
       { id:"dream_accts",label:"Dream Accounts",             type:"textarea", ph:"Specific companies you\'d love to land — names, websites, LinkedIn URLs.", rows:2, hint:"Helps define the ideal profile for lookalike targeting" },
       { id:"neg",        label:"Exclude Within Segment",     type:"textarea", ph:"Sub-types that churn or aren\'t a fit.", rows:2 },
+      { id:"intent_topics", label:"Intent Topics",             type:"textarea", ph:"Equipment financing, equipment leasing, construction loans, same day funding, quick business funding…", rows:2, hint:"Intent signals used for list building — what prospects are actively searching/engaging with" },
+      { id:"real_filters",  label:"Actual Targeting Filters",  type:"textarea", ph:"Industry: Construction\nEmployees: 1–50\nTitles: Owner, Founder, CEO, CFO\nLocation: US\nIntent: equipment financing, equipment leasing", rows:4, hint:"Paste the real filters being used for prospecting — the ICP will be refined to match these exactly" },
     ]
   },
   persona: { label:"Persona", icon:"◑",
@@ -121,23 +132,31 @@ const ICP_SECTIONS = {
       { id:"fears",      label:"What keeps them up at night",     type:"textarea", ph:"Missing number, churn spike, losing headcount…", rows:2 },
       { id:"metrics",    label:"How they\'re measured",          type:"text",     ph:"ARR attainment, pipeline coverage, win rate…" },
       { id:"objections", label:"Objections they always raise",    type:"textarea", ph:"\'We already use X.\' \'No budget until Q3.\'", rows:2 },
+      { id:"sub_personas", label:"Persona Variants",              type:"textarea", ph:"Owner/Operator: cares about jobs, crews, timelines, revenue, family\nFinance/Accounting: cares about cash flow, structure, predictable payments, capital control", rows:4, hint:"Define 2–3 sub-personas within this ICP — each gets tailored messaging angles" },
     ]
   },
   pains: { label:"Pains & Triggers", icon:"◐",
     fields:[
       { id:"pain1",    label:"Primary Pain — Lead With This",   type:"textarea", ph:"The single most painful, specific problem before finding you.", rows:3, hint:"This opens every cold email. Vague doesn\'t work here." },
       { id:"pain2",    label:"Supporting Pain Points",          type:"textarea", ph:"2–3 other frustrations that compound the primary pain.", rows:2 },
+      { id:"gains",    label:"Gains — What They Want Instead",  type:"textarea", ph:"Take on more jobs, increase productivity, win more bids, preserve cash, get fast financing…", rows:2, hint:"The ideal outcomes they\'re chasing — mirror image of pains" },
       { id:"triggers", label:"Trigger Events — Buying Intent",  type:"textarea", ph:"Series B closed, new CRO hired, missed Q2, expanding geo…", rows:3, hint:"What happens right before they\'d be ready to buy?" },
+      { id:"buying_signals_direct", label:"Direct Buying Signals", type:"textarea", ph:"Searching pricing pages, requesting demos, issuing RFPs, evaluating competitors…", rows:2, hint:"Observable behavior showing active purchase intent" },
+      { id:"buying_signals_indirect", label:"Indirect Buying Signals", type:"textarea", ph:"New hire in key role, tech stack change, funding round, seasonal ramp…", rows:2, hint:"Signals suggesting emerging need but not yet active shopping" },
       { id:"sq_cost",  label:"Cost of Doing Nothing",           type:"textarea", ph:"In dollars, time, or risk — what does inaction cost them per quarter?", rows:2 },
+      { id:"friction_points", label:"Friction Points — What Makes Them Hesitate", type:"textarea", ph:"Long procurement, need multiple sign-offs, risk-averse culture, existing vendor lock-in…", rows:2, hint:"Structural barriers to buying — different from objections" },
     ]
   },
   messaging: { label:"Messaging", icon:"◒",
     fields:[
-      { id:"tone",      label:"Tone",                           type:"select",   opts:["Consultative & Educational","Direct & Punchy","Casual & Conversational","Formal & Executive","Data-driven & Analytical"] },
+      { id:"tone",      label:"Tone",                           type:"select",   opts:["Consultative & Educational","Direct & Punchy","Casual & Conversational","Formal & Executive","Data-driven & Analytical","Blue Collar & Human","Blunt & Edgy","Confrontational"] },
       { id:"hook",      label:"Opening Hook That Gets Replies", type:"textarea", ph:"The specific angle that works for THIS profile. Not generic.", rows:2 },
-      { id:"cta",       label:"CTA Style",                      type:"select",   opts:["15-min call ask","Soft permission (\'worth a chat?\')","Video/resource share","Direct demo ask","Open-ended question"] },
+      { id:"cta",       label:"CTA Style",                      type:"select",   opts:["15-min call ask","Soft permission (\'worth a chat?\')","Video/resource share","Direct demo ask","Open-ended question","Easy yes/no reply","Direct callback ask"] },
+      { id:"why_client_wins", label:"Why Client Wins for This ICP", type:"textarea", ph:"We win because of speed, flexibility, human process — better fit than banks for messy finances…", rows:2, hint:"Why your client specifically beats alternatives for THIS ICP" },
       { id:"icp_proof", label:"Best Proof for This ICP",        type:"textarea", ph:"Which case study, logo, or stat lands hardest for this audience?", hint:"One targeted proof point beats five generic ones" },
       { id:"ref_emails",label:"Reference Email Copy",           type:"textarea", ph:"Paste examples of emails that have worked well for this audience — subject lines and body.", rows:4, hint:"Gives the AI a proven style to build from" },
+      { id:"seq_strategy", label:"Sequence Strategy",           type:"select",   opts:["Single narrative (same lane, different angles)","Multi-angle (different strategies per email)","Escalating aggression","Problem → Solution → Proof → Urgency → Breakup"] },
+      { id:"seq_cta_style",label:"CTA Variation",               type:"select",   opts:["Same CTA style throughout","Varied CTAs per email","Escalating commitment"] },
     ]
   },
 };
@@ -146,10 +165,12 @@ const ALL_ICP_FIELDS = Object.values(ICP_SECTIONS).flatMap(s => s.fields);
 const TOTAL_FIELDS = ALL_ICP_FIELDS.length;
 
 const OUTPUT_TABS = [
-  { id:"icp_summary",    label:"ICP Summary",    icon:"◎", color:C.accent },
-  { id:"pain_map",       label:"Pain Map",        icon:"◐", color:C.red    },
-  { id:"strategy_brief", label:"Strategy Brief",  icon:"◒", color:C.amber  },
-  { id:"email_copy",     label:"Email Copy",      icon:"◑", color:C.green  },
+  { id:"icp_summary",    label:"ICP Summary",      icon:"◎", color:C.accent },
+  { id:"pain_map",       label:"Pain Map",          icon:"◐", color:C.red    },
+  { id:"strategy_brief", label:"Strategy Brief",    icon:"◒", color:C.amber  },
+  { id:"email_copy",     label:"Email Copy",        icon:"◑", color:C.green  },
+  { id:"linkedin_copy",  label:"LinkedIn Sequence", icon:"◈", color:"#0A66C2" },
+  { id:"call_script",    label:"Cold Call Script",  icon:"◉", color:C.accent },
 ];
 
 const APPROVAL_CFG = {
@@ -762,8 +783,8 @@ CRITICAL RULES:
 - co_exclude and co_avoid: infer sensible defaults based on the company's type and segment.
 
 Return ONLY JSON:
-{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_goal":"","co_channels":"","co_outcomes":"","co_exclude":"","co_avoid":""},
-"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0,"co_deal":0,"co_cycle":0,"co_goal":0,"co_channels":0,"co_outcomes":0,"co_exclude":0,"co_avoid":0}}
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_goal":"","co_channels":"","co_outcomes":"","co_exclude":"","co_avoid":""},
+"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0,"co_deal":0,"co_cycle":0,"co_goal":0,"co_channels":0,"co_outcomes":0,"co_exclude":0,"co_avoid":0}}
 co_deal: exactly one of "<$1K"|"$1K–$5K"|"$5K–$25K"|"$25K–$100K"|"$100K+"
 co_cycle: exactly one of "<1 week"|"1–4 weeks"|"1–3 months"|"3–6 months"|"6+ months"
 co_goal: exactly one of "1–5"|"5–10"|"10–20"|"20–30"|"30+"
@@ -771,9 +792,14 @@ co_channels: array from ["Email","LinkedIn","AI Calls"]
 co_outcomes: array from ["Book demos","Schedule follow-up calls","Drive replies","Upsell existing customers","Re-engage inactive users","Activate trial users","Book renewal meetings","Drive event sign-ups","Collect feedback"]
 co_pitch: full value proposition, not just a one-liner
 co_ksp: key selling points — unique benefits that make the product stand out
+co_prod_breakdown: structured product/service decomposition — for each product: who buys it, pains, gains, triggers, signals, objections, positioning
+co_category: market category and position
+co_competitors: competitors and alternatives buyers consider
+co_buying_motion: how deals actually happen — direct, channel, inbound
+co_trust_risks: what makes prospects hesitate before engaging
 co_customers: known current customers if any
 co_dream: ideal target companies
-Raw JSON only.`, "", 1800);
+Raw JSON only.`, "", 2200);
     let coFields: any = {}, coConf: any = {};
     try { const p = JSON.parse(coRaw.replace(/```json|```/g,"").trim()); coFields=p.fields??{}; coConf=p.confidence??{}; }
     catch {}
@@ -784,10 +810,15 @@ Raw JSON only.`, "", 1800);
     const icps: any[] = [];
     for (let i = 0; i < count; i++) {
       updateToast(toastId, { message:`Drafting ICP ${i+1} of ${count}…` });
-      const existing = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
+      const existingNames = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
+      const existingSummary = icps.map((x,j) => `ICP ${j+1} "${x.name}": industries=${x.data?.industries||""}, buyer=${x.data?.buyer||""}, pain1=${x.data?.pain1||""}, tone=${x.data?.tone||""}`).join("\n") || "none";
       const raw = await callAI(`
 Draft ICP #${i+1} for this company. Company: ${JSON.stringify(coFields)} Context: ${context.slice(0,600)}
-Already drafted segments: ${existing}. Choose a DISTINCT, non-overlapping segment.
+Already drafted segments: ${existingNames}
+Full details of existing ICPs (DO NOT overlap with these):
+${existingSummary}
+
+Choose a DISTINCT, non-overlapping segment — different industries, different buyer personas, different pains, and different messaging angles than the segments above.
 
 CRITICAL RULES:
 - Every single field MUST be filled. Never leave any field as an empty string or empty array.
@@ -796,15 +827,21 @@ CRITICAL RULES:
 - Write fields as a real CSM would — specific, not generic. E.g. pain1 should name a real pain, not say "various challenges".
 
 Return ONLY JSON:
-{"name":"Short descriptive segment label","fields":{"industries":"comma-separated industry list","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","triggers":"","sq_cost":"","tone":"","hook":"","cta":"","icp_proof":"","ref_emails":""},
-"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"keywords":0,"dream_accts":0,"neg":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"pain1":0,"pain2":0,"triggers":0,"sq_cost":0,"tone":0,"hook":0,"cta":0,"icp_proof":0,"ref_emails":0}}
+{"name":"Short descriptive segment label","fields":{"industries":"comma-separated industry list","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","ref_emails":"","seq_strategy":"","seq_cta_style":""},
+"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"keywords":0,"dream_accts":0,"neg":0,"intent_topics":0,"real_filters":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0,"ref_emails":0,"seq_strategy":0,"seq_cta_style":0}}
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
-tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
-cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
+tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
+cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
 keywords: search terms or keywords that indicate a company is a fit
 dream_accts: specific dream companies for this segment
+gains: what the buyer wants instead — the ideal outcomes (mirror image of pains)
+buying_signals_direct: observable behavior showing active purchase intent
+buying_signals_indirect: signals suggesting emerging need but not yet shopping
+friction_points: structural barriers to buying (separate from objections)
+sub_personas: define 2-3 sub-personas with different focus areas (e.g. "Owner/Operator: jobs, crews, timelines\nFinance: cash flow, structure, payments")
+why_client_wins: why the client specifically beats alternatives for this ICP
 ref_emails: leave empty unless example emails were provided
-Raw JSON only.`, "", 1600);
+Raw JSON only.`, "", 2000);
       try {
         const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
         icps.push(newICP(i, p.fields??{}, p.name||`ICP ${i+1}`, p.confidence??{}));
@@ -983,7 +1020,7 @@ function parseEmailsFromSynthesis(synthesis: string): string[] {
   const blocks: string[] = [];
   const sections = synthesis.split(/^---\s*$/m).map((s: string) => s.trim()).filter(Boolean);
   for (const s of sections) {
-    if (/^EMAIL \d/i.test(s) && blocks.length < 3) blocks.push(s);
+    if (/^EMAIL \d/i.test(s) && blocks.length < 5) blocks.push(s);
   }
   return blocks;
 }
@@ -1012,7 +1049,7 @@ function AICouncilPanel({ council, onClose, onRefineEmail, refiningEmail, onRefi
 }) {
   const [auditOpen,       setAuditOpen]       = useState(false);
   const [expandedRound,   setExpandedRound]   = useState<number|null>(null);
-  const [emailFeedbacks,  setEmailFeedbacks]  = useState<string[]>(["","",""]);
+  const [emailFeedbacks,  setEmailFeedbacks]  = useState<string[]>(["","","","",""]);
   const [openFeedbackIdx, setOpenFeedbackIdx] = useState<number | null>(null);
   const [globalFeedback,  setGlobalFeedback]  = useState("");
   const [globalFbOpen,    setGlobalFbOpen]    = useState(false);
@@ -1156,7 +1193,7 @@ function AICouncilPanel({ council, onClose, onRefineEmail, refiningEmail, onRefi
           {globalFbOpen ? (
             <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
               <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
-                letterSpacing:.4, marginBottom:2 }}>FEEDBACK FOR ALL 3 EMAILS</div>
+                letterSpacing:.4, marginBottom:2 }}>FEEDBACK FOR ALL 5 EMAILS</div>
               <textarea
                 value={globalFeedback}
                 onChange={e => setGlobalFeedback(e.target.value)}
@@ -1176,7 +1213,7 @@ function AICouncilPanel({ council, onClose, onRefineEmail, refiningEmail, onRefi
                   style={{ padding:"4px 11px", borderRadius:5, border:`1px solid ${C.accentBorder}`,
                     background:C.accentLo, color:C.accent, fontSize:9, fontFamily:mono,
                     cursor:"pointer", fontWeight:700 }}>
-                  ↻ Apply to all 3 emails & refine to 10/10
+                  ↻ Apply to all 5 emails & refine to 10/10
                 </button>
                 <button onClick={() => setGlobalFbOpen(false)}
                   style={{ padding:"4px 9px", borderRadius:5, border:`1px solid ${C.border}`,
@@ -1189,7 +1226,7 @@ function AICouncilPanel({ council, onClose, onRefineEmail, refiningEmail, onRefi
             <button onClick={() => setGlobalFbOpen(true)}
               style={{ fontSize:9, color:C.muted, background:"transparent", border:"none",
                 cursor:"pointer", fontFamily:mono, padding:0, textDecoration:"underline" }}>
-              + give feedback for all 3 emails
+              + give feedback for all 5 emails
             </button>
           )}
         </div>
@@ -1410,10 +1447,9 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
 
   const generateAll = async () => {
     setGenState("running");
-    const toastId = addToast?.({ title:`Generating outputs: ${icp.name}`, status:"loading", message:"Running 4 outputs in parallel…" });
+    const toastId = addToast?.({ title:`Generating outputs: ${icp.name}`, status:"loading", message:"Step 1/6: ICP Summary…" });
     const ctx = { company:companyData, icp:{ ...data, name:icp.name } };
     try {
-      const stagger = (fn, delayMs) => new Promise<string>(res => setTimeout(() => fn().then(res), delayMs));
       const refEmails = data.ref_emails || companyData?.co_past_emails || "";
       const ksp = companyData?.co_ksp || "";
       const valProp = companyData?.co_pitch || "";
@@ -1421,14 +1457,31 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
       const customers = companyData?.co_customers || "";
       const outcomes = Array.isArray(companyData?.co_outcomes) ? companyData.co_outcomes.join(", ") : (companyData?.co_outcomes || "");
       const channels = Array.isArray(companyData?.co_channels) ? companyData.co_channels.join(", ") : (companyData?.co_channels || "");
-      const enrichment = `\nKey Selling Points: ${ksp}\nValue Proposition: ${valProp}\nCurrent Customers: ${customers}\nDream Accounts: ${dreamAccts}\nOutreach Channels: ${channels}\nExpected Outcomes: ${outcomes}\nKeywords: ${data.keywords||""}\n${refEmails ? `Reference Emails (match this style):\n${refEmails}` : ""}`;
-      const [s1,s2,s3,s4] = await Promise.all([
-        callAI(`Write an ICP Targeting Summary for a cold outreach team.\nData:${JSON.stringify(ctx)}${enrichment}\n\n**TARGET PROFILE**\nIndustries/Size/Revenue/Geo/Tech signals/Keywords...\n\n**PRIMARY BUYER**\nTitle + 1 sharp sentence about their world.\n\n**QUALIFY IN** (5 criteria — use keywords and tech signals)\n\n**DISQUALIFY IF** (4 signals)\n\n**DREAM ACCOUNTS** (if provided, list them and explain why they fit)\n\nSpecific and scannable.`,"",700),
-        stagger(() => callAI(`Write a Pain & Trigger Map.\nData:${JSON.stringify(ctx)}${enrichment}\n\nUse the key selling points and value proposition to connect pains to solutions.\n\n**LEAD PAIN** (sharp enough to stop a scroll)\n\n**PAIN LADDER** (3 pains + how to reference each, tied to the product\'s key selling points)\n\n**TRIGGER EVENT MATRIX**\n| Trigger | Signal | Why Now | Outreach Angle |\n[4–5 rows]\n\n**STATUS QUO COST** (quarterly — in dollars, time, or risk)\n\n**OBJECTION PLAYBOOK** (3 objections + responses leveraging proof and differentiators)`,"",900), 500),
-        stagger(() => callAI(`Write a Campaign Strategy Brief.\nData:${JSON.stringify(ctx)}${enrichment}\n\nTailor to the selected outreach channels: ${channels||"Email"}.\nAlign with expected outcomes: ${outcomes||"book demos"}.\n\n**ICP SNAPSHOT** (2 sentences)\n\n**MESSAGE ARCHITECTURE** Hook/Value/Proof/CTA — weave in key selling points and value prop\n\n**SEQUENCE STRATEGY** Email 1/2/3 angles (use different selling points per email)\n\n**PERSONALIZATION LAYERS** (4 layers — use keywords, triggers, dream accounts)\n\n**A/B TEST QUEUE** (3 tests)\n\n**CSM NOTES** (include campaign purpose and expected outcomes)`,"",1000), 1000),
-        stagger(() => callAI(`Write a 3-email cold outreach sequence. Real emails, not templates.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\nCTA: ${data.cta||"15-min call"}\nOutreach channels: ${channels||"Email"}\nExpected outcomes: ${outcomes||"book demos"}\n\nIMPORTANT:\n- Weave in key selling points and value proposition naturally\n- Use proof points and current customer examples for credibility\n- Reference specific pains and triggers from the ICP data\n- Each email must use a DIFFERENT selling point or angle\n${refEmails ? `- Match the style and tone of these reference emails:\n${refEmails.slice(0,800)}\n` : ""}\nMax 100 words per body. No brackets.\n\n---\nEMAIL 1 — Initial\nSubject: ...\n\n[body]\n\n---\nEMAIL 2 — Day 3\nSubject: ...\n\n[body]\n\n---\nEMAIL 3 — Day 7\nSubject: ...\n\n[body]\n\n---\nSUBJECT LINE VARIANTS\n1.\n2.\n3.\n4.\n5.`,"",1200), 1500),
-      ]);
-      const newOutputs = { icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4 };
+      const enrichment = `\nKey Selling Points: ${ksp}\nValue Proposition: ${valProp}\nCurrent Customers: ${customers}\nDream Accounts: ${dreamAccts}\nOutreach Channels: ${channels}\nExpected Outcomes: ${outcomes}\nKeywords: ${data.keywords||""}\nGains: ${data.gains||""}\nDirect Buying Signals: ${data.buying_signals_direct||""}\nIndirect Buying Signals: ${data.buying_signals_indirect||""}\nFriction Points: ${data.friction_points||""}\nWhy Client Wins: ${data.why_client_wins||""}\nPersona Variants: ${data.sub_personas||""}\nProduct Decomposition: ${companyData?.co_prod_breakdown||""}\nCompetitors: ${companyData?.co_competitors||""}\nTrust Risks: ${companyData?.co_trust_risks||""}\n${refEmails ? `Reference Emails (match this style):\n${refEmails}` : ""}`;
+
+      // Step 1: ICP Summary — foundational targeting profile
+      const s1 = await callAI(`Write an ICP Targeting Summary for a cold outreach team.\nData:${JSON.stringify(ctx)}${enrichment}\n\n**TARGET PROFILE**\nIndustries/Size/Revenue/Geo/Tech signals/Keywords...\n\n**PRIMARY BUYER**\nTitle + 1 sharp sentence about their world.\n\n**QUALIFY IN** (5 criteria — use keywords and tech signals)\n\n**DISQUALIFY IF** (4 signals)\n\n**DREAM ACCOUNTS** (if provided, list them and explain why they fit)\n\nSpecific and scannable.`,"",700);
+
+      // Step 2: Pain Map — builds on ICP Summary
+      if (toastId) updateToast?.(toastId, { message:"Step 2/6: Pain & Trigger Map…" });
+      const s2 = await callAI(`Write a Pain & Trigger Map.\nData:${JSON.stringify(ctx)}${enrichment}\n\nICP Summary (already generated — build on this, don't contradict it):\n${s1.slice(0,1200)}\n\nUse the key selling points and value proposition to connect pains to solutions.\n\n**LEAD PAIN** (sharp enough to stop a scroll)\n\n**PAIN LADDER** (3 pains + how to reference each, tied to the product\'s key selling points)\n\n**GAINS — WHAT THEY WANT INSTEAD** (3–5 desired outcomes that mirror the pains)\n\n**TRIGGER EVENT MATRIX**\n| Trigger | Signal | Why Now | Outreach Angle |\n[4–5 rows]\n\n**BUYING SIGNALS** (direct signals = active purchase intent; indirect = emerging need)\n\n**STATUS QUO COST** (quarterly — in dollars, time, or risk)\n\n**FRICTION POINTS** (structural barriers to buying — procurement, risk aversion, etc.)\n\n**OBJECTION PLAYBOOK** (3 objections + responses leveraging proof and differentiators)`,"",1100);
+
+      // Step 3: Strategy Brief — builds on Summary + Pain Map
+      if (toastId) updateToast?.(toastId, { message:"Step 3/6: Campaign Strategy…" });
+      const s3 = await callAI(`Write a Campaign Strategy Brief.\nData:${JSON.stringify(ctx)}${enrichment}\n\nPreviously generated (build on these, maintain consistency):\n--- ICP SUMMARY ---\n${s1.slice(0,800)}\n--- PAIN MAP ---\n${s2.slice(0,800)}\n\nTailor to the selected outreach channels: ${channels||"Email"}.\nAlign with expected outcomes: ${outcomes||"book demos"}.\n\n**ICP SNAPSHOT** (2 sentences)\n\n**MESSAGE ARCHITECTURE** Hook/Value/Proof/CTA — weave in key selling points and value prop, reference the specific pains identified above\n\n**SEQUENCE STRATEGY** Email 1/2/3/4/5 angles (5 emails, each a different pain or angle from the Pain Map)\n\n**PERSONA SPLIT** (if persona variants exist, note how messaging shifts for each sub-persona)\n\n**PERSONALIZATION LAYERS** (4 layers — use keywords, triggers, buying signals, dream accounts)\n\n**A/B TEST QUEUE** (3 tests)\n\n**CSM NOTES** (include campaign purpose and expected outcomes)`,"",1100);
+
+      // Step 4: Email Copy — builds on everything above
+      if (toastId) updateToast?.(toastId, { message:"Step 4/6: Email Copy…" });
+      const s4 = await callAI(`Write a 5-email cold outreach sequence. Real emails, not templates.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\nCTA: ${data.cta||"15-min call"}\nSequence strategy: ${data.seq_strategy||"Single narrative (same lane, different angles)"}\nCTA variation: ${data.seq_cta_style||"Same CTA style throughout"}\nOutreach channels: ${channels||"Email"}\nExpected outcomes: ${outcomes||"book demos"}\n\nPreviously generated (your emails MUST align with these — use the exact pains, triggers, and strategy):\n--- ICP SUMMARY ---\n${s1.slice(0,600)}\n--- PAIN MAP ---\n${s2.slice(0,600)}\n--- STRATEGY BRIEF ---\n${s3.slice(0,600)}\n\nIMPORTANT:\n- Email 1: Lead with the LEAD PAIN — make it obvious and personal\n- Email 2: Different pain from the PAIN LADDER + a trigger event\n- Email 3: Leverage proof/social proof and address a friction point\n- Email 4: New angle — use a GAIN they want, tie to a buying signal\n- Email 5: Breakup/last-chance — direct, human, low-friction CTA\n- Each email is a different angle within one strategic narrative\n- Follow the MESSAGE ARCHITECTURE and SEQUENCE STRATEGY from the Strategy Brief\n- Weave in key selling points and value proposition naturally\n- Keep CTAs low-friction and easy to answer\n${refEmails ? `- Match the style and tone of these reference emails:\n${refEmails.slice(0,800)}\n` : ""}\nMax 100 words per body. No brackets.\n\n---\nEMAIL 1 — Initial\nSubject: ...\n\n[body]\n\n---\nEMAIL 2 — Day 3\nSubject: ...\n\n[body]\n\n---\nEMAIL 3 — Day 7\nSubject: ...\n\n[body]\n\n---\nEMAIL 4 — Day 14\nSubject: ...\n\n[body]\n\n---\nEMAIL 5 — Day 21\nSubject: ...\n\n[body]\n\n---\nSUBJECT LINE VARIANTS\n1.\n2.\n3.\n4.\n5.`,"",1900);
+      // Step 5: LinkedIn Sequence — adapts email strategy for LinkedIn
+      if (toastId) updateToast?.(toastId, { message:"Step 5/6: LinkedIn Sequence…" });
+      const s5 = await callAI(`Write a 5-touch LinkedIn outreach sequence for this ICP.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\n\nPreviously generated (adapt these for LinkedIn — same strategy, different format):\n--- STRATEGY BRIEF ---\n${s3.slice(0,600)}\n--- EMAIL SEQUENCE ---\n${s4.slice(0,800)}\n\nLinkedIn rules:\n- Connection request: max 300 chars, no pitch — just a relevant reason to connect\n- Follow-up messages: max 500 chars each, conversational, no subject lines\n- Tone should be slightly more casual than email — like a DM, not an email\n- Same pain/gain angles as the email sequence but adapted for LinkedIn format\n- CTAs must be ultra-low-friction (reply yes/no, voice note, quick question)\n\n---\nCONNECTION REQUEST\n[message]\n\n---\nMESSAGE 1 — Day 2 (after connection accepted)\n[message]\n\n---\nMESSAGE 2 — Day 5\n[message]\n\n---\nMESSAGE 3 — Day 10\n[message]\n\n---\nMESSAGE 4 — Day 17\n[message]\n\n---\nMESSAGE 5 — Day 24 (breakup)\n[message]`,"",1200);
+
+      // Step 6: Cold Call Script — structured call framework
+      if (toastId) updateToast?.(toastId, { message:"Step 6/6: Cold Call Script…" });
+      const s6 = await callAI(`Write a cold call script for this ICP.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\n\nPreviously generated (use the same pains, gains, and strategy):\n--- PAIN MAP ---\n${s2.slice(0,600)}\n--- STRATEGY BRIEF ---\n${s3.slice(0,500)}\n\nScript structure:\n\n**OPENER** (5 seconds — pattern interrupt, not "how are you today?")\nName, reason for calling, one-sentence pain hook.\n\n**QUALIFYING QUESTION** (confirm the pain is real)\n1 question that gets them talking about the problem.\n\n**PAIN DIG** (2–3 follow-up questions)\nGo deeper — what's the impact? What have they tried? What's it costing them?\n\n**VALUE BRIDGE** (10 seconds)\nConnect their pain to the client's solution. No feature dump — just the outcome.\n\n**SOCIAL PROOF DROP** (one specific example)\n"We helped [similar company] do [specific result]"\n\n**OBJECTION HANDLERS** (top 3 objections with responses)\nUse friction points and objections from the ICP data.\n\n**CLOSE / CTA**\nLow-friction next step — calendar link, callback, or quick follow-up.\n\n**VOICEMAIL SCRIPT** (under 30 seconds)\nPain + curiosity + callback number. No long pitch.`,"",1200);
+
+      const newOutputs = { icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4, linkedin_copy:s5, call_script:s6 };
       onUpdate({ ...icp, data, outputs:newOutputs });
       setGenState("done"); setPanel("outputs"); setOutTab("email_copy");
       if (toastId) updateToast?.(toastId, { status:"loading", title:`Refining emails to 10/10…`, message:"Grading initial draft…" });
@@ -1465,13 +1518,13 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
     setEmailScoring("running");
     try {
       const scoreRaw = await callAI(
-        `Score these 3 cold outreach emails on 5 dimensions (0–2 each, 10 total).
+        `Score these 5 cold outreach emails on 5 dimensions (0–2 each, 10 total).
 ICP context: ${data.buyer||""} in ${data.industries||""}, tone: ${data.tone||"direct"}, CTA: ${data.cta||"15-min call"}
 
 Emails:
-${icp.outputs.email_copy.slice(0, 3000)}
+${icp.outputs.email_copy.slice(0, 5000)}
 
-Return ONLY a JSON array of exactly 3 objects:
+Return ONLY a JSON array of exactly 5 objects:
 [{"opening":0-2,"pain":0-2,"tone":0-2,"credibility":0-2,"cta":0-2,"verdict":"one specific improvement note"},...]
 
 Scoring guide:
@@ -1479,11 +1532,11 @@ Scoring guide:
 - pain: 0=vague, 1=recognizable, 2=precise visceral pain
 - tone: 0=salesy, 1=conversational, 2=peer-level authentic
 - credibility: 0=no proof, 1=vague claim, 2=specific metric/outcome
-- cta: 0=high commitment, 1=ok, 2=frictionless low-commitment`, "", 500);
+- cta: 0=high commitment, 1=ok, 2=frictionless low-commitment`, "", 700);
       const jsonMatch = scoreRaw.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const scores = JSON.parse(jsonMatch[0]);
-        const withTotals = scores.slice(0, 3).map((s: any) => ({
+        const withTotals = scores.slice(0, 5).map((s: any) => ({
           opening: s.opening ?? 0, pain: s.pain ?? 0, tone: s.tone ?? 0,
           credibility: s.credibility ?? 0, cta: s.cta ?? 0,
           verdict: s.verdict ?? "",
@@ -1621,6 +1674,18 @@ Subject: ...
 [body]
 
 ---
+EMAIL 4 — Day 14
+Subject: ...
+
+[body]
+
+---
+EMAIL 5 — Day 21
+Subject: ...
+
+[body]
+
+---
 SUBJECT LINE VARIANTS
 1.
 2.
@@ -1655,7 +1720,7 @@ ${refStyle ? `Reference style (match this tone/approach):\n${refStyle.slice(0,60
 ${currentEmails.slice(0, 2000)}
 
 ${emailFormat}`,
-          "You are a world-class B2B cold outreach copywriter. Output only the emails in the exact format requested.", 1200);
+          "You are a world-class B2B cold outreach copywriter. Output only the emails in the exact format requested.", 1800);
       }
 
       // ── Grade ─────────────────────────────────────────────────────────────
@@ -1675,7 +1740,7 @@ Value Proposition: ${companyData?.co_pitch||"(not provided)"}
 Fears: ${data.fears||"(not provided)"}
 
 EMAILS:
-${currentEmails.slice(0, 2500)}
+${currentEmails.slice(0, 4000)}
 
 Score each email 0–2 per dimension (max 10 per email):
 - opening: 0=generic/predictable, 1=relevant but safe, 2=specific hook creating real curiosity
@@ -1689,23 +1754,25 @@ Return ONLY valid JSON:
   "e1":{"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
   "e2":{"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
   "e3":{"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
+  "e4":{"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
+  "e5":{"opening":N,"pain":N,"tone":N,"credibility":N,"cta":N},
   "campaign_score":N,
   "is_10":false,
   "reasoning":"2–3 sentences. What's strong, what still falls short. Quote the weak lines.",
   "improvements":"If not 10/10: exact rewrite instructions. Quote each weak phrase, say what to replace it with. Omit if 10/10."
 }
 
-campaign_score: 10 only if ALL 3 emails pass the SDR test. is_10 true only with evidence for every 2/2 dimension. Most first drafts score 6–7.`,
-        "You are a strict B2B email grader. Return only valid JSON.", 900);
+campaign_score: 10 only if ALL 5 emails pass the SDR test. is_10 true only with evidence for every 2/2 dimension. Most first drafts score 6–7.`,
+        "You are a strict B2B email grader. Return only valid JSON.", 1100);
 
       const jm = gradeRaw.match(/\{[\s\S]*\}/);
-      let g: any = { e1:{}, e2:{}, e3:{}, campaign_score: Math.min(lastScore+2,9), is_10:false,
+      let g: any = { e1:{}, e2:{}, e3:{}, e4:{}, e5:{}, campaign_score: Math.min(lastScore+2,9), is_10:false,
         reasoning:"Could not parse grade.", improvements: gradeRaw };
       if (jm) { try { g = JSON.parse(jm[0]); } catch {} }
 
       const score = typeof g.campaign_score === "number" ? Math.min(10, Math.max(0, g.campaign_score)) : lastScore+1;
       iterations.push({ round:round+1, emails:currentEmails, score, reasoning:g.reasoning||"",
-        improvements:g.improvements||"", dims:{e1:g.e1,e2:g.e2,e3:g.e3}, is10:!!g.is_10 });
+        improvements:g.improvements||"", dims:{e1:g.e1,e2:g.e2,e3:g.e3,e4:g.e4,e5:g.e5}, is10:!!g.is_10 });
 
       if (g.is_10 || score >= 10) break;
       lastScore = score;
@@ -1716,7 +1783,7 @@ campaign_score: 10 only if ALL 3 emails pass the SDR test. is_10 true only with 
     const parsedEmails = parseEmailsFromSynthesis(final.emails);
     const finalDims = final.dims || {};
     const dimKeys = ['opening','pain','tone','credibility','cta'] as const;
-    const emailScores = ['e1','e2','e3'].map(k =>
+    const emailScores = ['e1','e2','e3','e4','e5'].map(k =>
       dimKeys.reduce((a, d) => a + ((finalDims[k]?.[d]) ?? 0), 0)
     );
     return {
@@ -1807,7 +1874,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
         if (g.is_10 || score >= 10 || round === MAX_ROUNDS - 1) {
           const newEmails = [...emails];
           newEmails[emailIndex] = currentEmail;
-          const newScores = [...(council.emailScores || [0,0,0])];
+          const newScores = [...(council.emailScores || [0,0,0,0,0])];
           newScores[emailIndex] = score;
           // Rebuild per-email dims in last iteration
           const updatedIters = [...(council.iterations || [])];
@@ -1836,7 +1903,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
     }
   };
 
-  // ── Apply feedback to all 3 emails ────────────────────────────────────────
+  // ── Apply feedback to all 5 emails ────────────────────────────────────────
   const runAllWithFeedback = async (userFeedback: string) => {
     const currentSynthesis = icp.aiCouncil?.synthesis || icp.outputs?.email_copy || "";
     if (!currentSynthesis) return;
@@ -2113,6 +2180,39 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   <button onClick={()=>copy(outTab,icp.outputs[outTab])} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:copied===outTab?C.greenLo:"transparent", color:copied===outTab?C.green:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
                     {copied===outTab?"✓ Copied":"Copy"}
                   </button>
+                  <button onClick={()=>{
+                    const allOutputs = icp.outputs || {};
+                    const tabs = OUTPUT_TABS.filter(t => allOutputs[t.id]);
+                    const icpFields = ALL_ICP_FIELDS.map(f => `${f.label}: ${data[f.id]||"(empty)"}`).join("\n");
+                    const coFields = COMPANY_FIELDS.map(f => `${f.label}: ${companyData?.[f.id]||"(empty)"}`).join("\n");
+                    const md = [
+                      `# ${icp.name || "ICP"} — Full Export`,
+                      `**Generated:** ${new Date().toLocaleDateString()}`,
+                      `**Status:** ${icp.approval}`,
+                      icp.aiCouncil ? `**Email Score:** ${icp.aiCouncil.finalScore}/10 (${icp.aiCouncil.iterations?.length||0} rounds)` : "",
+                      "",
+                      "## Company Profile",
+                      coFields,
+                      "",
+                      "## ICP Fields",
+                      icpFields,
+                      "",
+                      ...tabs.map(t => [`## ${t.label}`, allOutputs[t.id], ""].flat()),
+                      icp.aiCouncil?.iterations ? [
+                        "## Refinement History",
+                        ...icp.aiCouncil.iterations.map((it:any,i:number) =>
+                          `### Round ${i+1} — Score: ${it.score}/10\n${it.reasoning||""}\n${it.improvements?"**Improvements:** "+it.improvements:""}`
+                        )
+                      ].join("\n") : "",
+                    ].filter(Boolean).join("\n");
+                    const blob = new Blob([md], { type:"text/markdown" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url; a.download = `${(icp.name||"icp").replace(/[^a-z0-9]/gi,"_")}_export.md`;
+                    a.click(); URL.revokeObjectURL(url);
+                  }} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
+                    ↓ Export
+                  </button>
                   <button onClick={generateAll} disabled={genState==="running"||!data.industries} style={{
                     padding:"5px 13px", borderRadius:6, border:`1px solid ${C.accentBorder}`,
                     background:genState==="running"||!data.industries?C.faint:C.accentLo,
@@ -2121,6 +2221,77 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     {genState==="running" ? "Generating…" : "↺ Regenerate"}
                   </button>
                 </div>
+                {/* Rewrite presets */}
+                {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script") && icp.outputs[outTab] && genState!=="running" && (
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:14 }}>
+                    <span style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4, alignSelf:"center", marginRight:4 }}>REWRITE:</span>
+                    {[
+                      {label:"More Direct", instr:"Make it more direct and blunt. Cut filler words. Get to the point faster."},
+                      {label:"More Human", instr:"Make it sound like a real person typed it quickly. Less polished, more conversational. Slightly rough."},
+                      {label:"Less Professional", instr:"Remove corporate language. Use simpler words. Sound like someone talking, not writing a memo."},
+                      {label:"Blue Collar", instr:"Write for blue collar operators. Talk about jobs, crews, timelines, money, family. No buzzwords."},
+                      {label:"More Aggressive", instr:"Make it edgier and slightly confrontational. Lead with pain and loss. Make them feel the cost of inaction."},
+                      {label:"Simpler", instr:"Shorter sentences. Simpler words. A 5th grader should understand it."},
+                      {label:"Vary Openings", instr:"Make each message opening completely different. Different hooks, different angles, different first lines."},
+                      {label:"Easier CTAs", instr:"Make every CTA ultra low-friction. Yes/no reply, quick question, 'am I off?', callback ask. No meetings, no demos, no PDF downloads."},
+                      {label:"Mimic My Style", instr:"STYLE_MIMIC"},
+                    ].map(p => (
+                      <button key={p.label} onClick={async () => {
+                        const tab = outTab;
+                        const current = icp.outputs[tab];
+                        setGenState("running");
+                        let instructions = p.instr;
+                        if (p.instr === "STYLE_MIMIC") {
+                          const refCopy = data.ref_emails || companyData?.co_past_emails || "";
+                          if (!refCopy) { alert("Add reference email copy first (in Messaging → Reference Email Copy or Client Profile → Past Email Examples)"); setGenState(null); return; }
+                          const styleAnalysis = await callAI(
+                            `Analyze this writing style in detail. Focus on:\n- sentence length and rhythm\n- level of formality/casualness\n- use of contractions, fragments, slang\n- CTA patterns\n- opening patterns\n- how direct/blunt vs soft\n- emotional register\n- punctuation habits\n- paragraph structure\n\nReference copy:\n${refCopy.slice(0,2000)}\n\nReturn a precise style guide (5-8 rules) that would let someone replicate this exact writing voice.`,
+                            "", 400);
+                          instructions = `Rewrite to match this exact writing style:\n\n${styleAnalysis}\n\nThe rewrite must sound like the same person wrote it. Match rhythm, bluntness, structure, CTA pattern, and emotional register exactly.`;
+                        }
+                        const rewritten = await callAI(
+                          `Rewrite this ${tab==="email_copy"?"email sequence":tab==="linkedin_copy"?"LinkedIn sequence":"cold call script"} with these instructions:\n\n${instructions}\n\nICP context: ${data.buyer||""} in ${data.industries||""}\nTone: ${data.tone||"direct"}\n\nCurrent content:\n${current.slice(0,3500)}\n\nRewrite the ENTIRE sequence. Keep the same structure/format. Only change tone, style, and language as instructed.`,
+                          "You are a world-class B2B outreach copywriter. Output only the rewritten sequence, no commentary.", 1800);
+                        if (rewritten && !rewritten.startsWith("Error")) {
+                          const history = [...(icp.versionHistory || []), {
+                            tab, label:p.label, instruction:p.instr==="STYLE_MIMIC"?"Mimic accepted style":p.instr,
+                            previousContent:current.slice(0,500)+"…", timestamp:new Date().toISOString()
+                          }];
+                          onUpdate({ ...icp, data, outputs:{ ...icp.outputs, [tab]:rewritten }, versionHistory:history });
+                        }
+                        setGenState(null);
+                      }} disabled={genState==="running"}
+                        style={{ padding:"4px 10px", borderRadius:5, border:`1px solid ${C.border}`,
+                          background:"transparent", color:C.textSoft, fontSize:10, fontFamily:mono,
+                          cursor:genState==="running"?"default":"pointer", fontWeight:500,
+                          transition:"all .12s" }}
+                        onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.accentLo;(e.currentTarget as HTMLButtonElement).style.borderColor=C.accentBorder;(e.currentTarget as HTMLButtonElement).style.color=C.accent;}}
+                        onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background="transparent";(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.textSoft;}}>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Version History */}
+                {(icp.versionHistory||[]).filter((v:any)=>v.tab===outTab).length > 0 && (
+                  <details style={{ marginBottom:14 }}>
+                    <summary style={{ fontSize:10, fontFamily:mono, color:C.muted, cursor:"pointer", fontWeight:600, letterSpacing:.3,
+                      padding:"6px 0", userSelect:"none" }}>
+                      REWRITE HISTORY ({(icp.versionHistory||[]).filter((v:any)=>v.tab===outTab).length} version{(icp.versionHistory||[]).filter((v:any)=>v.tab===outTab).length!==1?"s":""})
+                    </summary>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6, padding:"8px 0" }}>
+                      {(icp.versionHistory||[]).filter((v:any)=>v.tab===outTab).map((v:any, i:number) => (
+                        <div key={i} style={{ padding:"8px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.faint, fontSize:11 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                            <span style={{ fontFamily:mono, fontWeight:700, color:C.accent, fontSize:10 }}>{v.label}</span>
+                            <span style={{ fontFamily:mono, color:C.muted, fontSize:9 }}>{new Date(v.timestamp).toLocaleString()}</span>
+                          </div>
+                          <div style={{ fontFamily:body, color:C.textSoft, fontSize:10, lineHeight:1.4 }}>{v.instruction.slice(0,150)}{v.instruction.length>150?"…":""}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
                 {outTab==="email_copy" && icp.emailScores && !icp.aiCouncil && (
                   <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:22 }}>
                     {(icp.emailScores as any[]).map((s, i) => {
@@ -2190,6 +2361,53 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     {icp.outputs[outTab]}
                   </div>
                 )}
+              {/* QA Checklist */}
+              {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script") && icp.outputs[outTab] && (
+                <div style={{ marginTop:24, padding:"16px 18px", borderRadius:10, border:`1px solid ${C.border}`, background:C.faint }}>
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4, marginBottom:10 }}>QA CHECKLIST</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    {[
+                      { id:"qa_human", label:"Sounds like a real person wrote it" },
+                      { id:"qa_pain", label:"Pain is obvious in the first line" },
+                      { id:"qa_cta", label:"CTA is easy to answer (yes/no, one-line, callback)" },
+                      { id:"qa_audience", label:"Audience would understand it instantly" },
+                      { id:"qa_no_buzz", label:"No buzzwords or polished corporate language" },
+                      { id:"qa_varied", label:"Each message uses a different angle" },
+                      { id:"qa_no_ai", label:"Does NOT sound AI-generated" },
+                    ].map(q => {
+                      const checks = icp.qaChecks ?? {};
+                      const key = `${outTab}_${q.id}`;
+                      const checked = !!checks[key];
+                      return (
+                        <label key={key} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:12,
+                          fontFamily:body, color: checked ? C.green : C.textSoft }}>
+                          <input type="checkbox" checked={checked} onChange={() => {
+                            const next = { ...checks, [key]: !checked };
+                            onUpdate({ ...icp, qaChecks: next });
+                          }} style={{ accentColor: C.accent }} />
+                          {q.label}
+                          {checked && <span style={{ fontSize:10, color:C.green }}>✓</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {(() => {
+                    const checks = icp.qaChecks ?? {};
+                    const total = 7;
+                    const passed = [
+                      `${outTab}_qa_human`,`${outTab}_qa_pain`,`${outTab}_qa_cta`,`${outTab}_qa_audience`,
+                      `${outTab}_qa_no_buzz`,`${outTab}_qa_varied`,`${outTab}_qa_no_ai`
+                    ].filter(k => checks[k]).length;
+                    const allPassed = passed === total;
+                    return (
+                      <div style={{ marginTop:10, fontSize:10, fontFamily:mono, fontWeight:700,
+                        color: allPassed ? C.green : passed > 4 ? C.amber : C.muted }}>
+                        {passed}/{total} passed {allPassed && "— ready for approval"}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
               </div>
             )}
             {panel==="comments" && (
@@ -2373,6 +2591,7 @@ function PerformancePanel({ perfLogs, onLogsChange, icps }) {
   const blankForm = () => ({
     icpId:"", dateType:"single", date:new Date().toISOString().slice(0,10),
     dateTo:"", label:"", metrics:EMPTY_METRICS(), notes:"",
+    tags:{ pain_focus:"", hook_type:"", cta_type:"", tone_intensity:"", persona_target:"", segment:"", channel:"" },
   });
   const [form, setForm] = useState<any>(blankForm);
 
@@ -2639,6 +2858,14 @@ For percentages with raw counts shown (e.g. "45% (450 opens)"), use the raw coun
                 <div>
                   <div style={{ fontSize:12, fontFamily:mono, color:C.text, fontWeight:600 }}>{fmtDateRange(entry)}</div>
                   {entry.label && <div style={{ fontSize:10.5, color:C.muted, fontFamily:body, marginTop:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.label}</div>}
+                  {entry.tags && Object.values(entry.tags).some(Boolean) && (
+                    <div style={{ display:"flex", gap:3, flexWrap:"wrap", marginTop:3 }}>
+                      {Object.entries(entry.tags as Record<string,string>).filter(([,v])=>v).map(([k,v])=>(
+                        <span key={k} style={{ fontSize:8, fontFamily:mono, color:C.accent, background:C.accentLo,
+                          padding:"1px 5px", borderRadius:3, fontWeight:600 }}>{v}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {/* ICP */}
                 <div style={{ display:"flex", alignItems:"center", gap:6, overflow:"hidden" }}>
@@ -2900,6 +3127,26 @@ For percentages with raw counts shown (e.g. "45% (450 opens)"), use the raw coun
                   style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
                     background:C.canvas, color:C.text, fontFamily:body, fontSize:13,
                     resize:"vertical" as const, lineHeight:1.6 }} />
+              </div>
+
+              {/* Analytics Tags */}
+              <div>
+                <div style={{ fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:8 }}>Tracking Tags <span style={{ fontWeight:400, color:C.muted }}>(optional)</span></div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                  {[
+                    { id:"pain_focus",       label:"Pain Focus",       ph:"capacity constraints" },
+                    { id:"hook_type",        label:"Hook Type",        ph:"loss aversion" },
+                    { id:"cta_type",         label:"CTA Type",         ph:"easy yes/no" },
+                    { id:"tone_intensity",   label:"Tone Intensity",   ph:"direct/blunt/edgy" },
+                    { id:"persona_target",   label:"Persona Target",   ph:"owner/operator" },
+                    { id:"channel",          label:"Channel",          ph:"email/linkedin/call" },
+                  ].map(t => (
+                    <input key={t.id} value={(form.tags||{})[t.id]||""} placeholder={t.ph}
+                      onChange={e=>setForm(f=>({...f,tags:{...(f.tags||{}), [t.id]:e.target.value}}))}
+                      style={{ padding:"7px 10px", borderRadius:7, border:`1px solid ${C.border}`,
+                        background:C.canvas, color:C.text, fontSize:11, fontFamily:body }} />
+                  ))}
+                </div>
               </div>
 
               {/* Footer buttons */}
@@ -5501,8 +5748,8 @@ Existing ICPs: ${existing}
 ${contextLine}
 CRITICAL: Every field MUST be filled — never leave blank. Use best guesses where needed.
 Return ONLY JSON:
-{"name":"Short segment label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","triggers":"","sq_cost":"","tone":"","hook":"","cta":"","icp_proof":""},
-"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"pain1":0,"pain2":0,"triggers":0,"sq_cost":0,"tone":0,"hook":0,"cta":0,"icp_proof":0}}
+{"name":"Short segment label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":""},
+"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"intent_topics":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0,"seq_strategy":0}}
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
 tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
 cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
@@ -5544,8 +5791,8 @@ CRITICAL RULES:
 - Write fields as a real GTM would — specific, not generic.
 
 Return ONLY JSON:
-{"name":"Short descriptive segment label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","triggers":"","sq_cost":"","tone":"","hook":"","cta":"","icp_proof":""},
-"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"pain1":0,"pain2":0,"triggers":0,"sq_cost":0,"tone":0,"hook":0,"cta":0,"icp_proof":0}}
+{"name":"Short descriptive segment label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":""},
+"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"intent_topics":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0,"seq_strategy":0}}
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
 tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
 cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
