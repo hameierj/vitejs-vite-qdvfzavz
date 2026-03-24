@@ -49,13 +49,13 @@ const mono = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 const COMPANY_SECTIONS = {
   contact: { label:"Contact Info", icon:"◎",
     fields:[
-      { id:"co_name",         label:"Company Name",               type:"text",     ph:"Acme Corp",                                          required:true, hint:"Exactly as you want it to appear in outreach messages" },
-      { id:"co_contact_first",label:"Contact First Name",         type:"text",     ph:"Jane",                                               hint:"Primary point of contact for this account" },
-      { id:"co_contact_last", label:"Contact Last Name",          type:"text",     ph:"Smith" },
-      { id:"co_contact_title",label:"Contact Job Title / Role",   type:"text",     ph:"VP of Marketing, Head of Growth…" },
-      { id:"co_contact_phone",label:"Contact Phone Number",       type:"text",     ph:"+1 (555) 123-4567" },
-      { id:"co_contact_email",label:"Contact Business Email",     type:"text",     ph:"jane@acme.com",                                      hint:"Primary business email address" },
-      { id:"co_login_email",  label:"B2B Rocket Login Email",     type:"text",     ph:"jane@acme.com",                                      hint:"Email used to login to app.b2brocket.ai" },
+      { id:"co_name",         label:"Company Name",               type:"text",     ph:"",                                                    required:true, hint:"Exactly as you want it to appear in outreach messages", noConf:true },
+      { id:"co_contact_first",label:"Contact First Name",         type:"text",     ph:"",                                                   hint:"Primary point of contact for this account", noConf:true },
+      { id:"co_contact_last", label:"Contact Last Name",          type:"text",     ph:"", noConf:true },
+      { id:"co_contact_title",label:"Contact Job Title / Role",   type:"text",     ph:"", noConf:true },
+      { id:"co_contact_phone",label:"Contact Phone Number",       type:"text",     ph:"", noConf:true },
+      { id:"co_contact_email",label:"Contact Business Email",     type:"text",     ph:"",                                                   hint:"Primary business email address", noConf:true },
+      { id:"co_login_email",  label:"B2B Rocket Login Email",     type:"text",     ph:"",                                                   hint:"Email used to login to app.b2brocket.ai", noConf:true },
     ]
   },
   overview: { label:"Company Overview", icon:"◉",
@@ -86,24 +86,24 @@ const COMPANY_SECTIONS = {
   },
   sales: { label:"Sales Profile", icon:"◈",
     fields:[
-      { id:"co_deal",         label:"Avg Deal Size",               type:"select",   opts:["<$1K","$1K–$5K","$5K–$25K","$25K–$100K","$100K+"] },
-      { id:"co_cycle",        label:"Sales Cycle",                 type:"select",   opts:["<1 week","1–4 weeks","1–3 months","3–6 months","6+ months"] },
-      { id:"co_goal",         label:"Monthly Meetings Goal",       type:"select",   opts:["1–5","5–10","10–20","20–30","30+"] },
-      { id:"co_past_emails",  label:"Past Email Examples",         type:"textarea", ph:"Paste your best-performing email copy here — subject lines and body text.", rows:4, hint:"Helps us match your proven style and tone" },
+      { id:"co_deal",         label:"Avg Deal Size",               type:"select",   opts:["<$1K","$1K–$5K","$5K–$25K","$25K–$100K","$100K+"], noConf:true },
+      { id:"co_cycle",        label:"Sales Cycle",                 type:"select",   opts:["<1 week","1–4 weeks","1–3 months","3–6 months","6+ months"], noConf:true },
+      { id:"co_goal",         label:"Monthly Meetings Goal",       type:"select",   opts:["1–5","5–10","10–20","20–30","30+"], noConf:true },
+      { id:"co_past_emails",  label:"Past Email Examples",         type:"textarea", ph:"Paste your best-performing email copy here — subject lines and body text.", rows:4, hint:"Helps us match your proven style and tone", noConf:true },
     ]
   },
   campaign: { label:"Campaign Setup", icon:"◑",
     fields:[
-      { id:"co_channels",     label:"Outreach Channels",           type:"chips",    opts:["Email","LinkedIn","AI Calls"] },
-      { id:"co_num_campaigns",label:"Number of Campaigns",         type:"select",   opts:["1","2","3","4","5+"],                            hint:"How many campaigns to start with" },
-      { id:"co_campaign_purpose",label:"Campaign Purpose",         type:"textarea", ph:"Describe the purpose of each campaign — e.g. \'Campaign 1: target enterprise CFOs for demo bookings\'", rows:3 },
-      { id:"co_outcomes",     label:"Expected Outcomes",           type:"chips",    opts:["Book demos","Schedule follow-up calls","Drive replies","Upsell existing customers","Re-engage inactive users","Activate trial users","Book renewal meetings","Drive event sign-ups","Collect feedback"] },
-      { id:"co_timezone",     label:"Campaign Timezone",           type:"text",     ph:"(UTC -05:00) America/New_York" },
-      { id:"co_days",         label:"Campaign Days",               type:"chips",    opts:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] },
-      { id:"co_start_time",   label:"Daily Start Time",            type:"text",     ph:"9:00 AM" },
-      { id:"co_end_time",     label:"Daily End Time",              type:"text",     ph:"5:00 PM" },
-      { id:"co_exclude",      label:"Global Exclude List",         type:"textarea", ph:"Current customers, investors, specific domains.",     hint:"Anyone we should never contact — applies to all ICPs" },
-      { id:"co_avoid",        label:"Copy — Always Avoid",         type:"textarea", ph:"Competitor names, pricing language, banned phrases.", hint:"Topics or angles that are off-limits in email copy" },
+      { id:"co_channels",     label:"Outreach Channels",           type:"chips",    opts:["Email","LinkedIn","AI Calls"], noConf:true },
+      { id:"co_num_campaigns",label:"Number of Campaigns",         type:"select",   opts:["1","2","3","4","5+"],                            hint:"How many campaigns to start with", noConf:true },
+      { id:"co_campaign_purpose",label:"Campaign Purpose",         type:"textarea", ph:"Describe the purpose of each campaign — e.g. \'Campaign 1: target enterprise CFOs for demo bookings\'", rows:3, noConf:true },
+      { id:"co_outcomes",     label:"Expected Outcomes",           type:"chips",    opts:["Book demos","Schedule follow-up calls","Drive replies","Upsell existing customers","Re-engage inactive users","Activate trial users","Book renewal meetings","Drive event sign-ups","Collect feedback"], noConf:true },
+      { id:"co_timezone",     label:"Campaign Timezone",           type:"text",     ph:"(UTC -05:00) America/New_York", noConf:true },
+      { id:"co_days",         label:"Campaign Days",               type:"chips",    opts:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], noConf:true },
+      { id:"co_start_time",   label:"Daily Start Time",            type:"text",     ph:"9:00 AM", noConf:true },
+      { id:"co_end_time",     label:"Daily End Time",              type:"text",     ph:"5:00 PM", noConf:true },
+      { id:"co_exclude",      label:"Global Exclude List",         type:"textarea", ph:"Current customers, investors, specific domains.",     hint:"Anyone we should never contact — applies to all ICPs", noConf:true },
+      { id:"co_avoid",        label:"Copy — Always Avoid",         type:"textarea", ph:"Competitor names, pricing language, banned phrases.", hint:"Topics or angles that are off-limits in email copy", noConf:true },
     ]
   },
 };
@@ -121,7 +121,7 @@ const ICP_SECTIONS = {
       { id:"dream_accts",label:"Dream Accounts",             type:"textarea", ph:"Specific companies you\'d love to land — names, websites, LinkedIn URLs.", rows:2, hint:"Helps define the ideal profile for lookalike targeting" },
       { id:"neg",        label:"Exclude Within Segment",     type:"textarea", ph:"Sub-types that churn or aren\'t a fit.", rows:2 },
       { id:"intent_topics", label:"Intent Topics",             type:"textarea", ph:"Equipment financing, equipment leasing, construction loans, same day funding, quick business funding…", rows:2, hint:"Intent signals used for list building — what prospects are actively searching/engaging with" },
-      { id:"real_filters",  label:"Actual Targeting Filters",  type:"textarea", ph:"Industry: Construction\nEmployees: 1–50\nTitles: Owner, Founder, CEO, CFO\nLocation: US\nIntent: equipment financing, equipment leasing", rows:4, hint:"Paste the real filters being used for prospecting — the ICP will be refined to match these exactly" },
+      { id:"real_filters",  label:"Actual Targeting Filters",  type:"textarea", ph:"Industry: Construction\nEmployees: 1–50\nTitles: Owner, Founder, CEO, CFO\nLocation: US\nIntent: equipment financing, equipment leasing", rows:4, hint:"Paste the real filters being used for prospecting — the ICP will be refined to match these exactly", noConf:true },
     ]
   },
   persona: { label:"Persona", icon:"◑",
@@ -154,9 +154,9 @@ const ICP_SECTIONS = {
       { id:"cta",       label:"CTA Style",                      type:"select",   opts:["15-min call ask","Soft permission (\'worth a chat?\')","Video/resource share","Direct demo ask","Open-ended question","Easy yes/no reply","Direct callback ask"] },
       { id:"why_client_wins", label:"Why Client Wins for This ICP", type:"textarea", ph:"We win because of speed, flexibility, human process — better fit than banks for messy finances…", rows:2, hint:"Why your client specifically beats alternatives for THIS ICP" },
       { id:"icp_proof", label:"Best Proof for This ICP",        type:"textarea", ph:"Which case study, logo, or stat lands hardest for this audience?", hint:"One targeted proof point beats five generic ones" },
-      { id:"ref_emails",label:"Reference Email Copy",           type:"textarea", ph:"Paste examples of emails that have worked well for this audience — subject lines and body.", rows:4, hint:"Gives the AI a proven style to build from" },
-      { id:"seq_strategy", label:"Sequence Strategy",           type:"select",   opts:["Single narrative (same lane, different angles)","Multi-angle (different strategies per email)","Escalating aggression","Problem → Solution → Proof → Urgency → Breakup"] },
-      { id:"seq_cta_style",label:"CTA Variation",               type:"select",   opts:["Same CTA style throughout","Varied CTAs per email","Escalating commitment"] },
+      { id:"ref_emails",label:"Reference Email Copy",           type:"textarea", ph:"Paste examples of emails that have worked well for this audience — subject lines and body.", rows:4, hint:"Gives the AI a proven style to build from", noConf:true },
+      { id:"seq_strategy", label:"Sequence Strategy",           type:"select",   opts:["Single narrative (same lane, different angles)","Multi-angle (different strategies per email)","Escalating aggression","Problem → Solution → Proof → Urgency → Breakup"], noConf:true },
+      { id:"seq_cta_style",label:"CTA Variation",               type:"select",   opts:["Same CTA style throughout","Varied CTAs per email","Escalating commitment"], noConf:true },
     ]
   },
 };
@@ -369,16 +369,38 @@ function fieldFilled(f, val) {
 }
 
 // ─── CONFIDENCE PILL ─────────────────────────────────────────────────────────
-function ConfPill({ score }: { score:any }) {
+function confTip(score: number, label: string): string {
+  if (score >= 95) return "High confidence — verified or strongly supported by source data.";
+  if (score >= 80) return `Good confidence. To improve: add more specific details, real examples, or exact numbers to "${label}".`;
+  if (score >= 55) return `Moderate confidence — this is a reasonable inference. To improve: verify with the client, add concrete specifics, named examples, or supporting data to "${label}".`;
+  return `Low confidence — this is an educated guess. "${label}" needs direct client input or verified source data to be reliable.`;
+}
+
+function ConfPill({ score, label="" }: { score:any; label?:string }) {
   if (score === undefined || score === null) return null;
+  const [hover, setHover] = useState(false);
   const { color, bg } = score >= 80 ? { color:C.green, bg:C.greenLo }
     : score >= 55 ? { color:C.amber, bg:C.amberLo }
     : { color:C.red, bg:C.redLo };
   return (
-    <span style={{ display:"inline-flex", alignItems:"center", gap:3,
-      fontSize:9, fontFamily:mono, fontWeight:700,
-      color, background:bg, padding:"1px 6px", borderRadius:4, marginLeft:5 }}>
-      {score}%
+    <span style={{ position:"relative", display:"inline-flex" }}
+      onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}>
+      <span style={{ display:"inline-flex", alignItems:"center", gap:3,
+        fontSize:9, fontFamily:mono, fontWeight:700, cursor:"default",
+        color, background:bg, padding:"1px 6px", borderRadius:4, marginLeft:5 }}>
+        {score}%
+      </span>
+      {hover && (
+        <div style={{ position:"absolute", top:"100%", left:0, marginTop:6, width:260, padding:"10px 12px",
+          background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
+          boxShadow:"0 8px 24px rgba(13,15,26,.15)", zIndex:100,
+          fontSize:11, fontFamily:body, color:C.textSoft, lineHeight:1.5 }}>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color, marginBottom:4 }}>
+            {score >= 95 ? "VERIFIED" : score >= 80 ? "GOOD" : score >= 55 ? "NEEDS REVIEW" : "LOW CONFIDENCE"}
+          </div>
+          {confTip(score, label)}
+        </div>
+      )}
     </span>
   );
 }
@@ -398,9 +420,9 @@ function StatusBadge({ status, size="sm" }) {
 }
 
 // ─── FIELD ────────────────────────────────────────────────────────────────────
-function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked = false, onUnlock = null, onSave = null, onCancel = null, aiOptions = null, onOptionPick = null }) {
+function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked = false, onUnlock = null, onSave = null, onCancel = null, aiOptions = null, onOptionPick = null, onSubmitField = null }) {
   const filled  = fieldFilled(f, val);
-  const canAI   = f.type !== "select" && f.type !== "chips";
+  const canAI   = f.type !== "select" && f.type !== "chips" && !f.noConf;
   const isThinking = aiOn === f.id;
 
   const [popOpen,  setPopOpen]  = useState(false);
@@ -409,12 +431,13 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
   const [fieldHov, setFieldHov] = useState(false);
   const [popPos,   setPopPos]   = useState<{top:number;left:number}|null>(null);
   const popRef  = useRef<HTMLDivElement>(null);
+  const popContentRef = useRef<HTMLDivElement>(null);
   const aiBtnRef = useRef<HTMLButtonElement>(null);
 
   // Close popover on outside click
   useEffect(() => {
     if (!popOpen) return;
-    const handler = e => { if (popRef.current && !popRef.current.contains(e.target)) { setPopOpen(false); setFieldHov(false); } };
+    const handler = e => { if (popRef.current && !popRef.current.contains(e.target) && (!popContentRef.current || !popContentRef.current.contains(e.target))) { setPopOpen(false); setFieldHov(false); } };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [popOpen]);
@@ -468,7 +491,7 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
 
       {/* ── Popover (portal → renders in document.body, escapes all stacking contexts) ── */}
       {popOpen && !aiOn && popPos && createPortal(
-        <div style={{
+        <div ref={popContentRef} style={{
           position:"fixed", top:popPos.top, left:popPos.left, zIndex:2147483647,
           width:260, background:C.canvas,
           border:`1.5px solid ${accentColor}33`,
@@ -570,7 +593,7 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
         <label style={{ fontSize:13, color:C.text, fontFamily:head, fontWeight:700 }}>
           {f.label}{f.required && <span style={{ color:C.accent, marginLeft:2 }}>*</span>}
         </label>
-        {confidence !== undefined && confidence !== null && <ConfPill score={confidence} />}
+        {!f.noConf && confidence !== undefined && confidence !== null && val && (Array.isArray(val) ? val.length > 0 : String(val).trim().length > 0) && <ConfPill score={confidence} label={f.label} />}
         {f.hint && (
           <div style={{ position:"relative", display:"inline-flex" }}>
             <div onMouseEnter={()=>setHintOpen(true)} onMouseLeave={()=>setHintOpen(false)}
@@ -624,14 +647,16 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
           onMouseEnter={()=>{ if(!locked) setFieldHov(true); }}
           onMouseLeave={()=>setFieldHov(false)}>
           {f.type==="textarea"
-            ? <textarea value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph} rows={f.rows||2}
+            ? <textarea data-field-id={f.id} value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph} rows={f.rows||2}
                 readOnly={locked}
                 style={{...base, resize:"vertical", paddingRight: canAI ? 44 : 12, ...(locked ? lockedStyle : {})}}
-                onFocus={focusOn} onBlur={focusOff} />
-            : <input type="text" value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph}
+                onFocus={focusOn} onBlur={focusOff}
+                onKeyDown={e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)&&!locked&&val&&String(val).trim()) { e.preventDefault(); onSave?.(); onSubmitField?.(f.id); } }} />
+            : <input data-field-id={f.id} type="text" value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph}
                 readOnly={locked}
                 style={{...base, paddingRight: canAI ? 44 : 12, ...(locked ? lockedStyle : {})}}
-                onFocus={focusOn} onBlur={focusOff} />
+                onFocus={focusOn} onBlur={focusOff}
+                onKeyDown={e=>{ if(e.key==="Enter"&&!locked&&val&&String(val).trim()) { e.preventDefault(); onSave?.(); onSubmitField?.(f.id); } }} />
           }
           {canAI && !locked && (
             <div style={{ position:"absolute", right:6, top:"50%", transform:"translateY(-50%)", zIndex:10 }}>
@@ -839,13 +864,9 @@ CRITICAL RULES:
 - co_exclude and co_avoid: infer sensible defaults based on the company's type and segment.
 
 Return ONLY JSON:
-{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_goal":"","co_channels":"","co_outcomes":"","co_exclude":"","co_avoid":""},
-"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0,"co_deal":0,"co_cycle":0,"co_goal":0,"co_channels":0,"co_outcomes":0,"co_exclude":0,"co_avoid":0}}
-co_deal: exactly one of "<$1K"|"$1K–$5K"|"$5K–$25K"|"$25K–$100K"|"$100K+"
-co_cycle: exactly one of "<1 week"|"1–4 weeks"|"1–3 months"|"3–6 months"|"6+ months"
-co_goal: exactly one of "1–5"|"5–10"|"10–20"|"20–30"|"30+"
-co_channels: array from ["Email","LinkedIn","AI Calls"]
-co_outcomes: array from ["Book demos","Schedule follow-up calls","Drive replies","Upsell existing customers","Re-engage inactive users","Activate trial users","Book renewal meetings","Drive event sign-ups","Collect feedback"]
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":""},
+"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
+Do NOT generate fields for: contact info, deal size, sales cycle, meetings goal, channels, outcomes, timezone, days, start/end time, exclude list, or copy-to-avoid. Those are filled manually by the user.
 co_pitch: full value proposition, not just a one-liner
 co_ksp: key selling points — unique benefits that make the product stand out
 co_prod_breakdown: structured product/service decomposition — for each product: who buys it, pains, gains, triggers, signals, objections, positioning
@@ -2118,45 +2139,66 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           {/* Left nav */}
           <div style={{ width:160, background:C.surface, borderRight:`1px solid ${C.border}`, flexShrink:0, padding:"10px 0", overflowY:"auto", minHeight:0 }}>
             {panel==="form" && (
-              <>
-                <div style={{ padding:"8px 14px 5px", fontSize:9, color:C.muted, fontFamily:mono, letterSpacing:.5, fontWeight:600 }}>SECTIONS</div>
+              <div style={{ margin:"4px 6px", border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden" }}>
+                <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
+                  fontWeight:700, textTransform:"uppercase" as const,
+                  background:C.faint, borderBottom:`1px solid ${C.border}` }}>Sections</div>
                 {Object.entries(ICP_SECTIONS).map(([key,s]) => {
                   const gf = s.fields.filter(f=>fieldFilled(f,data[f.id])).length;
                   const on = secTab===key;
+                  const allFilled = gf === s.fields.length;
                   return (
                     <button key={key} onClick={()=>setSecTab(key)} style={{
-                      display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 14px",
-                      background:on?C.accentLo:"transparent", border:"none",
-                      borderLeft:`2px solid ${on?C.accent:"transparent"}`, cursor:"pointer", textAlign:"left" }}>
-                      <span style={{ fontSize:13, color:on?C.accent:C.muted }}>{s.icon}</span>
-                      <div>
-                        <div style={{ fontSize:11, fontFamily:mono, fontWeight:on?700:400, color:on?C.text:C.muted }}>{s.label}</div>
-                        <div style={{ fontSize:9, color:C.muted, fontFamily:mono }}>{gf}/{s.fields.length}</div>
+                      display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
+                      background:on?`${C.accent}0C`:"transparent", border:"none",
+                      borderLeft:`2px solid ${on?C.accent:"transparent"}`,
+                      cursor:"pointer", textAlign:"left", transition:"background .1s" }}
+                      onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                      onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:11, fontFamily:head, fontWeight:on?600:400, color:on?C.text:C.muted,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.label}</div>
                       </div>
+                      <span style={{ fontSize:9, fontFamily:mono, color:allFilled?C.green:C.muted, flexShrink:0 }}>
+                        {allFilled?"✓":`${gf}/${s.fields.length}`}
+                      </span>
                     </button>
                   );
                 })}
-              </>
+              </div>
             )}
             {panel==="outputs" && icp.outputs && (
               <>
-                <div style={{ padding:"8px 14px 5px", fontSize:9, color:C.muted, fontFamily:mono, letterSpacing:.5, fontWeight:600 }}>OUTPUTS</div>
-                {OUTPUT_TABS.map(t => {
-                  const on  = outTab===t.id;
-                  const apr = (icp.sectionApprovals??{})[t.id]==="approved";
-                  return (
-                    <button key={t.id} onClick={()=>setOutTab(t.id)} style={{
-                      display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 14px",
-                      background:on?t.color+"0F":"transparent", border:"none",
-                      borderLeft:`2px solid ${on?t.color:"transparent"}`, cursor:"pointer", textAlign:"left" }}>
-                      <span style={{ fontSize:13, color:on?t.color:C.muted }}>{t.icon}</span>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:11, fontFamily:mono, fontWeight:on?700:400, color:on?C.text:C.muted }}>{t.label}</div>
-                      </div>
-                      {apr && <span style={{ fontSize:10, color:C.green }}>✓</span>}
-                    </button>
-                  );
-                })}
+                {[
+                  { group:"Research", tabs:OUTPUT_TABS.filter(t=>["icp_summary","pain_map","strategy_brief"].includes(t.id)) },
+                  { group:"Messaging", tabs:OUTPUT_TABS.filter(t=>["email_copy","linkedin_copy","reply_handlers"].includes(t.id)) },
+                  { group:"Scripts", tabs:OUTPUT_TABS.filter(t=>["call_script","ai_call_script","exec_recs"].includes(t.id)) },
+                ].map((g, gi) => (
+                  <div key={g.group} style={{ margin:"0 6px 6px", border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden" }}>
+                    <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
+                      fontWeight:700, textTransform:"uppercase" as const,
+                      background:C.faint, borderBottom:`1px solid ${C.border}` }}>{g.group}</div>
+                    {g.tabs.map(t => {
+                      const on  = outTab===t.id;
+                      const apr = (icp.sectionApprovals??{})[t.id]==="approved";
+                      return (
+                        <button key={t.id} onClick={()=>setOutTab(t.id)} style={{
+                          display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
+                          background:on?`${t.color}0C`:"transparent", border:"none",
+                          borderLeft:`2px solid ${on?t.color:"transparent"}`,
+                          cursor:"pointer", textAlign:"left", transition:"background .1s" }}
+                          onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                          onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:11, fontFamily:head, fontWeight:on?600:400, color:on?C.text:C.muted,
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.label}</div>
+                          </div>
+                          {apr && <span style={{ fontSize:9, color:C.green, flexShrink:0 }}>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
               </>
             )}
           </div>
@@ -2183,7 +2225,24 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     locked={isFinalized?true:!!localConfLocked[f.id]}
                     onUnlock={isFinalized?undefined:()=>handleUnlock(f.id)}
                     onSave={()=>handleSave(f, f.id)}
-                    onCancel={()=>handleCancel(f.id)} />
+                    onCancel={()=>handleCancel(f.id)}
+                    onSubmitField={(fieldId) => {
+                      // Lock current field
+                      setLocalConfLocked(p => ({ ...p, [fieldId]: true }));
+                      scoreWithAI(f, data[fieldId]).then(score => setLocalConf((p: any) => ({ ...p, [fieldId]: score })));
+                      // Focus next unlocked field
+                      const idx = sec.fields.findIndex(x => x.id === fieldId);
+                      const allFields = sec.fields;
+                      for (let n = idx + 1; n < allFields.length; n++) {
+                        if (!localConfLocked[allFields[n].id]) {
+                          setTimeout(() => {
+                            const el = document.querySelector(`[data-field-id="${allFields[n].id}"]`) as HTMLElement;
+                            el?.focus();
+                          }, 50);
+                          return;
+                        }
+                      }
+                    }} />
                 ))}
               </div>
             )}
@@ -2284,11 +2343,40 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   )}
                   {secApproved
                     ? <span style={{ fontSize:10, color:C.green, background:C.greenLo, border:`1px solid ${C.greenBorder}`, padding:"3px 9px", borderRadius:5, fontFamily:mono, fontWeight:700 }}>✓ Approved</span>
-                    : <button onClick={()=>approveSection(outTab)} style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve Section</button>
+                    : <button onClick={()=>approveSection(outTab)} style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve</button>
                   }
                   <button onClick={()=>copy(outTab,icp.outputs[outTab])} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:copied===outTab?C.greenLo:"transparent", color:copied===outTab?C.green:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
-                    {copied===outTab?"✓ Copied":"Copy"}
+                    {copied===outTab?"✓":"⎘"}
                   </button>
+                  {/* ⋯ Overflow menu */}
+                  <div style={{ position:"relative", display:"inline-block" }}>
+                    <button onClick={e => {
+                      const menu = e.currentTarget.nextElementSibling as HTMLElement;
+                      menu.style.display = menu.style.display === "block" ? "none" : "block";
+                    }} style={{ padding:"5px 9px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent",
+                      color:C.muted, fontSize:12, fontFamily:mono, cursor:"pointer", fontWeight:700, lineHeight:1 }}>⋯</button>
+                    <div style={{ display:"none", position:"absolute", top:"100%", right:0, marginTop:4, width:220,
+                      background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
+                      boxShadow:"0 8px 24px rgba(13,15,26,.15)", zIndex:100, overflow:"hidden" }}
+                      onClick={e=>(e.currentTarget as HTMLElement).style.display="none"}>
+                      <button onClick={()=>setSplitView(v=>!v)} style={{ display:"flex", alignItems:"center", gap:8, width:"100%",
+                        padding:"9px 14px", border:"none", background:splitView?C.accentLo:"transparent",
+                        color:splitView?C.accent:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
+                        onMouseEnter={e=>{if(!splitView)(e.currentTarget as HTMLButtonElement).style.background=C.faint;}}
+                        onMouseLeave={e=>{if(!splitView)(e.currentTarget as HTMLButtonElement).style.background="transparent";}}>
+                        ◧ {splitView?"Hide":"Show"} Split View
+                      </button>
+                      {!isFinalized && (
+                        <button onClick={()=>{ if(!genState&&data.industries) generateAll(); }} style={{ display:"block", width:"100%",
+                          padding:"9px 14px", border:"none", background:"transparent",
+                          color:genState||!data.industries?C.muted:C.text, fontSize:11, fontFamily:mono,
+                          cursor:genState||!data.industries?"default":"pointer", textAlign:"left" }}
+                          onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                          onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                          ↺ {genState==="running"?"Generating…":"Regenerate All"}
+                        </button>
+                      )}
+                      <div style={{ height:1, background:C.border, margin:"2px 0" }} />
                   {(() => {
                     const exportFn = (format: "md"|"json"|"campaign") => {
                       const allOutputs = icp.outputs || {};
@@ -2381,55 +2469,29 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                         const a = document.createElement("a"); a.href = url; a.download = `${slug}_export.md`; a.click(); URL.revokeObjectURL(url);
                       }
                     };
-                    return (
-                      <div style={{ position:"relative", display:"inline-block" }}>
-                        <button onClick={e => {
-                          const menu = (e.currentTarget.nextElementSibling as HTMLElement);
-                          menu.style.display = menu.style.display === "block" ? "none" : "block";
-                        }} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
-                          ↓ Export ▾
-                        </button>
-                        <div style={{ display:"none", position:"absolute", top:"100%", right:0, marginTop:4, width:200,
-                          background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
-                          boxShadow:"0 8px 24px rgba(13,15,26,.15)", zIndex:100, overflow:"hidden" }}
-                          onClick={e=>(e.currentTarget as HTMLElement).style.display="none"}>
+                    return (<>
                           <button onClick={()=>exportFn("md")} style={{ display:"block", width:"100%", padding:"9px 14px", border:"none",
                             background:"transparent", color:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
                             onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
                             onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
-                            Markdown Brief (.md)
+                            ↓ Export Markdown
                           </button>
                           <button onClick={()=>exportFn("json")} style={{ display:"block", width:"100%", padding:"9px 14px", border:"none",
                             background:"transparent", color:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
                             onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
                             onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
-                            Full JSON Payload (.json)
+                            ↓ Export JSON
                           </button>
                           <button onClick={()=>exportFn("campaign")} style={{ display:"block", width:"100%", padding:"9px 14px", border:"none",
                             background:"transparent", color:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
                             onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
                             onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
-                            Campaign Builder (.json)
+                            ↓ Campaign Builder
                           </button>
-                        </div>
-                      </div>
-                    );
+                    </>);
                   })()}
-                  <button onClick={()=>setSplitView(v=>!v)} style={{ padding:"5px 11px", borderRadius:6,
-                    border:`1px solid ${splitView?C.accentBorder:C.border}`,
-                    background:splitView?C.accentLo:"transparent",
-                    color:splitView?C.accent:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:splitView?700:400 }}>
-                    ◧ Split View
-                  </button>
-                  {!isFinalized && (
-                  <button onClick={generateAll} disabled={genState==="running"||!data.industries} style={{
-                    padding:"5px 13px", borderRadius:6, border:`1px solid ${C.accentBorder}`,
-                    background:genState==="running"||!data.industries?C.faint:C.accentLo,
-                    color:genState==="running"||!data.industries?C.muted:C.accent,
-                    fontSize:10, fontFamily:mono, cursor:genState==="running"||!data.industries?"default":"pointer", fontWeight:700 }}>
-                    {genState==="running" ? "Generating…" : "↺ Regenerate"}
-                  </button>
-                  )}
+                    </div>
+                  </div>
                 </div>
                 {isFinalized && (
                   <div style={{ padding:"10px 14px", borderRadius:8, border:"1px solid #8B5CF644", background:"#8B5CF610",
@@ -2437,10 +2499,19 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     ✦ Source of Truth — locked on {icp.finalizedSnapshot?.timestamp ? new Date(icp.finalizedSnapshot.timestamp).toLocaleDateString() : ""}
                   </div>
                 )}
-                {/* Rewrite presets */}
+                {/* Rewrite presets dropdown */}
                 {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script"||outTab==="reply_handlers"||outTab==="ai_call_script") && icp.outputs[outTab] && genState!=="running" && !isFinalized && (
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:14 }}>
-                    <span style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4, alignSelf:"center", marginRight:4 }}>REWRITE:</span>
+                  <div style={{ position:"relative", display:"inline-block", marginBottom:14 }}>
+                    <button onClick={e => {
+                      const menu = (e.currentTarget.nextElementSibling as HTMLElement);
+                      menu.style.display = menu.style.display === "block" ? "none" : "block";
+                    }} style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${C.border}`,
+                      background:"transparent", color:C.textSoft, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:600 }}>
+                      ✦ Rewrite Style ▾
+                    </button>
+                    <div style={{ display:"none", position:"absolute", top:"100%", left:0, marginTop:4, width:240,
+                      background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
+                      boxShadow:"0 8px 24px rgba(13,15,26,.15)", zIndex:100, overflow:"hidden", maxHeight:320, overflowY:"auto" }}>
                     {[
                       {label:"More Direct", instr:"Make it more direct and blunt. Cut filler words. Get to the point faster."},
                       {label:"More Human", instr:"Make it sound like a real person typed it quickly. Less polished, more conversational. Slightly rough."},
@@ -2453,6 +2524,9 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                       {label:"Mimic My Style", instr:"STYLE_MIMIC"},
                     ].map(p => (
                       <button key={p.label} onClick={async () => {
+                        // Close dropdown
+                        const menu = document.querySelector("[data-rewrite-menu]") as HTMLElement;
+                        if (menu) menu.style.display = "none";
                         const tab = outTab;
                         const current = icp.outputs[tab];
                         setGenState("running");
@@ -2477,15 +2551,15 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                         }
                         setGenState(null);
                       }} disabled={genState==="running"}
-                        style={{ padding:"4px 10px", borderRadius:5, border:`1px solid ${C.border}`,
-                          background:"transparent", color:C.textSoft, fontSize:10, fontFamily:mono,
-                          cursor:genState==="running"?"default":"pointer", fontWeight:500,
-                          transition:"all .12s" }}
-                        onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.accentLo;(e.currentTarget as HTMLButtonElement).style.borderColor=C.accentBorder;(e.currentTarget as HTMLButtonElement).style.color=C.accent;}}
-                        onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background="transparent";(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.textSoft;}}>
+                        style={{ display:"block", width:"100%", padding:"8px 14px", border:"none",
+                          background:"transparent", color:C.text, fontSize:11, fontFamily:mono,
+                          cursor:genState==="running"?"default":"pointer", textAlign:"left" }}
+                        onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                        onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
                         {p.label}
                       </button>
                     ))}
+                    </div>
                   </div>
                 )}
                 {/* Version History */}
@@ -2566,12 +2640,13 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     onClose={()=>setIntelligence({ status:"idle", result:"", phase:"" })}
                   />
                 )}
-                <div style={{ display:"flex", gap:splitView?16:0 }}>
+                <div style={{ display:"flex", gap:splitView?16:0, flex:splitView?1:undefined, minHeight:splitView?0:undefined }}>
                   {/* Source context panel (split view only) */}
                   {splitView && (
                     <div style={{ width:"38%", flexShrink:0, padding:"16px", borderRadius:10,
                       border:`1px solid ${C.border}`, background:C.faint, overflowY:"auto",
-                      maxHeight:"60vh", fontSize:11.5, fontFamily:body, lineHeight:1.7, color:C.textSoft }}>
+                      position:"sticky" as const, top:0, alignSelf:"flex-start",
+                      height:"calc(100vh - 160px)", fontSize:11.5, fontFamily:body, lineHeight:1.7, color:C.textSoft }}>
                       <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4, marginBottom:12 }}>SOURCE DATA</div>
                       {/* Company context */}
                       <div style={{ marginBottom:14 }}>
@@ -2614,16 +2689,20 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     refiningEmail={refiningEmail}
                     onRefineAll={councilState.status==="idle" ? runAllWithFeedback : undefined} />
                 ) : (
-                  <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.9, whiteSpace:"pre-wrap", fontFamily:body }}>
-                    {icp.outputs[outTab]}
+                  <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.8, fontFamily:body }}>
+                    {renderOutputContent(icp.outputs[outTab])}
                   </div>
                 )}
                   </div>
                 </div>
               {/* QA Checklist */}
               {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script"||outTab==="reply_handlers"||outTab==="ai_call_script") && icp.outputs[outTab] && (
-                <div style={{ marginTop:24, padding:"16px 18px", borderRadius:10, border:`1px solid ${C.border}`, background:C.faint }}>
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4, marginBottom:10 }}>QA CHECKLIST</div>
+                <details style={{ marginTop:24 }}>
+                  <summary style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4,
+                    cursor:"pointer", userSelect:"none", padding:"10px 0" }}>
+                    {(() => { const checks = icp.qaChecks ?? {}; const passed = [`${outTab}_qa_human`,`${outTab}_qa_pain`,`${outTab}_qa_cta`,`${outTab}_qa_audience`,`${outTab}_qa_no_buzz`,`${outTab}_qa_varied`,`${outTab}_qa_no_ai`].filter(k => checks[k]).length; return `QA CHECKLIST (${passed}/7)`; })()}
+                  </summary>
+                <div style={{ padding:"12px 18px", borderRadius:10, border:`1px solid ${C.border}`, background:C.faint, marginTop:4 }}>
                   <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                     {[
                       { id:"qa_human", label:"Sounds like a real person wrote it" },
@@ -2666,6 +2745,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     );
                   })()}
                 </div>
+                </details>
               )}
               </div>
             )}
@@ -2772,24 +2852,41 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
   return (
     <div style={{ display:"flex", height:"100%", overflow:"hidden", borderRadius:10, border:`1px solid ${C.border}` }}>
       {/* Section nav */}
-      <div style={{ width:170, background:C.surface, borderRight:`1px solid ${C.border}`, flexShrink:0, padding:"10px 0", overflowY:"auto" }}>
-        <div style={{ padding:"8px 14px 5px", fontSize:9, color:C.muted, fontFamily:mono, letterSpacing:.5, fontWeight:600 }}>SECTIONS</div>
-        {Object.entries(COMPANY_SECTIONS).map(([key, s]) => {
-          const gf = s.fields.filter(f => fieldFilled(f, data[f.id])).length;
-          const on = secTab === key;
-          return (
-            <button key={key} onClick={() => setSecTab(key)} style={{
-              display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 14px",
-              background: on ? C.accentLo : "transparent", border:"none",
-              borderLeft:`2px solid ${on ? C.accent : "transparent"}`, cursor:"pointer", textAlign:"left" }}>
-              <span style={{ fontSize:13, color: on ? C.accent : C.muted }}>{s.icon}</span>
-              <div>
-                <div style={{ fontSize:11, fontFamily:mono, fontWeight: on ? 700 : 400, color: on ? C.text : C.muted }}>{s.label}</div>
-                <div style={{ fontSize:9, color:C.muted, fontFamily:mono }}>{gf}/{s.fields.length}</div>
-              </div>
-            </button>
-          );
-        })}
+      <div style={{ width:170, background:C.surface, borderRight:`1px solid ${C.border}`, flexShrink:0, padding:"6px", overflowY:"auto" }}>
+        {[
+          { group:"Manual Input", keys:["contact","sales","campaign"] },
+          { group:"AI Generated", keys:["overview","products","edge"] },
+        ].map((g, gi) => (
+          <div key={g.group} style={{ border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden", marginBottom:gi===0?6:0 }}>
+            <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
+              fontWeight:700, textTransform:"uppercase" as const,
+              background:C.faint, borderBottom:`1px solid ${C.border}` }}>{g.group}</div>
+            {g.keys.map(key => {
+              const s = COMPANY_SECTIONS[key];
+              if (!s) return null;
+              const gf = s.fields.filter(f => fieldFilled(f, data[f.id])).length;
+              const on = secTab === key;
+              const allFilled = gf === s.fields.length;
+              return (
+                <button key={key} onClick={() => setSecTab(key)} style={{
+                  display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
+                  background: on ? `${C.accent}0C` : "transparent", border:"none",
+                  borderLeft:`2px solid ${on ? C.accent : "transparent"}`,
+                  cursor:"pointer", textAlign:"left", transition:"background .1s" }}
+                  onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                  onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:11, fontFamily:head, fontWeight: on ? 600 : 400, color: on ? C.text : C.muted,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.label}</div>
+                  </div>
+                  <span style={{ fontSize:9, fontFamily:mono, color:allFilled?C.green:C.muted, flexShrink:0 }}>
+                    {allFilled?"✓":`${gf}/${s.fields.length}`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
       {/* Fields */}
@@ -2808,7 +2905,21 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
               onSave={() => handleSave(f, f.id)}
               onCancel={() => handleCancel(f.id)}
               aiOptions={aiOptions[f.id] ?? null}
-              onOptionPick={(opt) => handleOptionPick(f.id, opt)} />
+              onOptionPick={(opt) => handleOptionPick(f.id, opt)}
+              onSubmitField={(fieldId) => {
+                onConfLock?.(fieldId, true);
+                scoreWithAI(f, data[fieldId]).then(score => onConfChange?.(fieldId, score));
+                const idx = sec.fields.findIndex(x => x.id === fieldId);
+                for (let n = idx + 1; n < sec.fields.length; n++) {
+                  if (!(confLocked ?? {})[sec.fields[n].id]) {
+                    setTimeout(() => {
+                      const el = document.querySelector(`[data-field-id="${sec.fields[n].id}"]`) as HTMLElement;
+                      el?.focus();
+                    }, 50);
+                    return;
+                  }
+                }
+              }} />
           ))}
         </div>
       </div>
@@ -4177,6 +4288,43 @@ function renderOutputContent(text: string) {
           ))}
         </ol>
       );
+      continue;
+    // Table row (pipe-delimited)
+    } else if (/^\|.+\|$/.test(line.trim())) {
+      const tableRows: string[][] = [];
+      while (i < lines.length && /^\|.+\|$/.test(lines[i].trim())) {
+        const cells = lines[i].trim().split("|").slice(1, -1).map(c => c.trim());
+        // Skip separator rows like |---|---|
+        if (!cells.every(c => /^[-:]+$/.test(c))) tableRows.push(cells);
+        i++;
+      }
+      if (tableRows.length > 0) {
+        const isHeader = tableRows.length > 1;
+        elements.push(
+          <div key={`tbl-${i}`} style={{ overflowX:"auto", margin:"10px 0 14px", borderRadius:8, border:`1px solid ${C.border}` }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12, fontFamily:body }}>
+              {isHeader && (
+                <thead>
+                  <tr style={{ background:C.faint, borderBottom:`1px solid ${C.border}` }}>
+                    {tableRows[0].map((c, ci) => (
+                      <th key={ci} style={{ padding:"8px 12px", textAlign:"left", fontFamily:head, fontWeight:600, color:C.textSoft, fontSize:11 }}>{renderInline(c)}</th>
+                    ))}
+                  </tr>
+                </thead>
+              )}
+              <tbody>
+                {(isHeader ? tableRows.slice(1) : tableRows).map((row, ri) => (
+                  <tr key={ri} style={{ borderBottom:`1px solid ${C.border}` }}>
+                    {row.map((c, ci) => (
+                      <td key={ci} style={{ padding:"8px 12px", color:C.textSoft, lineHeight:1.6 }}>{renderInline(c)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
       continue;
     // Empty line — spacing
     } else if (line.trim() === "") {
@@ -6073,8 +6221,15 @@ Raw JSON only.`, "", 1400);
   }, [icps, companyData, addToast, updateToast]);
 
   const handleQSComplete = useCallback(result => {
-    setCompanyData(result.coFields);
-    setCompanyConf(result.coConf);
+    // Merge AI fields with existing data — don't overwrite manual fields
+    setCompanyData(prev => {
+      const merged = { ...prev };
+      for (const [k, v] of Object.entries(result.coFields)) {
+        if (v && String(v).trim()) merged[k] = v;
+      }
+      return merged;
+    });
+    setCompanyConf(prev => ({ ...prev, ...result.coConf }));
     setIcps(result.icps);
     setShowQS(false);
     setView("icps");
@@ -6576,16 +6731,16 @@ Raw JSON only.`, "", 1400);
                   borderRight:`1px solid ${C.border}`, background:C.canvas, overflow:"hidden" }}>
 
                   {/* Sidebar header */}
-                  <div style={{ padding:"14px 12px 10px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                      <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5 }}>ICP PROFILES</span>
+                  <div style={{ padding:"8px 8px 6px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
                       {/* Add ICP button + popover */}
                       <div style={{ position:"relative" }}>
                         <button ref={addBtnRef} onClick={()=>{ if(!drafting){ const r=addBtnRef.current?.getBoundingClientRect(); if(r) setAddPopPos({top:r.bottom+8,left:r.right-300}); setShowAddPop(p=>!p); } }} disabled={!!drafting}
-                          style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 11px", borderRadius:7,
-                            border:"none", background:drafting?C.border:C.accent, color:drafting?C.muted:"#fff",
+                          style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, width:"100%", padding:"7px 11px", borderRadius:7,
+                            border:`1px dashed ${drafting?C.border:C.accentBorder}`, background:drafting?C.faint:C.accentLo, color:drafting?C.muted:C.accent,
                             fontSize:11, fontFamily:head, fontWeight:700, cursor:drafting?"default":"pointer",
-                            boxShadow:drafting?"none":`0 2px 8px ${C.accent}40`, opacity:drafting?.5:1, transition:"all .15s" }}>
+                            transition:"all .15s" }}
+                          onMouseEnter={e=>{ if(!drafting)(e.currentTarget as HTMLButtonElement).style.background=`${C.accent}18`; }}
+                          onMouseLeave={e=>{ if(!drafting)(e.currentTarget as HTMLButtonElement).style.background=C.accentLo; }}>
                           {drafting ? <span style={{ animation:"aiSpark 1s linear infinite", display:"inline-block" }}>✦</span> : "+"}
                           {drafting ? " Drafting…" : " Add ICP"}
                         </button>
@@ -6632,14 +6787,6 @@ Raw JSON only.`, "", 1400);
                           </div>
                         , document.body)}
                       </div>
-                    </div>
-                    {/* Progress bar */}
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      <div style={{ flex:1 }}><ProgressBar pct={icps.length>0?Math.round(icps.filter(i=>i.outputs).length/icps.length*100):0} color={C.accent} height={3} /></div>
-                      <span style={{ fontSize:10, color:C.muted, fontFamily:mono, fontWeight:600, flexShrink:0 }}>
-                        {icps.length>0?Math.round(icps.filter(i=>i.outputs).length/icps.length*100):0}%
-                      </span>
-                    </div>
                   </div>
 
                   {/* ICP card list */}
@@ -6656,107 +6803,131 @@ Raw JSON only.`, "", 1400);
                       const pct      = Math.round(filled/TOTAL_FIELDS*100);
                       const openComm = (icp.comments??[]).filter((c:any)=>!c.resolved).length;
                       const isSelected = editingId === icp.id;
+                      const statusColor = icp.approval==="finalized"?"#8B5CF6":icp.approval==="approved"?C.green:icp.outputs?C.green:pct>0?"#F59E0B":C.border;
                       return (
-                        <div key={icp.id}
+                        <div key={icp.id} data-icp-id={icp.id}
                           onClick={()=>setEditingId(icp.id)}
-                          style={{ padding:"9px 10px", borderRadius:8, marginBottom:3, cursor:"pointer", position:"relative",
-                            border:`1.5px solid ${isSelected ? C.accentBorder : "transparent"}`,
-                            background: isSelected ? C.accentLo : "transparent", transition:"all .12s" }}
+                          style={{ padding:"8px 10px", borderRadius:7, marginBottom:2, cursor:"pointer", position:"relative",
+                            borderLeft:`3px solid ${isSelected?icp.color:"transparent"}`,
+                            background: isSelected ? C.faint : "transparent", transition:"all .1s" }}
                           onMouseEnter={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=C.faint; (e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="1"); }}
                           onMouseLeave={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background="transparent"; if(icpConfirm?.id!==icp.id && icpFill?.id!==icp.id)(e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="0"); }}>
-                          {/* Name row */}
-                          <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:5 }}>
-                            <div style={{ width:8, height:8, borderRadius:"50%", flexShrink:0, transition:"background .3s",
-                              background: icp.outputs ? C.green : pct > 0 ? "#F59E0B" : C.border }} />
-                            <div style={{ fontSize:12.5, fontWeight:700, fontFamily:head, flex:1, minWidth:0,
-                              color: isSelected ? C.accent : C.text,
-                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                              {icp.name || `ICP ${i+1}`}
+                          {/* Name + actions row */}
+                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:12, fontWeight:isSelected?700:500, fontFamily:head,
+                                color: isSelected ? C.text : C.textSoft,
+                                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                {icp.name || `ICP ${i+1}`}
+                              </div>
+                              <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:3 }}>
+                                <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:statusColor }}>
+                                  {icp.approval==="finalized"?"✦ Final":icp.approval==="approved"?"✓ Approved":icp.outputs?"Ready":"Draft"}
+                                </span>
+                                <span style={{ fontSize:9, fontFamily:mono, color:C.muted }}>{pct}%</span>
+                                {openComm > 0 && <span style={{ fontSize:9, color:C.amber, fontFamily:mono }}>{openComm} note{openComm!==1?"s":""}</span>}
+                              </div>
                             </div>
-                            {/* Action icons */}
-                            <div style={{ display:"flex", gap:3, flexShrink:0 }} onClick={e=>e.stopPropagation()}>
-                              {/* AI Fill */}
-                              <div style={{ position:"relative" }}>
-                                <button title="AI Fill all fields" className="icp-card-action"
-                                  onClick={e=>{ if(!icpFilling){ const r=(e.currentTarget as HTMLElement).getBoundingClientRect(); setIcpFill(icpFill?.id===icp.id?null:{id:icp.id,text:"",top:r.bottom+6,left:r.right+6}); } }}
-                                  disabled={!!icpFilling}
-                                  style={{ width:22, height:22, borderRadius:5, border:`1px solid ${icpFill?.id===icp.id?C.accent+"66":C.border}`,
-                                    background: icpFilling===icp.id ? C.accent : icpFill?.id===icp.id ? C.accentLo : "transparent",
-                                    color: icpFilling===icp.id ? "#fff" : icpFill?.id===icp.id ? C.accent : C.muted,
-                                    cursor:icpFilling?"default":"pointer", display:"flex", alignItems:"center",
-                                    justifyContent:"center", fontSize:11, opacity:0, transition:"opacity .15s, background .15s" }}>
-                                  {icpFilling===icp.id ? <span style={{ animation:"aiSpark 1s linear infinite", display:"inline-block" }}>✦</span> : "✦"}
-                                </button>
-                                {icpFill?.id===icp.id && createPortal(
-                                  <div className="icp-fill-popover" style={{ position:"fixed", top:icpFill.top??0, left:Math.min(icpFill.left??0, window.innerWidth-296), zIndex:2147483647,
-                                    background:C.canvas, border:`1.5px solid ${C.accentBorder}`, borderRadius:10,
-                                    boxShadow:`0 8px 24px rgba(13,15,26,.16)`, padding:"14px", width:280, animation:"fadeIn .15s ease" }}>
-                                    <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.4, marginBottom:8 }}>✦ AI FILL — {(icp.name||"ICP").toUpperCase()}</div>
-                                    <textarea value={icpFill.text} onChange={e=>setIcpFill({...icpFill, text:e.target.value})}
-                                      placeholder={`Describe the segment…`} rows={3} autoFocus
-                                      onKeyDown={e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)) fillICP(icp, icpFill.text); }}
-                                      style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1.5px solid ${C.border}`,
-                                        background:C.faint, color:C.text, fontSize:11.5, fontFamily:body, lineHeight:1.5,
-                                        outline:"none", resize:"none", boxSizing:"border-box" as const, marginBottom:8, transition:"border-color .15s" }}
-                                      onFocus={e=>{e.target.style.borderColor=C.accent+"66"; e.target.style.background=C.canvas;}}
-                                      onBlur={e=>{e.target.style.borderColor=C.border; e.target.style.background=C.faint;}} />
-                                    <div style={{ display:"flex", gap:6 }}>
-                                      <button onClick={()=>setIcpFill(null)} style={{ flex:1, padding:"7px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
-                                      <button onClick={()=>fillICP(icp, icpFill.text)} style={{ flex:2, padding:"7px", borderRadius:6, border:"none", background:C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}><span>✦</span> Fill All Fields</button>
-                                    </div>
+                            {/* ⋮ menu — hidden until hover */}
+                            <div style={{ position:"relative", flexShrink:0 }} onClick={e=>e.stopPropagation()}>
+                              <button className="icp-card-action"
+                                onClick={e=>{
+                                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  setIcpConfirm(icpConfirm?.id===icp.id&&icpConfirm.action==="menu"?null:{id:icp.id,action:"menu" as any,top:r.bottom+4,left:r.left});
+                                }}
+                                style={{ width:22, height:22, borderRadius:5, border:`1px solid ${C.border}`, background:C.canvas,
+                                  color:C.textSoft, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                                  fontSize:11, lineHeight:1, opacity:0, transition:"opacity .12s, background .1s", flexDirection:"column", gap:1.5,
+                                  boxShadow:"0 1px 2px rgba(0,0,0,0.04)" }}
+                                onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.faint;(e.currentTarget as HTMLButtonElement).style.borderColor=C.accentBorder;}}
+                                onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.canvas;(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;}}>
+                                <span style={{ width:3, height:3, borderRadius:"50%", background:"currentColor" }} />
+                                <span style={{ width:3, height:3, borderRadius:"50%", background:"currentColor" }} />
+                                <span style={{ width:3, height:3, borderRadius:"50%", background:"currentColor" }} />
+                              </button>
+                              {icpConfirm?.id===icp.id && icpConfirm.action===("menu" as any) && (<>
+                                {createPortal(
+                                  <div onClick={()=>setIcpConfirm(null)} style={{ position:"fixed", inset:0, zIndex:2147483646 }} />
+                                , document.body)}
+                                {createPortal(
+                                  <div style={{ position:"fixed", top:icpConfirm.top??0, left:Math.max(8, Math.min((icpConfirm.left??0), window.innerWidth-180)),
+                                    zIndex:2147483647, width:160, background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
+                                    boxShadow:"0 8px 24px rgba(13,15,26,.15)", overflow:"hidden", animation:"fadeIn .1s ease" }}>
+                                    <button onMouseDown={e=>{e.stopPropagation(); e.preventDefault(); setIcpConfirm(null); if(!icpFilling){ const card=document.querySelector(`[data-icp-id="${icp.id}"]`) as HTMLElement; const r=card?.getBoundingClientRect(); setIcpFill({id:icp.id,text:"",top:(r?.bottom??200)+4,left:(r?.right??300)+4}); } }}
+                                      style={{ display:"block", width:"100%", padding:"8px 12px", border:"none", background:"transparent",
+                                        color:C.text, fontSize:11, fontFamily:head, cursor:"pointer", textAlign:"left" }}
+                                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                      ✦ AI Fill Fields
+                                    </button>
+                                    <button onMouseDown={e=>{e.stopPropagation(); e.preventDefault(); const t=icpConfirm.top, l=icpConfirm.left; setIcpConfirm({id:icp.id,action:"dup",top:t,left:l}); }}
+                                      style={{ display:"block", width:"100%", padding:"8px 12px", border:"none", background:"transparent",
+                                        color:C.text, fontSize:11, fontFamily:head, cursor:"pointer", textAlign:"left" }}
+                                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                      ⎘ Duplicate
+                                    </button>
+                                    <div style={{ height:1, background:C.border, margin:"2px 0" }} />
+                                    <button onMouseDown={e=>{e.stopPropagation(); e.preventDefault(); const t=icpConfirm.top, l=icpConfirm.left; setIcpConfirm({id:icp.id,action:"del",top:t,left:l}); }}
+                                      style={{ display:"block", width:"100%", padding:"8px 12px", border:"none", background:"transparent",
+                                        color:C.red, fontSize:11, fontFamily:head, cursor:"pointer", textAlign:"left" }}
+                                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.redLo}
+                                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                      ✕ Delete
+                                    </button>
                                   </div>
                                 , document.body)}
-                              </div>
-                              {/* Duplicate */}
-                              <button title="Duplicate" className="icp-card-action"
-                                onClick={e=>{ const r=(e.currentTarget as HTMLElement).getBoundingClientRect(); setIcpConfirm(icpConfirm?.id===icp.id&&icpConfirm.action==="dup"?null:{id:icp.id,action:"dup",top:r.bottom+6,left:r.right+6}); }}
-                                style={{ width:22, height:22, borderRadius:5, border:`1px solid ${icpConfirm?.id===icp.id&&icpConfirm.action==="dup"?C.accent+"66":C.border}`,
-                                  background: icpConfirm?.id===icp.id&&icpConfirm.action==="dup" ? C.accentLo : "transparent",
-                                  color: icpConfirm?.id===icp.id&&icpConfirm.action==="dup" ? C.accent : C.muted,
-                                  cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                                  opacity:0, transition:"opacity .15s, background .15s" }}>
-                                <svg width="11" height="11" viewBox="0 0 14 14" fill="none"><rect x="4" y="4" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><path d="M2 10V2.5A1.5 1.5 0 013.5 1H10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                              </button>
-                              {/* Delete */}
-                              <button title="Delete" className="icp-card-action"
-                                onClick={e=>{ const r=(e.currentTarget as HTMLElement).getBoundingClientRect(); setIcpConfirm(icpConfirm?.id===icp.id&&icpConfirm.action==="del"?null:{id:icp.id,action:"del",top:r.bottom+6,left:r.right+6}); }}
-                                style={{ width:22, height:22, borderRadius:5, border:`1px solid ${icpConfirm?.id===icp.id&&icpConfirm.action==="del"?C.red+"66":C.border}`,
-                                  background: icpConfirm?.id===icp.id&&icpConfirm.action==="del" ? C.redLo : "transparent",
-                                  color: icpConfirm?.id===icp.id&&icpConfirm.action==="del" ? C.red : C.muted,
-                                  cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                                  fontSize:11, opacity:0, transition:"opacity .15s, background .15s" }}>✕</button>
+                              </>)}
+                              {icpFill?.id===icp.id && createPortal(
+                                <div className="icp-fill-popover" style={{ position:"fixed", top:icpFill.top??0, left:Math.min(icpFill.left??0, window.innerWidth-296), zIndex:2147483647,
+                                  background:C.canvas, border:`1.5px solid ${C.accentBorder}`, borderRadius:10,
+                                  boxShadow:`0 8px 24px rgba(13,15,26,.16)`, padding:"14px", width:280, animation:"fadeIn .15s ease" }}>
+                                  <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.4, marginBottom:8 }}>✦ AI FILL — {(icp.name||"ICP").toUpperCase()}</div>
+                                  <textarea value={icpFill.text} onChange={e=>setIcpFill({...icpFill, text:e.target.value})}
+                                    placeholder={`Describe the segment…`} rows={3} autoFocus
+                                    onKeyDown={e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)) fillICP(icp, icpFill.text); }}
+                                    style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1.5px solid ${C.border}`,
+                                      background:C.faint, color:C.text, fontSize:11.5, fontFamily:body, lineHeight:1.5,
+                                      outline:"none", resize:"none", boxSizing:"border-box" as const, marginBottom:8, transition:"border-color .15s" }}
+                                    onFocus={e=>{e.target.style.borderColor=C.accent+"66"; e.target.style.background=C.canvas;}}
+                                    onBlur={e=>{e.target.style.borderColor=C.border; e.target.style.background=C.faint;}} />
+                                  <div style={{ display:"flex", gap:6 }}>
+                                    <button onClick={()=>setIcpFill(null)} style={{ flex:1, padding:"7px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+                                    <button onClick={()=>fillICP(icp, icpFill.text)} style={{ flex:2, padding:"7px", borderRadius:6, border:"none", background:C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}><span>✦</span> Fill All</button>
+                                  </div>
+                                </div>
+                              , document.body)}
                             </div>
                           </div>
                           {/* Confirm popover (del/dup) — portal */}
-                          {icpConfirm?.id===icp.id && createPortal(
-                            <div className="icp-confirm-popover" style={{ position:"fixed", top:icpConfirm.top??0, left:Math.min(icpConfirm.left??0, window.innerWidth-226), zIndex:2147483647,
-                              background:C.canvas, border:`1.5px solid ${C.border}`, borderRadius:10,
-                              boxShadow:"0 8px 24px rgba(13,15,26,.16)", padding:"12px 14px", width:210, animation:"fadeIn .15s ease" }}>
-                              <div style={{ fontSize:12, fontWeight:600, color:C.text, fontFamily:head, marginBottom:4 }}>
-                                {icpConfirm.action==="del" ? "Delete this ICP?" : "Duplicate this ICP?"}
-                              </div>
-                              <div style={{ fontSize:11, color:C.muted, fontFamily:body, lineHeight:1.5, marginBottom:10 }}>
-                                {icpConfirm.action==="del" ? "Cannot be undone. All data and outputs will be lost." : "A copy will be added to the list."}
-                              </div>
-                              <div style={{ display:"flex", gap:6 }}>
-                                <button onClick={()=>setIcpConfirm(null)} style={{ flex:1, padding:"6px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
-                                <button onClick={()=>{
-                                  if(icpConfirm.action==="del") { setIcps(p=>p.filter(x=>x.id!==icp.id)); if(editingId===icp.id) setEditingId(null); }
-                                  else { const c={...icp,id:uid(),color:ICP_COLORS[icps.length%ICP_COLORS.length],outputs:null,approval:"draft",sectionApprovals:{},comments:[],name:(icp.name||"ICP")+" (copy)",data:{...icp.data}}; setIcps(p=>[...p,c]); }
-                                  setIcpConfirm(null);
-                                }} style={{ flex:1, padding:"6px", borderRadius:6, border:"none", background:icpConfirm.action==="del"?C.red:C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
-                                  {icpConfirm.action==="del" ? "Delete" : "Duplicate"}
-                                </button>
+                          {icpConfirm?.id===icp.id && (icpConfirm.action==="del"||icpConfirm.action==="dup") && createPortal(
+                            <div>
+                              <div onClick={()=>setIcpConfirm(null)} style={{ position:"fixed", inset:0, zIndex:2147483646 }} />
+                              <div className="icp-confirm-popover" style={{ position:"fixed",
+                                top: Math.min(icpConfirm.top??200, window.innerHeight-160),
+                                left: Math.max(8, Math.min(icpConfirm.left??100, window.innerWidth-226)),
+                                zIndex:2147483647,
+                                background:C.canvas, border:`1.5px solid ${C.border}`, borderRadius:10,
+                                boxShadow:"0 8px 24px rgba(13,15,26,.16)", padding:"12px 14px", width:210, animation:"fadeIn .15s ease" }}>
+                                <div style={{ fontSize:12, fontWeight:600, color:C.text, fontFamily:head, marginBottom:4 }}>
+                                  {icpConfirm.action==="del"?"Delete this ICP?":"Duplicate this ICP?"}
+                                </div>
+                                <div style={{ fontSize:11, color:C.muted, fontFamily:body, lineHeight:1.5, marginBottom:10 }}>
+                                  {icpConfirm.action==="del"?"Cannot be undone. All data and outputs will be lost.":"A copy will be added to the list."}
+                                </div>
+                                <div style={{ display:"flex", gap:6 }}>
+                                  <button onClick={()=>setIcpConfirm(null)} style={{ flex:1, padding:"6px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+                                  <button onClick={()=>{
+                                    if(icpConfirm.action==="del") { setIcps(p=>p.filter(x=>x.id!==icp.id)); if(editingId===icp.id) setEditingId(null); }
+                                    else { const c={...icp,id:uid(),color:ICP_COLORS[icps.length%ICP_COLORS.length],outputs:null,approval:"draft",sectionApprovals:{},comments:[],name:(icp.name||"ICP")+" (copy)",data:{...icp.data}}; setIcps(p=>[...p,c]); }
+                                    setIcpConfirm(null);
+                                  }} style={{ flex:1, padding:"6px", borderRadius:6, border:"none", background:icpConfirm.action==="del"?C.red:C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                    {icpConfirm.action==="del"?"Delete":"Duplicate"}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           , document.body)}
-                          {/* Status + progress */}
-                          <div style={{ display:"flex", alignItems:"center", gap:7, paddingLeft:15 }}>
-                            <StatusBadge status={icp.approval} size="xs" />
-                            <div style={{ flex:1 }}><ProgressBar pct={pct} color={icp.outputs ? C.green : pct > 0 ? "#F59E0B" : C.border} height={3} /></div>
-                            <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:pct===100?C.green:C.muted, flexShrink:0 }}>{pct}%</span>
-                            {openComm > 0 && <span style={{ fontSize:10, color:C.amber, fontFamily:mono }}>💬{openComm}</span>}
-                          </div>
                         </div>
                       );
                     })}
