@@ -171,6 +171,9 @@ const OUTPUT_TABS = [
   { id:"email_copy",     label:"Email Copy",        icon:"◑", color:C.green  },
   { id:"linkedin_copy",  label:"LinkedIn Sequence", icon:"◈", color:"#0A66C2" },
   { id:"call_script",    label:"Cold Call Script",  icon:"◉", color:C.accent },
+  { id:"reply_handlers", label:"Reply Handlers",    icon:"◌", color:C.amber  },
+  { id:"ai_call_script",label:"AI Call Script",    icon:"◎", color:"#8B5CF6" },
+  { id:"exec_recs",     label:"Execution Plan",   icon:"◆", color:C.green   },
 ];
 
 const APPROVAL_CFG = {
@@ -178,6 +181,7 @@ const APPROVAL_CFG = {
   pending_review:    { label:"In Review",      dot:C.amber,    text:C.amber,     bg:C.amberLo   },
   approved:          { label:"Approved",       dot:C.green,    text:C.green,     bg:C.greenLo   },
   changes_requested: { label:"Changes Needed", dot:C.red,      text:C.red,       bg:C.redLo     },
+  finalized:         { label:"✦ Finalized",    dot:"#8B5CF6",  text:"#8B5CF6",   bg:"#8B5CF620"  },
 };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
@@ -743,6 +747,54 @@ function ProgressBar({ pct, color=C.accent, height=3 }) {
   );
 }
 
+// ─── INTAKE NORMALIZATION ─────────────────────────────────────────────────────
+function normalizeIntake(raw: string): string {
+  let t = raw;
+  // Normalize line endings and collapse excessive whitespace
+  t = t.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ");
+  // Split multi-answer strings (semicolons, pipes, slashes used as separators)
+  t = t.replace(/([a-zA-Z])\s*[;|\/]\s*([a-zA-Z])/g, "$1, $2");
+  // Normalize common title variants
+  const titleMap: Record<string,string> = {
+    "vp":"VP", "ceo":"CEO", "cfo":"CFO", "coo":"COO", "cro":"CRO", "cto":"CTO", "cmo":"CMO",
+    "vp of sales":"VP of Sales", "vp sales":"VP of Sales", "vice president of sales":"VP of Sales",
+    "vp of marketing":"VP of Marketing", "vp marketing":"VP of Marketing", "vice president of marketing":"VP of Marketing",
+    "vp of operations":"VP of Operations", "vice president operations":"VP of Operations",
+    "chief executive officer":"CEO", "chief financial officer":"CFO", "chief operating officer":"COO",
+    "chief revenue officer":"CRO", "chief technology officer":"CTO", "chief marketing officer":"CMO",
+    "head of sales":"Head of Sales", "head of marketing":"Head of Marketing",
+    "director of sales":"Director of Sales", "director of marketing":"Director of Marketing",
+    "sales director":"Director of Sales", "marketing director":"Director of Marketing",
+    "owner/operator":"Owner", "owner / operator":"Owner", "owner-operator":"Owner",
+  };
+  for (const [k, v] of Object.entries(titleMap)) {
+    t = t.replace(new RegExp(`\\b${k}\\b`, "gi"), v);
+  }
+  // Normalize employee/company size ranges
+  t = t.replace(/(\d+)\s*[-–—]\s*(\d+)\s*(employees|people|staff|headcount)/gi, "$1–$2 employees");
+  t = t.replace(/(\d+)\s*\+\s*(employees|people|staff|headcount)/gi, "$1+ employees");
+  // Normalize geography
+  const geoMap: Record<string,string> = {
+    "us":"United States", "usa":"United States", "u.s.":"United States", "u.s.a.":"United States",
+    "uk":"United Kingdom", "u.k.":"United Kingdom", "gb":"United Kingdom",
+    "na":"North America", "n. america":"North America", "n america":"North America",
+    "emea":"EMEA", "apac":"APAC", "latam":"LATAM", "dach":"DACH", "anz":"ANZ",
+  };
+  for (const [k, v] of Object.entries(geoMap)) {
+    t = t.replace(new RegExp(`\\b${k}\\b`, "gi"), v);
+  }
+  // Normalize URLs (strip trailing slashes, lowercase domain)
+  t = t.replace(/(https?:\/\/[^\s,]+)/gi, url => {
+    try { const u = new URL(url.replace(/\/+$/, "")); return `${u.protocol}//${u.host.toLowerCase()}${u.pathname}`; }
+    catch { return url; }
+  });
+  // Deduplicate lines (common in copy-pasted forms)
+  const lines = t.split("\n");
+  const seen = new Set<string>();
+  const deduped = lines.filter(l => { const k = l.trim().toLowerCase(); if (!k || !seen.has(k)) { seen.add(k); return true; } return false; });
+  return deduped.join("\n").trim();
+}
+
 // ─── QUICK START MODAL ────────────────────────────────────────────────────────
 function QuickStartModal({ onComplete, onClose, addToast, updateToast }) {
   const [url,      setUrl]     = useState("");
@@ -771,6 +823,10 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast }) {
         catch {}
       }
     }
+
+    // Normalize intake data
+    updateToast(toastId, { message:"Normalizing intake data…" });
+    context = normalizeIntake(context);
 
     updateToast(toastId, { message:"Building company profile…" });
     const coRaw = await callAI(`
@@ -801,8 +857,14 @@ co_customers: known current customers if any
 co_dream: ideal target companies
 Raw JSON only.`, "", 2200);
     let coFields: any = {}, coConf: any = {};
-    try { const p = JSON.parse(coRaw.replace(/```json|```/g,"").trim()); coFields=p.fields??{}; coConf=p.confidence??{}; }
-    catch {}
+    try {
+      const p = JSON.parse(coRaw.replace(/```json|```/g,"").trim());
+      coFields=p.fields??{}; coConf=p.confidence??{};
+      // Normalize all string fields
+      for (const [k, v] of Object.entries(coFields)) {
+        if (typeof v === "string") coFields[k] = normalizeIntake(v);
+      }
+    } catch {}
 
     updateToast(toastId, { message:"Identifying segments…" });
     const countRaw = await callAI(`Company: ${JSON.stringify(coFields)}\nHow many distinct ICP segments for cold outreach? (2–4)\nReturn ONLY a number.`,"",20);
@@ -844,7 +906,9 @@ ref_emails: leave empty unless example emails were provided
 Raw JSON only.`, "", 2000);
       try {
         const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
-        icps.push(newICP(i, p.fields??{}, p.name||`ICP ${i+1}`, p.confidence??{}));
+        const fields = p.fields ?? {};
+        for (const [k, v] of Object.entries(fields)) { if (typeof v === "string") fields[k] = normalizeIntake(v); }
+        icps.push(newICP(i, fields, p.name||`ICP ${i+1}`, p.confidence??{}));
       } catch {}
       if (i < count - 1) await new Promise(ok => setTimeout(ok, 1000));
     }
@@ -1402,6 +1466,7 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   const [intelligence,   setIntelligence]  = useState<{ status:"idle"|"running"|"done"; result:string; phase:string }>({ status:"idle", result:"", phase:"" });
   const [councilState,   setCouncilState]  = useState<{ status:"idle"|"running"; phase:string }>({ status:"idle", phase:"" });
   const [refiningEmail,  setRefiningEmail] = useState<number | null>(null);
+  const [splitView,      setSplitView]    = useState(false);
   const origRef = useRef<Record<string,any>>({});
 
   useEffect(() => {
@@ -1447,7 +1512,7 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
 
   const generateAll = async () => {
     setGenState("running");
-    const toastId = addToast?.({ title:`Generating outputs: ${icp.name}`, status:"loading", message:"Step 1/6: ICP Summary…" });
+    const toastId = addToast?.({ title:`Generating outputs: ${icp.name}`, status:"loading", message:"Step 1/9: ICP Summary…" });
     const ctx = { company:companyData, icp:{ ...data, name:icp.name } };
     try {
       const refEmails = data.ref_emails || companyData?.co_past_emails || "";
@@ -1463,25 +1528,37 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
       const s1 = await callAI(`Write an ICP Targeting Summary for a cold outreach team.\nData:${JSON.stringify(ctx)}${enrichment}\n\n**TARGET PROFILE**\nIndustries/Size/Revenue/Geo/Tech signals/Keywords...\n\n**PRIMARY BUYER**\nTitle + 1 sharp sentence about their world.\n\n**QUALIFY IN** (5 criteria — use keywords and tech signals)\n\n**DISQUALIFY IF** (4 signals)\n\n**DREAM ACCOUNTS** (if provided, list them and explain why they fit)\n\nSpecific and scannable.`,"",700);
 
       // Step 2: Pain Map — builds on ICP Summary
-      if (toastId) updateToast?.(toastId, { message:"Step 2/6: Pain & Trigger Map…" });
+      if (toastId) updateToast?.(toastId, { message:"Step 2/9: Pain & Trigger Map…" });
       const s2 = await callAI(`Write a Pain & Trigger Map.\nData:${JSON.stringify(ctx)}${enrichment}\n\nICP Summary (already generated — build on this, don't contradict it):\n${s1.slice(0,1200)}\n\nUse the key selling points and value proposition to connect pains to solutions.\n\n**LEAD PAIN** (sharp enough to stop a scroll)\n\n**PAIN LADDER** (3 pains + how to reference each, tied to the product\'s key selling points)\n\n**GAINS — WHAT THEY WANT INSTEAD** (3–5 desired outcomes that mirror the pains)\n\n**TRIGGER EVENT MATRIX**\n| Trigger | Signal | Why Now | Outreach Angle |\n[4–5 rows]\n\n**BUYING SIGNALS** (direct signals = active purchase intent; indirect = emerging need)\n\n**STATUS QUO COST** (quarterly — in dollars, time, or risk)\n\n**FRICTION POINTS** (structural barriers to buying — procurement, risk aversion, etc.)\n\n**OBJECTION PLAYBOOK** (3 objections + responses leveraging proof and differentiators)`,"",1100);
 
       // Step 3: Strategy Brief — builds on Summary + Pain Map
-      if (toastId) updateToast?.(toastId, { message:"Step 3/6: Campaign Strategy…" });
+      if (toastId) updateToast?.(toastId, { message:"Step 3/9: Campaign Strategy…" });
       const s3 = await callAI(`Write a Campaign Strategy Brief.\nData:${JSON.stringify(ctx)}${enrichment}\n\nPreviously generated (build on these, maintain consistency):\n--- ICP SUMMARY ---\n${s1.slice(0,800)}\n--- PAIN MAP ---\n${s2.slice(0,800)}\n\nTailor to the selected outreach channels: ${channels||"Email"}.\nAlign with expected outcomes: ${outcomes||"book demos"}.\n\n**ICP SNAPSHOT** (2 sentences)\n\n**MESSAGE ARCHITECTURE** Hook/Value/Proof/CTA — weave in key selling points and value prop, reference the specific pains identified above\n\n**SEQUENCE STRATEGY** Email 1/2/3/4/5 angles (5 emails, each a different pain or angle from the Pain Map)\n\n**PERSONA SPLIT** (if persona variants exist, note how messaging shifts for each sub-persona)\n\n**PERSONALIZATION LAYERS** (4 layers — use keywords, triggers, buying signals, dream accounts)\n\n**A/B TEST QUEUE** (3 tests)\n\n**CSM NOTES** (include campaign purpose and expected outcomes)`,"",1100);
 
       // Step 4: Email Copy — builds on everything above
-      if (toastId) updateToast?.(toastId, { message:"Step 4/6: Email Copy…" });
+      if (toastId) updateToast?.(toastId, { message:"Step 4/9: Email Copy…" });
       const s4 = await callAI(`Write a 5-email cold outreach sequence. Real emails, not templates.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\nCTA: ${data.cta||"15-min call"}\nSequence strategy: ${data.seq_strategy||"Single narrative (same lane, different angles)"}\nCTA variation: ${data.seq_cta_style||"Same CTA style throughout"}\nOutreach channels: ${channels||"Email"}\nExpected outcomes: ${outcomes||"book demos"}\n\nPreviously generated (your emails MUST align with these — use the exact pains, triggers, and strategy):\n--- ICP SUMMARY ---\n${s1.slice(0,600)}\n--- PAIN MAP ---\n${s2.slice(0,600)}\n--- STRATEGY BRIEF ---\n${s3.slice(0,600)}\n\nIMPORTANT:\n- Email 1: Lead with the LEAD PAIN — make it obvious and personal\n- Email 2: Different pain from the PAIN LADDER + a trigger event\n- Email 3: Leverage proof/social proof and address a friction point\n- Email 4: New angle — use a GAIN they want, tie to a buying signal\n- Email 5: Breakup/last-chance — direct, human, low-friction CTA\n- Each email is a different angle within one strategic narrative\n- Follow the MESSAGE ARCHITECTURE and SEQUENCE STRATEGY from the Strategy Brief\n- Weave in key selling points and value proposition naturally\n- Keep CTAs low-friction and easy to answer\n${refEmails ? `- Match the style and tone of these reference emails:\n${refEmails.slice(0,800)}\n` : ""}\nMax 100 words per body. No brackets.\n\n---\nEMAIL 1 — Initial\nSubject: ...\n\n[body]\n\n---\nEMAIL 2 — Day 3\nSubject: ...\n\n[body]\n\n---\nEMAIL 3 — Day 7\nSubject: ...\n\n[body]\n\n---\nEMAIL 4 — Day 14\nSubject: ...\n\n[body]\n\n---\nEMAIL 5 — Day 21\nSubject: ...\n\n[body]\n\n---\nSUBJECT LINE VARIANTS\n1.\n2.\n3.\n4.\n5.`,"",1900);
       // Step 5: LinkedIn Sequence — adapts email strategy for LinkedIn
-      if (toastId) updateToast?.(toastId, { message:"Step 5/6: LinkedIn Sequence…" });
+      if (toastId) updateToast?.(toastId, { message:"Step 5/9: LinkedIn Sequence…" });
       const s5 = await callAI(`Write a 5-touch LinkedIn outreach sequence for this ICP.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\n\nPreviously generated (adapt these for LinkedIn — same strategy, different format):\n--- STRATEGY BRIEF ---\n${s3.slice(0,600)}\n--- EMAIL SEQUENCE ---\n${s4.slice(0,800)}\n\nLinkedIn rules:\n- Connection request: max 300 chars, no pitch — just a relevant reason to connect\n- Follow-up messages: max 500 chars each, conversational, no subject lines\n- Tone should be slightly more casual than email — like a DM, not an email\n- Same pain/gain angles as the email sequence but adapted for LinkedIn format\n- CTAs must be ultra-low-friction (reply yes/no, voice note, quick question)\n\n---\nCONNECTION REQUEST\n[message]\n\n---\nMESSAGE 1 — Day 2 (after connection accepted)\n[message]\n\n---\nMESSAGE 2 — Day 5\n[message]\n\n---\nMESSAGE 3 — Day 10\n[message]\n\n---\nMESSAGE 4 — Day 17\n[message]\n\n---\nMESSAGE 5 — Day 24 (breakup)\n[message]`,"",1200);
 
       // Step 6: Cold Call Script — structured call framework
-      if (toastId) updateToast?.(toastId, { message:"Step 6/6: Cold Call Script…" });
+      if (toastId) updateToast?.(toastId, { message:"Step 6/9: Cold Call Script…" });
       const s6 = await callAI(`Write a cold call script for this ICP.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\n\nPreviously generated (use the same pains, gains, and strategy):\n--- PAIN MAP ---\n${s2.slice(0,600)}\n--- STRATEGY BRIEF ---\n${s3.slice(0,500)}\n\nScript structure:\n\n**OPENER** (5 seconds — pattern interrupt, not "how are you today?")\nName, reason for calling, one-sentence pain hook.\n\n**QUALIFYING QUESTION** (confirm the pain is real)\n1 question that gets them talking about the problem.\n\n**PAIN DIG** (2–3 follow-up questions)\nGo deeper — what's the impact? What have they tried? What's it costing them?\n\n**VALUE BRIDGE** (10 seconds)\nConnect their pain to the client's solution. No feature dump — just the outcome.\n\n**SOCIAL PROOF DROP** (one specific example)\n"We helped [similar company] do [specific result]"\n\n**OBJECTION HANDLERS** (top 3 objections with responses)\nUse friction points and objections from the ICP data.\n\n**CLOSE / CTA**\nLow-friction next step — calendar link, callback, or quick follow-up.\n\n**VOICEMAIL SCRIPT** (under 30 seconds)\nPain + curiosity + callback number. No long pitch.`,"",1200);
 
-      const newOutputs = { icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4, linkedin_copy:s5, call_script:s6 };
+      // Step 7: Reply Handlers — scripted responses to common prospect replies
+      if (toastId) updateToast?.(toastId, { message:"Step 7/9: Reply Handlers…" });
+      const s7 = await callAI(`Write reply handler scripts for this ICP's outreach campaigns.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\n\nPreviously generated (replies must match the tone and strategy of these):\n--- STRATEGY BRIEF ---\n${s3.slice(0,400)}\n--- EMAIL SEQUENCE ---\n${s4.slice(0,600)}\n\nFor each reply type below, write 2–3 response options that match the campaign tone. Keep responses short (2–4 sentences max). Same voice as the outreach — if the emails are blunt and human, the replies should be too.\n\n**POSITIVE REPLY — "Yes, interested"**\nGoal: Lock down next step immediately. Don't oversell. Be grateful, fast, concrete.\nOption 1:\nOption 2:\n\n**SOFT POSITIVE — "Tell me more" / "Send info"**\nGoal: Re-engage with a pain-specific hook + easy next step. Don't just dump a PDF.\nOption 1:\nOption 2:\n\n**OBJECTION — "Not interested" / "We already have something"**\nGoal: Acknowledge, plant a seed, leave the door open. No arguing.\nOption 1:\nOption 2:\n\n**TIMING — "Not right now" / "Maybe later"**\nGoal: Respect timing, set a future touchpoint, stay top of mind.\nOption 1:\nOption 2:\n\n**QUESTION — "How does it work?" / "What's the cost?"**\nGoal: Answer briefly, pivot to a conversation. Don't write a brochure.\nOption 1:\nOption 2:\n\n**NEGATIVE — "Stop emailing me" / angry reply**\nGoal: Apologize, remove immediately, stay professional. One sentence max.\nOption 1:\n\n**REFERRAL — "Talk to someone else" / "Not my department"**\nGoal: Thank them, ask for the right contact, make it easy.\nOption 1:\nOption 2:`,"",1400);
+
+      // Step 8: AI Call Script — automated voice agent script
+      if (toastId) updateToast?.(toastId, { message:"Step 8/9: AI Call Script…" });
+      const s8 = await callAI(`Write an AI voice agent call script for this ICP. This is NOT a human cold call — it is a script for an automated AI caller that sounds natural and conversational.\nData:${JSON.stringify(ctx)}${enrichment}\nTone: ${data.tone||"direct"}\n\nPreviously generated (use the same pains, gains, objections, and strategy):\n--- PAIN MAP ---\n${s2.slice(0,500)}\n--- STRATEGY BRIEF ---\n${s3.slice(0,400)}\n--- COLD CALL SCRIPT ---\n${s6.slice(0,500)}\n\nAI voice agent rules:\n- Must sound natural when read aloud by text-to-speech\n- Short sentences, simple words, conversational rhythm\n- No complex clauses or parentheticals — the AI can't convey those well\n- Pauses indicated with [pause] markers\n- Must handle interruptions gracefully\n- Decision tree format: what to say based on prospect response\n\nScript structure:\n\n**GREETING & INTRO** (under 15 seconds)\nHi {{first_name}}, this is [agent name] calling from [company]. [One-sentence reason for calling tied to primary pain]. [pause]\n\n**INTEREST CHECK**\nIf YES/curious → go to PITCH\nIf NO/busy → go to RESCHEDULE\nIf WHO IS THIS → go to RE-INTRO\n\n**PITCH** (under 20 seconds)\nConnect their pain to the solution. One clear outcome. No feature dump.\n\n**QUALIFYING QUESTIONS** (pick 1-2)\nSimple yes/no or short-answer questions to confirm fit.\n\n**OBJECTION HANDLING**\nTop 3 objections with short, natural responses.\n- "Not interested" → [response]\n- "We already have something" → [response]\n- "Send me an email" → [response]\n\n**BOOKING / CTA**\nLow-friction next step. Offer to transfer, book a time, or send a text/email.\n\n**RESCHEDULE PATH**\n"No problem — when's a better time to catch you for 2 minutes?"\n\n**VOICEMAIL DROP** (under 20 seconds)\nPain hook + curiosity + callback. Must work as standalone message.\n\n**CLOSING**\nThank them. Confirm next step. End warmly.`,"",1400);
+
+      // Step 9: Execution Recommendations — operational playbook
+      if (toastId) updateToast?.(toastId, { message:"Step 9/9: Execution Plan…" });
+      const s9 = await callAI(`Write an Execution Recommendations plan for launching campaigns against this ICP.\nData:${JSON.stringify(ctx)}${enrichment}\n\nPreviously generated (this plan must be consistent with all of these):\n--- ICP SUMMARY ---\n${s1.slice(0,500)}\n--- PAIN MAP ---\n${s2.slice(0,400)}\n--- STRATEGY BRIEF ---\n${s3.slice(0,500)}\n\nThis is the operational playbook that tells the campaign team exactly what to do. Be specific and actionable.\n\n**PRIORITY TARGETING ORDER**\nWho to target first, second, third. Rank by likelihood to convert. Explain why.\n\n**INTENT TOPICS — RANKED**\nWhich intent/buying signals matter most for list building. Rank from highest to lowest priority.\n| Rank | Intent Topic | Signal Strength | Why It Matters |\n[5–8 rows]\n\n**LIST BUILDING CRITERIA**\nExact filters to use when building prospect lists:\n- Industries: ...\n- Employee range: ...\n- Titles: ...\n- Locations: ...\n- Intent topics: ...\n- Exclusions: ...\n\n**SEQUENCE ASSIGNMENT RULES**\nWhich sequence goes to which segment. If there are persona variants or sub-segments, specify which messaging angle each gets.\n| Segment / Persona | Channel | Sequence | Reasoning |\n[rows]\n\n**LAUNCH SEQUENCE**\n1. What to launch first (channel, segment, volume)\n2. What to launch second\n3. What to hold back and test later\n\n**EXCLUSION RULES**\nWho to never contact. Domains, titles, company types, or signals that indicate bad fit.\n\n**RISKS TO WATCH**\n- Deliverability risks\n- Negative reply triggers\n- Tone mismatches by persona\n- Market timing considerations\n\n**SUCCESS METRICS**\nWhat KPIs to track in the first 2 weeks, 30 days, 60 days. What numbers indicate the campaign is working vs needs adjustment.\n\n**RECOMMENDED ADJUSTMENTS**\nIf reply rates are low → do X.\nIf negative replies spike → do Y.\nIf meetings aren't converting → do Z.`,"",1600);
+
+      const newOutputs = { icp_summary:s1, pain_map:s2, strategy_brief:s3, email_copy:s4, linkedin_copy:s5, call_script:s6, reply_handlers:s7, ai_call_script:s8, exec_recs:s9 };
       onUpdate({ ...icp, data, outputs:newOutputs });
       setGenState("done"); setPanel("outputs"); setOutTab("email_copy");
       if (toastId) updateToast?.(toastId, { status:"loading", title:`Refining emails to 10/10…`, message:"Grading initial draft…" });
@@ -1930,6 +2007,21 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
     const all = {}; OUTPUT_TABS.forEach(t=>{all[t.id]="approved";});
     onUpdate({ ...icp, data, sectionApprovals:all, approval:"approved" });
   };
+  const isFinalized = icp.approval === "finalized";
+  const finalizeICP = () => {
+    const snapshot = {
+      timestamp: new Date().toISOString(),
+      data: { ...data },
+      outputs: { ...(icp.outputs || {}) },
+      sectionApprovals: { ...(icp.sectionApprovals || {}) },
+      aiCouncil: icp.aiCouncil ? { finalScore: icp.aiCouncil.finalScore, iterations: icp.aiCouncil.iterations?.length } : null,
+      versionHistory: icp.versionHistory || [],
+    };
+    onUpdate({ ...icp, data, approval:"finalized", finalizedSnapshot:snapshot });
+  };
+  const unfinalizeICP = () => {
+    onUpdate({ ...icp, data, approval:"approved" });
+  };
   const addComment = () => {
     if (!newNote.trim()||!noteAuth.trim()) return;
     const c = { id:uid(), text:newNote.trim(), author:noteAuth, author_type:"csm",
@@ -1983,10 +2075,20 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               </button>
             ))}
           </div>
-          {icp.outputs && !allApproved && (
+          {icp.outputs && !allApproved && !isFinalized && (
             <button onClick={approveAll} style={{ padding:"7px 14px", borderRadius:7,
               border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green,
               fontSize:11, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve All</button>
+          )}
+          {allApproved && !isFinalized && (
+            <button onClick={finalizeICP} style={{ padding:"7px 14px", borderRadius:7,
+              border:"1px solid #8B5CF644", background:"#8B5CF610", color:"#8B5CF6",
+              fontSize:11, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✦ Finalize as Source of Truth</button>
+          )}
+          {isFinalized && (
+            <button onClick={unfinalizeICP} style={{ padding:"7px 14px", borderRadius:7,
+              border:"1px solid #8B5CF644", background:"#8B5CF610", color:"#8B5CF6",
+              fontSize:11, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>↩ Unlock for Editing</button>
           )}
           {!inline && (
             <button onClick={()=> isModalDirty ? setConfirmClose(true) : onClose()} style={{ padding:"6px 10px", borderRadius:7,
@@ -2063,16 +2165,23 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           <div style={{ flex:"1 1 0%", padding:"24px 28px", overflowY:"auto" as const, maxHeight: inline ? undefined : "74vh" }}>
             {panel==="form" && (
               <div style={{ display:"flex", flexDirection:"column", gap:18, animation:"fadeIn .25s ease" }}>
+                {isFinalized && (
+                  <div style={{ padding:"12px 16px", borderRadius:8, border:"1px solid #8B5CF644", background:"#8B5CF610",
+                    display:"flex", alignItems:"center", gap:10, fontSize:11, fontFamily:mono, color:"#8B5CF6", fontWeight:600 }}>
+                    <span style={{ fontSize:14 }}>✦</span>
+                    This ICP is finalized as source of truth. Unlock to make changes.
+                  </div>
+                )}
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
                   <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head }}>{sec.label}</div>
                   <span style={{ fontSize:11, color:C.muted, fontFamily:mono }}>{secFill}/{sec.fields.length} filled</span>
                 </div>
                 {sec.fields.map(f => (
                   <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
-                    onAI={handleAIFill} aiOn={aiOn} accentColor={icp.color}
+                    onAI={isFinalized?undefined:handleAIFill} aiOn={aiOn} accentColor={icp.color}
                     confidence={localConf[f.id]}
-                    locked={!!localConfLocked[f.id]}
-                    onUnlock={()=>handleUnlock(f.id)}
+                    locked={isFinalized?true:!!localConfLocked[f.id]}
+                    onUnlock={isFinalized?undefined:()=>handleUnlock(f.id)}
                     onSave={()=>handleSave(f, f.id)}
                     onCancel={()=>handleCancel(f.id)} />
                 ))}
@@ -2180,39 +2289,139 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   <button onClick={()=>copy(outTab,icp.outputs[outTab])} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:copied===outTab?C.greenLo:"transparent", color:copied===outTab?C.green:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
                     {copied===outTab?"✓ Copied":"Copy"}
                   </button>
-                  <button onClick={()=>{
-                    const allOutputs = icp.outputs || {};
-                    const tabs = OUTPUT_TABS.filter(t => allOutputs[t.id]);
-                    const icpFields = ALL_ICP_FIELDS.map(f => `${f.label}: ${data[f.id]||"(empty)"}`).join("\n");
-                    const coFields = COMPANY_FIELDS.map(f => `${f.label}: ${companyData?.[f.id]||"(empty)"}`).join("\n");
-                    const md = [
-                      `# ${icp.name || "ICP"} — Full Export`,
-                      `**Generated:** ${new Date().toLocaleDateString()}`,
-                      `**Status:** ${icp.approval}`,
-                      icp.aiCouncil ? `**Email Score:** ${icp.aiCouncil.finalScore}/10 (${icp.aiCouncil.iterations?.length||0} rounds)` : "",
-                      "",
-                      "## Company Profile",
-                      coFields,
-                      "",
-                      "## ICP Fields",
-                      icpFields,
-                      "",
-                      ...tabs.map(t => [`## ${t.label}`, allOutputs[t.id], ""].flat()),
-                      icp.aiCouncil?.iterations ? [
-                        "## Refinement History",
-                        ...icp.aiCouncil.iterations.map((it:any,i:number) =>
-                          `### Round ${i+1} — Score: ${it.score}/10\n${it.reasoning||""}\n${it.improvements?"**Improvements:** "+it.improvements:""}`
-                        )
-                      ].join("\n") : "",
-                    ].filter(Boolean).join("\n");
-                    const blob = new Blob([md], { type:"text/markdown" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url; a.download = `${(icp.name||"icp").replace(/[^a-z0-9]/gi,"_")}_export.md`;
-                    a.click(); URL.revokeObjectURL(url);
-                  }} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
-                    ↓ Export
+                  {(() => {
+                    const exportFn = (format: "md"|"json"|"campaign") => {
+                      const allOutputs = icp.outputs || {};
+                      const tabs = OUTPUT_TABS.filter(t => allOutputs[t.id]);
+                      const slug = (icp.name||"icp").replace(/[^a-z0-9]/gi,"_");
+                      const coObj: Record<string,any> = {};
+                      COMPANY_FIELDS.forEach(f => { if (companyData?.[f.id]) coObj[f.id] = companyData[f.id]; });
+                      const icpObj: Record<string,any> = {};
+                      ALL_ICP_FIELDS.forEach(f => { if (data[f.id]) icpObj[f.id] = data[f.id]; });
+
+                      if (format === "json") {
+                        const payload = {
+                          exportDate: new Date().toISOString(),
+                          status: icp.approval,
+                          icp: { id:icp.id, name:icp.name, color:icp.color, fields:icpObj },
+                          company: coObj,
+                          outputs: Object.fromEntries(tabs.map(t => [t.id, allOutputs[t.id]])),
+                          sectionApprovals: icp.sectionApprovals || {},
+                          emailScore: icp.aiCouncil ? { finalScore:icp.aiCouncil.finalScore, rounds:icp.aiCouncil.iterations?.length||0 } : null,
+                          qaChecks: icp.qaChecks || {},
+                          versionHistory: icp.versionHistory || [],
+                          finalizedSnapshot: icp.finalizedSnapshot || null,
+                        };
+                        const blob = new Blob([JSON.stringify(payload, null, 2)], { type:"application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url; a.download = `${slug}_export.json`; a.click(); URL.revokeObjectURL(url);
+                      } else if (format === "campaign") {
+                        const payload = {
+                          exportDate: new Date().toISOString(),
+                          companyName: companyData?.co_name || "",
+                          icpName: icp.name || "",
+                          targeting: {
+                            industries: icpObj.industries || "",
+                            companySizes: icpObj.co_sizes || [],
+                            geos: icpObj.geo || "",
+                            revenue: icpObj.revenue || "",
+                            titles: [icpObj.buyer, icpObj.champ].filter(Boolean).join(", "),
+                            techSignals: icpObj.tech || "",
+                            intentTopics: icpObj.intent_topics || "",
+                            keywords: icpObj.keywords || "",
+                            exclusions: icpObj.neg || "",
+                            realFilters: icpObj.real_filters || "",
+                          },
+                          channels: Array.isArray(companyData?.co_channels) ? companyData.co_channels : [],
+                          campaignSettings: {
+                            timezone: companyData?.co_timezone || "",
+                            days: Array.isArray(companyData?.co_days) ? companyData.co_days : [],
+                            startTime: companyData?.co_start_time || "",
+                            endTime: companyData?.co_end_time || "",
+                            numCampaigns: companyData?.co_num_campaigns || "",
+                            purpose: companyData?.co_campaign_purpose || "",
+                            outcomes: Array.isArray(companyData?.co_outcomes) ? companyData.co_outcomes : [],
+                          },
+                          messaging: {
+                            tone: icpObj.tone || "",
+                            ctaStyle: icpObj.cta || "",
+                            sequenceStrategy: icpObj.seq_strategy || "",
+                            ctaVariation: icpObj.seq_cta_style || "",
+                          },
+                          sequences: {
+                            email: allOutputs.email_copy || null,
+                            linkedin: allOutputs.linkedin_copy || null,
+                            callScript: allOutputs.call_script || null,
+                            aiCallScript: allOutputs.ai_call_script || null,
+                            replyHandlers: allOutputs.reply_handlers || null,
+                          },
+                          executionPlan: allOutputs.exec_recs || null,
+                        };
+                        const blob = new Blob([JSON.stringify(payload, null, 2)], { type:"application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url; a.download = `${slug}_campaign_payload.json`; a.click(); URL.revokeObjectURL(url);
+                      } else {
+                        const icpLines = ALL_ICP_FIELDS.map(f => `${f.label}: ${data[f.id]||"(empty)"}`).join("\n");
+                        const coLines = COMPANY_FIELDS.map(f => `${f.label}: ${companyData?.[f.id]||"(empty)"}`).join("\n");
+                        const md = [
+                          `# ${icp.name || "ICP"} — Full Export`,
+                          `**Generated:** ${new Date().toLocaleDateString()}`,
+                          `**Status:** ${icp.approval}`,
+                          icp.aiCouncil ? `**Email Score:** ${icp.aiCouncil.finalScore}/10 (${icp.aiCouncil.iterations?.length||0} rounds)` : "",
+                          "", "## Company Profile", coLines, "", "## ICP Fields", icpLines, "",
+                          ...tabs.map(t => [`## ${t.label}`, allOutputs[t.id], ""].flat()),
+                          icp.aiCouncil?.iterations ? [
+                            "## Refinement History",
+                            ...icp.aiCouncil.iterations.map((it:any,i:number) =>
+                              `### Round ${i+1} — Score: ${it.score}/10\n${it.reasoning||""}\n${it.improvements?"**Improvements:** "+it.improvements:""}`)
+                          ].join("\n") : "",
+                        ].filter(Boolean).join("\n");
+                        const blob = new Blob([md], { type:"text/markdown" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url; a.download = `${slug}_export.md`; a.click(); URL.revokeObjectURL(url);
+                      }
+                    };
+                    return (
+                      <div style={{ position:"relative", display:"inline-block" }}>
+                        <button onClick={e => {
+                          const menu = (e.currentTarget.nextElementSibling as HTMLElement);
+                          menu.style.display = menu.style.display === "block" ? "none" : "block";
+                        }} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
+                          ↓ Export ▾
+                        </button>
+                        <div style={{ display:"none", position:"absolute", top:"100%", right:0, marginTop:4, width:200,
+                          background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
+                          boxShadow:"0 8px 24px rgba(13,15,26,.15)", zIndex:100, overflow:"hidden" }}
+                          onClick={e=>(e.currentTarget as HTMLElement).style.display="none"}>
+                          <button onClick={()=>exportFn("md")} style={{ display:"block", width:"100%", padding:"9px 14px", border:"none",
+                            background:"transparent", color:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
+                            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                            onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                            Markdown Brief (.md)
+                          </button>
+                          <button onClick={()=>exportFn("json")} style={{ display:"block", width:"100%", padding:"9px 14px", border:"none",
+                            background:"transparent", color:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
+                            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                            onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                            Full JSON Payload (.json)
+                          </button>
+                          <button onClick={()=>exportFn("campaign")} style={{ display:"block", width:"100%", padding:"9px 14px", border:"none",
+                            background:"transparent", color:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
+                            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                            onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                            Campaign Builder (.json)
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  <button onClick={()=>setSplitView(v=>!v)} style={{ padding:"5px 11px", borderRadius:6,
+                    border:`1px solid ${splitView?C.accentBorder:C.border}`,
+                    background:splitView?C.accentLo:"transparent",
+                    color:splitView?C.accent:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:splitView?700:400 }}>
+                    ◧ Split View
                   </button>
+                  {!isFinalized && (
                   <button onClick={generateAll} disabled={genState==="running"||!data.industries} style={{
                     padding:"5px 13px", borderRadius:6, border:`1px solid ${C.accentBorder}`,
                     background:genState==="running"||!data.industries?C.faint:C.accentLo,
@@ -2220,9 +2429,16 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     fontSize:10, fontFamily:mono, cursor:genState==="running"||!data.industries?"default":"pointer", fontWeight:700 }}>
                     {genState==="running" ? "Generating…" : "↺ Regenerate"}
                   </button>
+                  )}
                 </div>
+                {isFinalized && (
+                  <div style={{ padding:"10px 14px", borderRadius:8, border:"1px solid #8B5CF644", background:"#8B5CF610",
+                    display:"flex", alignItems:"center", gap:8, fontSize:10, fontFamily:mono, color:"#8B5CF6", fontWeight:600, marginBottom:14 }}>
+                    ✦ Source of Truth — locked on {icp.finalizedSnapshot?.timestamp ? new Date(icp.finalizedSnapshot.timestamp).toLocaleDateString() : ""}
+                  </div>
+                )}
                 {/* Rewrite presets */}
-                {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script") && icp.outputs[outTab] && genState!=="running" && (
+                {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script"||outTab==="reply_handlers"||outTab==="ai_call_script") && icp.outputs[outTab] && genState!=="running" && !isFinalized && (
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:14 }}>
                     <span style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4, alignSelf:"center", marginRight:4 }}>REWRITE:</span>
                     {[
@@ -2250,7 +2466,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                           instructions = `Rewrite to match this exact writing style:\n\n${styleAnalysis}\n\nThe rewrite must sound like the same person wrote it. Match rhythm, bluntness, structure, CTA pattern, and emotional register exactly.`;
                         }
                         const rewritten = await callAI(
-                          `Rewrite this ${tab==="email_copy"?"email sequence":tab==="linkedin_copy"?"LinkedIn sequence":"cold call script"} with these instructions:\n\n${instructions}\n\nICP context: ${data.buyer||""} in ${data.industries||""}\nTone: ${data.tone||"direct"}\n\nCurrent content:\n${current.slice(0,3500)}\n\nRewrite the ENTIRE sequence. Keep the same structure/format. Only change tone, style, and language as instructed.`,
+                          `Rewrite this ${tab==="email_copy"?"email sequence":tab==="linkedin_copy"?"LinkedIn sequence":tab==="reply_handlers"?"reply handler scripts":tab==="ai_call_script"?"AI call script":"cold call script"} with these instructions:\n\n${instructions}\n\nICP context: ${data.buyer||""} in ${data.industries||""}\nTone: ${data.tone||"direct"}\n\nCurrent content:\n${current.slice(0,3500)}\n\nRewrite the ENTIRE content. Keep the same structure/format. Only change tone, style, and language as instructed.`,
                           "You are a world-class B2B outreach copywriter. Output only the rewritten sequence, no commentary.", 1800);
                         if (rewritten && !rewritten.startsWith("Error")) {
                           const history = [...(icp.versionHistory || []), {
@@ -2350,6 +2566,47 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     onClose={()=>setIntelligence({ status:"idle", result:"", phase:"" })}
                   />
                 )}
+                <div style={{ display:"flex", gap:splitView?16:0 }}>
+                  {/* Source context panel (split view only) */}
+                  {splitView && (
+                    <div style={{ width:"38%", flexShrink:0, padding:"16px", borderRadius:10,
+                      border:`1px solid ${C.border}`, background:C.faint, overflowY:"auto",
+                      maxHeight:"60vh", fontSize:11.5, fontFamily:body, lineHeight:1.7, color:C.textSoft }}>
+                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4, marginBottom:12 }}>SOURCE DATA</div>
+                      {/* Company context */}
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, marginBottom:6 }}>COMPANY</div>
+                        {[
+                          ["Name", companyData?.co_name],
+                          ["Value Prop", companyData?.co_pitch],
+                          ["Product", companyData?.co_product],
+                          ["KSPs", companyData?.co_ksp],
+                          ["Differentiators", companyData?.co_diff],
+                          ["Proof", companyData?.co_proof],
+                          ["Competitors", companyData?.co_competitors],
+                        ].filter(([,v])=>v).map(([k,v]) => (
+                          <div key={k as string} style={{ marginBottom:6 }}>
+                            <span style={{ fontFamily:mono, fontSize:9, color:C.muted, fontWeight:600 }}>{k}:</span>
+                            <div style={{ color:C.textSoft, marginTop:1 }}>{(v as string).slice(0,200)}{(v as string).length>200?"…":""}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* ICP context */}
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, marginBottom:6 }}>ICP: {icp.name}</div>
+                        {ALL_ICP_FIELDS.filter(f=>data[f.id]).map(f => (
+                          <div key={f.id} style={{ marginBottom:6 }}>
+                            <span style={{ fontFamily:mono, fontSize:9, color:C.muted, fontWeight:600 }}>{f.label}:</span>
+                            <div style={{ color:C.textSoft, marginTop:1 }}>
+                              {Array.isArray(data[f.id]) ? data[f.id].join(", ") : String(data[f.id]).slice(0,200)}{String(data[f.id]).length>200?"…":""}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Generated output */}
+                  <div style={{ flex:1, minWidth:0 }}>
                 {outTab==="email_copy" && icp.aiCouncil ? (
                   <AICouncilPanel council={icp.aiCouncil}
                     onClose={()=>onUpdate({ ...icp, data, aiCouncil:undefined })}
@@ -2361,8 +2618,10 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     {icp.outputs[outTab]}
                   </div>
                 )}
+                  </div>
+                </div>
               {/* QA Checklist */}
-              {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script") && icp.outputs[outTab] && (
+              {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script"||outTab==="reply_handlers"||outTab==="ai_call_script") && icp.outputs[outTab] && (
                 <div style={{ marginTop:24, padding:"16px 18px", borderRadius:10, border:`1px solid ${C.border}`, background:C.faint }}>
                   <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4, marginBottom:10 }}>QA CHECKLIST</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
@@ -5880,9 +6139,22 @@ Raw JSON only.`, "", 1400);
           <div style={{ width:"clamp(200px, 18vw, 260px)", background:C.canvas, borderRight:`1px solid ${C.border}`,
             display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden" }}>
 
-            {/* ── Logo ── */}
-            <div style={{ padding:"16px 14px 14px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
-              <img src="/logo.svg" alt="B2B Rocket" style={{ maxWidth:120, height:"auto", display:"block" }} />
+            {/* ── Client Name ── */}
+            <div style={{ padding:"14px 14px 12px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+              {activeWorkspace ? (
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <div style={{ width:28, height:28, borderRadius:8, background:C.accent, color:"#fff",
+                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, fontFamily:head, flexShrink:0 }}>
+                    {(activeWorkspace.name||"?").charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C.text,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeWorkspace.name}</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C.muted }}>Select a client</div>
+              )}
             </div>
 
             {/* ── Scrollable nav area ── */}
@@ -6136,18 +6408,6 @@ Raw JSON only.`, "", 1400);
 
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-
-          {/* Client header banner — always same position */}
-          {view !== "accounts" && activeWorkspace && (
-            <div style={{ padding:"24px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
-              <div style={{ marginBottom:24, padding:"16px 20px", borderRadius:12,
-                background:C.canvas, border:`1px solid ${C.border}`, textAlign:"center" }}>
-                <div style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head }}>
-                  {activeWorkspace.name}
-                </div>
-              </div>
-            </div>
-          )}
 
           <div style={{ flex:1, minHeight:0, position: (view==="icps"||view==="company") ? "relative" as const : undefined, overflow: (view==="icps"||view==="company") ? "hidden" : "auto", padding: (view==="icps"||view==="company") ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
