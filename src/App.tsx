@@ -554,13 +554,14 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
   );
 
   const lockedStyle = { background:C.faint, color:C.textSoft, cursor:"default" as const };
+  const btnHover = { transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1), transform .2s cubic-bezier(0.16, 1, 0.3, 1)" };
   const pencilBtn = locked ? (
-    <button onClick={onUnlock} title="Edit field"
+    <button onClick={e=>{ (e.currentTarget as HTMLElement).style.animation="btnPress .3s cubic-bezier(0.16, 1, 0.3, 1)"; setTimeout(()=>{if(e.target)(e.target as HTMLElement).style.animation="";},300); onUnlock?.(); }} title="Edit field"
       style={{ marginLeft:"auto", width:22, height:22, borderRadius:5, border:`1px solid ${C.border}`,
         background:"transparent", color:C.muted, cursor:"pointer", flexShrink:0,
-        display:"flex", alignItems:"center", justifyContent:"center", transition:"all .15s" }}
-      onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.color=C.text; (e.currentTarget as HTMLElement).style.borderColor=C.borderHi; }}
-      onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.color=C.muted; (e.currentTarget as HTMLElement).style.borderColor=C.border; }}>
+        display:"flex", alignItems:"center", justifyContent:"center", ...btnHover }}
+      onMouseEnter={e=>{ const b=e.currentTarget as HTMLElement; b.style.color=C.text; b.style.borderColor=C.borderHi; b.style.transform="scale(1.15)"; }}
+      onMouseLeave={e=>{ const b=e.currentTarget as HTMLElement; b.style.color=C.muted; b.style.borderColor=C.border; b.style.transform="scale(1)"; }}>
       <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
         <path d="M8.5 1.5L10.5 3.5L3.5 10.5H1.5V8.5L8.5 1.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
         <path d="M7 3L9 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
@@ -568,20 +569,22 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
     </button>
   ) : onSave ? (
     <div style={{ display:"flex", gap:4, marginLeft:"auto" }}>
-      <button onClick={onSave} title="Save field"
+      <button onClick={e=>{ (e.currentTarget as HTMLElement).style.animation="btnPress .3s cubic-bezier(0.16, 1, 0.3, 1)"; setTimeout(()=>{if(e.target)(e.target as HTMLElement).style.animation="";},300); const el=document.querySelector(`[data-field-id="${f.id}"]`) as HTMLElement; if(el){el.style.animation="fieldLock .6s ease";setTimeout(()=>{el.style.animation="";},600);} onSave?.(); }} title="Save field"
         style={{ width:22, height:22, borderRadius:5, border:`1px solid ${C.greenBorder}`,
           background:"transparent", color:C.green, cursor:"pointer", flexShrink:0,
-          display:"flex", alignItems:"center", justifyContent:"center", transition:"all .15s" }}
-        onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.background=C.greenLo; }}
-        onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.background="transparent"; }}>
+          display:"flex", alignItems:"center", justifyContent:"center",
+          animation:"btnPop .3s cubic-bezier(0.16, 1, 0.3, 1)", ...btnHover }}
+        onMouseEnter={e=>{ const b=e.currentTarget as HTMLElement; b.style.background=C.greenLo; b.style.transform="scale(1.15)"; }}
+        onMouseLeave={e=>{ const b=e.currentTarget as HTMLElement; b.style.background="transparent"; b.style.transform="scale(1)"; }}>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
       </button>
-      <button onClick={onCancel} title="Discard changes"
+      <button onClick={e=>{ (e.currentTarget as HTMLElement).style.animation="btnPress .3s cubic-bezier(0.16, 1, 0.3, 1)"; setTimeout(()=>{if(e.target)(e.target as HTMLElement).style.animation="";},300); const el=document.querySelector(`[data-field-id="${f.id}"]`) as HTMLElement; if(el){el.style.animation="fieldCancel .6s ease";setTimeout(()=>{el.style.animation="";},600);} onCancel?.(); }} title="Discard changes"
         style={{ width:22, height:22, borderRadius:5, border:`1px solid ${C.border}`,
           background:"transparent", color:C.muted, cursor:"pointer", flexShrink:0,
-          display:"flex", alignItems:"center", justifyContent:"center", transition:"all .15s", fontSize:11 }}
-        onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.color=C.text; (e.currentTarget as HTMLElement).style.borderColor=C.borderHi; }}
-        onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.color=C.muted; (e.currentTarget as HTMLElement).style.borderColor=C.border; }}>
+          display:"flex", alignItems:"center", justifyContent:"center", fontSize:11,
+          animation:"btnPop .3s cubic-bezier(0.16, 1, 0.3, 1) .05s both", ...btnHover }}
+        onMouseEnter={e=>{ const b=e.currentTarget as HTMLElement; b.style.color=C.text; b.style.borderColor=C.borderHi; b.style.transform="scale(1.15)"; }}
+        onMouseLeave={e=>{ const b=e.currentTarget as HTMLElement; b.style.color=C.muted; b.style.borderColor=C.border; b.style.transform="scale(1)"; }}>
         ✕
       </button>
     </div>
@@ -779,7 +782,9 @@ function ToastStack({ toasts, onRemove }: { toasts:Toast[]; onRemove:(id:string)
 function ProgressBar({ pct, color=C.accent, height=3 }) {
   return (
     <div style={{ height, background:C.faint, borderRadius:height, overflow:"hidden" }}>
-      <div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:height, transition:"width .4s ease" }} />
+      <div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:height,
+        transition:"width .6s cubic-bezier(0.16, 1, 0.3, 1), background .4s ease",
+        boxShadow: pct >= 100 ? `0 0 6px ${color}44` : "none" }} />
     </div>
   );
 }
@@ -1049,6 +1054,7 @@ function CampaignAnalyzerModal({ companyData, icps: existingIcps, onComplete, on
   const [images, setImages] = useState<{file:File; preview:string; b64:string; mime:string}[]>([]);
   const [notes, setNotes] = useState("");
   const [targetIcp, setTargetIcp] = useState<string>("new");
+  const [updateMode, setUpdateMode] = useState<"blanks"|"all">("blanks");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const addImages = async (files: FileList) => {
@@ -1064,7 +1070,7 @@ function CampaignAnalyzerModal({ companyData, icps: existingIcps, onComplete, on
   const canRun = images.length > 0;
 
   const run = async () => {
-    onClose();
+    onClose(); // Close modal immediately
     const toastId = addToast({ title:"Campaign Analyzer running…", status:"loading", message:"Extracting campaign content from screenshots…" });
 
     const key = getApiKey();
@@ -1230,15 +1236,105 @@ Provide a detailed analysis:
 
 Be specific — reference the actual copy and data you extracted.`, "", 1500);
 
-    onComplete({
-      coFields, coConf, icps,
-      analysis: analysisRaw,
-      targetIcpId: targetIcp !== "new" ? targetIcp : null,
-    });
+    // Step 5: Generate outputs from extracted content
+    const ctx = { company:coFields, icp:{ ...icpFields, name:icpName } };
+    const enrichment = `\nKey Selling Points: ${coFields.co_ksp||""}\nValue Proposition: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nTrust Risks: ${coFields.co_trust_risks||""}`;
 
-    updateToast(toastId, { status:"success", title:"Campaign analysis complete",
-      message:`1 ICP reverse-engineered from ${images.length} screenshot${images.length!==1?"s":""}`,
-      action:{ label:"View ICP", onClick:()=>{} } });
+    updateToast(toastId, { message:"Extracting existing campaign outputs…" });
+    const outputsRaw = await callAI(`
+You reverse-engineered a campaign from screenshots. Now extract and reconstruct the actual campaign outputs.
+
+EXTRACTED CAMPAIGN CONTENT:
+${allContent.slice(0,5000)}
+
+COMPANY: ${JSON.stringify(coFields)}
+ICP: ${JSON.stringify({name:icpName, ...icpFields})}
+
+For each section below, extract the ACTUAL content from the screenshots if visible. If not visible, generate it based on what you've inferred.
+Mark each section as [EXTRACTED] if from screenshots or [GENERATED] if AI-created.
+
+Return ONLY JSON with these keys (each value is a string of the full content):
+{
+  "icp_summary": "ICP targeting summary...",
+  "pain_map": "Pain & trigger map...",
+  "strategy_brief": "Campaign strategy brief...",
+  "email_copy": "Email sequence (use --- separators between emails, include Subject: lines)...",
+  "linkedin_copy": "LinkedIn sequence (use --- separators)...",
+  "call_script": "Cold call script...",
+  "reply_handlers": "Reply handler scripts...",
+  "ai_call_script": "AI call agent script...",
+  "exec_recs": "Execution recommendations..."
+}
+
+IMPORTANT:
+- For email_copy: if you see actual email subjects and bodies in the screenshots, extract them VERBATIM into the format: ---\\nEMAIL 1 — Initial\\nSubject: ...\\n\\n[body]\\n---\\nEMAIL 2...
+- For linkedin_copy: if you see LinkedIn messages, extract them into: ---\\nCONNECTION REQUEST\\n[message]\\n---\\nMESSAGE 1...
+- For other sections: reconstruct from the campaign data and ICP analysis
+- Every section must have content — generate what you can't extract
+Raw JSON only.`, "", 4000);
+
+    let outputs: any = {};
+    try {
+      outputs = JSON.parse(outputsRaw.replace(/```json|```/g,"").trim());
+    } catch {
+      // If JSON parse fails, try to at least get email copy from the raw content
+      outputs = {};
+    }
+
+    // Attach outputs to the ICP
+    if (Object.keys(outputs).length > 0) {
+      icps[0] = { ...icps[0], outputs };
+    }
+
+    // Build review data — compare existing vs proposed (reuse selectedIcp from step 3)
+    const review: any = {
+      result: { coFields, coConf, icps, analysis: analysisRaw, targetIcpId: targetIcp !== "new" ? targetIcp : null },
+      companyChanges: [],
+      icpChanges: [],
+      outputChanges: [],
+    };
+
+    // Company field changes
+    for (const f of COMPANY_FIELDS) {
+      const oldVal = companyData?.[f.id] || "";
+      const newVal = coFields[f.id] || "";
+      if (!newVal || !String(newVal).trim()) continue;
+      const oldStr = Array.isArray(oldVal) ? oldVal.join(", ") : String(oldVal);
+      const newStr = Array.isArray(newVal) ? newVal.join(", ") : String(newVal);
+      if (oldStr === newStr) continue;
+      if (updateMode === "blanks" && oldStr.trim()) continue;
+      review.companyChanges.push({ id:f.id, label:f.label, oldVal:oldStr, newVal:newStr });
+    }
+
+    // ICP field changes
+    const oldIcpData = selectedIcp?.data || {};
+    const newIcpData = icpFields;
+    for (const f of ALL_ICP_FIELDS) {
+      const oldVal = oldIcpData[f.id] || "";
+      const newVal = newIcpData[f.id] || "";
+      if (!newVal || (Array.isArray(newVal) ? !newVal.length : !String(newVal).trim())) continue;
+      const oldStr = Array.isArray(oldVal) ? oldVal.join(", ") : String(oldVal);
+      const newStr = Array.isArray(newVal) ? newVal.join(", ") : String(newVal);
+      if (oldStr === newStr) continue;
+      if (updateMode === "blanks" && oldStr.trim()) continue;
+      review.icpChanges.push({ id:f.id, label:f.label, oldVal:oldStr, newVal:newStr });
+    }
+
+    // Output changes
+    const oldOutputs = selectedIcp?.outputs || {};
+    for (const t of OUTPUT_TABS) {
+      const newOut = outputs[t.id];
+      if (!newOut || !String(newOut).trim()) continue;
+      const oldOut = oldOutputs[t.id] || "";
+      if (updateMode === "blanks" && oldOut.trim()) continue;
+      review.outputChanges.push({ id:t.id, label:t.label, oldVal:oldOut?oldOut.slice(0,100)+"…":"(empty)", newVal:newOut.slice(0,100)+"…" });
+    }
+
+    // Pass review data to parent for persistent review flow
+    onComplete({ type:"review", review });
+
+    updateToast(toastId, { status:"success", title:"Analysis complete — review changes",
+      message:`${review.companyChanges.length + review.icpChanges.length + review.outputChanges.length} changes proposed` });
   };
 
   return (
@@ -1262,7 +1358,7 @@ Be specific — reference the actual copy and data you extracted.`, "", 1500);
             border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:12, cursor:"pointer" }}>✕</button>
         </div>
 
-        <div style={{ padding:"20px 24px" }}>
+        <div style={{ padding:"20px 24px", maxHeight:"65vh", overflowY:"auto" }}>
           {/* Image upload */}
           <div style={{ marginBottom:16 }}>
             <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:6 }}>
@@ -1321,6 +1417,28 @@ Be specific — reference the actual copy and data you extracted.`, "", 1500);
             </div>
           </div>
 
+          {/* Update mode */}
+          {targetIcp !== "new" && (
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
+                Update Mode
+              </label>
+              <div style={{ display:"flex", gap:6 }}>
+                {([["blanks","Only fill blank fields"],["all","Update all fields"]] as const).map(([val,label]) => (
+                  <button key={val} onClick={()=>setUpdateMode(val)}
+                    style={{ flex:1, padding:"8px 12px", borderRadius:7, cursor:"pointer",
+                      border:`1.5px solid ${updateMode===val?C.accentBorder:C.border}`,
+                      background:updateMode===val?C.accentLo:"transparent",
+                      color:updateMode===val?C.accent:C.textSoft,
+                      fontSize:11, fontFamily:head, fontWeight:updateMode===val?700:500,
+                      transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Operator notes */}
           <div style={{ marginBottom:16 }}>
             <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
@@ -1341,6 +1459,112 @@ Be specific — reference the actual copy and data you extracted.`, "", 1500);
               boxShadow:canRun?`0 2px 10px ${C.amber}44`:"none", transition:"all .2s",
               display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
             🔍 Analyze Campaign{images.length>0?` (${images.length} screenshot${images.length!==1?"s":""})`:""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── REVIEW CHANGES MODAL ─────────────────────────────────────────────────────
+function ReviewChangesModal({ reviewData, onApply, onDismiss }) {
+  const [approvals, setApprovals] = useState<Record<string,boolean>>(() => {
+    const all: Record<string,boolean> = {};
+    [...(reviewData.companyChanges||[]), ...(reviewData.icpChanges||[]), ...(reviewData.outputChanges||[])].forEach((c:any) => { all[c.id] = true; });
+    return all;
+  });
+
+  const totalChanges = (reviewData.companyChanges?.length||0) + (reviewData.icpChanges?.length||0) + (reviewData.outputChanges?.length||0);
+  const approvedCount = Object.values(approvals).filter(Boolean).length;
+
+  const apply = () => {
+    const r = reviewData.result;
+    const approvedCo: Record<string,any> = {};
+    for (const c of (reviewData.companyChanges||[])) { if (approvals[c.id]) approvedCo[c.id] = r.coFields[c.id]; }
+    const approvedIcpData: Record<string,any> = {};
+    for (const c of (reviewData.icpChanges||[])) { if (approvals[c.id]) approvedIcpData[c.id] = r.icps[0]?.data?.[c.id]; }
+    const approvedOutputs: Record<string,any> = {};
+    for (const c of (reviewData.outputChanges||[])) { if (approvals[c.id]) approvedOutputs[c.id] = r.icps[0]?.outputs?.[c.id]; }
+    const filteredIcp = { ...r.icps[0], data: approvedIcpData, outputs: Object.keys(approvedOutputs).length > 0 ? approvedOutputs : null };
+    onApply({
+      coFields: approvedCo, coConf: r.coConf, icps: [filteredIcp],
+      analysis: r.analysis, targetIcpId: r.targetIcpId,
+    });
+  };
+
+  const renderSection = (title: string, changes: any[]) => {
+    if (!changes || changes.length === 0) return null;
+    return (
+      <div style={{ marginBottom:16 }}>
+        <div style={{ fontSize:10, fontFamily:head, fontWeight:700, color:C.text, marginBottom:8, textTransform:"uppercase" }}>{title}</div>
+        {changes.map((c:any) => (
+          <div key={c.id} style={{ padding:"8px 10px", borderRadius:7, border:`1px solid ${approvals[c.id]?C.greenBorder:C.border}`,
+            background:approvals[c.id]?C.greenLo+"44":"transparent", marginBottom:4, cursor:"pointer",
+            transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
+            onClick={()=>setApprovals(p=>({...p,[c.id]:!p[c.id]}))}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+              <span style={{ fontSize:11, fontFamily:head, fontWeight:600, color:C.text }}>{c.label}</span>
+              <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:approvals[c.id]?C.green:C.muted }}>{approvals[c.id]?"✓ APPROVED":"PENDING"}</span>
+            </div>
+            {c.oldVal && c.oldVal.trim() && c.oldVal!=="(empty)" && (
+              <div style={{ fontSize:10, fontFamily:body, color:C.red, marginBottom:2, textDecoration:"line-through", opacity:.6 }}>{c.oldVal.slice(0,120)}{c.oldVal.length>120?"…":""}</div>
+            )}
+            <div style={{ fontSize:10, fontFamily:body, color:C.green }}>{c.newVal.slice(0,120)}{c.newVal.length>120?"…":""}</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:300,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      padding:24, backdropFilter:"blur(6px)" }}>
+      <div style={{ width:"100%", maxWidth:560, background:C.canvas, borderRadius:14,
+        border:`1px solid ${C.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.2)",
+        animation:"toastIn .4s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+        <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${C.border}`,
+          display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ width:38, height:38, borderRadius:10, background:C.amberLo,
+            border:`1px solid ${C.amberBorder}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🔍</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:16, fontWeight:700, color:C.text, fontFamily:head }}>Review Proposed Changes</div>
+            <div style={{ fontSize:12, color:C.muted, fontFamily:body, marginTop:1 }}>{totalChanges} change{totalChanges!==1?"s":""} found — click each to approve or reject</div>
+          </div>
+        </div>
+
+        <div style={{ padding:"16px 24px", maxHeight:"55vh", overflowY:"auto" }}>
+          <div style={{ display:"flex", gap:6, marginBottom:16 }}>
+            <button onClick={()=>{ const all:Record<string,boolean> = {}; [...(reviewData.companyChanges||[]),...(reviewData.icpChanges||[]),...(reviewData.outputChanges||[])].forEach((c:any)=>{all[c.id]=true;}); setApprovals(all); }}
+              style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green,
+                fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>✓ Approve All</button>
+            <button onClick={()=>setApprovals({})}
+              style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted,
+                fontSize:10, fontFamily:mono, fontWeight:600, cursor:"pointer" }}>Reject All</button>
+          </div>
+
+          {renderSection("Company Profile", reviewData.companyChanges)}
+          {renderSection("ICP Fields", reviewData.icpChanges)}
+          {renderSection("Outputs", reviewData.outputChanges)}
+
+          {totalChanges === 0 && (
+            <div style={{ padding:24, textAlign:"center", color:C.muted, fontFamily:body, fontSize:13 }}>
+              No changes to review — all fields are already up to date.
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding:"12px 24px 20px", display:"flex", gap:8 }}>
+          <button onClick={onDismiss}
+            style={{ flex:1, padding:"10px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent",
+              color:C.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Dismiss</button>
+          <button onClick={apply} disabled={approvedCount===0}
+            style={{ flex:2, padding:"10px", borderRadius:8, border:"none",
+              background:approvedCount>0?C.green:C.border,
+              color:approvedCount>0?"#fff":C.muted,
+              fontSize:12, fontFamily:head, fontWeight:700,
+              cursor:approvedCount>0?"pointer":"default" }}>
+            Apply {approvedCount} Change{approvedCount!==1?"s":""}
           </button>
         </div>
       </div>
@@ -3458,12 +3682,12 @@ For percentages with raw counts shown (e.g. "45% (450 opens)"), use the raw coun
     <div style={{ animation:"fadeIn .3s ease" }}>
 
       {/* ── Header ── */}
-      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20, gap:16 }}>
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:16, gap:16, padding:"16px 0 0" }}>
         <div>
-          <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px", letterSpacing:"-0.02em" }}>
-            Campaign Performance
+          <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>
+            Performance
           </h2>
-          <p style={{ fontSize:13, color:C.muted, fontFamily:body, margin:0, lineHeight:1.5 }}>
+          <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
             Log campaign metrics by date or range, linked to individual ICPs and outputs.
           </p>
         </div>
@@ -4037,11 +4261,11 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
     <div style={{ animation:"fadeIn .3s ease" }}>
 
       {/* ── Header ── */}
-      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:24, gap:16 }}>
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:16, gap:16, padding:"16px 0 0" }}>
         <div>
-          <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 4px" }}>ROI Calculator</h2>
-          <p style={{ fontSize:13, color:C.textSoft, fontFamily:body, margin:0 }}>
-            {cfg.label || "B2B Rocket investment, cost savings & campaign returns."}
+          <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>ROI Dashboard</h2>
+          <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
+            {cfg.label || "Investment, cost savings & campaign returns."}
           </p>
         </div>
         <button onClick={()=>setConfigOpen(p=>!p)}
@@ -4696,15 +4920,15 @@ function OutputsHub({ icps, companyData }) {
   };
 
   return (
-    <div style={{ animation:"fadeIn .3s ease" }}>
+    <div>
 
       {/* ── Header ── */}
-      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20, gap:16 }}>
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:16, gap:16, padding:"16px 0 0" }}>
         <div style={{ flex:1 }}>
-          <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px", letterSpacing:"-0.02em" }}>
-            {companyData.co_name||"Client"} — Campaign Outputs
+          <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>
+            Campaign Outputs
           </h2>
-          <p style={{ fontSize:13, color:C.muted, fontFamily:body, margin:0, lineHeight:1.5 }}>
+          <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
             AI-generated summaries, briefs, and email sequences
           </p>
         </div>
@@ -6332,6 +6556,8 @@ function AppMain() {
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [showQS,         setShowQS]         = useState(false);
   const [showAnalyzer,   setShowAnalyzer]   = useState(false);
+  const [pendingReview,  setPendingReview]  = useState<any>(null);
+  const [showReview,     setShowReview]     = useState(false);
   const [currentRole,    setCurrentRole]    = useState("team");
   const [activeWorkspace,setActiveWorkspace]= useState(null);
   const [appMode,        setAppMode]        = useState<"app"|"admin">("app");
@@ -6567,6 +6793,13 @@ Raw JSON only.`, "", 1400);
   }, []);
 
   const handleAnalyzerComplete = useCallback(result => {
+    // If this is a review request, store it and show persistent toast
+    if (result.type === "review") {
+      setPendingReview(result.review);
+      setShowReview(true);
+      return;
+    }
+
     // Merge company fields
     setCompanyData(prev => {
       const merged = { ...prev };
@@ -6578,9 +6811,10 @@ Raw JSON only.`, "", 1400);
     setCompanyConf(prev => ({ ...prev, ...result.coConf }));
 
     if (result.targetIcpId) {
-      // Update existing ICP — merge fields
+      // Update existing ICP — merge fields + outputs
       const newIcpData = result.icps[0]?.data || {};
       const newIcpConf = result.icps[0]?.confidence || {};
+      const newOutputs = result.icps[0]?.outputs || {};
       setIcps(prev => prev.map(i => {
         if (i.id !== result.targetIcpId) return i;
         const mergedData = { ...i.data };
@@ -6588,10 +6822,15 @@ Raw JSON only.`, "", 1400);
           if (v && (Array.isArray(v) ? v.length > 0 : String(v).trim())) mergedData[k] = v;
         }
         const mergedConf = { ...(i.confidence||{}), ...newIcpConf };
-        return { ...i, data:mergedData, confidence:mergedConf, campaignAnalysis:result.analysis||i.campaignAnalysis };
+        // Merge outputs — new outputs overwrite existing, but keep existing if new is empty
+        const mergedOutputs = { ...(i.outputs||{}), ...Object.fromEntries(
+          Object.entries(newOutputs).filter(([,v]) => v && String(v).trim())
+        )};
+        return { ...i, data:mergedData, confidence:mergedConf, outputs:Object.keys(mergedOutputs).length>0?mergedOutputs:i.outputs,
+          campaignAnalysis:result.analysis||i.campaignAnalysis };
       }));
     } else {
-      // Add new ICP
+      // Add new ICP (already has outputs attached)
       setIcps(prev => [...prev, ...result.icps]);
       if (result.analysis && result.icps[0]) {
         setIcps(prev => prev.map(i => i.id === result.icps[0].id ? { ...i, campaignAnalysis: result.analysis } : i));
@@ -6634,6 +6873,11 @@ Raw JSON only.`, "", 1400);
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
           100%{opacity:1;transform:scale(1);filter:blur(0px)}
         }
+        @keyframes pageFade{
+          0%{opacity:0;filter:blur(2px)}
+          30%{opacity:0.8;filter:blur(0px)}
+          100%{opacity:1;filter:blur(0px)}
+        }
         @keyframes toastIn{
           0%{opacity:0;transform:translateY(40px) scale(0.95)}
           100%{opacity:1;transform:translateY(0) scale(1)}
@@ -6647,9 +6891,24 @@ Raw JSON only.`, "", 1400);
           40%{box-shadow:0 0 0 4px rgba(14,158,110,0.2)}
           100%{box-shadow:0 0 0 0 rgba(14,158,110,0)}
         }
+        @keyframes fieldCancel{
+          0%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)}
+          40%{box-shadow:0 0 0 4px rgba(239,68,68,0.2)}
+          100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}
+        }
         @keyframes icpSlideIn{
           0%{opacity:0;transform:translateY(-12px) scale(0.97)}
           100%{opacity:1;transform:translateY(0) scale(1)}
+        }
+        @keyframes btnPop{
+          0%{opacity:0;transform:scale(0.5)}
+          60%{transform:scale(1.15)}
+          100%{opacity:1;transform:scale(1)}
+        }
+        @keyframes btnPress{
+          0%{transform:scale(1)}
+          50%{transform:scale(0.85)}
+          100%{transform:scale(1)}
         }
         @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
@@ -7084,19 +7343,12 @@ Raw JSON only.`, "", 1400);
           <div style={{ maxWidth:"100%" }}>
 
             {view==="company" && (
-              <div style={{ position:"absolute" as const, inset:0, animation:"fadeIn .3s ease", textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)" }}>
+              <div style={{ position:"absolute" as const, inset:0, textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 {/* Header */}
                 <div style={{ padding:"16px 0 12px", flexShrink:0 }}>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                  <div style={{ marginBottom:6 }}>
                     <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:0, textAlign:"left" }}>Client Profile</h2>
-                    <button onClick={()=>setView("icps")} style={{
-                      padding:"8px 18px", borderRadius:8, border:"none",
-                      background:(companyData as any).co_name?C.accent:C.border,
-                      color:(companyData as any).co_name?"#fff":C.muted,
-                      fontSize:11, fontFamily:head, fontWeight:700,
-                      cursor:(companyData as any).co_name?"pointer":"default",
-                      boxShadow:(companyData as any).co_name?`0 2px 10px ${C.accent}40`:"none",
-                      transition:"all .2s" }}>Continue to ICPs →</button>
                   </div>
                   <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, lineHeight:1.5, margin:"0 0 10px" }}>
                     Fill this once. Every ICP inherits this context when AI auto-drafts their profile.
@@ -7116,7 +7368,19 @@ Raw JSON only.`, "", 1400);
             )}
 
             {view==="icps" && (
-              <div style={{ display:"flex", position:"absolute" as const, inset:0, overflow:"hidden", animation:"fadeIn .3s ease" }}>
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+
+                {/* ── Page Header ── */}
+                <div style={{ padding:"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${C.border}` }}>
+                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>ICP Profiles</h2>
+                  <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
+                    Define target segments, personas, pains, and messaging strategies
+                  </p>
+                </div>
+
+                {/* ── Content: sidebar + editor ── */}
+                <div style={{ display:"flex", flex:1, minHeight:0, overflow:"hidden" }}>
 
                 {/* ── ICP list sidebar ── */}
                 <div style={{ width:242, flexShrink:0, display:"flex", flexDirection:"column",
@@ -7141,6 +7405,18 @@ Raw JSON only.`, "", 1400);
                             width:300, background:C.canvas, border:`1.5px solid ${C.accentBorder}`,
                             borderRadius:10, boxShadow:`0 8px 32px rgba(13,15,26,.16)`, padding:"14px", animation:"fadeIn .15s ease" }}>
                             <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.4, marginBottom:10 }}>+ NEW ICP</div>
+                            <button onClick={()=>{ setShowAddPop(false); const blank = newICP(icps.length, {}, "", {}); setIcps(p=>[...p, blank]); setEditingId(blank.id); }}
+                              style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 12px",
+                                borderRadius:8, border:`1.5px solid ${C.border}`, background:C.faint,
+                                cursor:"pointer", textAlign:"left", marginBottom:8, transition:"all .15s" }}
+                              onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.canvas}
+                              onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}>
+                              <span style={{ fontSize:16, flexShrink:0, color:C.muted }}>+</span>
+                              <div>
+                                <div style={{ fontSize:12, fontFamily:head, fontWeight:700, color:C.text }}>Blank ICP</div>
+                                <div style={{ fontSize:10.5, color:C.muted, fontFamily:body, marginTop:1 }}>Start from scratch — fill in fields manually</div>
+                              </div>
+                            </button>
                             <button onClick={()=>addICP()}
                               style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 12px",
                                 borderRadius:8, border:`1.5px solid ${C.accentBorder}`, background:C.accentLo,
@@ -7175,7 +7451,6 @@ Raw JSON only.`, "", 1400);
                                 boxShadow:addIcpText.trim()?`0 2px 8px ${C.accent}40`:"none", transition:"all .15s" }}>
                               Generate from description {addIcpText.trim()?"↵":""}
                             </button>
-                            <div style={{ fontSize:9, color:C.muted, fontFamily:mono, textAlign:"center", marginTop:6 }}>⌘↵ to generate</div>
                           </div>
                         , document.body)}
                       </div>
@@ -7195,7 +7470,7 @@ Raw JSON only.`, "", 1400);
                       const pct      = Math.round(filled/TOTAL_FIELDS*100);
                       const openComm = (icp.comments??[]).filter((c:any)=>!c.resolved).length;
                       const isSelected = editingId === icp.id;
-                      const statusColor = icp.approval==="finalized"?"#8B5CF6":icp.approval==="approved"?C.green:icp.outputs?C.green:pct>0?"#F59E0B":C.border;
+                      const statusColor = icp.approval==="finalized"?"#8B5CF6":icp.approval==="approved"?C.green:icp.outputs?C.green:pct>0?"#F59E0B":C.muted;
                       return (
                         <div key={icp.id} data-icp-id={icp.id}
                           onClick={()=>setEditingId(icp.id)}
@@ -7358,21 +7633,27 @@ Raw JSON only.`, "", 1400);
                   )}
                 </div>
               </div>
+              </div>
             )}
 
             {view==="outputs" && (
+              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
               <OutputsHub icps={icps} companyData={companyData} />
+              </div>
             )}
 
             {view==="perf" && (
+              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
               <PerformancePanel
                 perfLogs={perfLogs}
                 onLogsChange={setPerfLogs}
                 icps={icps}
               />
+              </div>
             )}
 
             {view==="roi" && (
+              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
               <RoiDashboard
                 roiConfig={roiConfig}
                 onConfigChange={setRoiConfig}
@@ -7380,9 +7661,11 @@ Raw JSON only.`, "", 1400);
                 icps={icps}
                 companyData={companyData}
               />
+              </div>
             )}
 
             {view==="chat" && (
+              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
               <StrategyChatPanel
                 chats={chats}
                 onChatsChange={setChats}
@@ -7391,6 +7674,7 @@ Raw JSON only.`, "", 1400);
                 perfLogs={perfLogs}
                 clientName={(activeWorkspace as any)?.name || (companyData as any)?.co_name || "Client"}
               />
+              </div>
             )}
           </div>
           )}
@@ -7419,6 +7703,27 @@ Raw JSON only.`, "", 1400);
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} />}
       {showAnalyzer && <CampaignAnalyzerModal companyData={companyData} icps={icps} onComplete={handleAnalyzerComplete} onClose={()=>setShowAnalyzer(false)} addToast={addToast} updateToast={updateToast} />}
+      {showReview && pendingReview && <ReviewChangesModal reviewData={pendingReview}
+        onApply={(approved) => { handleAnalyzerComplete(approved); setPendingReview(null); setShowReview(false); }}
+        onDismiss={() => { setShowReview(false); }} />}
+      {/* Persistent review reminder — appears when review is pending but modal is closed */}
+      {pendingReview && !showReview && (
+        <div style={{ position:"fixed", bottom:24, right:24, zIndex:99998, pointerEvents:"all",
+          animation:"toastIn .4s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, background:C.canvas, borderRadius:10, padding:"12px 14px",
+            border:`1.5px solid ${C.amberBorder}`, boxShadow:"0 4px 24px rgba(13,15,26,.18)", minWidth:280 }}>
+            <span style={{ fontSize:16 }}>🔍</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:C.text, fontFamily:head }}>Changes pending review</div>
+              <button onClick={()=>setShowReview(true)}
+                style={{ fontSize:11, color:C.accent, fontFamily:head, fontWeight:700,
+                  background:"none", border:"none", cursor:"pointer", padding:0, marginTop:2 }}>
+                Review & apply changes →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {pendingNav && (
         <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:50000,
           display:"flex", alignItems:"center", justifyContent:"center",
