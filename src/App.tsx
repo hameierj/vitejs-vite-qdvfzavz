@@ -394,7 +394,8 @@ function ConfPill({ score, label="" }: { score:any; label?:string }) {
         <div style={{ position:"absolute", top:"100%", left:0, marginTop:6, width:260, padding:"10px 12px",
           background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
           boxShadow:"0 8px 24px rgba(13,15,26,.15)", zIndex:100,
-          fontSize:11, fontFamily:body, color:C.textSoft, lineHeight:1.5 }}>
+          fontSize:11, fontFamily:body, color:C.textSoft, lineHeight:1.5,
+          animation:"toastIn .3s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
           <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color, marginBottom:4 }}>
             {score >= 95 ? "VERIFIED" : score >= 80 ? "GOOD" : score >= 55 ? "NEEDS REVIEW" : "LOW CONFIDENCE"}
           </div>
@@ -649,14 +650,14 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
           {f.type==="textarea"
             ? <textarea data-field-id={f.id} value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph} rows={f.rows||2}
                 readOnly={locked}
-                style={{...base, resize:"vertical", paddingRight: canAI ? 44 : 12, ...(locked ? lockedStyle : {})}}
+                style={{...base, resize:"vertical", paddingRight: canAI ? 44 : 12, ...(locked ? lockedStyle : {}), transition:"box-shadow .5s ease"}}
                 onFocus={focusOn} onBlur={focusOff}
-                onKeyDown={e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)&&!locked&&val&&String(val).trim()) { e.preventDefault(); onSave?.(); onSubmitField?.(f.id); } }} />
+                onKeyDown={e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)&&!locked&&val&&String(val).trim()) { e.preventDefault(); e.currentTarget.style.animation="fieldLock .6s ease"; setTimeout(()=>{if(e.target)(e.target as HTMLElement).style.animation="";},600); onSave?.(); onSubmitField?.(f.id); } }} />
             : <input data-field-id={f.id} type="text" value={val||""} onChange={e=>onChange(e.target.value)} placeholder={f.ph}
                 readOnly={locked}
-                style={{...base, paddingRight: canAI ? 44 : 12, ...(locked ? lockedStyle : {})}}
+                style={{...base, paddingRight: canAI ? 44 : 12, ...(locked ? lockedStyle : {}), transition:"box-shadow .5s ease"}}
                 onFocus={focusOn} onBlur={focusOff}
-                onKeyDown={e=>{ if(e.key==="Enter"&&!locked&&val&&String(val).trim()) { e.preventDefault(); onSave?.(); onSubmitField?.(f.id); } }} />
+                onKeyDown={e=>{ if(e.key==="Enter"&&!locked&&val&&String(val).trim()) { e.preventDefault(); e.currentTarget.style.animation="fieldLock .6s ease"; setTimeout(()=>{if(e.target)(e.target as HTMLElement).style.animation="";},600); onSave?.(); onSubmitField?.(f.id); } }} />
           }
           {canAI && !locked && (
             <div style={{ position:"absolute", right:6, top:"50%", transform:"translateY(-50%)", zIndex:10 }}>
@@ -723,16 +724,26 @@ function Field({ f, val, onChange, onAI, aiOn, accentColor, confidence, locked =
 // ─── TOAST STACK ──────────────────────────────────────────────────────────────
 type Toast = { id:string; title:string; message?:string; status:"loading"|"success"|"error"; action?:{ label:string; onClick:()=>void } };
 function ToastStack({ toasts, onRemove }: { toasts:Toast[]; onRemove:(id:string)=>void }) {
+  const [exiting, setExiting] = useState<Set<string>>(new Set());
+
+  const dismiss = (id: string) => {
+    setExiting(prev => new Set(prev).add(id));
+    setTimeout(() => { setExiting(prev => { const n = new Set(prev); n.delete(id); return n; }); onRemove(id); }, 300);
+  };
+
   if (!toasts.length) return null;
   return (
     <div style={{ position:"fixed", bottom:24, right:24, zIndex:99999,
       display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end", pointerEvents:"none" }}>
-      {[...toasts].reverse().map(t => (
+      {[...toasts].reverse().map(t => {
+        const isExiting = exiting.has(t.id);
+        return (
         <div key={t.id} style={{ pointerEvents:"all", display:"flex", alignItems:"flex-start", gap:10,
           background:C.canvas, borderRadius:10, padding:"12px 14px",
           border:`1.5px solid ${t.status==="success"?C.green+"55":t.status==="error"?C.red+"55":C.accentBorder}`,
           boxShadow:"0 4px 24px rgba(13,15,26,.18)", minWidth:260, maxWidth:340,
-          animation:"slideUp .2s ease" }}>
+          animation: isExiting ? "toastOut .3s cubic-bezier(0.16, 1, 0.3, 1) forwards" : "toastIn .4s cubic-bezier(0.16, 1, 0.3, 1)",
+          willChange:"opacity, transform" }}>
           {/* Icon */}
           <div style={{ flexShrink:0, width:18, textAlign:"center", marginTop:1 }}>
             {t.status==="loading" && <span style={{ animation:"aiSpark 1.2s linear infinite", display:"inline-block", color:C.accent, fontSize:13 }}>✦</span>}
@@ -744,7 +755,7 @@ function ToastStack({ toasts, onRemove }: { toasts:Toast[]; onRemove:(id:string)
             <div style={{ fontSize:12.5, fontWeight:700, color:C.text, fontFamily:head, lineHeight:1.3 }}>{t.title}</div>
             {t.message && <div style={{ fontSize:11, color:C.muted, fontFamily:body, marginTop:2, lineHeight:1.4 }}>{t.message}</div>}
             {t.action && (
-              <button onClick={()=>{ t.action!.onClick(); onRemove(t.id); }}
+              <button onClick={()=>{ t.action!.onClick(); dismiss(t.id); }}
                 style={{ marginTop:6, fontSize:11, color:C.accent, fontFamily:head, fontWeight:700,
                   background:"none", border:"none", cursor:"pointer", padding:0 }}>
                 {t.action.label} →
@@ -752,13 +763,14 @@ function ToastStack({ toasts, onRemove }: { toasts:Toast[]; onRemove:(id:string)
             )}
           </div>
           {/* Close */}
-          <button onClick={()=>onRemove(t.id)}
+          <button onClick={()=>dismiss(t.id)}
             style={{ flexShrink:0, background:"none", border:"none", cursor:"pointer",
               color:C.muted, fontSize:14, padding:0, lineHeight:1, marginTop:1 }}
             onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.color=C.text}
             onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.color=C.muted}>✕</button>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1026,6 +1038,310 @@ Raw JSON only.`, "", 2000);
               ⚡ Analyze & Pre-fill Everything
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CAMPAIGN ANALYZER MODAL ──────────────────────────────────────────────────
+function CampaignAnalyzerModal({ companyData, icps: existingIcps, onComplete, onClose, addToast, updateToast }) {
+  const [images, setImages] = useState<{file:File; preview:string; b64:string; mime:string}[]>([]);
+  const [notes, setNotes] = useState("");
+  const [targetIcp, setTargetIcp] = useState<string>("new");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const addImages = async (files: FileList) => {
+    const newImgs: typeof images = [];
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith("image/")) continue;
+      const b64 = await fileToBase64(file) as string;
+      newImgs.push({ file, preview: URL.createObjectURL(file), b64, mime: file.type });
+    }
+    setImages(prev => [...prev, ...newImgs]);
+  };
+
+  const canRun = images.length > 0;
+
+  const run = async () => {
+    onClose();
+    const toastId = addToast({ title:"Campaign Analyzer running…", status:"loading", message:"Extracting campaign content from screenshots…" });
+
+    const key = getApiKey();
+    if (!key) { updateToast(toastId, { status:"error", title:"No API key", message:"Add your Anthropic API key first." }); return; }
+
+    // Step 1: Extract content from all screenshots
+    const extractions: string[] = [];
+    let lastError = "";
+    const retryCount: Record<number,number> = {};
+    for (let i = 0; i < images.length; i++) {
+      updateToast(toastId, { message:`Analyzing screenshot ${i+1} of ${images.length}…` });
+      try {
+        // Ensure mime type is valid for Anthropic API
+        let mime = images[i].mime;
+        if (!["image/jpeg","image/png","image/gif","image/webp"].includes(mime)) mime = "image/png";
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "x-api-key":key,
+            "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+          body: JSON.stringify({
+            model:"claude-sonnet-4-20250514", max_tokens:2000,
+            messages:[{ role:"user", content:[
+              { type:"image", source:{ type:"base64", media_type:mime, data:images[i].b64 } },
+              { type:"text", text:`Analyze this screenshot thoroughly. It may contain ANY of the following — extract everything you can see:\n\n1. CONTACT/PROSPECT DATA: email addresses, phone numbers, names, titles, company/organization names. For each domain or company, infer the likely industry, business type, and company size.\n\n2. EMAIL/LINKEDIN COPY: subjects, bodies, signatures, message sequences. Include exact text verbatim.\n\n3. TARGETING FILTERS: industries, titles, geo, company size, revenue, intent topics, keywords, exclusions.\n\n4. CAMPAIGN SETTINGS: sequence names, timing, channels, number of steps.\n\n5. PERFORMANCE METRICS: sent, opens, replies, meetings, conversion rates.\n\n6. AUDIENCE PATTERNS: Look at the companies/domains listed and identify patterns — what industry are they in? What size? What type of business? What do they have in common?\n\nIMPORTANT: If you see a list of contacts, companies, or domains, analyze the PATTERN. For example, if you see bike shops and cycling businesses, note that the target audience is "bicycle retail / cycling industry." Infer the ICP from what you observe.\n\nReturn a detailed plain text extraction with your analysis of what this data tells us about the target audience and campaign strategy.` }
+            ]}],
+          }),
+        });
+        if (!r.ok) {
+          const errBody = await r.text();
+          lastError = `HTTP ${r.status}: ${errBody.slice(0,200)}`;
+          console.error(`Screenshot ${i+1} API error (${r.status}):`, errBody);
+          if (r.status === 429 || r.status === 529 || r.status >= 500) {
+            retryCount[i] = (retryCount[i]||0) + 1;
+            if (retryCount[i] <= 3) {
+              const delay = Math.min(3000 * Math.pow(2, retryCount[i]-1), 15000);
+              updateToast(toastId, { message:`API overloaded — retrying screenshot ${i+1} in ${Math.round(delay/1000)}s (attempt ${retryCount[i]}/3)…` });
+              await new Promise(ok => setTimeout(ok, delay));
+              i--; continue;
+            }
+          }
+          continue;
+        }
+        const json = await r.json();
+        if (json.error) { lastError = json.error.message || JSON.stringify(json.error); console.error(`Screenshot ${i+1} API error:`, json.error); continue; }
+        const text = json.content?.[0]?.text || "";
+        if (text) extractions.push(`SCREENSHOT ${i+1}:\n${text}`);
+        else { lastError = "API returned empty response"; }
+      } catch (e: any) { lastError = e.message || String(e); console.error(`Screenshot ${i+1} extraction failed:`, e); }
+    }
+
+    if (extractions.length === 0) {
+      updateToast(toastId, { status:"error", title:"Extraction failed", message:lastError || "Could not extract content from screenshots. Check your API key." });
+      return;
+    }
+
+    const allContent = extractions.join("\n\n---\n\n") + (notes ? `\n\nOPERATOR NOTES:\n${notes}` : "");
+
+    // Step 2: Reverse-engineer company profile
+    updateToast(toastId, { message:"Reverse-engineering company profile…" });
+    const coRaw = await callAI(`
+You are reverse-engineering an existing campaign from screenshots. The screenshots may contain email copy, LinkedIn messages, contact lists, targeting filters, prospect data, performance dashboards, or any combination.
+
+EXTRACTED CAMPAIGN CONTENT & ANALYSIS:
+${allContent.slice(0,5000)}
+
+${companyData?.co_name ? `Known company info: ${JSON.stringify(companyData)}` : ""}
+
+Based on ALL the extracted data, infer the company profile. Key approach:
+- If you see CONTACT LISTS or PROSPECT DATA: analyze the domains, company names, and industries to determine who is being targeted and what the campaign is selling to them.
+- If you see EMAIL/LINKEDIN COPY: extract the value proposition, product, differentiators, and proof from the messaging.
+- If you see TARGETING FILTERS: use them to understand the market category and ideal customer.
+- If you see PERFORMANCE DATA: note what's working and what metrics suggest.
+- COMBINE all signals to build the most complete picture possible.
+
+Return ONLY JSON:
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":""},
+"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
+
+Set confidence based on how clearly the info is visible in the screenshots (90+ = directly visible, 60-89 = strongly inferred, 30-59 = educated guess).
+Raw JSON only.`, "", 2000);
+
+    let coFields: any = {}, coConf: any = {};
+    try {
+      const p = JSON.parse(coRaw.replace(/```json|```/g,"").trim());
+      coFields = p.fields ?? {}; coConf = p.confidence ?? {};
+      for (const [k, v] of Object.entries(coFields)) { if (typeof v === "string") coFields[k] = normalizeIntake(v); }
+    } catch {}
+
+    // Step 3: Reverse-engineer ICP
+    updateToast(toastId, { message:"Reverse-engineering ICP profile…" });
+    const selectedIcp = targetIcp !== "new" ? (existingIcps||[]).find((x:any) => x.id === targetIcp) : null;
+    const icpRaw = await callAI(`
+You are reverse-engineering an existing outreach campaign. The data may include email copy, contact lists, prospect data, targeting filters, or performance metrics.
+
+EXTRACTED CAMPAIGN CONTENT & ANALYSIS:
+${allContent.slice(0,5000)}
+
+INFERRED COMPANY PROFILE:
+${JSON.stringify(coFields)}
+${selectedIcp ? `\nEXISTING ICP TO UPDATE (merge new findings into this, preserve what's already good, improve what's weak):\nName: ${selectedIcp.name}\nFields: ${JSON.stringify(selectedIcp.data)}\n` : ""}
+Build a complete ICP from ALL available signals.${selectedIcp ? " IMPORTANT: You are UPDATING an existing ICP — keep existing field values that are already strong, and enrich/replace only where the screenshot data provides better or additional information." : ""}
+- CONTACT LISTS/PROSPECT DATA: If you see company names, domains, emails — analyze what industry they're in, what size, what they have in common. This IS the target audience. Use it to fill industries, co_sizes, geo, buyer titles, keywords.
+- EMAIL/LINKEDIN COPY: Extract pains, gains, tone, hooks, CTAs, objections from the actual messaging.
+- TARGETING FILTERS: Use any visible filters for industries, titles, geo, intent topics.
+- PERFORMANCE DATA: Infer what messaging angles are working based on metrics.
+- Name the ICP based on the actual audience pattern you observe (e.g., "Bicycle Retail — Shop Owners" not just "Small Business").
+
+Return ONLY JSON:
+{"name":"descriptive ICP name based on what you see","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":""},
+"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"keywords":0,"dream_accts":0,"neg":0,"intent_topics":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0}}
+co_sizes: array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
+tone: pick the best match from "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
+cta: pick the best match from "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
+Raw JSON only.`, "", 2000);
+
+    let icpFields: any = {}, icpName = "Analyzed Campaign", icpConf: any = {};
+    try {
+      const p = JSON.parse(icpRaw.replace(/```json|```/g,"").trim());
+      icpFields = p.fields ?? {}; icpName = p.name || icpName; icpConf = p.confidence ?? {};
+      for (const [k, v] of Object.entries(icpFields)) { if (typeof v === "string") icpFields[k] = normalizeIntake(v); }
+    } catch {}
+
+    const icps = [newICP(0, icpFields, icpName, icpConf)];
+
+    // Step 4: Gap analysis + improvement recommendations
+    updateToast(toastId, { message:"Generating gap analysis & improvements…" });
+    const analysisRaw = await callAI(`
+You analyzed an existing outreach campaign from screenshots. Now provide a gap analysis and improvement recommendations.
+
+COMPANY PROFILE (inferred):
+${JSON.stringify(coFields)}
+
+ICP (reverse-engineered):
+${JSON.stringify({name:icpName, ...icpFields})}
+
+ORIGINAL CAMPAIGN CONTENT:
+${allContent.slice(0,3000)}
+
+Provide a detailed analysis:
+
+**WHAT'S WORKING**
+- What aspects of the current campaign are strong?
+- What messaging angles, pains, or CTAs appear effective?
+
+**GAPS IDENTIFIED**
+- What ICP fields could not be inferred (low confidence)?
+- What targeting data is missing?
+- What messaging elements are weak or generic?
+- What channels are not being used?
+
+**IMPROVEMENT RECOMMENDATIONS**
+- Specific changes to messaging, tone, or copy
+- Missing pain angles or gain narratives
+- Better CTA approaches
+- Additional targeting signals or intent topics
+- Sequence structure improvements
+- Channel expansion opportunities
+
+**PRIORITY ACTIONS**
+1. [Most impactful change]
+2. [Second most impactful]
+3. [Third most impactful]
+
+Be specific — reference the actual copy and data you extracted.`, "", 1500);
+
+    onComplete({
+      coFields, coConf, icps,
+      analysis: analysisRaw,
+      targetIcpId: targetIcp !== "new" ? targetIcp : null,
+    });
+
+    updateToast(toastId, { status:"success", title:"Campaign analysis complete",
+      message:`1 ICP reverse-engineered from ${images.length} screenshot${images.length!==1?"s":""}`,
+      action:{ label:"View ICP", onClick:()=>{} } });
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:300,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      padding:24, backdropFilter:"blur(6px)", overflowY:"auto" }}>
+      <div style={{ width:"100%", maxWidth:560, background:C.canvas, borderRadius:14,
+        border:`1px solid ${C.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.2)",
+        animation:"slideUp .3s cubic-bezier(.2,0,.1,1)" }}>
+
+        {/* Header */}
+        <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${C.border}`,
+          display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ width:38, height:38, borderRadius:10, background:C.amberLo,
+            border:`1px solid ${C.amberBorder}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🔍</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:16, fontWeight:700, color:C.text, fontFamily:head }}>Campaign Analyzer</div>
+            <div style={{ fontSize:12, color:C.muted, fontFamily:body, marginTop:1 }}>Upload screenshots of existing campaigns to reverse-engineer ICP, messaging & strategy</div>
+          </div>
+          <button onClick={onClose} style={{ padding:"6px 10px", borderRadius:6,
+            border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:12, cursor:"pointer" }}>✕</button>
+        </div>
+
+        <div style={{ padding:"20px 24px" }}>
+          {/* Image upload */}
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:6 }}>
+              Campaign Screenshots <span style={{ color:C.muted, fontWeight:400 }}>(email copy, targeting filters, dashboards, LinkedIn messages)</span>
+            </label>
+            <input ref={fileRef} type="file" accept="image/*" multiple hidden
+              onChange={e=>{ if(e.target.files) addImages(e.target.files); }} />
+            <div onClick={()=>fileRef.current?.click()}
+              onDragOver={e=>{e.preventDefault();e.stopPropagation();}}
+              onDrop={e=>{e.preventDefault();e.stopPropagation(); if(e.dataTransfer.files) addImages(e.dataTransfer.files);}}
+              style={{ padding:images.length>0?"12px":"24px 20px", borderRadius:8,
+                border:`1.5px dashed ${images.length>0?C.accent+"55":C.border}`,
+                background:images.length>0?C.accentLo:C.faint,
+                cursor:"pointer", textAlign:"center", transition:"all .2s" }}>
+              {images.length === 0 ? (
+                <div>
+                  <div style={{ fontSize:13, color:C.textSoft, fontFamily:body }}>Drop screenshots here or click to upload</div>
+                  <div style={{ fontSize:11, color:C.muted, fontFamily:mono, marginTop:4 }}>PNG, JPG — multiple files supported</div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8, justifyContent:"center" }}>
+                    {images.map((img, i) => (
+                      <div key={i} style={{ position:"relative" }}>
+                        <img src={img.preview} style={{ width:80, height:60, objectFit:"cover", borderRadius:6, border:`1px solid ${C.border}` }} />
+                        <button onClick={e=>{e.stopPropagation(); setImages(p=>p.filter((_,j)=>j!==i));}}
+                          style={{ position:"absolute", top:-6, right:-6, width:18, height:18, borderRadius:"50%",
+                            background:C.red, color:"#fff", border:"none", fontSize:10, cursor:"pointer",
+                            display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:600, marginTop:8 }}>
+                    {images.length} screenshot{images.length!==1?"s":""} · click to add more
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Target ICP selector */}
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
+              Target ICP
+            </label>
+            <select value={targetIcp} onChange={e=>setTargetIcp(e.target.value)}
+              style={{ width:"100%", padding:"9px 12px", borderRadius:7, border:`1.5px solid ${C.border}`,
+                background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+              <option value="new">+ Create new ICP</option>
+              {(existingIcps||[]).map((icp:any) => (
+                <option key={icp.id} value={icp.id}>{icp.name || "Unnamed ICP"}</option>
+              ))}
+            </select>
+            <div style={{ fontSize:10, color:C.muted, fontFamily:body, marginTop:4 }}>
+              {targetIcp === "new" ? "A new ICP will be created from the analysis." : "The selected ICP will be updated with findings from the screenshots."}
+            </div>
+          </div>
+
+          {/* Operator notes */}
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
+              Additional Notes <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span>
+            </label>
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3}
+              placeholder="Add any context — what's working, what's not, client feedback, campaign goals…"
+              style={{ width:"100%", padding:"9px 12px", borderRadius:7, border:`1.5px solid ${C.border}`,
+                background:C.canvas, color:C.text, fontSize:13, fontFamily:body, lineHeight:1.6,
+                outline:"none", resize:"vertical", boxSizing:"border-box" as const }} />
+          </div>
+
+          {/* Run button */}
+          <button onClick={run} disabled={!canRun}
+            style={{ width:"100%", padding:"12px", borderRadius:8, border:"none",
+              background:canRun?C.amber:C.border, color:canRun?"#fff":C.muted,
+              fontSize:13, fontFamily:head, fontWeight:700, cursor:canRun?"pointer":"default",
+              boxShadow:canRun?`0 2px 10px ${C.amber}44`:"none", transition:"all .2s",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            🔍 Analyze Campaign{images.length>0?` (${images.length} screenshot${images.length!==1?"s":""})`:""}
+          </button>
         </div>
       </div>
     </div>
@@ -2152,7 +2468,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                       display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
                       background:on?`${C.accent}0C`:"transparent", border:"none",
                       borderLeft:`2px solid ${on?C.accent:"transparent"}`,
-                      cursor:"pointer", textAlign:"left", transition:"background .1s" }}
+                      cursor:"pointer", textAlign:"left", transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
                       onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
                       onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
                       <div style={{ flex:1, minWidth:0 }}>
@@ -2186,7 +2502,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                           display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
                           background:on?`${t.color}0C`:"transparent", border:"none",
                           borderLeft:`2px solid ${on?t.color:"transparent"}`,
-                          cursor:"pointer", textAlign:"left", transition:"background .1s" }}
+                          cursor:"pointer", textAlign:"left", transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
                           onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
                           onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
                           <div style={{ flex:1, minWidth:0 }}>
@@ -2206,7 +2522,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           {/* Main content */}
           <div style={{ flex:"1 1 0%", padding:"24px 28px", overflowY:"auto" as const, maxHeight: inline ? undefined : "74vh" }}>
             {panel==="form" && (
-              <div style={{ display:"flex", flexDirection:"column", gap:18, animation:"fadeIn .25s ease" }}>
+              <div key={secTab} style={{ display:"flex", flexDirection:"column", gap:18, animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
                 {isFinalized && (
                   <div style={{ padding:"12px 16px", borderRadius:8, border:"1px solid #8B5CF644", background:"#8B5CF610",
                     display:"flex", alignItems:"center", gap:10, fontSize:11, fontFamily:mono, color:"#8B5CF6", fontWeight:600 }}>
@@ -2246,6 +2562,20 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                 ))}
               </div>
             )}
+            {/* Campaign Analysis Report */}
+            {icp.campaignAnalysis && (
+              <details style={{ marginBottom:16 }}>
+                <summary style={{ fontSize:11, fontFamily:head, fontWeight:700, color:C.amber, cursor:"pointer",
+                  padding:"10px 14px", background:C.amberLo, border:`1px solid ${C.amberBorder}`, borderRadius:8,
+                  userSelect:"none", display:"flex", alignItems:"center", gap:8 }}>
+                  🔍 Campaign Analysis Report — Gap Analysis & Improvements
+                </summary>
+                <div style={{ padding:"16px", border:`1px solid ${C.border}`, borderTop:"none", borderRadius:"0 0 8px 8px",
+                  fontSize:13, fontFamily:body, color:C.textSoft, lineHeight:1.8 }}>
+                  {renderOutputContent(icp.campaignAnalysis)}
+                </div>
+              </details>
+            )}
             {panel==="outputs" && !icp.outputs && (
               <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
                 gap:16, padding:"60px 24px", textAlign:"center", animation:"fadeIn .25s ease" }}>
@@ -2273,7 +2603,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               </div>
             )}
             {panel==="outputs" && icp.outputs && (
-              <div style={{ animation:"fadeIn .25s ease" }}>
+              <div key={outTab} style={{ animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18 }}>
                   <span style={{ fontSize:15, color:curOT.color }}>{curOT.icon}</span>
                   <span style={{ fontSize:13, fontWeight:700, color:C.text, fontFamily:head }}>{curOT.label}</span>
@@ -2872,7 +3202,7 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
                   display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
                   background: on ? `${C.accent}0C` : "transparent", border:"none",
                   borderLeft:`2px solid ${on ? C.accent : "transparent"}`,
-                  cursor:"pointer", textAlign:"left", transition:"background .1s" }}
+                  cursor:"pointer", textAlign:"left", transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
                   onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
                   onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
                   <div style={{ flex:1, minWidth:0 }}>
@@ -2891,7 +3221,7 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
 
       {/* Fields */}
       <div style={{ flex:1, padding:"24px 28px", overflowY:"auto", minHeight:0 }}>
-        <div style={{ display:"flex", flexDirection:"column", gap:18, animation:"fadeIn .25s ease" }}>
+        <div key={secTab} style={{ display:"flex", flexDirection:"column", gap:18, animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
             <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head }}>{sec.label}</div>
             <span style={{ fontSize:11, color:C.muted, fontFamily:mono }}>{secFill}/{sec.fields.length} filled</span>
@@ -3221,7 +3551,7 @@ For percentages with raw counts shown (e.g. "45% (450 opens)"), use the raw coun
               <div key={entry.id} style={{ display:"grid", gridTemplateColumns:COLS, gap:0,
                 padding:"11px 16px", alignItems:"center",
                 background:rowBg, borderBottom:idx<filtered.length-1?`1px solid ${C.border}`:"none",
-                transition:"background .1s" }}
+                transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
                 onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=C.faint}
                 onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=rowBg}>
                 {/* Date + label */}
@@ -6001,6 +6331,7 @@ function AppMain() {
   const [addPopPos,      setAddPopPos]      = useState<{top:number;left:number}|null>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [showQS,         setShowQS]         = useState(false);
+  const [showAnalyzer,   setShowAnalyzer]   = useState(false);
   const [currentRole,    setCurrentRole]    = useState("team");
   const [activeWorkspace,setActiveWorkspace]= useState(null);
   const [appMode,        setAppMode]        = useState<"app"|"admin">("app");
@@ -6235,6 +6566,42 @@ Raw JSON only.`, "", 1400);
     setView("icps");
   }, []);
 
+  const handleAnalyzerComplete = useCallback(result => {
+    // Merge company fields
+    setCompanyData(prev => {
+      const merged = { ...prev };
+      for (const [k, v] of Object.entries(result.coFields)) {
+        if (v && String(v).trim()) merged[k] = v;
+      }
+      return merged;
+    });
+    setCompanyConf(prev => ({ ...prev, ...result.coConf }));
+
+    if (result.targetIcpId) {
+      // Update existing ICP — merge fields
+      const newIcpData = result.icps[0]?.data || {};
+      const newIcpConf = result.icps[0]?.confidence || {};
+      setIcps(prev => prev.map(i => {
+        if (i.id !== result.targetIcpId) return i;
+        const mergedData = { ...i.data };
+        for (const [k, v] of Object.entries(newIcpData)) {
+          if (v && (Array.isArray(v) ? v.length > 0 : String(v).trim())) mergedData[k] = v;
+        }
+        const mergedConf = { ...(i.confidence||{}), ...newIcpConf };
+        return { ...i, data:mergedData, confidence:mergedConf, campaignAnalysis:result.analysis||i.campaignAnalysis };
+      }));
+    } else {
+      // Add new ICP
+      setIcps(prev => [...prev, ...result.icps]);
+      if (result.analysis && result.icps[0]) {
+        setIcps(prev => prev.map(i => i.id === result.icps[0].id ? { ...i, campaignAnalysis: result.analysis } : i));
+      }
+    }
+
+    setShowAnalyzer(false);
+    setView("icps");
+  }, []);
+
   const updateICP = useCallback(updated => {
     setIcps(p => p.map(i=>i.id===updated.id?updated:i));
   }, []);
@@ -6262,7 +6629,28 @@ Raw JSON only.`, "", 1400);
         body{background:${C.bg};color:${C.text};-webkit-font-smoothing:antialiased;}
         input,textarea,select{outline:none;}
         select option{background:${C.canvas};}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes contentFade{
+          0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
+          100%{opacity:1;transform:scale(1);filter:blur(0px)}
+        }
+        @keyframes toastIn{
+          0%{opacity:0;transform:translateY(40px) scale(0.95)}
+          100%{opacity:1;transform:translateY(0) scale(1)}
+        }
+        @keyframes toastOut{
+          0%{opacity:1;transform:translateY(0) scale(1)}
+          100%{opacity:0;transform:translateY(10px) scale(0.97)}
+        }
+        @keyframes fieldLock{
+          0%{box-shadow:0 0 0 0 rgba(14,158,110,0.4)}
+          40%{box-shadow:0 0 0 4px rgba(14,158,110,0.2)}
+          100%{box-shadow:0 0 0 0 rgba(14,158,110,0)}
+        }
+        @keyframes icpSlideIn{
+          0%{opacity:0;transform:translateY(-12px) scale(0.97)}
+          100%{opacity:1;transform:translateY(0) scale(1)}
+        }
         @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
         @keyframes aiSpark{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
@@ -6319,39 +6707,43 @@ Raw JSON only.`, "", 1400);
               {activeWorkspace && currentRole === "team" && (
                 <button onClick={()=>setShowQS(true)}
                   style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 12px",
-                    borderRadius:8, border:"none", background:C.accent, color:"#fff",
-                    cursor:"pointer", textAlign:"left", marginBottom:6,
-                    position:"relative", overflow:"hidden",
-                    boxShadow:`0 2px 10px ${C.accent}44`, transition:"box-shadow .2s" }}
-                  onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 4px 16px ${C.accent}66`}
-                  onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 2px 10px ${C.accent}44`}>
-                  {/* Sheen */}
-                  <span style={{ position:"absolute", top:0, left:0, width:"40%", height:"100%",
-                    background:"linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.3) 50%, transparent 80%)",
-                    animation:"aiSheen 2.8s ease-in-out infinite", pointerEvents:"none" }} />
-                  <span style={{ fontSize:16, animation:"qsBolt 2s ease-in-out infinite", display:"inline-block" }}>⚡</span>
+                    borderRadius:8, border:`1.5px solid ${C.greenBorder}`, background:C.greenLo,
+                    color:C.green, cursor:"pointer", textAlign:"left", marginBottom:6,
+                    transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", transform:"scale(1)" }}
+                  onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=`${C.green}18`;(e.currentTarget as HTMLButtonElement).style.transform="scale(1.02)";}}
+                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.greenLo;(e.currentTarget as HTMLButtonElement).style.transform="scale(1)";}}>
+                  <span style={{ fontSize:16 }}>⚡</span>
                   <span style={{ fontSize:12.5, fontFamily:head, fontWeight:700 }}>Quick Start</span>
                 </button>
               )}
 
-              {/* Strategy AI Chat button */}
+              {/* Campaign Analyzer */}
+              {activeWorkspace && currentRole === "team" && (
+                <button onClick={()=>setShowAnalyzer(true)}
+                  style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 12px",
+                    borderRadius:8, border:`1.5px solid ${C.amberBorder}`, background:C.amberLo,
+                    color:C.amber, cursor:"pointer", textAlign:"left", marginBottom:6,
+                    transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", transform:"scale(1)" }}
+                  onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=`${C.amber}18`;(e.currentTarget as HTMLButtonElement).style.transform="scale(1.02)";}}
+                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.amberLo;(e.currentTarget as HTMLButtonElement).style.transform="scale(1)";}}>
+                  <span style={{ fontSize:15 }}>🔍</span>
+                  <span style={{ fontSize:12.5, fontFamily:head, fontWeight:700 }}>Analyze Existing</span>
+                </button>
+              )}
+
+              {/* Co-Pilot button */}
               {activeWorkspace && (
                 <button onClick={()=>setView("chat")}
                   style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 12px",
                     borderRadius:8, border:`1.5px solid ${view==="chat" ? C.accent+"55" : C.border}`,
                     background: view==="chat" ? C.accentLo : C.canvas,
-                    color: view==="chat" ? C.text : C.textSoft,
-                    cursor:"pointer", textAlign:"left", marginBottom:8, transition:"all .15s" }}
-                  onMouseEnter={e=>{ if(view!=="chat")(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
-                  onMouseLeave={e=>{ if(view!=="chat")(e.currentTarget as HTMLButtonElement).style.background=C.canvas; }}>
-                  <span style={{ fontSize:15, color: view==="chat" ? C.accent : C.muted }}>◎</span>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:12.5, fontFamily:head, fontWeight: view==="chat" ? 700 : 600,
-                      color: view==="chat" ? C.text : C.textSoft }}>Strategy AI</div>
-                    <div style={{ fontSize:10, fontFamily:mono, color:C.muted }}>
-                      {chats.length > 0 ? `${chats.length} conversation${chats.length!==1?"s":""}` : "Live chat agent"}
-                    </div>
-                  </div>
+                    color: view==="chat" ? C.accent : C.textSoft,
+                    cursor:"pointer", textAlign:"left", marginBottom:6,
+                    transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", transform:"scale(1)" }}
+                  onMouseEnter={e=>{ const b=e.currentTarget as HTMLButtonElement; if(view!=="chat") b.style.background=C.faint; b.style.transform="scale(1.02)"; }}
+                  onMouseLeave={e=>{ const b=e.currentTarget as HTMLButtonElement; if(view!=="chat") b.style.background=C.canvas; b.style.transform="scale(1)"; }}>
+                  <span style={{ fontSize:15 }}>◎</span>
+                  <span style={{ fontSize:12.5, fontFamily:head, fontWeight:700 }}>Copilot</span>
                   {chats.length > 0 && (
                     <span style={{ fontSize:10, fontFamily:mono, color:C.muted, background:C.faint,
                       padding:"2px 6px", borderRadius:10, flexShrink:0 }}>{chats.length}</span>
@@ -6809,7 +7201,10 @@ Raw JSON only.`, "", 1400);
                           onClick={()=>setEditingId(icp.id)}
                           style={{ padding:"8px 10px", borderRadius:7, marginBottom:2, cursor:"pointer", position:"relative",
                             borderLeft:`3px solid ${isSelected?icp.color:"transparent"}`,
-                            background: isSelected ? C.faint : "transparent", transition:"all .1s" }}
+                            background: isSelected ? C.faint : "transparent",
+                            animation:"icpSlideIn .35s cubic-bezier(0.16, 1, 0.3, 1)",
+                            transition:"border-color .3s cubic-bezier(0.16, 1, 0.3, 1), background .25s cubic-bezier(0.16, 1, 0.3, 1), transform .3s cubic-bezier(0.16, 1, 0.3, 1)",
+                            transform: isSelected ? "translateX(2px)" : "translateX(0)" }}
                           onMouseEnter={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=C.faint; (e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="1"); }}
                           onMouseLeave={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background="transparent"; if(icpConfirm?.id!==icp.id && icpFill?.id!==icp.id)(e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="0"); }}>
                           {/* Name + actions row */}
@@ -6852,7 +7247,8 @@ Raw JSON only.`, "", 1400);
                                 {createPortal(
                                   <div style={{ position:"fixed", top:icpConfirm.top??0, left:Math.max(8, Math.min((icpConfirm.left??0), window.innerWidth-180)),
                                     zIndex:2147483647, width:160, background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
-                                    boxShadow:"0 8px 24px rgba(13,15,26,.15)", overflow:"hidden", animation:"fadeIn .1s ease" }}>
+                                    boxShadow:"0 8px 24px rgba(13,15,26,.15)", overflow:"hidden",
+                                    animation:"toastIn .25s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform", transformOrigin:"top right" }}>
                                     <button onMouseDown={e=>{e.stopPropagation(); e.preventDefault(); setIcpConfirm(null); if(!icpFilling){ const card=document.querySelector(`[data-icp-id="${icp.id}"]`) as HTMLElement; const r=card?.getBoundingClientRect(); setIcpFill({id:icp.id,text:"",top:(r?.bottom??200)+4,left:(r?.right??300)+4}); } }}
                                       style={{ display:"block", width:"100%", padding:"8px 12px", border:"none", background:"transparent",
                                         color:C.text, fontSize:11, fontFamily:head, cursor:"pointer", textAlign:"left" }}
@@ -7022,6 +7418,7 @@ Raw JSON only.`, "", 1400);
           addToast={addToast} updateToast={updateToast} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} />}
+      {showAnalyzer && <CampaignAnalyzerModal companyData={companyData} icps={icps} onComplete={handleAnalyzerComplete} onClose={()=>setShowAnalyzer(false)} addToast={addToast} updateToast={updateToast} />}
       {pendingNav && (
         <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:50000,
           display:"flex", alignItems:"center", justifyContent:"center",
