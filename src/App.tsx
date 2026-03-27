@@ -4,9 +4,13 @@ import mammoth from "mammoth";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE SYNC LAYER ─────────────────────────────────────────────────────
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-const supabase: SupabaseClient | null = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const SUPABASE_URL = "https://ndiunvmjwpwvoyrqnmls.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kaXVudm1qd3B3dm95cnFubWxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2Mjg4OTksImV4cCI6MjA5MDIwNDg5OX0.bu-qwXsDDqmTJEAn5KAuriTXgEFwlqxf_eIXBVF-6-Q";
+let supabase: SupabaseClient | null = null;
+try {
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  console.log("[DB] Supabase initialized");
+} catch(e) { console.error("[DB] Failed to init Supabase:", e); }
 const DB_ENABLED = !!supabase;
 
 // Sync helpers — write to both localStorage and Supabase
