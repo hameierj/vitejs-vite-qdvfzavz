@@ -120,7 +120,7 @@ const mono = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 
 // ─── SCHEMA ──────────────────────────────────────────────────────────────────
 const COMPANY_SECTIONS = {
-  contact: { label:"Contact Info", icon:"◎",
+  client: { label:"Client Info", icon:"◎",
     fields:[
       { id:"co_name",         label:"Company Name",               type:"text",     ph:"",                                                    required:true, hint:"Exactly as you want it to appear in outreach messages", noConf:true },
       { id:"co_contact_first",label:"Contact First Name",         type:"text",     ph:"",                                                   hint:"Primary point of contact for this account", noConf:true },
@@ -129,44 +129,6 @@ const COMPANY_SECTIONS = {
       { id:"co_contact_phone",label:"Contact Phone Number",       type:"text",     ph:"", noConf:true },
       { id:"co_contact_email",label:"Contact Business Email",     type:"text",     ph:"",                                                   hint:"Primary business email address", noConf:true },
       { id:"co_login_email",  label:"B2B Rocket Login Email",     type:"text",     ph:"",                                                   hint:"Email used to login to app.b2brocket.ai", noConf:true },
-    ]
-  },
-  overview: { label:"Company Overview", icon:"◉",
-    fields:[
-      { id:"co_industry",     label:"Industry",                   type:"text",     ph:"B2B SaaS, FinTech, Healthcare IT…",                  hint:"The industry or vertical this company operates in" },
-      { id:"co_website",      label:"Website",                    type:"text",     ph:"https://acme.com",                                   hint:"Primary marketing site" },
-      { id:"co_pitch",        label:"Value Proposition",          type:"textarea", ph:"A clear statement explaining the unique benefits your product offers, why customers should choose you over competitors, and how you solve their problems.", rows:3, hint:"The core promise of value delivered — goes beyond a one-liner" },
-      { id:"co_product",      label:"What do you actually sell?",  type:"textarea", ph:"Describe each product/service in detail — what it is, how it works, components, functionality, variations, pricing, delivery.", rows:4, hint:"If your grandmother couldn\'t follow it, simplify further" },
-    ]
-  },
-  products: { label:"Products & Services", icon:"◇",
-    fields:[
-      { id:"co_prod_breakdown", label:"Product/Service Decomposition", type:"textarea", ph:"Product 1: Equipment Financing\n- Ideal buyer: Small construction business owners\n- Pains it solves: Can\'t take on more jobs without equipment\n- Gains it delivers: More jobs, more revenue, faster project completion\n- Triggers: Winning a bid, seasonal ramp, equipment breakdown\n- Buying signals: Searching equipment financing, requesting quotes\n- Objections: Rate sensitivity, trust concerns\n- Positioning: Speed + flexibility + human underwriting\n\nProduct 2: ...", rows:12, hint:"Break down each product/service — who buys it, why, when, what pain, what gain, what signal" },
-      { id:"co_category",       label:"Market Category / Position",    type:"textarea", ph:"Equipment financing for SMB construction — speed and flexibility play against slow banks.", rows:2, hint:"Where you sit in the market and how buyers categorize you" },
-      { id:"co_competitors",    label:"Competitors / Alternatives",    type:"textarea", ph:"Banks (slow, rigid), dealer financing (limited), competitor lenders. What buyers do instead of buying from you.", rows:2, hint:"Include both direct competitors and the status quo" },
-      { id:"co_buying_motion",  label:"Likely Buying Motion",          type:"textarea", ph:"Direct sales, inbound leads, partner/channel referrals, self-serve…", rows:2, hint:"How deals actually happen — direct vs channel vs inbound" },
-      { id:"co_trust_risks",    label:"Trust / Risk Factors",          type:"textarea", ph:"Prospects worry about hidden fees, legitimacy, process friction, rate bait-and-switch…", rows:2, hint:"What makes prospects hesitate before engaging" },
-    ]
-  },
-  edge: { label:"Competitive Edge", icon:"◆",
-    fields:[
-      { id:"co_ksp",          label:"Key Selling Points",          type:"textarea", ph:"Unique benefits that make you stand out. E.g. \'melts in your mouth, not in your hand\' (product feature), guaranteed uptime SLA (reliability), 24/7 white-glove support (service).", rows:3, hint:"Quality, price, convenience, guarantees, or solving a specific problem competitors can\'t" },
-      { id:"co_diff",         label:"Real Differentiators",        type:"textarea", ph:"Not \'faster or cheaper.\' What do you do that no competitor can honestly claim?", rows:2, hint:"If every competitor could say it, it doesn\'t count" },
-      { id:"co_proof",        label:"Proof That Works",            type:"textarea", ph:"\'3× pipeline in 90 days for Acme.\' Logos, stats, G2 ratings, case study numbers, testimonials.", rows:2, hint:"The single stat or name that makes skeptics pause" },
-      { id:"co_customers",    label:"Current Customers",           type:"textarea", ph:"List a few current customers with website/LinkedIn URLs.", rows:2, hint:"Used for social proof and lookalike targeting" },
-      { id:"co_dream",        label:"Dream Customers",             type:"textarea", ph:"Companies you\'d love to land — website/LinkedIn URLs.", rows:2, hint:"Helps define the ideal profile and targeting criteria" },
-    ]
-  },
-  sales: { label:"Sales Profile", icon:"◈",
-    fields:[
-      { id:"co_deal",         label:"Avg Deal Size",               type:"select",   opts:["<$1K","$1K–$5K","$5K–$25K","$25K–$100K","$100K+"], noConf:true },
-      { id:"co_cycle",        label:"Sales Cycle",                 type:"select",   opts:["<1 week","1–4 weeks","1–3 months","3–6 months","6+ months"], noConf:true },
-      { id:"co_goal",         label:"Monthly Meetings Goal",       type:"select",   opts:["1–5","5–10","10–20","20–30","30+"], noConf:true },
-      { id:"co_past_emails",  label:"Past Email Examples",         type:"textarea", ph:"Paste your best-performing email copy here — subject lines and body text.", rows:4, hint:"Helps us match your proven style and tone", noConf:true },
-    ]
-  },
-  campaign: { label:"Campaign Setup", icon:"◑",
-    fields:[
       { id:"co_channels",     label:"Outreach Channels",           type:"chips",    opts:["Email","LinkedIn","AI Calls"], noConf:true },
       { id:"co_num_campaigns",label:"Number of Campaigns",         type:"select",   opts:["1","2","3","4","5+"],                            hint:"How many campaigns to start with", noConf:true },
       { id:"co_campaign_purpose",label:"Campaign Purpose",         type:"textarea", ph:"Describe the purpose of each campaign — e.g. \'Campaign 1: target enterprise CFOs for demo bookings\'", rows:3, noConf:true },
@@ -175,6 +137,32 @@ const COMPANY_SECTIONS = {
       { id:"co_days",         label:"Campaign Days",               type:"chips",    opts:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], noConf:true },
       { id:"co_start_time",   label:"Daily Start Time",            type:"text",     ph:"9:00 AM", noConf:true },
       { id:"co_end_time",     label:"Daily End Time",              type:"text",     ph:"5:00 PM", noConf:true },
+      { id:"co_deal",         label:"Avg Deal Size",               type:"select",   opts:["<$1K","$1K–$5K","$5K–$25K","$25K–$100K","$100K+"], noConf:true },
+      { id:"co_cycle",        label:"Sales Cycle",                 type:"select",   opts:["<1 week","1–4 weeks","1–3 months","3–6 months","6+ months"], noConf:true },
+      { id:"co_goal",         label:"Monthly Meetings Goal",       type:"select",   opts:["1–5","5–10","10–20","20–30","30+"], noConf:true },
+    ]
+  },
+  business: { label:"Business Profile", icon:"◉",
+    fields:[
+      { id:"co_industry",     label:"Industry",                   type:"text",     ph:"B2B SaaS, FinTech, Healthcare IT…",                  hint:"The industry or vertical this company operates in" },
+      { id:"co_website",      label:"Website",                    type:"text",     ph:"https://acme.com",                                   hint:"Primary marketing site" },
+      { id:"co_pitch",        label:"Value Proposition",          type:"textarea", ph:"A clear statement explaining the unique benefits your product offers, why customers should choose you over competitors, and how you solve their problems.", rows:3, hint:"The core promise of value delivered — goes beyond a one-liner" },
+      { id:"co_product",      label:"What do you actually sell?",  type:"textarea", ph:"Describe each product/service in detail — what it is, how it works, components, functionality, variations, pricing, delivery.", rows:4, hint:"If your grandmother couldn\'t follow it, simplify further" },
+      { id:"co_prod_breakdown", label:"Product/Service Decomposition", type:"textarea", ph:"Product 1: Equipment Financing\n- Ideal buyer: ...\n- Pains it solves: ...\n- Gains: ...\n- Triggers: ...\n\nProduct 2: ...", rows:8, hint:"Break down each product/service — who buys it, why, when, what pain, what gain" },
+      { id:"co_category",       label:"Market Category / Position",    type:"textarea", ph:"Equipment financing for SMB construction — speed and flexibility play against slow banks.", rows:2, hint:"Where you sit in the market and how buyers categorize you" },
+      { id:"co_competitors",    label:"Competitors / Alternatives",    type:"textarea", ph:"Banks (slow, rigid), dealer financing (limited), competitor lenders.", rows:2, hint:"Include both direct competitors and the status quo" },
+      { id:"co_buying_motion",  label:"Likely Buying Motion",          type:"textarea", ph:"Direct sales, inbound leads, partner/channel referrals, self-serve…", rows:2, hint:"How deals actually happen — direct vs channel vs inbound" },
+      { id:"co_trust_risks",    label:"Trust / Risk Factors",          type:"textarea", ph:"Prospects worry about hidden fees, legitimacy, process friction…", rows:2, hint:"What makes prospects hesitate before engaging" },
+      { id:"co_ksp",          label:"Key Selling Points",          type:"textarea", ph:"Unique benefits that make you stand out.", rows:3, hint:"Quality, price, convenience, guarantees, or solving a specific problem competitors can\'t" },
+      { id:"co_diff",         label:"Real Differentiators",        type:"textarea", ph:"Not \'faster or cheaper.\' What do you do that no competitor can honestly claim?", rows:2, hint:"If every competitor could say it, it doesn\'t count" },
+      { id:"co_proof",        label:"Proof That Works",            type:"textarea", ph:"\'3× pipeline in 90 days for Acme.\' Logos, stats, G2 ratings, testimonials.", rows:2, hint:"The single stat or name that makes skeptics pause" },
+      { id:"co_customers",    label:"Current Customers",           type:"textarea", ph:"List a few current customers with website/LinkedIn URLs.", rows:2, hint:"Used for social proof and lookalike targeting" },
+      { id:"co_dream",        label:"Dream Customers",             type:"textarea", ph:"Companies you\'d love to land — website/LinkedIn URLs.", rows:2, hint:"Helps define the ideal profile and targeting criteria" },
+    ]
+  },
+  guardrails: { label:"Sales & Messaging", icon:"◈",
+    fields:[
+      { id:"co_past_emails",  label:"Past Email Examples",         type:"textarea", ph:"Paste your best-performing email copy here — subject lines and body text.", rows:4, hint:"Helps us match your proven style and tone", noConf:true },
       { id:"co_exclude",      label:"Global Exclude List",         type:"textarea", ph:"Current customers, investors, specific domains.",     hint:"Anyone we should never contact — applies to all ICPs", noConf:true },
       { id:"co_avoid",        label:"Copy — Always Avoid",         type:"textarea", ph:"Competitor names, pricing language, banned phrases.", hint:"Topics or angles that are off-limits in email copy", noConf:true },
     ]
@@ -4411,7 +4399,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
 function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, onConfLock, fileContext = "" }) {
   const [aiOn, setAiOn] = useState(null);
   const [aiOptions, setAiOptions] = useState<Record<string,any[]>>({});
-  const [secTab, setSecTab] = useState("contact");
+  const [secTab, setSecTab] = useState("client");
   const origRef = useRef<Record<string,any>>({});
 
   const upd = (id, v) => onChange({ ...data, [id]: v });
@@ -4468,8 +4456,7 @@ function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, on
       {/* Section nav */}
       <div style={{ width:170, background:C.surface, borderRight:`1px solid ${C.border}`, flexShrink:0, padding:"6px", overflowY:"auto" }}>
         {[
-          { group:"Manual Input", keys:["contact","sales","campaign"] },
-          { group:"AI Generated", keys:["overview","products","edge"] },
+          { group:"Sections", keys:["client","business","guardrails"] },
         ].map((g, gi) => (
           <div key={g.group} style={{ border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden", marginBottom:gi===0?6:0 }}>
             <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
