@@ -6236,8 +6236,10 @@ const ENV_USERS: UserRecord[] = (() => {
   try {
     const raw = import.meta.env.VITE_USERS;
     if (!raw) return [];
-    console.log("[Auth] VITE_USERS raw:", typeof raw, raw.slice(0, 100));
-    const parsed = JSON.parse(raw);
+    // Clean control characters and extra whitespace that Vercel may inject
+    const cleaned = raw.replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim();
+    console.log("[Auth] VITE_USERS cleaned:", cleaned.slice(0, 120));
+    const parsed = JSON.parse(cleaned);
     console.log("[Auth] Parsed", parsed.length, "env users");
     return parsed.map((u: any, i: number) => ({
       id: `env-${i}`, name: u.name || u.email?.split("@")[0] || "User",
