@@ -7943,6 +7943,7 @@ function AppMain() {
     } catch { return null; }
   });
   const [view,           setView]           = useState("accounts");
+  const [analyticsTab,   setAnalyticsTab]   = useState<"perf"|"roi">("perf");
   const [acctSearch,     setAcctSearch]     = useState("");
   const [showCreateAcct, setShowCreateAcct] = useState(false);
   const [newAcctName, setNewAcctName] = useState("");
@@ -8448,8 +8449,7 @@ Raw JSON only.`, "", 1400);
             : [
                 { id:"company", label:"Client Profile",  icon:"◉", sub:`${companyPct}% complete` },
                 { id:"icps",    label:"ICP Profiles",     icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
-                { id:"perf",    label:"Performance",      icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
-                { id:"roi",     label:"ROI Dashboard",     icon:"◈", sub:"Investment returns" },
+                { id:"analytics", label:"Analytics",        icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
                 { id:"files",   label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
               ];
           return (
@@ -9211,25 +9211,35 @@ Raw JSON only.`, "", 1400);
             )}
 
 
-            {view==="perf" && (
+            {view==="analytics" && (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-              <PerformancePanel
-                perfLogs={perfLogs}
-                onLogsChange={setPerfLogs}
-                icps={icps}
-              />
-              </div>
-            )}
-
-            {view==="roi" && (
-              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-              <RoiDashboard
-                roiConfig={roiConfig}
-                onConfigChange={setRoiConfig}
-                perfLogs={perfLogs}
-                icps={icps}
-                companyData={companyData}
-              />
+                {/* Analytics tab switcher */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 0 0" }}>
+                  <div>
+                    <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>Analytics</h2>
+                    <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
+                      Campaign performance metrics and ROI tracking
+                    </p>
+                  </div>
+                  <div style={{ display:"flex", gap:2, background:C.faint, borderRadius:8, padding:3, border:`1px solid ${C.border}` }}>
+                    {[["perf","Performance"],["roi","ROI"]].map(([v,l]) => (
+                      <button key={v} onClick={()=>setAnalyticsTab(v as any)} style={{
+                        padding:"6px 16px", borderRadius:6, border:"none",
+                        background:analyticsTab===v?C.canvas:"transparent",
+                        color:analyticsTab===v?C.text:C.muted,
+                        fontSize:11, fontFamily:head, fontWeight:analyticsTab===v?700:500,
+                        cursor:"pointer", boxShadow:analyticsTab===v?"0 1px 3px rgba(0,0,0,0.06)":"none",
+                        transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                <div key={analyticsTab} style={{ animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
+                  {analyticsTab==="perf" ? (
+                    <PerformancePanel perfLogs={perfLogs} onLogsChange={setPerfLogs} icps={icps} />
+                  ) : (
+                    <RoiDashboard roiConfig={roiConfig} onConfigChange={setRoiConfig} perfLogs={perfLogs} icps={icps} companyData={companyData} />
+                  )}
+                </div>
               </div>
             )}
 
