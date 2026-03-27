@@ -6241,11 +6241,17 @@ const ENV_USERS: UserRecord[] = (() => {
     console.log("[Auth] VITE_USERS cleaned:", cleaned.slice(0, 120));
     const parsed = JSON.parse(cleaned);
     console.log("[Auth] Parsed", parsed.length, "env users");
-    return parsed.map((u: any, i: number) => ({
-      id: `env-${i}`, name: u.name || u.email?.split("@")[0] || "User",
-      email: u.email, password: u.password, role: u.role || "team",
-      status: "active" as const, createdAt: "2026-01-01",
-    }));
+    return parsed.map((u: any, i: number) => {
+      // Clean each field — Vercel may inject spaces mid-value
+      const email = (u.email||"").replace(/\s/g, "");
+      const password = (u.password||"").replace(/\s/g, "");
+      const name = (u.name||email.split("@")[0]||"User").trim();
+      if (!email) return null;
+      return {
+        id: `env-${i}`, name, email, password, role: u.role || "team",
+        status: "active" as const, createdAt: "2026-01-01",
+      };
+    }).filter(Boolean) as UserRecord[];
   } catch (e) { console.error("[Auth] Failed to parse VITE_USERS:", e); return []; }
 })();
 
@@ -7334,6 +7340,7 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
     const users = loadUsers();
     console.log("[Auth] Login attempt:", email.trim(), "| Available users:", users.map(u => u.email));
     const match = users.find(u =>
+      u.email && u.password &&
       u.email.toLowerCase() === email.trim().toLowerCase() &&
       u.password === password.trim() &&
       u.status === "active"
