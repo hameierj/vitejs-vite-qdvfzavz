@@ -8477,32 +8477,51 @@ Raw JSON only.`, "", 1400);
             {/* ── Scrollable nav area ── */}
             <div style={{ flex:1, overflowY:"auto", padding:"8px 8px 0" }}>
 
-              {/* Quick Start */}
+              {/* + New — Quick Start or Analyze Existing */}
               {activeWorkspace && currentRole === "team" && (
-                <button onClick={()=>setShowQS(true)}
-                  style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 12px",
-                    borderRadius:8, border:`1.5px solid ${C.greenBorder}`, background:C.greenLo,
-                    color:C.green, cursor:"pointer", textAlign:"left", marginBottom:6,
-                    transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", transform:"scale(1)" }}
-                  onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=`${C.green}18`;(e.currentTarget as HTMLButtonElement).style.transform="scale(1.02)";}}
-                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.greenLo;(e.currentTarget as HTMLButtonElement).style.transform="scale(1)";}}>
-                  <span style={{ fontSize:16 }}>⚡</span>
-                  <span style={{ fontSize:12.5, fontFamily:head, fontWeight:700 }}>Quick Start</span>
-                </button>
-              )}
-
-              {/* Campaign Analyzer */}
-              {activeWorkspace && currentRole === "team" && (
-                <button onClick={()=>setShowAnalyzer(true)}
-                  style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 12px",
-                    borderRadius:8, border:`1.5px solid ${C.amberBorder}`, background:C.amberLo,
-                    color:C.amber, cursor:"pointer", textAlign:"left", marginBottom:6,
-                    transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", transform:"scale(1)" }}
-                  onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=`${C.amber}18`;(e.currentTarget as HTMLButtonElement).style.transform="scale(1.02)";}}
-                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.amberLo;(e.currentTarget as HTMLButtonElement).style.transform="scale(1)";}}>
-                  <span style={{ fontSize:15 }}>🔍</span>
-                  <span style={{ fontSize:12.5, fontFamily:head, fontWeight:700 }}>Analyze Existing</span>
-                </button>
+                <div style={{ position:"relative", marginBottom:6 }}>
+                  <button onClick={e=>{
+                    const menu = e.currentTarget.nextElementSibling as HTMLElement;
+                    menu.style.display = menu.style.display === "block" ? "none" : "block";
+                  }}
+                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:"10px 12px",
+                      borderRadius:8, border:`1.5px solid ${C.accentBorder}`, background:C.accentLo,
+                      color:C.accent, cursor:"pointer",
+                      transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", transform:"scale(1)" }}
+                    onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.background=`${C.accent}18`;(e.currentTarget as HTMLButtonElement).style.transform="scale(1.02)";}}
+                    onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.background=C.accentLo;(e.currentTarget as HTMLButtonElement).style.transform="scale(1)";}}>
+                    <span style={{ fontSize:14 }}>+</span>
+                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:700 }}>New</span>
+                  </button>
+                  <div style={{ display:"none", position:"absolute", top:"100%", left:0, right:0, marginTop:4,
+                    background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
+                    boxShadow:"0 8px 24px rgba(13,15,26,.15)", zIndex:100, overflow:"hidden",
+                    animation:"contentFade .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
+                    onClick={e=>(e.currentTarget as HTMLElement).style.display="none"}>
+                    <button onClick={()=>setShowQS(true)}
+                      style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 12px",
+                        border:"none", background:"transparent", cursor:"pointer", textAlign:"left" }}
+                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                      <span style={{ fontSize:14 }}>⚡</span>
+                      <div>
+                        <div style={{ fontSize:12, fontFamily:head, fontWeight:700, color:C.text }}>Quick Start</div>
+                        <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>Build from website, docs, or text</div>
+                      </div>
+                    </button>
+                    <button onClick={()=>setShowAnalyzer(true)}
+                      style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 12px",
+                        border:"none", background:"transparent", cursor:"pointer", textAlign:"left" }}
+                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                      <span style={{ fontSize:14 }}>🔍</span>
+                      <div>
+                        <div style={{ fontSize:12, fontFamily:head, fontWeight:700, color:C.text }}>Analyze Existing</div>
+                        <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>Reverse-engineer from screenshots</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
               )}
 
               {/* Co-Pilot button */}
