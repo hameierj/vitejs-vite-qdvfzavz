@@ -238,16 +238,18 @@ const ALL_ICP_FIELDS = Object.values(ICP_SECTIONS).flatMap(s => s.fields);
 const TOTAL_FIELDS = ALL_ICP_FIELDS.length;
 
 const OUTPUT_TABS = [
-  { id:"icp_summary",    label:"ICP Summary",      icon:"◎", color:C.accent },
-  { id:"pain_map",       label:"Pain Map",          icon:"◐", color:C.red    },
-  { id:"strategy_brief", label:"Strategy Brief",    icon:"◒", color:C.amber  },
-  { id:"email_copy",     label:"Email Copy",        icon:"◑", color:C.green  },
-  { id:"linkedin_copy",  label:"LinkedIn Sequence", icon:"◈", color:"#0A66C2" },
-  { id:"call_script",    label:"Cold Call Script",  icon:"◉", color:C.accent },
-  { id:"reply_handlers", label:"Reply Handlers",    icon:"◌", color:C.amber  },
-  { id:"ai_call_script",label:"AI Call Script",    icon:"◎", color:"#8B5CF6" },
-  { id:"exec_recs",     label:"Execution Plan",   icon:"◆", color:C.green   },
+  { id:"strategy",       label:"Strategy",          icon:"◎", color:C.accent,  multi:["icp_summary","pain_map","strategy_brief","exec_recs"] },
+  { id:"email_copy",     label:"Email",             icon:"◑", color:C.green  },
+  { id:"linkedin_copy",  label:"LinkedIn",          icon:"◈", color:"#0A66C2" },
+  { id:"call_script",    label:"Call Scripts",       icon:"◉", color:C.amber,  multi:["call_script","ai_call_script"] },
+  { id:"reply_handlers", label:"Replies",            icon:"◌", color:"#8B5CF6" },
 ];
+// For backwards compat — all individual output keys
+const ALL_OUTPUT_KEYS = ["icp_summary","pain_map","strategy_brief","email_copy","linkedin_copy","call_script","reply_handlers","ai_call_script","exec_recs"];
+const OUTPUT_SECTION_LABELS: Record<string,string> = {
+  icp_summary:"ICP Summary", pain_map:"Pain & Trigger Map", strategy_brief:"Strategy Brief", exec_recs:"Execution Plan",
+  call_script:"Cold Call Script", ai_call_script:"AI Call Script",
+};
 
 // ─── WRITING STYLES ──────────────────────────────────────────────────────────
 const WRITING_STYLES = [
@@ -3737,38 +3739,32 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               </div>
             )}
             {panel==="outputs" && icp.outputs && (
-              <>
-                {[
-                  { group:"Research", tabs:OUTPUT_TABS.filter(t=>["icp_summary","pain_map","strategy_brief"].includes(t.id)) },
-                  { group:"Messaging", tabs:OUTPUT_TABS.filter(t=>["email_copy","linkedin_copy","reply_handlers"].includes(t.id)) },
-                  { group:"Scripts", tabs:OUTPUT_TABS.filter(t=>["call_script","ai_call_script","exec_recs"].includes(t.id)) },
-                ].map((g, gi) => (
-                  <div key={g.group} style={{ margin:"0 6px 6px", border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden" }}>
-                    <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
-                      fontWeight:700, textTransform:"uppercase" as const,
-                      background:C.faint, borderBottom:`1px solid ${C.border}` }}>{g.group}</div>
-                    {g.tabs.map(t => {
-                      const on  = outTab===t.id;
-                      const apr = (icp.sectionApprovals??{})[t.id]==="approved";
-                      return (
-                        <button key={t.id} onClick={()=>setOutTab(t.id)} style={{
-                          display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
-                          background:on?`${t.color}0C`:"transparent", border:"none",
-                          borderLeft:`2px solid ${on?t.color:"transparent"}`,
-                          cursor:"pointer", textAlign:"left", transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
-                          onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
-                          onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:11, fontFamily:head, fontWeight:on?600:400, color:on?C.text:C.muted,
-                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.label}</div>
-                          </div>
-                          {apr && <span style={{ fontSize:9, color:C.green, flexShrink:0 }}>✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
-              </>
+              <div style={{ margin:"0 6px 6px", border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden" }}>
+                <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
+                  fontWeight:700, textTransform:"uppercase" as const,
+                  background:C.faint, borderBottom:`1px solid ${C.border}` }}>Outputs</div>
+                {OUTPUT_TABS.map(t => {
+                  const on = outTab===t.id;
+                  const apr = (t as any).multi
+                    ? ((t as any).multi as string[]).every(k => (icp.sectionApprovals??{})[k]==="approved")
+                    : (icp.sectionApprovals??{})[t.id]==="approved";
+                  return (
+                    <button key={t.id} onClick={()=>setOutTab(t.id)} style={{
+                      display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
+                      background:on?`${t.color}0C`:"transparent", border:"none",
+                      borderLeft:`2px solid ${on?t.color:"transparent"}`,
+                      cursor:"pointer", textAlign:"left", transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
+                      onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                      onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:11, fontFamily:head, fontWeight:on?600:400, color:on?C.text:C.muted,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.label}</div>
+                      </div>
+                      {apr && <span style={{ fontSize:9, color:C.green, flexShrink:0 }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -4290,6 +4286,22 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     onRefineEmail={councilState.status==="idle" ? runSingleEmailRefinement : undefined}
                     refiningEmail={refiningEmail}
                     onRefineAll={councilState.status==="idle" ? runAllWithFeedback : undefined} />
+                ) : curOT.multi ? (
+                  <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.8, fontFamily:body }}>
+                    {(curOT.multi as string[]).map(key => {
+                      const content = icp.outputs[key];
+                      if (!content) return null;
+                      return (
+                        <div key={key} style={{ marginBottom:24 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:C.text, fontFamily:head, marginBottom:8,
+                            padding:"8px 12px", background:C.faint, borderRadius:6, borderLeft:`3px solid ${curOT.color}` }}>
+                            {OUTPUT_SECTION_LABELS[key] || key}
+                          </div>
+                          {renderOutputContent(content)}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : (
                   <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.8, fontFamily:body }}>
                     {renderOutputContent(icp.outputs[outTab])}
