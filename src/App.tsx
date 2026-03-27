@@ -9134,7 +9134,7 @@ Raw JSON only.`, "", 1400);
                                   <button onClick={()=>setIcpConfirm(null)} style={{ flex:1, padding:"6px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
                                   <button onClick={()=>{
                                     if(icpConfirm.action==="del") { setIcps(p=>p.filter(x=>x.id!==icp.id)); if(editingId===icp.id) setEditingId(null); }
-                                    else { const c={...icp,id:uid(),color:ICP_COLORS[icps.length%ICP_COLORS.length],outputs:null,approval:"draft",sectionApprovals:{},comments:[],name:(icp.name||"ICP")+" (copy)",data:{...icp.data}}; setIcps(p=>[...p,c]); }
+                                    else { const c={...icp,id:uid(),color:ICP_COLORS[icps.length%ICP_COLORS.length],approval:"draft",sectionApprovals:{},comments:[],name:(icp.name||"ICP")+" (copy)",data:{...icp.data},outputs:icp.outputs?{...icp.outputs}:null,confidence:{...(icp.confidence||{})},writingStyle:icp.writingStyle,versionHistory:[],qaChecks:{}}; setIcps(p=>[...p,c]); }
                                     setIcpConfirm(null);
                                   }} style={{ flex:1, padding:"6px", borderRadius:6, border:"none", background:icpConfirm.action==="del"?C.red:C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
                                     {icpConfirm.action==="del"?"Delete":"Duplicate"}
