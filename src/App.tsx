@@ -4862,16 +4862,8 @@ For percentages with raw counts shown (e.g. "45% (450 opens)"), use the raw coun
   return (
     <div style={{ animation:"fadeIn .3s ease" }}>
 
-      {/* ── Header ── */}
-      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:16, gap:16, padding:"16px 0 0" }}>
-        <div>
-          <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>
-            Performance
-          </h2>
-          <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
-            Log campaign metrics by date or range, linked to individual ICPs and outputs.
-          </p>
-        </div>
+      {/* ── Actions ── */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", marginBottom:16, gap:8 }}>
         <div style={{ display:"flex", gap:8 }}>
           <label style={{ padding:"9px 16px", borderRadius:8, border:`1px solid ${C.border}`,
             background:C.canvas, color:C.textSoft, fontSize:12, fontFamily:head, fontWeight:600,
@@ -5442,14 +5434,8 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   return (
     <div style={{ animation:"fadeIn .3s ease" }}>
 
-      {/* ── Header ── */}
-      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:16, gap:16, padding:"16px 0 0" }}>
-        <div>
-          <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>ROI Dashboard</h2>
-          <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
-            {cfg.label || "Investment, cost savings & campaign returns."}
-          </p>
-        </div>
+      {/* ── Actions ── */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", marginBottom:16, gap:8 }}>
         <button onClick={()=>setConfigOpen(p=>!p)}
           style={{ padding:"8px 16px", borderRadius:8,
             border:`1px solid ${configOpen ? C.accentBorder : C.border}`,
@@ -9425,24 +9411,31 @@ Raw JSON only.`, "", 1400);
 
             {view==="analytics" && (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                {/* Analytics tab switcher */}
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 0 0" }}>
-                  <div>
-                    <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>Analytics</h2>
-                    <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
-                      Campaign performance metrics and ROI tracking
-                    </p>
-                  </div>
-                  <div style={{ display:"flex", gap:2, background:C.faint, borderRadius:8, padding:3, border:`1px solid ${C.border}` }}>
-                    {[["perf","Performance"],["roi","ROI"]].map(([v,l]) => (
-                      <button key={v} onClick={()=>setAnalyticsTab(v as any)} style={{
-                        padding:"6px 16px", borderRadius:6, border:"none",
-                        background:analyticsTab===v?C.canvas:"transparent",
-                        color:analyticsTab===v?C.text:C.muted,
-                        fontSize:11, fontFamily:head, fontWeight:analyticsTab===v?700:500,
-                        cursor:"pointer", boxShadow:analyticsTab===v?"0 1px 3px rgba(0,0,0,0.06)":"none",
-                        transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}>{l}</button>
-                    ))}
+                {/* Tab bar — replaces both the Analytics header and the sub-panel headers */}
+                <div style={{ padding:"16px 0 12px", borderBottom:`1px solid ${C.border}`, marginBottom:16 }}>
+                  <div style={{ display:"flex", gap:4 }}>
+                    {[
+                      {id:"perf", label:"Performance", sub:`${perfLogs.length} entries`, icon:"📊"},
+                      {id:"roi", label:"ROI", sub:"Investment returns", icon:"💰"},
+                    ].map(t => {
+                      const on = analyticsTab === t.id;
+                      return (
+                        <button key={t.id} onClick={()=>setAnalyticsTab(t.id as any)}
+                          style={{ flex:1, padding:"14px 16px", borderRadius:10, border:`1.5px solid ${on?C.accentBorder:C.border}`,
+                            background:on?C.accentLo:C.canvas, cursor:"pointer", textAlign:"left",
+                            transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}
+                          onMouseEnter={e=>{if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint;}}
+                          onMouseLeave={e=>{if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.canvas;}}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <span style={{ fontSize:18 }}>{t.icon}</span>
+                            <div>
+                              <div style={{ fontSize:14, fontWeight:on?700:600, color:on?C.text:C.textSoft, fontFamily:head }}>{t.label}</div>
+                              <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginTop:1 }}>{t.sub}</div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div key={analyticsTab} style={{ animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
