@@ -249,6 +249,72 @@ const OUTPUT_TABS = [
   { id:"exec_recs",     label:"Execution Plan",   icon:"◆", color:C.green   },
 ];
 
+// ─── WRITING STYLES ──────────────────────────────────────────────────────────
+const WRITING_STYLES = [
+  { id:"professional", label:"Professional", emoji:"💼", color:"#4F46E5",
+    prompt:`Rewrite in a professional but human style. Rules:
+- Sound like a competent senior sales rep, not a marketing department
+- Use plain business English — no jargon, no buzzwords, no "leverage" or "synergy"
+- Confident tone — you know what you're talking about, no hedging
+- Keep sentences medium length, mix short and long naturally
+- Use "you" and "your" — make it about them, not you
+- One clear CTA per message — don't give homework
+- NO exclamation marks. NO emoji. NO "I hope this email finds you well"
+- Sound like someone who sends 3 emails a day, not 300` },
+
+  { id:"casual", label:"Conversational", emoji:"💬", color:"#0EA5E9",
+    prompt:`Rewrite in a casual, conversational human style. Rules:
+- Sound like you're texting a work friend, not writing a business letter
+- Use contractions always — "you're", "don't", "won't", "that's"
+- Start sentences with "So", "Look", "Honestly", "Quick question" sometimes
+- Sentence fragments are fine. One-word sentences too. Like this.
+- Use dashes instead of semicolons — they feel more natural
+- Lowercase subject lines. No title case.
+- CTAs should feel like asking a friend: "worth a quick chat?" not "Would you be available for a 30-minute discovery call?"
+- Occasional typo-level casualness is OK (but don't actually add typos)
+- NO corporate language. If it sounds like it came from a template, rewrite it.
+- Think: how would you actually say this out loud to someone?` },
+
+  { id:"blunt", label:"Blunt & Direct", emoji:"🎯", color:"#DC2626",
+    prompt:`Rewrite in a blunt, no-BS, direct style. Rules:
+- First sentence hits the pain or money lost. No warmup. No introduction.
+- Every sentence earns its place — if it doesn't add value, cut it
+- Max 4-5 sentences per email. Shorter is better.
+- Use periods. Short sentences. Punch.
+- Talk about real things: money, time, jobs, customers, revenue
+- Subject lines should be 3-4 words max, lowercase, feel urgent
+- CTA is one simple question — yes/no, "am I off?", "is that happening?"
+- NO pleasantries. NO "I hope you're doing well". NO "I wanted to reach out"
+- NO features or benefits lists. Just the problem and the cost of ignoring it.
+- Sound like someone who bills $500/hr and doesn't waste words` },
+
+  { id:"storyteller", label:"Storyteller", emoji:"📖", color:"#8B5CF6",
+    prompt:`Rewrite in a storytelling, narrative style. Rules:
+- Open with a scenario: "Picture this:" or "Here's what I keep seeing:" or "Last week I talked to a [title] who..."
+- Paint the problem as a scene — make them see themselves in it
+- Use sensory/emotional language: "stuck", "drowning", "watching money walk out", "that sinking feeling"
+- Build a small arc: situation → tension → hint at resolution
+- DON'T resolve the whole story — leave them curious enough to reply
+- Each follow-up email continues the narrative from a different angle
+- Use "you" language to pull them into the story: "You've probably seen this..."
+- Keep it real — the stories should feel like actual situations, not marketing fables
+- NO bullet points. NO feature lists. Just narrative flow.
+- Think: campfire storytelling meets business problem` },
+
+  { id:"challenger", label:"Challenger", emoji:"⚡", color:"#F59E0B",
+    prompt:`Rewrite in a provocative, challenger style. Rules:
+- Challenge their current approach: "Most [titles] handle this wrong" or "The playbook you're running is 3 years old"
+- Make them slightly uncomfortable — poke at status quo without being rude
+- Use questions that are hard to ignore: "When's the last time you actually measured X?"
+- Create tension between what they think they know and what's actually true
+- Use contrast: "Everyone does X. The ones winning do Y."
+- Imply insider knowledge: "There's a pattern I keep seeing with companies like yours..."
+- CTA should feel like a dare or a test: "Prove me wrong" / "Tell me I'm off base"
+- Be respectful but bold — you're not insulting them, you're challenging their thinking
+- NO sycophantic language. NO "I love what your company is doing"
+- Think: thought-provoking LinkedIn post meets cold email` },
+];
+
 const APPROVAL_CFG = {
   draft:             { label:"Draft",          dot:"#C4C9D9",  text:C.muted,     bg:C.faint     },
   pending_review:    { label:"In Review",      dot:C.amber,    text:C.amber,     bg:C.amberLo   },
@@ -4023,67 +4089,86 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     ✦ Source of Truth — locked on {icp.finalizedSnapshot?.timestamp ? new Date(icp.finalizedSnapshot.timestamp).toLocaleDateString() : ""}
                   </div>
                 )}
-                {/* Rewrite presets dropdown */}
-                {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script"||outTab==="reply_handlers"||outTab==="ai_call_script") && icp.outputs[outTab] && genState!=="running" && !isFinalized && (
-                  <div style={{ position:"relative", display:"inline-block", marginBottom:14 }}>
-                    <button onClick={e => {
-                      const menu = (e.currentTarget.nextElementSibling as HTMLElement);
-                      menu.style.display = menu.style.display === "block" ? "none" : "block";
-                    }} style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${C.border}`,
-                      background:"transparent", color:C.textSoft, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:600 }}>
-                      ✦ Rewrite Style ▾
-                    </button>
-                    <div style={{ display:"none", position:"absolute", top:"100%", left:0, marginTop:4, width:240,
-                      background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
-                      boxShadow:"0 8px 24px rgba(13,15,26,.15)", zIndex:100, overflow:"hidden", maxHeight:320, overflowY:"auto" }}>
-                    {[
-                      {label:"More Direct", instr:"Make it more direct and blunt. Cut filler words. Get to the point faster."},
-                      {label:"More Human", instr:"Make it sound like a real person typed it quickly. Less polished, more conversational. Slightly rough."},
-                      {label:"Less Professional", instr:"Remove corporate language. Use simpler words. Sound like someone talking, not writing a memo."},
-                      {label:"Blue Collar", instr:"Write for blue collar operators. Talk about jobs, crews, timelines, money, family. No buzzwords."},
-                      {label:"More Aggressive", instr:"Make it edgier and slightly confrontational. Lead with pain and loss. Make them feel the cost of inaction."},
-                      {label:"Simpler", instr:"Shorter sentences. Simpler words. A 5th grader should understand it."},
-                      {label:"Vary Openings", instr:"Make each message opening completely different. Different hooks, different angles, different first lines."},
-                      {label:"Easier CTAs", instr:"Make every CTA ultra low-friction. Yes/no reply, quick question, 'am I off?', callback ask. No meetings, no demos, no PDF downloads."},
-                      {label:"Mimic My Style", instr:"STYLE_MIMIC"},
-                    ].map(p => (
-                      <button key={p.label} onClick={async () => {
-                        // Close dropdown
-                        const menu = document.querySelector("[data-rewrite-menu]") as HTMLElement;
-                        if (menu) menu.style.display = "none";
+                {/* Writing Style Selector */}
+                {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script"||outTab==="reply_handlers"||outTab==="ai_call_script") && icp.outputs[outTab] && !isFinalized && (
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                      <span style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4 }}>WRITING STYLE</span>
+                      {icp.writingStyle && (
+                        <span style={{ fontSize:9, fontFamily:mono, color:C.accent, fontWeight:600 }}>
+                          · {WRITING_STYLES.find(s=>s.id===icp.writingStyle)?.label || icp.writingStyle}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                      {WRITING_STYLES.map(style => {
+                        const active = icp.writingStyle === style.id;
+                        return (
+                          <button key={style.id} disabled={genState==="running"} onClick={async () => {
+                            const tab = outTab;
+                            const current = icp.outputs[tab];
+                            setGenState("running");
+                            const rewritten = await callAI(
+                              `${style.prompt}\n\nIMPORTANT: The output must sound like a HUMAN wrote it, not an AI. Read it out loud — if it sounds like a template or a machine, rewrite it again. Every single message should feel like it was typed by a real person who actually cares about the recipient's problem.\n\nContent type: ${tab==="email_copy"?"email sequence":tab==="linkedin_copy"?"LinkedIn sequence":tab==="reply_handlers"?"reply handler scripts":tab==="ai_call_script"?"AI call script":"cold call script"}\nICP context: ${data.buyer||""} in ${data.industries||""}\nPain: ${(data.pain1||"").slice(0,200)}\nProof: ${data.icp_proof||companyData?.co_proof||""}\n\nCurrent content to rewrite:\n${current.slice(0,3500)}\n\nRewrite the ENTIRE content. Keep the same structure/format (same number of emails, same separators). Change the voice, tone, and style completely to match the rules above.`,
+                              "You are a human copywriter, not an AI. You write like a real person — with personality, imperfection, and authenticity. Output only the rewritten content, no commentary.", 2000);
+                            if (rewritten && !rewritten.startsWith("Error")) {
+                              const history = [...(icp.versionHistory || []), {
+                                tab, label:style.label, instruction:style.prompt.slice(0,200),
+                                previousContent:current.slice(0,500)+"…", timestamp:new Date().toISOString()
+                              }];
+                              onUpdate({ ...icp, data, outputs:{ ...icp.outputs, [tab]:rewritten }, versionHistory:history, writingStyle:style.id });
+                            }
+                            setGenState(null);
+                          }}
+                            style={{ padding:"5px 10px", borderRadius:6,
+                              border:`1.5px solid ${active?style.color+"66":C.border}`,
+                              background:active?style.color+"0C":"transparent",
+                              color:active?style.color:C.textSoft,
+                              fontSize:10, fontFamily:head, fontWeight:active?700:500,
+                              cursor:genState==="running"?"default":"pointer",
+                              transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)",
+                              opacity:genState==="running"?.5:1 }}
+                            onMouseEnter={e=>{if(!active&&genState!=="running"){(e.currentTarget as HTMLButtonElement).style.background=style.color+"08";(e.currentTarget as HTMLButtonElement).style.borderColor=style.color+"44";}}}
+                            onMouseLeave={e=>{if(!active){(e.currentTarget as HTMLButtonElement).style.background="transparent";(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;}}}>
+                            {style.emoji} {style.label}
+                          </button>
+                        );
+                      })}
+                      {/* Custom style */}
+                      <button disabled={genState==="running"} onClick={async () => {
+                        const customPrompt = prompt("Describe the writing style you want:\n\nExamples:\n• \"Write like Gary Vee — raw, fast, no filter\"\n• \"Sound like a construction foreman texting his crew\"\n• \"Match this style: [paste example copy]\"");
+                        if (!customPrompt?.trim()) return;
                         const tab = outTab;
                         const current = icp.outputs[tab];
                         setGenState("running");
-                        let instructions = p.instr;
-                        if (p.instr === "STYLE_MIMIC") {
-                          const refCopy = data.ref_emails || companyData?.co_past_emails || "";
-                          if (!refCopy) { alert("Add reference email copy first (in Messaging → Reference Email Copy or Client Profile → Past Email Examples)"); setGenState(null); return; }
-                          const styleAnalysis = await callAI(
-                            `Analyze this writing style in detail. Focus on:\n- sentence length and rhythm\n- level of formality/casualness\n- use of contractions, fragments, slang\n- CTA patterns\n- opening patterns\n- how direct/blunt vs soft\n- emotional register\n- punctuation habits\n- paragraph structure\n\nReference copy:\n${refCopy.slice(0,2000)}\n\nReturn a precise style guide (5-8 rules) that would let someone replicate this exact writing voice.`,
-                            "", 400);
-                          instructions = `Rewrite to match this exact writing style:\n\n${styleAnalysis}\n\nThe rewrite must sound like the same person wrote it. Match rhythm, bluntness, structure, CTA pattern, and emotional register exactly.`;
-                        }
                         const rewritten = await callAI(
-                          `Rewrite this ${tab==="email_copy"?"email sequence":tab==="linkedin_copy"?"LinkedIn sequence":tab==="reply_handlers"?"reply handler scripts":tab==="ai_call_script"?"AI call script":"cold call script"} with these instructions:\n\n${instructions}\n\nICP context: ${data.buyer||""} in ${data.industries||""}\nTone: ${data.tone||"direct"}\n\nCurrent content:\n${current.slice(0,3500)}\n\nRewrite the ENTIRE content. Keep the same structure/format. Only change tone, style, and language as instructed.`,
-                          "You are a world-class B2B outreach copywriter. Output only the rewritten sequence, no commentary.", 1800);
+                          `Rewrite in this exact style:\n\n"${customPrompt}"\n\nIMPORTANT: The output must sound like a HUMAN wrote it, not an AI. It should feel authentic, raw, and real.\n\nContent type: ${tab==="email_copy"?"email sequence":tab==="linkedin_copy"?"LinkedIn sequence":tab==="reply_handlers"?"reply handler scripts":tab==="ai_call_script"?"AI call script":"cold call script"}\nICP context: ${data.buyer||""} in ${data.industries||""}\nPain: ${(data.pain1||"").slice(0,200)}\n\nCurrent content:\n${current.slice(0,3500)}\n\nRewrite the ENTIRE content. Keep the same structure/format. Transform the voice completely.`,
+                          "You are a human copywriter. Write with personality and authenticity. Output only the rewritten content.", 2000);
                         if (rewritten && !rewritten.startsWith("Error")) {
                           const history = [...(icp.versionHistory || []), {
-                            tab, label:p.label, instruction:p.instr==="STYLE_MIMIC"?"Mimic accepted style":p.instr,
+                            tab, label:"Custom: "+customPrompt.slice(0,30), instruction:customPrompt,
                             previousContent:current.slice(0,500)+"…", timestamp:new Date().toISOString()
                           }];
-                          onUpdate({ ...icp, data, outputs:{ ...icp.outputs, [tab]:rewritten }, versionHistory:history });
+                          onUpdate({ ...icp, data, outputs:{ ...icp.outputs, [tab]:rewritten }, versionHistory:history, writingStyle:"custom" });
                         }
                         setGenState(null);
-                      }} disabled={genState==="running"}
-                        style={{ display:"block", width:"100%", padding:"8px 14px", border:"none",
-                          background:"transparent", color:C.text, fontSize:11, fontFamily:mono,
-                          cursor:genState==="running"?"default":"pointer", textAlign:"left" }}
-                        onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
-                        onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
-                        {p.label}
+                      }}
+                        style={{ padding:"5px 10px", borderRadius:6,
+                          border:`1.5px dashed ${icp.writingStyle==="custom"?C.accent+"66":C.border}`,
+                          background:icp.writingStyle==="custom"?C.accentLo:"transparent",
+                          color:icp.writingStyle==="custom"?C.accent:C.muted,
+                          fontSize:10, fontFamily:head, fontWeight:icp.writingStyle==="custom"?700:500,
+                          cursor:genState==="running"?"default":"pointer",
+                          opacity:genState==="running"?.5:1 }}>
+                        ✎ Custom
                       </button>
-                    ))}
                     </div>
+                    {genState==="running" && (
+                      <div style={{ marginTop:8, fontSize:10, fontFamily:mono, color:C.accent, display:"flex", alignItems:"center", gap:6 }}>
+                        <span style={{ animation:"aiSpark 1.2s linear infinite", display:"inline-block" }}>✦</span>
+                        Rewriting in new style…
+                      </div>
+                    )}
                   </div>
                 )}
                 {/* Version History */}
