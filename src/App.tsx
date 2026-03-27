@@ -6233,26 +6233,45 @@ type UserRecord = {
 };
 
 const ENV_USERS: UserRecord[] = (() => {
+  const users: UserRecord[] = [];
+  // Support both VITE_USERS (JSON array) and VITE_USER_1, VITE_USER_2, etc (individual)
+  // Individual format: email:password:name:role (pipe or colon separated)
+  for (let i = 1; i <= 20; i++) {
+    const raw = import.meta.env[`VITE_USER_${i}`];
+    if (!raw) continue;
+    const clean = raw.replace(/[\x00-\x1F\x7F]/g, "").trim();
+    const parts = clean.includes("|") ? clean.split("|") : clean.split(":");
+    if (parts.length >= 2) {
+      users.push({
+        id: `env-${i}`, email: parts[0].replace(/\s/g, "").trim(),
+        password: parts[1].replace(/\s/g, "").trim(),
+        name: (parts[2] || parts[0].split("@")[0] || "User").trim(),
+        role: (parts[3]?.trim() as any) || "team",
+        status: "active", createdAt: "2026-01-01",
+      });
+    }
+  }
+  // Also support VITE_USERS JSON array (fallback)
   try {
     const raw = import.meta.env.VITE_USERS;
-    if (!raw) return [];
-    // Clean control characters and extra whitespace that Vercel may inject
-    const cleaned = raw.replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim();
-    console.log("[Auth] VITE_USERS cleaned:", cleaned.slice(0, 120));
-    const parsed = JSON.parse(cleaned);
-    console.log("[Auth] Parsed", parsed.length, "env users");
-    return parsed.map((u: any, i: number) => {
-      // Clean each field — Vercel may inject spaces mid-value
-      const email = (u.email||"").replace(/\s/g, "");
-      const password = (u.password||"").replace(/\s/g, "");
-      const name = (u.name||email.split("@")[0]||"User").trim();
-      if (!email) return null;
-      return {
-        id: `env-${i}`, name, email, password, role: u.role || "team",
-        status: "active" as const, createdAt: "2026-01-01",
-      };
-    }).filter(Boolean) as UserRecord[];
-  } catch (e) { console.error("[Auth] Failed to parse VITE_USERS:", e); return []; }
+    if (raw) {
+      const cleaned = raw.replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim();
+      const parsed = JSON.parse(cleaned);
+      for (const u of parsed) {
+        const email = (u.email||"").replace(/\s/g, "");
+        const password = (u.password||"").replace(/\s/g, "");
+        if (!email) continue;
+        if (users.some(x => x.email.toLowerCase() === email.toLowerCase())) continue;
+        users.push({
+          id: `env-json-${users.length}`, name: (u.name||email.split("@")[0]||"User").trim(),
+          email, password, role: u.role || "team",
+          status: "active", createdAt: "2026-01-01",
+        });
+      }
+    }
+  } catch {}
+  if (users.length) console.log("[Auth]", users.length, "env users:", users.map(u => u.email));
+  return users;
 })();
 
 const loadUsers = (): UserRecord[] => {
