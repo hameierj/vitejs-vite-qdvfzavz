@@ -13,8 +13,10 @@ const DB_ENABLED = !!supabase;
 const dbPut = async (table: string, key: string, value: any) => {
   if (!supabase) return;
   try {
-    await supabase.from(table).upsert({ key, value }, { onConflict: "key" });
-  } catch (e) { console.warn("[DB] Put failed:", table, key, e); }
+    const { error } = await supabase.from(table).upsert({ key, value }, { onConflict: "key" });
+    if (error) console.error("[DB] Put error:", table, key, error.message);
+    else console.log("[DB] Saved:", table, key);
+  } catch (e) { console.error("[DB] Put failed:", table, key, e); }
 };
 const dbGet = async (table: string, key: string): Promise<any> => {
   if (!supabase) return null;
@@ -63,8 +65,9 @@ async function syncFromCloud() {
 
 // Push local data to cloud
 async function syncToCloud(key: string, value: any, table = "app_data") {
-  if (!supabase) return;
-  dbPut(table, key, value).catch(e => console.warn("[DB] Background sync failed:", e));
+  if (!supabase) { console.log("[DB] No supabase client — skip sync"); return; }
+  console.log("[DB] Syncing to cloud:", table, key);
+  dbPut(table, key, value).catch(e => console.error("[DB] Background sync failed:", e));
 }
 
 // ─── LOGO (embedded) ─────────────────────────────────────────────────────────
