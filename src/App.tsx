@@ -9423,40 +9423,45 @@ Raw JSON only.`, "", 1400);
               return (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ padding:"16px 0 0" }}>
-                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 16px" }}>Analytics</h2>
+                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 20px" }}>Analytics</h2>
                 </div>
 
-                {/* Key metrics row */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginBottom:20 }}>
-                  {[
-                    { label:"Sent", value:fmt(totals.sent), color:C.text },
-                    { label:"Opens", value:totals.opens?`${fmt(totals.opens)}${openRate!=null?` (${openRate}%)`:""}`:"-", color:C.accent },
-                    { label:"Replies", value:totals.replies?`${fmt(totals.replies)}${replyRate!=null?` (${replyRate}%)`:""}`:"-", color:C.amber },
-                    { label:"Positive", value:totals.posReplies?fmt(totals.posReplies):"-", color:C.green },
-                    { label:"Meetings", value:totals.meetings?`${fmt(totals.meetings)}${meetingRate!=null?` (${meetingRate}%)`:""}`:"-", color:C.green },
-                    { label:"Revenue", value:totals.revenue?`$${totals.revenue.toLocaleString()}`:"-", color:"#8B5CF6" },
-                  ].map(m => (
-                    <div key={m.label} style={{ padding:"12px 14px", borderRadius:10, border:`1px solid ${C.border}`, background:C.canvas }}>
-                      <div style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4, marginBottom:4 }}>{m.label}</div>
-                      <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:m.color }}>{m.value}</div>
-                    </div>
-                  ))}
+                {/* ── SECTION 1: ROI Summary ── */}
+                <div style={{ marginBottom:28 }}>
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:10 }}>ROI OVERVIEW</div>
+                  <RoiDashboard roiConfig={roiConfig} onConfigChange={setRoiConfig} perfLogs={perfLogs} icps={icps} companyData={companyData} />
                 </div>
 
-                {/* ROI summary — compact inline */}
-                <details style={{ marginBottom:20 }}>
-                  <summary style={{ fontSize:11, fontFamily:head, fontWeight:700, color:C.text, cursor:"pointer",
-                    padding:"10px 14px", background:C.canvas, border:`1px solid ${C.border}`, borderRadius:10,
-                    userSelect:"none", display:"flex", alignItems:"center", gap:6 }}>
-                    💰 ROI & Cost Tracking
-                  </summary>
-                  <div style={{ marginTop:8 }}>
-                    <RoiDashboard roiConfig={roiConfig} onConfigChange={setRoiConfig} perfLogs={perfLogs} icps={icps} companyData={companyData} />
+                <div style={{ height:1, background:C.border, margin:"0 0 28px" }} />
+
+                {/* ── SECTION 2: Campaign Metrics ── */}
+                <div style={{ marginBottom:28 }}>
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:10 }}>CAMPAIGN METRICS</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10 }}>
+                    {[
+                      { label:"Emails Sent", value:fmt(totals.sent), sub:null, color:C.text },
+                      { label:"Opens", value:fmt(totals.opens), sub:openRate!=null?`${openRate}% rate`:null, color:C.accent },
+                      { label:"Replies", value:fmt(totals.replies), sub:replyRate!=null?`${replyRate}% rate`:null, color:C.amber },
+                      { label:"Positive Replies", value:fmt(totals.posReplies), sub:totals.replies?`${pct(totals.posReplies,totals.replies)}% of replies`:null, color:C.green },
+                      { label:"Meetings Booked", value:fmt(totals.meetings), sub:meetingRate!=null?`${meetingRate}% conversion`:null, color:C.green },
+                      { label:"Revenue", value:totals.revenue?`$${totals.revenue.toLocaleString()}`:"-", sub:totals.meetings?`$${Math.round(totals.revenue/totals.meetings).toLocaleString()}/meeting`:null, color:"#8B5CF6" },
+                    ].map(m => (
+                      <div key={m.label} style={{ padding:"14px 16px", borderRadius:10, border:`1px solid ${C.border}`, background:C.canvas }}>
+                        <div style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4, marginBottom:6 }}>{m.label}</div>
+                        <div style={{ fontSize:22, fontWeight:700, fontFamily:head, color:m.value==="-"?C.muted:m.color, lineHeight:1 }}>{m.value}</div>
+                        {m.sub && <div style={{ fontSize:10, fontFamily:mono, color:C.muted, marginTop:4 }}>{m.sub}</div>}
+                      </div>
+                    ))}
                   </div>
-                </details>
+                </div>
 
-                {/* Performance log — full width */}
-                <PerformancePanel perfLogs={perfLogs} onLogsChange={setPerfLogs} icps={icps} />
+                <div style={{ height:1, background:C.border, margin:"0 0 28px" }} />
+
+                {/* ── SECTION 3: Performance Log ── */}
+                <div>
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:10 }}>PERFORMANCE LOG</div>
+                  <PerformancePanel perfLogs={perfLogs} onLogsChange={setPerfLogs} icps={icps} />
+                </div>
               </div>
               );
             })())}
