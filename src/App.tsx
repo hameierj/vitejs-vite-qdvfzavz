@@ -190,7 +190,7 @@ let _seq = 0;
 const uid = () => `${Date.now()}-${++_seq}`;
 
 function getApiKey() {
-  return window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || "";
+  return window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || import.meta.env.VITE_API_KEY || "";
 }
 
 async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
