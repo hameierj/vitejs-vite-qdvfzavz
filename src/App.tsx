@@ -7664,8 +7664,6 @@ function AppMain() {
     setLoggedInUser(null);
   };
 
-  if (!loggedInUser) return <UserLoginGate onLogin={handleUserLogin} />;
-
   // ── Workspace data: load when active client changes ──
   useEffect(() => {
     if (!activeWorkspace) return;
@@ -7932,6 +7930,8 @@ Raw JSON only.`, "", 1400);
         { id:"icps",    label:"ICP Profiles",     sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
         { id:"outputs", label:"Campaign Outputs", sub:`${icpsWithOutputs} of ${icps.length} ready`       },
       ];
+
+  if (!loggedInUser) return <UserLoginGate onLogin={handleUserLogin} />;
 
   if (appMode === "admin") return <AdminPanel onClose={() => setAppMode("app")} />; // localhost dev shortcut
 
