@@ -8843,7 +8843,7 @@ Raw JSON only.`, "", 1400);
                       const wsReady = wsIcps.filter(i => i.outputs).length;
                       return (
                         <div key={c.id}
-                          onClick={()=>{ setActiveWorkspace(c); setView("company"); }}
+                          onClick={()=>{ setActiveWorkspace(c); setView("dashboard"); }}
                           style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px 60px",
                             padding:"13px 20px", gap:12, alignItems:"center", cursor:"pointer",
                             borderBottom: idx < filteredAccts.length-1 ? `1px solid ${C.border}` : "none",
@@ -8912,6 +8912,66 @@ Raw JSON only.`, "", 1400);
           {/* Workspace views */}
           {view !== "accounts" && activeWorkspace && (
           <div style={{ maxWidth:"100%" }}>
+
+            {view==="dashboard" && (
+              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter", padding:"24px clamp(20px, 3vw, 48px)" }}>
+                <h2 style={{ fontSize:24, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 6px" }}>{activeWorkspace?.name}</h2>
+                <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:"0 0 24px" }}>Workspace overview</p>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:12, marginBottom:28 }}>
+                  {[
+                    { label:"Client Profile", value:`${companyPct}%`, sub:"complete", color:companyPct===100?C.green:companyPct>50?C.amber:C.muted, action:()=>setView("company") },
+                    { label:"ICP Profiles", value:String(icps.length), sub:`profile${icps.length!==1?"s":""}`, color:C.accent, action:()=>setView("icps") },
+                    { label:"Outputs Ready", value:String(icps.filter(i=>i.outputs).length), sub:`of ${icps.length}`, color:icps.filter(i=>i.outputs).length>0?C.green:C.muted, action:()=>setView("icps") },
+                    { label:"Files", value:String(wsFiles.length), sub:`uploaded`, color:C.accent, action:()=>setView("files") },
+                  ].map(c => (
+                    <button key={c.label} onClick={c.action} style={{ padding:"18px 20px", borderRadius:12, border:`1px solid ${C.border}`,
+                      background:C.canvas, cursor:"pointer", textAlign:"left",
+                      transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 4px 16px rgba(13,15,26,.08)`;(e.currentTarget as HTMLButtonElement).style.transform="translateY(-1px)";}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.boxShadow="none";(e.currentTarget as HTMLButtonElement).style.transform="translateY(0)";}}>
+                      <div style={{ fontSize:10, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4, marginBottom:8 }}>{c.label}</div>
+                      <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
+                        <span style={{ fontSize:28, fontWeight:700, fontFamily:head, color:c.color }}>{c.value}</span>
+                        <span style={{ fontSize:12, color:C.muted, fontFamily:body }}>{c.sub}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Quick actions */}
+                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4, marginBottom:10 }}>QUICK ACTIONS</div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  <button onClick={()=>setView("company")} style={{ padding:"10px 18px", borderRadius:8, border:`1px solid ${C.border}`,
+                    background:C.canvas, color:C.text, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer",
+                    transition:"all .15s" }}
+                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.canvas}>
+                    Edit Client Profile
+                  </button>
+                  <button onClick={()=>setView("icps")} style={{ padding:"10px 18px", borderRadius:8, border:`1px solid ${C.border}`,
+                    background:C.canvas, color:C.text, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer",
+                    transition:"all .15s" }}
+                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.canvas}>
+                    View ICPs
+                  </button>
+                  <button onClick={()=>setShowQS(true)} style={{ padding:"10px 18px", borderRadius:8, border:"none",
+                    background:C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer",
+                    boxShadow:`0 2px 10px ${C.accent}40` }}>
+                    ⚡ Quick Start
+                  </button>
+                  <button onClick={()=>exportFullPDF(companyData, icps, activeWorkspace?.name||companyData?.co_name||"Client")}
+                    style={{ padding:"10px 18px", borderRadius:8, border:`1px solid ${C.border}`,
+                      background:C.canvas, color:C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer",
+                      transition:"all .15s" }}
+                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.canvas}>
+                    ↓ Export PDF
+                  </button>
+                </div>
+              </div>
+            )}
 
             {view==="company" && (
               <div style={{ position:"absolute" as const, inset:0, textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)",
