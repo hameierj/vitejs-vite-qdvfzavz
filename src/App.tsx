@@ -8357,11 +8357,10 @@ Raw JSON only.`, "", 1400);
   };
 
   const navItems = currentRole === "client"
-    ? [{ id:"outputs", label:"Campaign Outputs", sub:`${icpsWithOutputs} of ${icps.length} ready` }]
+    ? [{ id:"icps", label:"ICP Profiles", sub:`${icpsWithOutputs} of ${icps.length} ready` }]
     : [
         { id:"company", label:"Client Profile",  sub:`${companyPct}% complete`                         },
         { id:"icps",    label:"ICP Profiles",     sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
-        { id:"outputs", label:"Campaign Outputs", sub:`${icpsWithOutputs} of ${icps.length} ready`       },
       ];
 
   if (!loggedInUser) return <UserLoginGate onLogin={handleUserLogin} />;
@@ -8445,11 +8444,10 @@ Raw JSON only.`, "", 1400);
             currentRole !== "team" || !loggedInUser || loadClients().find(x=>x.id===c.id)
           ));
           const wsNavItems = currentRole === "client"
-            ? [{ id:"outputs", label:"Campaign Outputs", icon:"◈", sub:`${icpsWithOutputs} ready` }]
+            ? [{ id:"icps", label:"ICP Profiles", icon:"◑", sub:`${icpsWithOutputs} ready` }]
             : [
                 { id:"company", label:"Client Profile",  icon:"◉", sub:`${companyPct}% complete` },
                 { id:"icps",    label:"ICP Profiles",     icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
-                { id:"outputs", label:"Campaign Outputs", icon:"◈", sub:`${icpsWithOutputs} of ${icps.length} ready` },
                 { id:"perf",    label:"Performance",      icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
                 { id:"roi",     label:"ROI Dashboard",     icon:"◈", sub:"Investment returns" },
                 { id:"files",   label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
@@ -9177,15 +9175,8 @@ Raw JSON only.`, "", 1400);
                     })}
                   </div>
 
-                  {/* View outputs CTA + Export */}
+                  {/* Export */}
                   <div style={{ padding:"10px 10px", borderTop:`1px solid ${C.border}`, flexShrink:0, display:"flex", flexDirection:"column", gap:6 }}>
-                    {icpsWithOutputs > 0 && (
-                      <button onClick={()=>setView("outputs")} style={{ width:"100%", padding:"8px", borderRadius:7,
-                        border:"none", background:C.green, color:"#fff", fontSize:11, fontFamily:head,
-                        fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${C.green}30` }}>
-                        View {icpsWithOutputs} Output{icpsWithOutputs!==1?"s":""} →
-                      </button>
-                    )}
                     {icps.length > 0 && (
                       <button onClick={()=>exportFullPDF(companyData, icps, activeWorkspace?.name||companyData?.co_name||"Client")}
                         style={{ width:"100%", padding:"8px", borderRadius:7,
@@ -9219,11 +9210,6 @@ Raw JSON only.`, "", 1400);
               </div>
             )}
 
-            {view==="outputs" && (
-              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-              <OutputsHub icps={icps} companyData={companyData} />
-              </div>
-            )}
 
             {view==="perf" && (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
