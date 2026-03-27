@@ -9409,44 +9409,57 @@ Raw JSON only.`, "", 1400);
             )}
 
 
-            {view==="analytics" && (
+            {view==="analytics" && ((() => {
+              const pct = (num:number, den:number) => !den ? null : Math.round(num / den * 100);
+              const totals = perfLogs.reduce((a:any,e:any) => {
+                const m = e.metrics ?? {};
+                return { sent:a.sent+(m.sent||0), opens:a.opens+(m.opens||0), replies:a.replies+(m.replies||0),
+                  posReplies:a.posReplies+(m.posReplies||0), meetings:a.meetings+(m.meetings||0), revenue:a.revenue+(m.revenue||0) };
+              }, { sent:0, opens:0, replies:0, posReplies:0, meetings:0, revenue:0 });
+              const openRate = pct(totals.opens, totals.sent);
+              const replyRate = pct(totals.replies, totals.sent);
+              const meetingRate = pct(totals.meetings, totals.replies);
+              const fmt = (n:number) => n>=1000?`${(n/1000).toFixed(1)}K`:String(n);
+              return (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                {/* Tab bar — replaces both the Analytics header and the sub-panel headers */}
-                <div style={{ padding:"16px 0 12px", borderBottom:`1px solid ${C.border}`, marginBottom:16 }}>
-                  <div style={{ display:"flex", gap:4 }}>
-                    {[
-                      {id:"perf", label:"Performance", sub:`${perfLogs.length} entries`, icon:"📊"},
-                      {id:"roi", label:"ROI", sub:"Investment returns", icon:"💰"},
-                    ].map(t => {
-                      const on = analyticsTab === t.id;
-                      return (
-                        <button key={t.id} onClick={()=>setAnalyticsTab(t.id as any)}
-                          style={{ flex:1, padding:"14px 16px", borderRadius:10, border:`1.5px solid ${on?C.accentBorder:C.border}`,
-                            background:on?C.accentLo:C.canvas, cursor:"pointer", textAlign:"left",
-                            transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}
-                          onMouseEnter={e=>{if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint;}}
-                          onMouseLeave={e=>{if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.canvas;}}>
-                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                            <span style={{ fontSize:18 }}>{t.icon}</span>
-                            <div>
-                              <div style={{ fontSize:14, fontWeight:on?700:600, color:on?C.text:C.textSoft, fontFamily:head }}>{t.label}</div>
-                              <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginTop:1 }}>{t.sub}</div>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                <div style={{ padding:"16px 0 0" }}>
+                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 16px" }}>Analytics</h2>
                 </div>
-                <div key={analyticsTab} style={{ animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
-                  {analyticsTab==="perf" ? (
-                    <PerformancePanel perfLogs={perfLogs} onLogsChange={setPerfLogs} icps={icps} />
-                  ) : (
+
+                {/* Key metrics row */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginBottom:20 }}>
+                  {[
+                    { label:"Sent", value:fmt(totals.sent), color:C.text },
+                    { label:"Opens", value:totals.opens?`${fmt(totals.opens)}${openRate!=null?` (${openRate}%)`:""}`:"-", color:C.accent },
+                    { label:"Replies", value:totals.replies?`${fmt(totals.replies)}${replyRate!=null?` (${replyRate}%)`:""}`:"-", color:C.amber },
+                    { label:"Positive", value:totals.posReplies?fmt(totals.posReplies):"-", color:C.green },
+                    { label:"Meetings", value:totals.meetings?`${fmt(totals.meetings)}${meetingRate!=null?` (${meetingRate}%)`:""}`:"-", color:C.green },
+                    { label:"Revenue", value:totals.revenue?`$${totals.revenue.toLocaleString()}`:"-", color:"#8B5CF6" },
+                  ].map(m => (
+                    <div key={m.label} style={{ padding:"12px 14px", borderRadius:10, border:`1px solid ${C.border}`, background:C.canvas }}>
+                      <div style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4, marginBottom:4 }}>{m.label}</div>
+                      <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:m.color }}>{m.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ROI summary — compact inline */}
+                <details style={{ marginBottom:20 }}>
+                  <summary style={{ fontSize:11, fontFamily:head, fontWeight:700, color:C.text, cursor:"pointer",
+                    padding:"10px 14px", background:C.canvas, border:`1px solid ${C.border}`, borderRadius:10,
+                    userSelect:"none", display:"flex", alignItems:"center", gap:6 }}>
+                    💰 ROI & Cost Tracking
+                  </summary>
+                  <div style={{ marginTop:8 }}>
                     <RoiDashboard roiConfig={roiConfig} onConfigChange={setRoiConfig} perfLogs={perfLogs} icps={icps} companyData={companyData} />
-                  )}
-                </div>
+                  </div>
+                </details>
+
+                {/* Performance log — full width */}
+                <PerformancePanel perfLogs={perfLogs} onLogsChange={setPerfLogs} icps={icps} />
               </div>
-            )}
+              );
+            })())}
 
             {view==="chat" && (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
