@@ -3643,20 +3643,39 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               {allApproved && <span style={{ fontSize:10, color:C.green, fontFamily:mono, fontWeight:700 }}>✓ All approved</span>}
             </div>
           </div>
-          <div style={{ display:"flex", background:C.faint, borderRadius:8, padding:3, border:`1px solid ${C.border}` }}>
-            {[["form","Intake"],["outputs","Outputs"],["comments",`Comments${openComm>0?` (${openComm})`:""}`]].map(([v,l]) => (
-              <button key={v} onClick={()=>setPanel(v)} style={{
-                padding:"5px 13px", borderRadius:6, border:"none",
-                background:panel===v?C.canvas:"transparent",
-                color:panel===v?C.text:C.muted,
-                fontSize:11, fontFamily:mono, fontWeight:panel===v?700:400,
-                cursor:"pointer", boxShadow:panel===v?"0 1px 3px rgba(0,0,0,0.08)":"none",
-                transition:"all .15s" }}>{l}
-              </button>
+          {/* Workflow stepper */}
+          <div style={{ display:"flex", alignItems:"center", gap:0 }}>
+            {[
+              { id:"form", label:"Fill Profile", done: totFill > 0, active: panel==="form", icon: totFill===TOTAL_FIELDS?"✓":"1" },
+              { id:"outputs", label:"Generate", done: !!icp.outputs, active: panel==="outputs", icon: icp.outputs?"✓":"2" },
+              { id:"outputs", label:"Review", done: allApproved, active: panel==="outputs"&&!!icp.outputs, icon: allApproved?"✓":"3" },
+              { id:"comments", label:"Comments", done: false, active: panel==="comments", icon: openComm>0?String(openComm):"4" },
+            ].map((step, i, arr) => (
+              <div key={i} style={{ display:"flex", alignItems:"center" }}>
+                <button onClick={()=>setPanel(step.id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 10px",
+                  borderRadius:6, border:"none", cursor:"pointer",
+                  background:step.active?C.accentLo:"transparent",
+                  transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
+                  onMouseEnter={e=>{if(!step.active)(e.currentTarget as HTMLButtonElement).style.background=C.faint;}}
+                  onMouseLeave={e=>{if(!step.active)(e.currentTarget as HTMLButtonElement).style.background="transparent";}}>
+                  <span style={{ width:18, height:18, borderRadius:"50%", fontSize:9, fontWeight:700, fontFamily:mono,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    background:step.done?C.green:step.active?C.accent:C.border,
+                    color:step.done||step.active?"#fff":C.muted,
+                    transition:"all .2s" }}>{step.icon}</span>
+                  <span style={{ fontSize:10, fontFamily:head, fontWeight:step.active?700:500,
+                    color:step.active?C.text:step.done?C.green:C.muted }}>{step.label}</span>
+                </button>
+                {i < arr.length-1 && (
+                  <div style={{ width:16, height:1, background:step.done?C.green:C.border, margin:"0 -2px",
+                    transition:"background .3s" }} />
+                )}
+              </div>
             ))}
           </div>
           {icp.outputs && !allApproved && !isFinalized && (
-            <button onClick={approveAll} style={{ padding:"7px 14px", borderRadius:7,
+            <button onClick={()=>{setPanel("outputs"); setOutTab(OUTPUT_TABS[0].id); approveAll();}}
+              style={{ padding:"7px 14px", borderRadius:7,
               border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green,
               fontSize:11, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve All</button>
           )}
@@ -3771,8 +3790,13 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head }}>{sec.label}</div>
                   <span style={{ fontSize:11, color:C.muted, fontFamily:mono }}>{secFill}/{sec.fields.length} filled</span>
                 </div>
-                {sec.fields.map(f => (
-                  <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
+                {(() => {
+                  const essential = new Set(["industries","buyer","pain1","tone","cta","co_sizes","geo"]);
+                  const essentialFields = sec.fields.filter(f => essential.has(f.id) || data[f.id]);
+                  const optionalFields = sec.fields.filter(f => !essential.has(f.id) && !data[f.id]);
+                  return (<>
+                    {essentialFields.map(f => (
+                      <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
                     onAI={isFinalized?undefined:handleAIFill} aiOn={aiOn} accentColor={icp.color}
                     confidence={localConf[f.id]}
                     locked={isFinalized?true:!!localConfLocked[f.id]}
@@ -3796,7 +3820,32 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                         }
                       }
                     }} />
-                ))}
+                    ))}
+                    {optionalFields.length > 0 && (
+                      <details style={{ marginTop:8 }}>
+                        <summary style={{ fontSize:10, fontFamily:mono, color:C.muted, cursor:"pointer", fontWeight:600,
+                          padding:"8px 0", userSelect:"none" }}>
+                          + {optionalFields.length} more field{optionalFields.length!==1?"s":""} (optional)
+                        </summary>
+                        <div style={{ display:"flex", flexDirection:"column", gap:18, paddingTop:8 }}>
+                          {optionalFields.map(f => (
+                            <Field key={f.id} f={f} val={data[f.id]} onChange={v=>upd(f.id,v)}
+                              onAI={isFinalized?undefined:handleAIFill} aiOn={aiOn} accentColor={icp.color}
+                              confidence={localConf[f.id]}
+                              locked={isFinalized?true:!!localConfLocked[f.id]}
+                              onUnlock={isFinalized?undefined:()=>handleUnlock(f.id)}
+                              onSave={()=>handleSave(f, f.id)}
+                              onCancel={()=>handleCancel(f.id)}
+                              onSubmitField={(fieldId) => {
+                                setLocalConfLocked(p => ({ ...p, [fieldId]: true }));
+                                scoreWithAI(f, data[fieldId]).then(score => setLocalConf((p: any) => ({ ...p, [fieldId]: score })));
+                              }} />
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </>);
+                })()}
               </div>
             )}
             {/* Campaign Analysis Report */}
@@ -4297,6 +4346,55 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                 )}
                   </div>
                 </div>
+              {/* Inline comments for this output */}
+              {icp.outputs && (() => {
+                const tabComments = (icp.comments||[]).filter((c:any) => c.section === outTab);
+                return tabComments.length > 0 || panel === "outputs" ? (
+                  <div style={{ marginTop:16 }}>
+                    {tabComments.length > 0 && (
+                      <div style={{ marginBottom:12 }}>
+                        {tabComments.map((c:any) => (
+                          <div key={c.id} style={{ display:"flex", gap:8, padding:"8px 10px", marginBottom:4,
+                            borderRadius:7, background:c.resolved?C.faint:C.amberLo, border:`1px solid ${c.resolved?C.border:C.amberBorder}`,
+                            animation:"contentFade .25s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
+                            <div style={{ width:22, height:22, borderRadius:"50%", background:C.accent+"22",
+                              display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700,
+                              color:C.accent, flexShrink:0, fontFamily:mono }}>{(c.author||"?")[0].toUpperCase()}</div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+                                <span style={{ fontSize:11, fontWeight:600, color:C.text, fontFamily:head }}>{c.author}</span>
+                                <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>{c.created_at}</span>
+                              </div>
+                              <div style={{ fontSize:11, color:C.textSoft, fontFamily:body, lineHeight:1.5 }}>{c.text}</div>
+                            </div>
+                            <button onClick={()=>{
+                              const updated = (icp.comments||[]).map((x:any) => x.id===c.id?{...x,resolved:!x.resolved}:x);
+                              onUpdate({ ...icp, comments:updated });
+                            }} style={{ background:"none", border:"none", color:c.resolved?C.green:C.muted, fontSize:10,
+                              cursor:"pointer", flexShrink:0, fontFamily:mono }}>{c.resolved?"✓":"resolve"}</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Quick inline comment */}
+                    {panel==="outputs" && !isFinalized && (
+                      <div style={{ display:"flex", gap:6, alignItems:"flex-start" }}>
+                        <input value={newNote} onChange={e=>setNewNote(e.target.value)}
+                          placeholder="Add a comment on this section…"
+                          onKeyDown={e=>{ if(e.key==="Enter"&&newNote.trim()) { addComment(); } }}
+                          style={{ flex:1, padding:"7px 10px", borderRadius:6, border:`1px solid ${C.border}`,
+                            background:C.faint, color:C.text, fontSize:11, fontFamily:body, outline:"none" }} />
+                        {newNote.trim() && (
+                          <button onClick={addComment}
+                            style={{ padding:"7px 12px", borderRadius:6, border:"none", background:C.accent, color:"#fff",
+                              fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer", flexShrink:0 }}>Post</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : null;
+              })()}
+
               {/* QA Checklist */}
               {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script"||outTab==="reply_handlers"||outTab==="ai_call_script") && icp.outputs[outTab] && (
                 <details style={{ marginTop:24 }}>
@@ -4385,6 +4483,42 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     color:newNote.trim()&&noteAuth.trim()?"#fff":C.muted,
                     fontSize:11, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>Add Comment</button>
                 </div>
+
+                {/* Activity feed */}
+                {(() => {
+                  const activities: {time:string;icon:string;text:string;color:string}[] = [];
+                  // Version history entries
+                  for (const v of (icp.versionHistory||[])) {
+                    activities.push({ time:v.timestamp, icon:"✦", text:`Style changed to "${v.label}" on ${v.tab}`, color:C.accent });
+                  }
+                  // Comments
+                  for (const c of (icp.comments||[])) {
+                    activities.push({ time:c.created_at, icon:"💬", text:`${c.author}: "${c.text.slice(0,60)}${c.text.length>60?"…":""}"`, color:C.amber });
+                  }
+                  // Sort by time descending
+                  activities.sort((a,b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+                  if (!activities.length) return null;
+                  return (
+                    <details style={{ marginTop:20 }}>
+                      <summary style={{ fontSize:10, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.3,
+                        cursor:"pointer", userSelect:"none", padding:"6px 0" }}>ACTIVITY LOG ({activities.length})</summary>
+                      <div style={{ display:"flex", flexDirection:"column", gap:4, paddingTop:8 }}>
+                        {activities.slice(0,20).map((a,i) => (
+                          <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, padding:"6px 0",
+                            borderBottom:i<activities.length-1?`1px solid ${C.faint}`:"none" }}>
+                            <span style={{ fontSize:11, flexShrink:0 }}>{a.icon}</span>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:11, color:C.textSoft, fontFamily:body, lineHeight:1.4 }}>{a.text}</div>
+                              <div style={{ fontSize:9, color:C.muted, fontFamily:mono, marginTop:2 }}>
+                                {new Date(a.time).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  );
+                })()}
               </div>
             )}
           </div>
