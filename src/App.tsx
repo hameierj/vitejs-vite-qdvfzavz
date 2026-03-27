@@ -6232,8 +6232,26 @@ type UserRecord = {
   createdAt: string;
 };
 
+const ENV_USERS: UserRecord[] = (() => {
+  try {
+    const raw = import.meta.env.VITE_USERS;
+    if (!raw) return [];
+    return JSON.parse(raw).map((u: any, i: number) => ({
+      id: `env-${i}`, name: u.name || u.email?.split("@")[0] || "User",
+      email: u.email, password: u.password, role: u.role || "team",
+      status: "active" as const, createdAt: "2026-01-01",
+    }));
+  } catch { return []; }
+})();
+
 const loadUsers = (): UserRecord[] => {
-  try { return JSON.parse(localStorage.getItem("b2br_users") || "[]"); } catch { return []; }
+  try {
+    const local = JSON.parse(localStorage.getItem("b2br_users") || "[]") as UserRecord[];
+    // Merge env users — env users override local if same email
+    const localEmails = new Set(local.map(u => u.email.toLowerCase()));
+    const envOnly = ENV_USERS.filter(u => !localEmails.has(u.email.toLowerCase()));
+    return [...local, ...envOnly];
+  } catch { return ENV_USERS; }
 };
 const saveUsers = (u: UserRecord[]) => {
   try { localStorage.setItem("b2br_users", JSON.stringify(u)); } catch {}
