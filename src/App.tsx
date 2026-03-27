@@ -6236,12 +6236,15 @@ const ENV_USERS: UserRecord[] = (() => {
   try {
     const raw = import.meta.env.VITE_USERS;
     if (!raw) return [];
-    return JSON.parse(raw).map((u: any, i: number) => ({
+    console.log("[Auth] VITE_USERS raw:", typeof raw, raw.slice(0, 100));
+    const parsed = JSON.parse(raw);
+    console.log("[Auth] Parsed", parsed.length, "env users");
+    return parsed.map((u: any, i: number) => ({
       id: `env-${i}`, name: u.name || u.email?.split("@")[0] || "User",
       email: u.email, password: u.password, role: u.role || "team",
       status: "active" as const, createdAt: "2026-01-01",
     }));
-  } catch { return []; }
+  } catch (e) { console.error("[Auth] Failed to parse VITE_USERS:", e); return []; }
 })();
 
 const loadUsers = (): UserRecord[] => {
@@ -7327,9 +7330,10 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
     setLoading(true); setError(false);
     await new Promise(r => setTimeout(r, 300));
     const users = loadUsers();
+    console.log("[Auth] Login attempt:", email.trim(), "| Available users:", users.map(u => u.email));
     const match = users.find(u =>
       u.email.toLowerCase() === email.trim().toLowerCase() &&
-      u.password === password &&
+      u.password === password.trim() &&
       u.status === "active"
     );
     if (match) {
