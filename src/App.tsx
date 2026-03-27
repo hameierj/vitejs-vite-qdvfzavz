@@ -6305,6 +6305,74 @@ const saveClients = (c: ClientRecord[]) => {
   try { localStorage.setItem("b2br_clients", JSON.stringify(c)); } catch {}
 };
 
+// Export entire workspace (client + all data + files) as downloadable JSON
+async function exportWorkspaceBundle(clientId: string, clientName: string) {
+  const wsData = loadWorkspaceData(clientId);
+  if (!wsData) { alert("No workspace data found."); return; }
+  // Load file blobs from IndexedDB
+  const files = wsData.wsFiles || [];
+  const filesWithBlobs: any[] = [];
+  for (const f of files) {
+    let b64 = f.b64;
+    if (!b64 || b64 === "__IDB__" || b64 === "__REF__" || b64 === "") {
+      try { b64 = await idbGet(`${clientId}_${f.id}`); } catch {}
+    }
+    filesWithBlobs.push({ ...f, b64: b64 || "" });
+  }
+  // Get client record
+  const clients = loadClients();
+  const client = clients.find(c => c.id === clientId);
+  const bundle = {
+    _type: "workspace_bundle",
+    _version: 1,
+    _exportedAt: new Date().toISOString(),
+    client: client || { id: clientId, name: clientName, industry: "", status: "active", assignedUserId: null, createdAt: new Date().toISOString() },
+    workspace: { ...wsData, wsFiles: filesWithBlobs },
+  };
+  const blob = new Blob([JSON.stringify(bundle)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${clientName.replace(/[^a-z0-9]/gi, "_")}_workspace_export.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Import workspace bundle from JSON file
+async function importWorkspaceBundle(file: File, assignToUserId: string | null): Promise<{ clientName: string } | null> {
+  try {
+    const text = await file.text();
+    const bundle = JSON.parse(text);
+    if (bundle._type !== "workspace_bundle") { alert("Invalid workspace file."); return null; }
+    const client = bundle.client;
+    // Generate new ID so it doesn't conflict with existing
+    const newId = uid();
+    const newClient: ClientRecord = {
+      id: newId, name: client.name, industry: client.industry || "",
+      status: "active", assignedUserId: assignToUserId,
+      createdAt: new Date().toISOString(),
+    };
+    // Save client
+    const clients = loadClients();
+    saveClients([...clients, newClient]);
+    // Save workspace data (with new file IDs)
+    const ws = bundle.workspace;
+    const files = ws.wsFiles || [];
+    // Remap file IDs and save blobs to IndexedDB
+    const remappedFiles: any[] = [];
+    for (const f of files) {
+      const newFileId = uid();
+      if (f.b64 && f.b64 !== "__IDB__" && f.b64 !== "__REF__" && f.b64 !== "") {
+        try { await idbPut(`${newId}_${newFileId}`, f.b64); } catch {}
+      }
+      remappedFiles.push({ ...f, id: newFileId, b64: "__IDB__" });
+    }
+    const wsToSave = { ...ws, wsFiles: remappedFiles };
+    localStorage.setItem(`b2br_ws_${newId}`, JSON.stringify(wsToSave));
+    return { clientName: client.name };
+  } catch (e) { console.error("Import failed:", e); alert("Failed to import workspace: " + (e as Error).message); return null; }
+}
+
 const loadWorkspaceData = (clientId: string) => {
   try {
     const raw = JSON.parse(localStorage.getItem(`b2br_ws_${clientId}`) || "null");
@@ -8353,15 +8421,35 @@ Raw JSON only.`, "", 1400);
                       {allClts.length} account{allClts.length!==1?"s":""} · {allClts.filter(c=>c.assignedUserId).length} assigned
                     </p>
                   </div>
-                  <button onClick={()=>setShowCreateAcct(true)}
-                    style={{ padding:"10px 20px", borderRadius:8, border:"none", background:C.accent, color:"#fff",
-                      fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer",
-                      boxShadow:`0 2px 10px ${C.accent}40`,
-                      transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", transform:"scale(1)" }}
-                    onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.transform="scale(1.02)";}}
-                    onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.transform="scale(1)";}}>
-                    + New Account
-                  </button>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <label style={{ padding:"10px 16px", borderRadius:8, border:`1px solid ${C.border}`,
+                      background:"transparent", color:C.textSoft,
+                      fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer",
+                      transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", display:"flex", alignItems:"center", gap:6 }}
+                      onMouseEnter={e=>(e.currentTarget as HTMLLabelElement).style.borderColor=C.accentBorder}
+                      onMouseLeave={e=>(e.currentTarget as HTMLLabelElement).style.borderColor=C.border}>
+                      ↑ Import
+                      <input type="file" accept=".json" hidden onChange={async e=>{
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const result = await importWorkspaceBundle(file, loggedInUser?.id || null);
+                        if (result) {
+                          addToast({ title:"Workspace imported", status:"success", message:`${result.clientName} is ready` });
+                          setView("accounts"); // force re-render to show new account
+                        }
+                        e.target.value = "";
+                      }} />
+                    </label>
+                    <button onClick={()=>setShowCreateAcct(true)}
+                      style={{ padding:"10px 20px", borderRadius:8, border:"none", background:C.accent, color:"#fff",
+                        fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer",
+                        boxShadow:`0 2px 10px ${C.accent}40`,
+                        transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", transform:"scale(1)" }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.transform="scale(1.02)";}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.transform="scale(1)";}}>
+                      + New Account
+                    </button>
+                  </div>
                 </div>
 
                 {/* Search */}
@@ -8388,9 +8476,9 @@ Raw JSON only.`, "", 1400);
                 ) : (
                   <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
                     {/* Table header */}
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px",
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px 60px",
                       padding:"10px 20px", borderBottom:`1px solid ${C.border}`, gap:12 }}>
-                      {["Account","Industry","Assigned CSM","Profile","Outputs"].map((h,i) => (
+                      {["Account","Industry","Assigned CSM","Profile","Outputs",""].map((h,i) => (
                         <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
                           color:C.muted, letterSpacing:.5 }}>{h}</div>
                       ))}
@@ -8406,7 +8494,7 @@ Raw JSON only.`, "", 1400);
                       return (
                         <div key={c.id}
                           onClick={()=>{ setActiveWorkspace(c); setView("company"); }}
-                          style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px",
+                          style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px 60px",
                             padding:"13px 20px", gap:12, alignItems:"center", cursor:"pointer",
                             borderBottom: idx < filteredAccts.length-1 ? `1px solid ${C.border}` : "none",
                             transition:"background .12s" }}
@@ -8453,6 +8541,15 @@ Raw JSON only.`, "", 1400);
                               of {wsIcps.length} ready
                             </span>
                           </div>
+                          {/* Export */}
+                          <button onClick={e=>{e.stopPropagation(); exportWorkspaceBundle(c.id, c.name);}}
+                            style={{ padding:"4px 8px", borderRadius:5, border:`1px solid ${C.border}`,
+                              background:"transparent", color:C.muted, fontSize:10, fontFamily:mono,
+                              cursor:"pointer", transition:"all .15s" }}
+                            onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.color=C.accent;(e.currentTarget as HTMLButtonElement).style.borderColor=C.accentBorder;}}
+                            onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.color=C.muted;(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;}}>
+                            ↓ Export
+                          </button>
                         </div>
                       );
                     })}
