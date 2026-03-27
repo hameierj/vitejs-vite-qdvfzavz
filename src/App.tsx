@@ -7543,6 +7543,9 @@ function AppMain() {
   });
   const [view,           setView]           = useState("accounts");
   const [acctSearch,     setAcctSearch]     = useState("");
+  const [showCreateAcct, setShowCreateAcct] = useState(false);
+  const [newAcctName, setNewAcctName] = useState("");
+  const [newAcctIndustry, setNewAcctIndustry] = useState("");
   const [companyData,    setCompanyData]    = useState({});
   const [companyConf,    setCompanyConf]    = useState({});
   const [icps,           setIcps]           = useState([]);
@@ -8322,6 +8325,15 @@ Raw JSON only.`, "", 1400);
                       {allClts.length} account{allClts.length!==1?"s":""} · {allClts.filter(c=>c.assignedUserId).length} assigned
                     </p>
                   </div>
+                  <button onClick={()=>setShowCreateAcct(true)}
+                    style={{ padding:"10px 20px", borderRadius:8, border:"none", background:C.accent, color:"#fff",
+                      fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer",
+                      boxShadow:`0 2px 10px ${C.accent}40`,
+                      transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)", transform:"scale(1)" }}
+                    onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.transform="scale(1.02)";}}
+                    onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.transform="scale(1)";}}>
+                    + New Account
+                  </button>
                 </div>
 
                 {/* Search */}
@@ -8342,7 +8354,7 @@ Raw JSON only.`, "", 1400);
                       {allClts.length === 0 ? "No accounts yet" : "No accounts match your search"}
                     </div>
                     <div style={{ fontSize:13, color:C.muted, fontFamily:body }}>
-                      {allClts.length === 0 ? "Add clients in the Admin Panel to get started." : "Try a different search term."}
+                      {allClts.length === 0 ? "Click '+ New Account' to create your first client." : "Try a different search term."}
                     </div>
                   </div>
                 ) : (
@@ -8804,6 +8816,72 @@ Raw JSON only.`, "", 1400);
           addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles} />}
+
+      {/* Create Account Modal */}
+      {showCreateAcct && createPortal(
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483647,
+          display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(4px)", padding:24 }}>
+          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            boxShadow:"0 24px 64px rgba(13,15,26,0.22)", padding:"28px 32px", maxWidth:440, width:"100%",
+            animation:"toastIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+              <div>
+                <div style={{ fontSize:18, fontWeight:700, color:C.text, fontFamily:head }}>New Client Account</div>
+                <div style={{ fontSize:12, color:C.muted, fontFamily:body, marginTop:2 }}>Create a workspace for a new client</div>
+              </div>
+              <button onClick={()=>{setShowCreateAcct(false);setNewAcctName("");setNewAcctIndustry("");}}
+                style={{ width:28, height:28, borderRadius:7, border:`1px solid ${C.border}`, background:"transparent",
+                  color:C.muted, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+            </div>
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>Company Name *</label>
+              <input value={newAcctName} onChange={e=>setNewAcctName(e.target.value)} autoFocus
+                placeholder="e.g. Acme Corp"
+                style={{ width:"100%", padding:"10px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:C.faint, color:C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+            </div>
+            <div style={{ marginBottom:20 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>Industry <span style={{ fontWeight:400, color:C.muted }}>(optional)</span></label>
+              <input value={newAcctIndustry} onChange={e=>setNewAcctIndustry(e.target.value)}
+                placeholder="e.g. B2B SaaS, Construction, Healthcare"
+                style={{ width:"100%", padding:"10px 12px", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:C.faint, color:C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+            </div>
+            {loggedInUser && (
+              <div style={{ fontSize:11, color:C.muted, fontFamily:body, marginBottom:16, padding:"8px 10px",
+                background:C.faint, borderRadius:6, border:`1px solid ${C.border}` }}>
+                This account will be assigned to <strong style={{ color:C.text }}>{loggedInUser.name || loggedInUser.email}</strong>
+              </div>
+            )}
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>{setShowCreateAcct(false);setNewAcctName("");setNewAcctIndustry("");}}
+                style={{ flex:1, padding:"10px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent",
+                  color:C.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+              <button disabled={!newAcctName.trim()} onClick={()=>{
+                const newClient: ClientRecord = {
+                  id: uid(), name: newAcctName.trim(), industry: newAcctIndustry.trim(),
+                  status: "active", assignedUserId: loggedInUser?.id || null,
+                  createdAt: new Date().toISOString(),
+                };
+                const clients = loadClients();
+                saveClients([...clients, newClient]);
+                setShowCreateAcct(false);
+                setNewAcctName("");
+                setNewAcctIndustry("");
+                setActiveWorkspace(newClient);
+                setView("company");
+              }}
+                style={{ flex:2, padding:"10px", borderRadius:8, border:"none",
+                  background:newAcctName.trim()?C.accent:C.border,
+                  color:newAcctName.trim()?"#fff":C.muted,
+                  fontSize:12, fontFamily:head, fontWeight:700,
+                  cursor:newAcctName.trim()?"pointer":"default" }}>
+                Create Account
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
       {showAnalyzer && <CampaignAnalyzerModal companyData={companyData} icps={icps} onComplete={handleAnalyzerComplete} onClose={()=>setShowAnalyzer(false)} addToast={addToast} updateToast={updateToast} />}
       {showReview && pendingReview && <ReviewChangesModal reviewData={pendingReview}
         onApply={(approved) => { handleAnalyzerComplete(approved); setPendingReview(null); setShowReview(false); }}
