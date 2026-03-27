@@ -1370,11 +1370,10 @@ Raw JSON only.`, "", 1500);
     } catch {}
 
     updateToast(toastId, { message:"Identifying segments…", step:3, totalSteps:4 });
-    const countRaw = await callAI(`Company: ${JSON.stringify(coFields)}\nHow many distinct ICP segments for cold outreach? (2–4)\nReturn ONLY a number.`,"",20);
-    const count = Math.min(4, Math.max(2, parseInt(countRaw.trim()) || 3));
+    const count = 1;
     const icps: any[] = [];
     for (let i = 0; i < count; i++) {
-      updateToast(toastId, { message:`Drafting ICP ${i+1} of ${count}…`, step:3+i+1, totalSteps:3+count });
+      updateToast(toastId, { message:`Drafting ICP…`, step:3, totalSteps:4 });
       const existingNames = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
       const existingSummary = icps.map((x,j) => `ICP ${j+1} "${x.name}": industries=${x.data?.industries||""}, buyer=${x.data?.buyer||""}, pain1=${x.data?.pain1||""}, tone=${x.data?.tone||""}`).join("\n") || "none";
       const raw = await callAI(`
