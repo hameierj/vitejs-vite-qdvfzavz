@@ -258,9 +258,44 @@ function getApiKey() {
   return window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || import.meta.env.VITE_API_KEY || "";
 }
 
+// ─── API USAGE LOGGING ───────────────────────────────────────────────────────
+// Claude Sonnet 4 pricing: $3/M input, $15/M output
+const COST_PER_INPUT_TOKEN = 3 / 1_000_000;
+const COST_PER_OUTPUT_TOKEN = 15 / 1_000_000;
+let _currentUserId = "";
+let _currentUserEmail = "";
+function setApiLogUser(id: string, email: string) { _currentUserId = id; _currentUserEmail = email; }
+
+type ApiLog = { id:string; userId:string; userEmail:string; timestamp:string; model:string; action:string;
+  inputTokens:number; outputTokens:number; cost:number; durationMs:number };
+
+function logApiCall(inputTokens: number, outputTokens: number, model: string, action: string, durationMs: number) {
+  const cost = inputTokens * COST_PER_INPUT_TOKEN + outputTokens * COST_PER_OUTPUT_TOKEN;
+  const entry: ApiLog = {
+    id: uid(), userId: _currentUserId, userEmail: _currentUserEmail || "unknown",
+    timestamp: new Date().toISOString(), model, action,
+    inputTokens, outputTokens, cost, durationMs,
+  };
+  // Save to localStorage
+  try {
+    const logs: ApiLog[] = JSON.parse(localStorage.getItem("b2br_api_logs") || "[]");
+    logs.push(entry);
+    // Keep last 2000 entries
+    if (logs.length > 2000) logs.splice(0, logs.length - 2000);
+    localStorage.setItem("b2br_api_logs", JSON.stringify(logs));
+  } catch {}
+  // Sync to cloud
+  syncToCloud("api_logs", JSON.parse(localStorage.getItem("b2br_api_logs") || "[]"));
+}
+
+function loadApiLogs(): ApiLog[] {
+  try { return JSON.parse(localStorage.getItem("b2br_api_logs") || "[]"); } catch { return []; }
+}
+
 async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
   const key = getApiKey();
   if (!key) { alert("Please enter your Anthropic API key first (top-right corner)."); return ""; }
+  const startTime = Date.now();
   for (let attempt = 0; attempt <= _retries; attempt++) {
     try {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -286,6 +321,9 @@ async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
       }
       const json = await r.json();
       if (json.error) { console.error("Anthropic error:", json.error); return `Error: ${json.error.message}`; }
+      // Log usage
+      const usage = json.usage;
+      if (usage) logApiCall(usage.input_tokens||0, usage.output_tokens||0, json.model||"claude-sonnet-4", prompt.slice(0,60), Date.now()-startTime);
       return json.content?.[0]?.text ?? "";
     } catch(e) {
       if (attempt < _retries) { await new Promise(ok => setTimeout(ok, 1000 * Math.pow(2, attempt))); continue; }
@@ -304,6 +342,7 @@ async function callAIStream(
 ): Promise<void> {
   const key = getApiKey();
   if (!key) { alert("Please enter your Anthropic API key first."); return; }
+  const startTime = Date.now();
   for (let attempt = 0; attempt <= _retries; attempt++) {
     try {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -347,6 +386,9 @@ async function callAIStream(
             const evt = JSON.parse(data);
             if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
               onChunk(evt.delta.text);
+            }
+            if (evt.type === "message_delta" && evt.usage) {
+              logApiCall(evt.usage.input_tokens||0, evt.usage.output_tokens||0, "claude-sonnet-4-stream", "stream", Date.now()-startTime);
             }
           } catch {}
         }
@@ -6580,7 +6622,7 @@ const saveWorkspaceData = (clientId: string, data: object) => {
 const EMPTY_CLIENT: Omit<ClientRecord, "id"|"createdAt"> = { name:"", industry:"", status:"active", assignedUserId:null };
 
 function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () => void }) {
-  const [section,   setSection]   = useState<"users"|"clients">("users");
+  const [section,   setSection]   = useState<"users"|"clients"|"logs">("users");
 
   // ── Users state ──
   const [users,     setUsers]     = useState<UserRecord[]>(loadUsers);
@@ -6791,6 +6833,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
         {[
           { id:"users",   label:"Users",   icon:"👤", count: users.length   },
           { id:"clients", label:"Clients", icon:"🏢", count: clients.length },
+          { id:"logs",    label:"API Logs", icon:"📊", count: loadApiLogs().length },
         ].map(item => {
           const on = section === item.id;
           return (
@@ -6832,7 +6875,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                 {section === "users" ? "Users" : "Clients"}
               </h2>
               <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body }}>
-                {section === "users" ? "Manage team members and client users." : "Manage clients and assign them to team members."}
+                {section === "users" ? "Manage team members and client users." : section === "clients" ? "Manage clients and assign them to team members." : "API usage tracking and cost breakdown by user."}
               </p>
             </div>
             <div style={{ display:"flex", gap:8, flexShrink:0, marginTop:4 }}>
@@ -7481,6 +7524,106 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           </div>
         </div>
       )}
+
+      {/* ── API LOGS SECTION ── */}
+      {section === "logs" && (() => {
+        const logs = loadApiLogs();
+        const allUsers = loadUsers();
+        // Group by user
+        const byUser: Record<string, ApiLog[]> = {};
+        for (const log of logs) {
+          const key = log.userEmail || "unknown";
+          if (!byUser[key]) byUser[key] = [];
+          byUser[key].push(log);
+        }
+        const totals = {
+          calls: logs.length,
+          input: logs.reduce((a,l) => a+l.inputTokens, 0),
+          output: logs.reduce((a,l) => a+l.outputTokens, 0),
+          cost: logs.reduce((a,l) => a+l.cost, 0),
+        };
+        const fmt = (n:number) => n>=1000000?`${(n/1000000).toFixed(1)}M`:n>=1000?`${(n/1000).toFixed(1)}K`:String(n);
+        const fmtCost = (n:number) => `$${n.toFixed(4)}`;
+
+        return (
+          <div>
+            {/* Summary cards */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:12, marginBottom:24 }}>
+              {[
+                { label:"Total Calls", value:fmt(totals.calls), color:C.accent },
+                { label:"Input Tokens", value:fmt(totals.input), color:C.amber },
+                { label:"Output Tokens", value:fmt(totals.output), color:C.green },
+                { label:"Total Cost", value:fmtCost(totals.cost), color:C.red },
+              ].map(c => (
+                <div key={c.label} style={{ padding:"14px 16px", borderRadius:10, border:`1px solid ${C.border}`,
+                  background:C.canvas }}>
+                  <div style={{ fontSize:10, fontFamily:mono, color:C.muted, fontWeight:600, marginBottom:4 }}>{c.label}</div>
+                  <div style={{ fontSize:20, fontFamily:head, fontWeight:700, color:c.color }}>{c.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Per-user breakdown */}
+            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:10 }}>USAGE BY USER</div>
+            <div style={{ background:C.canvas, borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:24 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 80px 100px 100px 80px 80px",
+                padding:"10px 16px", borderBottom:`1px solid ${C.border}`, gap:8 }}>
+                {["User","Calls","Input Tokens","Output Tokens","Cost","Avg/Call"].map(h => (
+                  <div key={h} style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4 }}>{h}</div>
+                ))}
+              </div>
+              {Object.entries(byUser).sort((a,b) => b[1].length - a[1].length).map(([email, userLogs]) => {
+                const userInput = userLogs.reduce((a,l) => a+l.inputTokens, 0);
+                const userOutput = userLogs.reduce((a,l) => a+l.outputTokens, 0);
+                const userCost = userLogs.reduce((a,l) => a+l.cost, 0);
+                const avgCost = userLogs.length > 0 ? userCost / userLogs.length : 0;
+                return (
+                  <div key={email} style={{ display:"grid", gridTemplateColumns:"1fr 80px 100px 100px 80px 80px",
+                    padding:"10px 16px", gap:8, borderBottom:`1px solid ${C.border}` }}>
+                    <div style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C.text,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{email}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:C.text }}>{userLogs.length}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:C.amber }}>{fmt(userInput)}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:C.green }}>{fmt(userOutput)}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:C.red, fontWeight:600 }}>{fmtCost(userCost)}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:C.muted }}>{fmtCost(avgCost)}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Recent log entries */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5 }}>RECENT CALLS</div>
+              <button onClick={()=>{ if(confirm("Clear all API logs?")) { localStorage.setItem("b2br_api_logs","[]"); syncToCloud("api_logs",[]); }}}
+                style={{ fontSize:10, fontFamily:mono, color:C.red, background:"none", border:"none", cursor:"pointer" }}>Clear Logs</button>
+            </div>
+            <div style={{ background:C.canvas, borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden", maxHeight:400, overflowY:"auto" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"140px 1fr 80px 80px 70px 60px",
+                padding:"8px 16px", borderBottom:`1px solid ${C.border}`, gap:8, position:"sticky", top:0, background:C.canvas, zIndex:1 }}>
+                {["Time","Action","Input","Output","Cost","Duration"].map(h => (
+                  <div key={h} style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4 }}>{h}</div>
+                ))}
+              </div>
+              {[...logs].reverse().slice(0,100).map(l => (
+                <div key={l.id} style={{ display:"grid", gridTemplateColumns:"140px 1fr 80px 80px 70px 60px",
+                  padding:"6px 16px", gap:8, borderBottom:`1px solid ${C.faint}`, fontSize:11 }}>
+                  <div style={{ fontFamily:mono, color:C.muted, fontSize:10 }}>
+                    {new Date(l.timestamp).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
+                    <div style={{ fontSize:9, color:C.border }}>{l.userEmail}</div>
+                  </div>
+                  <div style={{ fontFamily:body, color:C.textSoft, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{l.action}</div>
+                  <div style={{ fontFamily:mono, color:C.amber }}>{fmt(l.inputTokens)}</div>
+                  <div style={{ fontFamily:mono, color:C.green }}>{fmt(l.outputTokens)}</div>
+                  <div style={{ fontFamily:mono, color:C.red }}>{fmtCost(l.cost)}</div>
+                  <div style={{ fontFamily:mono, color:C.muted }}>{l.durationMs>1000?`${(l.durationMs/1000).toFixed(1)}s`:`${l.durationMs}ms`}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
@@ -7709,7 +7852,9 @@ function AppMain() {
     try {
       const id = sessionStorage.getItem(USER_SESSION_KEY);
       if (!id) return null;
-      return loadUsers().find(u => u.id === id) ?? null;
+      const user = loadUsers().find(u => u.id === id) ?? null;
+      if (user) setApiLogUser(user.id, user.email);
+      return user;
     } catch { return null; }
   });
   const [view,           setView]           = useState("accounts");
@@ -7832,6 +7977,7 @@ function AppMain() {
   const handleUserLogin = (user: UserRecord) => {
     setLoggedInUser(user);
     setCurrentRole(user.role);
+    setApiLogUser(user.id, user.email);
   };
 
   const handleUserSignOut = () => {
