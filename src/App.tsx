@@ -7958,6 +7958,7 @@ function AppMain() {
   const [showAddPop,     setShowAddPop]     = useState(false);
   const [addIcpText,     setAddIcpText]     = useState("");
   const [addIcpCount,   setAddIcpCount]    = useState(1);
+  const [icpPreviews,   setIcpPreviews]    = useState<any[]|null>(null);
   const [addPopPos,      setAddPopPos]      = useState<{top:number;left:number}|null>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [showQS,         setShowQS]         = useState(false);
@@ -8183,7 +8184,6 @@ function AppMain() {
     setAddIcpCount(1);
 
     if (!companyData.co_name) {
-      // No company data — just create blank ICPs
       for (let i = 0; i < count; i++) {
         const blank = newICP(icps.length + i);
         setIcps(p => [...p, blank]);
@@ -8192,17 +8192,12 @@ function AppMain() {
       return;
     }
 
-    const toastId = addToast({ title:`Creating ${count} ICP${count>1?"s":""}…`, status:"loading", message:"AI is building profiles", step:0, totalSteps:count, startTime:Date.now() });
-    const createdIds: string[] = [];
+    const toastId = addToast({ title:`Drafting ${count} ICP${count>1?"s":""}…`, status:"loading", message:"AI is building profiles", step:0, totalSteps:count, startTime:Date.now() });
+    const drafts: any[] = [];
 
     for (let i = 0; i < count; i++) {
-      const fresh = newICP(icps.length + i);
-      setIcps(p => [...p, fresh]);
-      createdIds.push(fresh.id);
-      setDrafting(fresh.id);
       updateToast(toastId, { message:`Drafting ICP ${i+1} of ${count}…`, step:i, totalSteps:count });
-
-      const allExisting = [...icps.map(x=>x.name), ...createdIds.slice(0,-1).map((_,j)=>`ICP ${icps.length+j+1}`)].filter(Boolean).join(", ") || "none";
+      const allExisting = [...icps.map(x=>x.name), ...drafts.map(d=>d.name)].filter(Boolean).join(", ") || "none";
       const contextLine = userContext?.trim()
         ? `User's target segment description: "${userContext.trim()}"\n${count > 1 ? `This is ICP ${i+1} of ${count} — each must be a DISTINCT segment. Already created: ${allExisting}\n` : ""}`
         : `Pick the most logical DISTINCT segment not yet covered.\n`;
@@ -8221,18 +8216,26 @@ cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video
 Raw JSON only.`, "", 1400);
         try {
           const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
-          const icpName = p.name || `ICP ${icps.length+i+1}`;
-          setIcps(prev => prev.map(x => x.id===fresh.id
-            ? { ...x, data: p.fields??{}, name: icpName, confidence: p.confidence??{} }
-            : x));
-        } catch {}
-      } catch {}
+          drafts.push({ name: p.name || `ICP ${icps.length+i+1}`, fields: p.fields??{}, confidence: p.confidence??{},
+            industries: p.fields?.industries||"", buyer: p.fields?.buyer||"", pain1: p.fields?.pain1||"", _include: true });
+        } catch { drafts.push({ name:`ICP ${icps.length+i+1}`, fields:{}, confidence:{}, industries:"", buyer:"", pain1:"", _include:true }); }
+      } catch { drafts.push({ name:`ICP ${icps.length+i+1}`, fields:{}, confidence:{}, industries:"", buyer:"", pain1:"", _include:true }); }
       if (i < count - 1) await new Promise(ok => setTimeout(ok, 500));
     }
 
-    setDrafting(null);
-    setEditingId(createdIds[0]);
-    updateToast(toastId, { status:"success", title:`${count} ICP${count>1?"s":""} created`, message:undefined });
+    updateToast(toastId, { status:"success", title:`${drafts.length} ICP${drafts.length>1?"s":""} drafted`, message:"Review before adding" });
+
+    // If only 1, add directly
+    if (count === 1 && drafts.length === 1) {
+      const d = drafts[0];
+      const fresh = newICP(icps.length, d.fields, d.name, d.confidence);
+      setIcps(p => [...p, fresh]);
+      setEditingId(fresh.id);
+      return;
+    }
+
+    // Multiple — show preview for user to review
+    setIcpPreviews(drafts);
   }, [icps, companyData, addToast, updateToast]);
 
   const fillICP = useCallback(async (icp: any, userContext: string) => {
@@ -9289,6 +9292,111 @@ Raw JSON only.`, "", 1400);
           addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles} />}
+
+      {/* ICP Preview Modal */}
+      {icpPreviews && createPortal(
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483647,
+          display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(4px)", padding:24 }}>
+          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            boxShadow:"0 24px 64px rgba(13,15,26,0.22)", maxWidth:640, width:"100%", maxHeight:"85vh", overflow:"hidden",
+            display:"flex", flexDirection:"column",
+            animation:"toastIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div style={{ fontSize:18, fontWeight:700, color:C.text, fontFamily:head }}>Review ICP Drafts</div>
+                  <div style={{ fontSize:12, color:C.muted, fontFamily:body, marginTop:2 }}>
+                    {icpPreviews.filter(d=>d._include).length} of {icpPreviews.length} selected — edit names and toggle before adding
+                  </div>
+                </div>
+                <button onClick={()=>setIcpPreviews(null)}
+                  style={{ width:28, height:28, borderRadius:7, border:`1px solid ${C.border}`, background:"transparent",
+                    color:C.muted, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+              </div>
+            </div>
+
+            <div style={{ flex:1, overflowY:"auto", padding:"16px 24px" }}>
+              {icpPreviews.map((d, i) => (
+                <div key={i} style={{ padding:"14px 16px", borderRadius:10, marginBottom:10,
+                  border:`1.5px solid ${d._include?C.accentBorder:C.border}`,
+                  background:d._include?C.accentLo+"44":"transparent",
+                  transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                  <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                    <input type="checkbox" checked={d._include}
+                      onChange={()=>setIcpPreviews(p=>p!.map((x,j)=>j===i?{...x,_include:!x._include}:x))}
+                      style={{ marginTop:4, accentColor:C.accent, cursor:"pointer" }} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <input value={d.name}
+                        onChange={e=>setIcpPreviews(p=>p!.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                        style={{ width:"100%", fontSize:14, fontWeight:700, fontFamily:head, color:C.text,
+                          border:"none", background:"transparent", outline:"none", padding:0, marginBottom:8 }} />
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, marginBottom:2 }}>INDUSTRIES</div>
+                          <textarea value={d.fields?.industries||""}
+                            onChange={e=>setIcpPreviews(p=>p!.map((x,j)=>j===i?{...x,fields:{...x.fields,industries:e.target.value}}:x))}
+                            rows={2} style={{ width:"100%", fontSize:11, fontFamily:body, color:C.textSoft,
+                              border:`1px solid ${C.border}`, borderRadius:5, padding:"5px 7px", background:C.faint,
+                              outline:"none", resize:"none", boxSizing:"border-box" as const }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, marginBottom:2 }}>BUYER TITLE</div>
+                          <textarea value={d.fields?.buyer||""}
+                            onChange={e=>setIcpPreviews(p=>p!.map((x,j)=>j===i?{...x,fields:{...x.fields,buyer:e.target.value}}:x))}
+                            rows={2} style={{ width:"100%", fontSize:11, fontFamily:body, color:C.textSoft,
+                              border:`1px solid ${C.border}`, borderRadius:5, padding:"5px 7px", background:C.faint,
+                              outline:"none", resize:"none", boxSizing:"border-box" as const }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, marginBottom:2 }}>PRIMARY PAIN</div>
+                          <textarea value={d.fields?.pain1||""}
+                            onChange={e=>setIcpPreviews(p=>p!.map((x,j)=>j===i?{...x,fields:{...x.fields,pain1:e.target.value}}:x))}
+                            rows={2} style={{ width:"100%", fontSize:11, fontFamily:body, color:C.textSoft,
+                              border:`1px solid ${C.border}`, borderRadius:5, padding:"5px 7px", background:C.faint,
+                              outline:"none", resize:"none", boxSizing:"border-box" as const }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, marginBottom:2 }}>GEO</div>
+                          <input value={d.fields?.geo||""}
+                            onChange={e=>setIcpPreviews(p=>p!.map((x,j)=>j===i?{...x,fields:{...x.fields,geo:e.target.value}}:x))}
+                            style={{ width:"100%", fontSize:11, fontFamily:body, color:C.textSoft,
+                              border:`1px solid ${C.border}`, borderRadius:5, padding:"5px 7px", background:C.faint,
+                              outline:"none", boxSizing:"border-box" as const }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding:"12px 24px 20px", borderTop:`1px solid ${C.border}`, display:"flex", gap:8, flexShrink:0 }}>
+              <button onClick={()=>setIcpPreviews(null)}
+                style={{ flex:1, padding:"10px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent",
+                  color:C.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+              <button disabled={!icpPreviews.some(d=>d._include)} onClick={()=>{
+                const selected = icpPreviews.filter(d=>d._include);
+                let firstId = "";
+                for (let i = 0; i < selected.length; i++) {
+                  const d = selected[i];
+                  const fresh = newICP(icps.length + i, d.fields, d.name, d.confidence);
+                  setIcps(p => [...p, fresh]);
+                  if (i === 0) firstId = fresh.id;
+                }
+                if (firstId) setEditingId(firstId);
+                setIcpPreviews(null);
+              }}
+                style={{ flex:2, padding:"10px", borderRadius:8, border:"none",
+                  background:icpPreviews.some(d=>d._include)?C.accent:C.border,
+                  color:icpPreviews.some(d=>d._include)?"#fff":C.muted,
+                  fontSize:12, fontFamily:head, fontWeight:700,
+                  cursor:icpPreviews.some(d=>d._include)?"pointer":"default" }}>
+                Add {icpPreviews.filter(d=>d._include).length} ICP{icpPreviews.filter(d=>d._include).length!==1?"s":""}
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
 
       {/* Create Account Modal */}
       {showCreateAcct && createPortal(
