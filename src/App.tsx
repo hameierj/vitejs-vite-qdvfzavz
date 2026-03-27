@@ -7957,6 +7957,7 @@ function AppMain() {
   const [icpFilling,     setIcpFilling]     = useState<string|null>(null);
   const [showAddPop,     setShowAddPop]     = useState(false);
   const [addIcpText,     setAddIcpText]     = useState("");
+  const [addIcpCount,   setAddIcpCount]    = useState(1);
   const [addPopPos,      setAddPopPos]      = useState<{top:number;left:number}|null>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [showQS,         setShowQS]         = useState(false);
@@ -8176,22 +8177,39 @@ function AppMain() {
     }
   }, [icps]); // eslint-disable-line
 
-  const addICP = useCallback(async (userContext?: string) => {
+  const addICP = useCallback(async (userContext?: string, count = 1) => {
     setShowAddPop(false);
     setAddIcpText("");
-    const fresh = newICP(icps.length);
-    setIcps(p => [...p, fresh]);
-    if (companyData.co_name) {
+    setAddIcpCount(1);
+
+    if (!companyData.co_name) {
+      // No company data — just create blank ICPs
+      for (let i = 0; i < count; i++) {
+        const blank = newICP(icps.length + i);
+        setIcps(p => [...p, blank]);
+        if (i === 0) setEditingId(blank.id);
+      }
+      return;
+    }
+
+    const toastId = addToast({ title:`Creating ${count} ICP${count>1?"s":""}…`, status:"loading", message:"AI is building profiles", step:0, totalSteps:count, startTime:Date.now() });
+    const createdIds: string[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const fresh = newICP(icps.length + i);
+      setIcps(p => [...p, fresh]);
+      createdIds.push(fresh.id);
       setDrafting(fresh.id);
-      const toastId = addToast({ title:"Creating ICP…", status:"loading", message:"AI is building the profile" });
-      const existing = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
+      updateToast(toastId, { message:`Drafting ICP ${i+1} of ${count}…`, step:i, totalSteps:count });
+
+      const allExisting = [...icps.map(x=>x.name), ...createdIds.slice(0,-1).map((_,j)=>`ICP ${icps.length+j+1}`)].filter(Boolean).join(", ") || "none";
       const contextLine = userContext?.trim()
-        ? `User's target segment description: "${userContext.trim()}"\n`
+        ? `User's target segment description: "${userContext.trim()}"\n${count > 1 ? `This is ICP ${i+1} of ${count} — each must be a DISTINCT segment. Already created: ${allExisting}\n` : ""}`
         : `Pick the most logical DISTINCT segment not yet covered.\n`;
       try {
         const raw = await callAI(`
 Draft a new ICP. Company: ${JSON.stringify(companyData)}
-Existing ICPs: ${existing}
+Existing ICPs: ${allExisting}
 ${contextLine}
 CRITICAL: Every field MUST be filled — never leave blank. Use best guesses where needed.
 Return ONLY JSON:
@@ -8201,22 +8219,20 @@ co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 5
 tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
 cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
 Raw JSON only.`, "", 1400);
-        let icpName = `ICP ${icps.length+1}`;
         try {
           const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
-          icpName = p.name || icpName;
-          setIcps(prev => prev.map(i => i.id===fresh.id
-            ? { ...i, data: p.fields??{}, name: icpName, confidence: p.confidence??{} }
-            : i));
+          const icpName = p.name || `ICP ${icps.length+i+1}`;
+          setIcps(prev => prev.map(x => x.id===fresh.id
+            ? { ...x, data: p.fields??{}, name: icpName, confidence: p.confidence??{} }
+            : x));
         } catch {}
-        updateToast(toastId, { status:"success", title:`ICP created: ${icpName}`, message:undefined,
-          action:{ label:"View profile", onClick:()=>setEditingId(fresh.id) } });
-      } catch {
-        updateToast(toastId, { status:"error", title:"Failed to create ICP", message:"Check your API key and try again" });
-      }
-      setDrafting(null);
+      } catch {}
+      if (i < count - 1) await new Promise(ok => setTimeout(ok, 500));
     }
-    setEditingId(fresh.id);
+
+    setDrafting(null);
+    setEditingId(createdIds[0]);
+    updateToast(toastId, { status:"success", title:`${count} ICP${count>1?"s":""} created`, message:undefined });
   }, [icps, companyData, addToast, updateToast]);
 
   const fillICP = useCallback(async (icp: any, userContext: string) => {
@@ -8942,7 +8958,22 @@ Raw JSON only.`, "", 1400);
                             width:300, background:C.canvas, border:`1.5px solid ${C.accentBorder}`,
                             borderRadius:10, boxShadow:`0 8px 32px rgba(13,15,26,.16)`, padding:"14px", animation:"fadeIn .15s ease" }}>
                             <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.4, marginBottom:10 }}>+ NEW ICP</div>
-                            <button onClick={()=>{ setShowAddPop(false); const blank = newICP(icps.length, {}, "", {}); setIcps(p=>[...p, blank]); setEditingId(blank.id); }}
+
+                            {/* Count selector */}
+                            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                              <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C.textSoft }}>How many?</span>
+                              <div style={{ display:"flex", gap:3 }}>
+                                {[1,2,3,4,5].map(n => (
+                                  <button key={n} onClick={()=>setAddIcpCount(n)}
+                                    style={{ width:28, height:28, borderRadius:6, border:`1.5px solid ${addIcpCount===n?C.accentBorder:C.border}`,
+                                      background:addIcpCount===n?C.accentLo:"transparent", color:addIcpCount===n?C.accent:C.muted,
+                                      fontSize:12, fontFamily:mono, fontWeight:addIcpCount===n?700:400, cursor:"pointer",
+                                      transition:"all .15s" }}>{n}</button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <button onClick={()=>{ setShowAddPop(false); for(let i=0;i<addIcpCount;i++){const blank=newICP(icps.length+i,{},"",({}));setIcps(p=>[...p,blank]);if(i===0)setEditingId(blank.id);} setAddIcpCount(1); }}
                               style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 12px",
                                 borderRadius:8, border:`1.5px solid ${C.border}`, background:C.faint,
                                 cursor:"pointer", textAlign:"left", marginBottom:8, transition:"all .15s" }}
@@ -8950,11 +8981,11 @@ Raw JSON only.`, "", 1400);
                               onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}>
                               <span style={{ fontSize:16, flexShrink:0, color:C.muted }}>+</span>
                               <div>
-                                <div style={{ fontSize:12, fontFamily:head, fontWeight:700, color:C.text }}>Blank ICP</div>
+                                <div style={{ fontSize:12, fontFamily:head, fontWeight:700, color:C.text }}>Blank ICP{addIcpCount>1?"s":""}</div>
                                 <div style={{ fontSize:10.5, color:C.muted, fontFamily:body, marginTop:1 }}>Start from scratch — fill in fields manually</div>
                               </div>
                             </button>
-                            <button onClick={()=>addICP()}
+                            <button onClick={()=>addICP(undefined, addIcpCount)}
                               style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 12px",
                                 borderRadius:8, border:`1.5px solid ${C.accentBorder}`, background:C.accentLo,
                                 cursor:"pointer", textAlign:"left", marginBottom:10, transition:"all .15s" }}
@@ -8962,8 +8993,8 @@ Raw JSON only.`, "", 1400);
                               onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.accentLo}>
                               <span style={{ fontSize:16, flexShrink:0 }}>✦</span>
                               <div>
-                                <div style={{ fontSize:12, fontFamily:head, fontWeight:700, color:C.accent }}>AI picks the segment</div>
-                                <div style={{ fontSize:10.5, color:C.muted, fontFamily:body, marginTop:1 }}>Best next distinct segment from company context</div>
+                                <div style={{ fontSize:12, fontFamily:head, fontWeight:700, color:C.accent }}>AI picks {addIcpCount>1?`${addIcpCount} segments`:"the segment"}</div>
+                                <div style={{ fontSize:10.5, color:C.muted, fontFamily:body, marginTop:1 }}>{addIcpCount>1?"Each will be a distinct segment":"Best next distinct segment from company context"}</div>
                               </div>
                             </button>
                             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
@@ -8971,22 +9002,24 @@ Raw JSON only.`, "", 1400);
                               <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>OR</span>
                               <div style={{ flex:1, height:1, background:C.border }} />
                             </div>
-                            <div style={{ fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:6 }}>Describe your target</div>
+                            <div style={{ fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:6 }}>Describe your target{addIcpCount>1?"s":""}</div>
                             <textarea value={addIcpText} onChange={e=>setAddIcpText(e.target.value)}
-                              placeholder={`e.g. "Mid-market B2B SaaS in North America struggling with pipeline quality"`}
+                              placeholder={addIcpCount>1
+                                ? `Describe the overall audience — AI will create ${addIcpCount} distinct segments from it`
+                                : `e.g. "Mid-market B2B SaaS in North America struggling with pipeline quality"`}
                               rows={3} autoFocus
-                              onKeyDown={e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)&&addIcpText.trim()) addICP(addIcpText); }}
+                              onKeyDown={e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)&&addIcpText.trim()) addICP(addIcpText, addIcpCount); }}
                               style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1.5px solid ${C.border}`,
                                 background:C.faint, color:C.text, fontSize:11.5, fontFamily:body, lineHeight:1.5,
                                 outline:"none", resize:"none", boxSizing:"border-box" as const, marginBottom:8, transition:"border-color .15s" }}
                               onFocus={e=>{e.target.style.borderColor=C.accent+"66"; e.target.style.background=C.canvas;}}
                               onBlur={e=>{e.target.style.borderColor=C.border; e.target.style.background=C.faint;}} />
-                            <button onClick={()=>{ if(addIcpText.trim()) addICP(addIcpText); }} disabled={!addIcpText.trim()}
+                            <button onClick={()=>{ if(addIcpText.trim()) addICP(addIcpText, addIcpCount); }} disabled={!addIcpText.trim()}
                               style={{ width:"100%", padding:"8px", borderRadius:7, border:"none",
                                 background:addIcpText.trim()?C.accent:C.border, color:addIcpText.trim()?"#fff":C.muted,
                                 fontSize:11, fontFamily:head, fontWeight:700, cursor:addIcpText.trim()?"pointer":"default",
                                 boxShadow:addIcpText.trim()?`0 2px 8px ${C.accent}40`:"none", transition:"all .15s" }}>
-                              Generate from description {addIcpText.trim()?"↵":""}
+                              Generate {addIcpCount} ICP{addIcpCount>1?"s":""} from description
                             </button>
                           </div>
                         , document.body)}
