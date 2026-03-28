@@ -5438,16 +5438,6 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   const annualLeadValue      = totalLeadValueMonthly * 12;
   const annualToolsSaved     = toolsReplacedMonthly * 12;
 
-  // ── Dynamic ROI (to-date if start date set, otherwise annual projection) ──
-  const valueToDate = startDate
-    ? (totalLeadValueMonthly * monthsSinceStart) + (monthlySavings * monthsSinceStart) + timeSavingsValue
-    : 0;
-  const netToDate   = startDate && paidToDate > 0 ? Math.round(((valueToDate + pipelineRevenue * (cfg.grossMargin/100) - paidToDate) / paidToDate) * 100) : null;
-  const netROI      = annualInvestment > 0 ? Math.round(((grossProfit + annualLeadValue + annualToolsSaved + (monthlySavings * 12) + timeSavingsValue - annualInvestment) / annualInvestment) * 100) : null;
-  const paybackMonths = projectedMonthlyRev > 0 || monthlySavings > 0
-    ? Math.max(1, Math.ceil(totalB2BInvestment / (projectedMonthlyRev * (cfg.grossMargin/100) + monthlySavings + totalLeadValueMonthly)))
-    : null;
-
   // ── Time savings (based on emails sent) ──
   // Manual outbound benchmarks: ~15 min to research a prospect, ~12 min to write a personalized email,
   // ~3 min for follow-up admin → ~30 min per email manually. B2B Rocket automates all of this.
@@ -5457,6 +5447,16 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   const hoursAutoSaved         = totalEmailsSent > 0 ? Math.round((totalEmailsSent * MINS_PER_EMAIL_MANUAL) / 60) : 0;
   const timeSavingsValue       = hoursAutoSaved * AVG_HOURLY_SDR_COST;
   const fteSaved               = hoursAutoSaved > 0 ? parseFloat((hoursAutoSaved / 160).toFixed(1)) : 0; // 160 hrs/mo FTE
+
+  // ── Dynamic ROI (to-date if start date set, otherwise annual projection) ──
+  const valueToDate = startDate
+    ? (totalLeadValueMonthly * monthsSinceStart) + (monthlySavings * monthsSinceStart) + timeSavingsValue
+    : 0;
+  const netToDate   = startDate && paidToDate > 0 ? Math.round(((valueToDate + pipelineRevenue * (cfg.grossMargin/100) - paidToDate) / paidToDate) * 100) : null;
+  const netROI      = annualInvestment > 0 ? Math.round(((grossProfit + annualLeadValue + annualToolsSaved + (monthlySavings * 12) + timeSavingsValue - annualInvestment) / annualInvestment) * 100) : null;
+  const paybackMonths = projectedMonthlyRev > 0 || monthlySavings > 0
+    ? Math.max(1, Math.ceil(totalB2BInvestment / (projectedMonthlyRev * (cfg.grossMargin/100) + monthlySavings + totalLeadValueMonthly)))
+    : null;
 
   // ── Efficiency metrics from perf data ──
   const costPerLead    = perf.replies  > 0 && totalB2BInvestment > 0 ? Math.round(totalB2BInvestment / perf.replies)  : null;
