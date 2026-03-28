@@ -5356,13 +5356,13 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [])
 // ─── ROI DASHBOARD ────────────────────────────────────────────────────────────
 const ROI_CURRENCY_OPTS = ["USD","GBP","EUR","CAD","AUD"];
 // Google Workspace Starter public price & typical domain cost
-const GWS_STARTER_PER_MAILBOX = 6;   // $/mailbox/month
-const DOMAIN_COST_PER_MONTH   = 1;   // ~$12/yr per domain
+const GWS_STARTER_PER_MAILBOX = 7.20; // $7.20/mailbox/month (Starter plan public price)
+const DOMAIN_COST_PER_MONTH   = 1;    // ~$12/yr avg domain cost → $1/mo
 
 const EMPTY_ROI_CONFIG = {
   currency:"USD",
-  // B2B Rocket investment
-  b2bRocketCost:5000, mailboxes:10, domains:5,
+  // B2B Rocket VIP plan investment
+  b2bRocketCost:5000, mailboxes:201, domains:67,
   // Lead value
   rtsLeadsMonthly:0, generalContactsMonthly:0,
   rtsLeadValue:0.20, contactValue:0.05,
@@ -5413,10 +5413,20 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   const grossProfit          = projectedAnnualRev * (cfg.grossMargin / 100);
   const annualInvestment     = totalB2BInvestment * 12;
   const annualLeadValue      = totalLeadValueMonthly * 12;
-  const netROI               = annualInvestment > 0 ? Math.round(((grossProfit + annualLeadValue + (monthlySavings * 12) - annualInvestment) / annualInvestment) * 100) : null;
+  const netROI               = annualInvestment > 0 ? Math.round(((grossProfit + annualLeadValue + (monthlySavings * 12) + timeSavingsValue - annualInvestment) / annualInvestment) * 100) : null;
   const paybackMonths        = projectedMonthlyRev > 0 || monthlySavings > 0
     ? Math.max(1, Math.ceil(totalB2BInvestment / (projectedMonthlyRev * (cfg.grossMargin/100) + monthlySavings + totalLeadValueMonthly)))
     : null;
+
+  // ── Time savings (based on emails sent) ──
+  // Manual outbound benchmarks: ~15 min to research a prospect, ~12 min to write a personalized email,
+  // ~3 min for follow-up admin → ~30 min per email manually. B2B Rocket automates all of this.
+  const MINS_PER_EMAIL_MANUAL  = 30;
+  const AVG_HOURLY_SDR_COST    = 35;  // ~$70K/yr fully loaded SDR ÷ 2000 hrs
+  const totalEmailsSent        = perf.sent;
+  const hoursAutoSaved         = totalEmailsSent > 0 ? Math.round((totalEmailsSent * MINS_PER_EMAIL_MANUAL) / 60) : 0;
+  const timeSavingsValue       = hoursAutoSaved * AVG_HOURLY_SDR_COST;
+  const fteSaved               = hoursAutoSaved > 0 ? parseFloat((hoursAutoSaved / 160).toFixed(1)) : 0; // 160 hrs/mo FTE
 
   // ── Efficiency metrics from perf data ──
   const costPerLead    = perf.replies  > 0 && totalB2BInvestment > 0 ? Math.round(totalB2BInvestment / perf.replies)  : null;
@@ -5473,12 +5483,13 @@ Return ONLY valid JSON, no markdown, no explanation.`;
 
   // ── Bar data for ROI breakdown ──
   const barRows: {label:string;value:string;raw:number;max:number;color:string;sub?:string}[] = [];
-  const bigMax = Math.max(annualInvestment, grossProfit, annualLeadValue, monthlySavings*12, 1);
-  if (annualInvestment > 0) barRows.push({ label:"Annual B2B Rocket Investment", value:fc(annualInvestment), raw:annualInvestment, max:bigMax, color:C.accent });
-  if (grossProfit > 0)      barRows.push({ label:"Projected Gross Profit", value:fc(grossProfit), raw:grossProfit, max:bigMax, color:C.green, sub:`${cfg.closeRate}% close · ${fc(cfg.acv)} ACV` });
-  if (annualLeadValue > 0)  barRows.push({ label:"Lead Data Value", value:fc(annualLeadValue), raw:annualLeadValue, max:bigMax, color:C.blue, sub:`${(cfg.rtsLeadsMonthly||0).toLocaleString()} RTS + ${(cfg.generalContactsMonthly||0).toLocaleString()} contacts/mo` });
-  if (monthlySavings > 0)   barRows.push({ label:"Annual Cost Savings", value:fc(monthlySavings*12), raw:monthlySavings*12, max:bigMax, color:C.amber, sub:prevCostsMonthly>0?"SDR + tool replacement + infra":"infrastructure included" });
-  if (costPerLead !== null)  barRows.push({ label:"Cost Per Lead", value:fc(costPerLead), raw:costPerLead, max:Math.max(costPerLead,costPerMeeting??0,1), color:C.blue, sub:`${perf.replies} replies` });
+  const bigMax = Math.max(annualInvestment, grossProfit, annualLeadValue, monthlySavings*12, timeSavingsValue, 1);
+  if (annualInvestment > 0)   barRows.push({ label:"Annual B2B Rocket Investment", value:fc(annualInvestment), raw:annualInvestment, max:bigMax, color:C.accent });
+  if (grossProfit > 0)        barRows.push({ label:"Projected Gross Profit", value:fc(grossProfit), raw:grossProfit, max:bigMax, color:C.green, sub:`${cfg.closeRate}% close · ${fc(cfg.acv)} ACV` });
+  if (annualLeadValue > 0)    barRows.push({ label:"Lead Data Value", value:fc(annualLeadValue), raw:annualLeadValue, max:bigMax, color:C.green+"cc", sub:`${(cfg.rtsLeadsMonthly||0).toLocaleString()} RTS + ${(cfg.generalContactsMonthly||0).toLocaleString()} contacts/mo` });
+  if (timeSavingsValue > 0)   barRows.push({ label:"Time Savings Value", value:fc(timeSavingsValue), raw:timeSavingsValue, max:bigMax, color:C.blue, sub:`${hoursAutoSaved.toLocaleString()} hrs · ${totalEmailsSent.toLocaleString()} emails automated` });
+  if (monthlySavings > 0)     barRows.push({ label:"Annual Cost Savings", value:fc(monthlySavings*12), raw:monthlySavings*12, max:bigMax, color:C.amber, sub:prevCostsMonthly>0?"SDR + tool replacement + infra":"infrastructure included" });
+  if (costPerLead !== null)    barRows.push({ label:"Cost Per Lead", value:fc(costPerLead), raw:costPerLead, max:Math.max(costPerLead,costPerMeeting??0,1), color:C.blue, sub:`${perf.replies} replies` });
   if (costPerMeeting !== null) barRows.push({ label:"Cost Per Meeting", value:fc(costPerMeeting), raw:costPerMeeting, max:Math.max(costPerLead??0,costPerMeeting,1), color:C.amber, sub:`${perf.meetings} meetings` });
 
   return (
@@ -5619,12 +5630,14 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       )}
 
       {/* ── TOP: Key Metrics ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:12, marginBottom:20 }}>
         {[
           { label:"Monthly Investment",  value:totalB2BInvestment>0?`${fc(totalB2BInvestment)}/mo`:"—", color:C.accent,
             sub:infraValueMonthly>0?`incl. ${fc(infraValueMonthly)} infra value`:undefined },
           { label:"Lead Value Generated", value:totalLeadValueMonthly>0?`${fc(totalLeadValueMonthly)}/mo`:"—", color:C.green,
             sub:totalLeadValueMonthly>0?`${(cfg.rtsLeadsMonthly||0).toLocaleString()} RTS + ${(cfg.generalContactsMonthly||0).toLocaleString()} contacts`:undefined },
+          { label:"Time Saved",           value:hoursAutoSaved>0?`${hoursAutoSaved.toLocaleString()} hrs`:"—", color:C.blue,
+            sub:hoursAutoSaved>0?`${fc(timeSavingsValue)} value · ${fteSaved} FTEs`:`log emails sent` },
           { label:"Projected Annual ROI", value:netROI!==null?pct(netROI):"—", color:roiClr,
             sub:netROI!==null?(netROI>=100?"strong return":"building momentum"):"fill in inputs" },
           { label:"Payback Period",       value:paybackMonths!==null?`${paybackMonths} mo`:"—", color:paybackMonths!==null&&paybackMonths<=3?C.green:paybackMonths!==null&&paybackMonths<=6?C.amber:C.muted,
@@ -5658,7 +5671,9 @@ Return ONLY valid JSON, no markdown, no explanation.`;
                 detail:contactValueMonthly>0?`${fc(contactValueMonthly)}/mo value`:null, color:C.blue },
               { icon:"◑", label:"Infrastructure Included", value:infraValueMonthly>0?`${fc(infraValueMonthly)}/mo`:"—",
                 detail:infraValueMonthly>0?`${cfg.mailboxes} mailboxes · ${cfg.domains} domains`:null, color:C.accent },
-              ...(prevCostsMonthly > 0 ? [{ icon:"◉", label:"Replaces Previous Costs", value:fc(prevCostsMonthly)+"/mo",
+              ...(hoursAutoSaved > 0 ? [{ icon:"◉", label:"Time Savings (Automation)", value:`${hoursAutoSaved.toLocaleString()} hrs saved`,
+                detail:`${totalEmailsSent.toLocaleString()} emails × 30 min each · worth ${fc(timeSavingsValue)} · ${fteSaved} FTEs`, color:C.blue }] : []),
+              ...(prevCostsMonthly > 0 ? [{ icon:"◐", label:"Replaces Previous Costs", value:fc(prevCostsMonthly)+"/mo",
                 detail:`SDR: ${fc(cfg.prevSdrCost||0)} · Tools: ${fc(cfg.prevToolsCost||0)}`, color:C.amber }] : []),
             ].map(row => (
               <div key={row.label} style={{ padding:"10px 14px", background:C.faint, borderRadius:8, borderLeft:`3px solid ${row.color}` }}>
@@ -5672,15 +5687,15 @@ Return ONLY valid JSON, no markdown, no explanation.`;
             ))}
 
             {/* Total value summary */}
-            {(totalLeadValueMonthly + infraValueMonthly + prevCostsMonthly) > 0 && (
+            {(totalLeadValueMonthly + infraValueMonthly + prevCostsMonthly + timeSavingsValue) > 0 && (
               <div style={{ marginTop:"auto", padding:"12px 14px", background:C.greenLo,
                 border:`1px solid ${C.greenBorder}`, borderRadius:8, textAlign:"center" }}>
-                <div style={{ fontSize:10, fontFamily:mono, color:C.green, fontWeight:700, marginBottom:4 }}>TOTAL MONTHLY VALUE DELIVERED</div>
+                <div style={{ fontSize:10, fontFamily:mono, color:C.green, fontWeight:700, marginBottom:4 }}>TOTAL VALUE DELIVERED</div>
                 <div style={{ fontSize:22, fontFamily:head, fontWeight:800, color:C.green }}>
-                  {fc(totalLeadValueMonthly + infraValueMonthly + (prevCostsMonthly > totalB2BInvestment ? prevCostsMonthly - totalB2BInvestment : 0))}
+                  {fc(totalLeadValueMonthly + infraValueMonthly + timeSavingsValue + (prevCostsMonthly > totalB2BInvestment ? prevCostsMonthly - totalB2BInvestment : 0))}
                 </div>
                 <div style={{ fontSize:10, fontFamily:body, color:C.green+"aa", marginTop:2 }}>
-                  leads + infrastructure + savings
+                  leads + infrastructure + time savings{prevCostsMonthly > 0 ? " + cost replacement" : ""}
                 </div>
               </div>
             )}
@@ -5725,9 +5740,12 @@ Return ONLY valid JSON, no markdown, no explanation.`;
                   <div>
                     <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:netROI>=0?C.green:C.red, letterSpacing:.5 }}>NET ANNUAL ROI</div>
                     <div style={{ fontSize:10, fontFamily:body, color:C.muted, marginTop:2 }}>
-                      {grossProfit > 0 ? `${fc(grossProfit)} profit` : ""}
-                      {annualLeadValue > 0 ? ` + ${fc(annualLeadValue)} lead value` : ""}
-                      {monthlySavings > 0 ? ` + ${fc(monthlySavings*12)} savings` : ""}
+                      {[
+                        grossProfit > 0 ? `${fc(grossProfit)} profit` : "",
+                        annualLeadValue > 0 ? `${fc(annualLeadValue)} lead value` : "",
+                        timeSavingsValue > 0 ? `${fc(timeSavingsValue)} time savings` : "",
+                        monthlySavings > 0 ? `${fc(monthlySavings*12)} cost savings` : "",
+                      ].filter(Boolean).join(" + ")}
                     </div>
                   </div>
                   <div style={{ fontSize:28, fontFamily:head, fontWeight:800, color:netROI>=0?C.green:C.red }}>
