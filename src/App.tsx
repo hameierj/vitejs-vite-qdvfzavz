@@ -5357,19 +5357,29 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [])
 const ROI_CURRENCY_OPTS = ["USD","GBP","EUR","CAD","AUD"];
 // Google Workspace Starter public price & typical domain cost
 const GWS_STARTER_PER_MAILBOX = 7.20; // $7.20/mailbox/month (Starter plan public price)
-const DOMAIN_COST_PER_MONTH   = 1;    // ~$12/yr avg domain cost → $1/mo
+const DOMAIN_COST_PER_MONTH   = 1;    // ~$12/yr avg domain cost �� $1/mo
+
+// Tools replaced by B2B Rocket — public pricing benchmarks
+const TOOLS_REPLACED = [
+  { key:"replLeadDb",       label:"Lead Database",      example:"ZoomInfo",           defaultCost:1500 },
+  { key:"replOutreach",     label:"Outreach Platform",  example:"Outreach / Salesloft", defaultCost:150 },
+  { key:"replAiContent",    label:"AI Content Tools",   example:"Jasper / Copy.ai",   defaultCost:200 },
+  { key:"replEmailValid",   label:"Email Validation",   example:"ZeroBounce / NeverBounce", defaultCost:100 },
+];
 
 const EMPTY_ROI_CONFIG = {
   currency:"USD",
   // B2B Rocket VIP plan investment
   b2bRocketCost:5000, mailboxes:201, domains:67,
+  startDate:"", // ISO date string — when B2B Rocket engagement started
   // Lead value
   rtsLeadsMonthly:0, generalContactsMonthly:0,
   rtsLeadValue:0.20, contactValue:0.05,
   // Sales metrics
   closeRate:20, acv:0, grossMargin:70, avgSalesCycle:30,
-  // What it replaces
+  // What it replaces — SDRs + individual tool costs
   prevSdrCost:0, prevToolsCost:0,
+  replLeadDb:1500, replOutreach:150, replAiContent:200, replEmailValid:100,
 };
 
 function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }) {
@@ -5391,18 +5401,31 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
              meetings:a.meetings+(m.meetings||0), revenue:a.revenue+(m.revenue||0) };
   }, { sent:0, replies:0, meetings:0, revenue:0 });
 
+  // ── Time-based tracking ──
+  const startDate   = cfg.startDate ? new Date(cfg.startDate) : null;
+  const now         = new Date();
+  const daysSinceStart = startDate ? Math.max(1, Math.floor((now.getTime() - startDate.getTime()) / 86400000)) : 0;
+  const monthsSinceStart = startDate ? Math.max(0.03, daysSinceStart / 30.44) : 0; // fractional months
+  const fullMonths  = Math.floor(monthsSinceStart);
+  const paidToDate  = startDate ? cfg.b2bRocketCost * Math.ceil(monthsSinceStart) : 0;
+
   // ── Cost calculations ──
   const infraValueMonthly  = cfg.mailboxes * GWS_STARTER_PER_MAILBOX + cfg.domains * DOMAIN_COST_PER_MONTH;
   const totalB2BInvestment = cfg.b2bRocketCost;
+
+  // ── Tools replaced by B2B Rocket ──
+  const toolsReplacedMonthly = (cfg.replLeadDb || 0) + (cfg.replOutreach || 0) + (cfg.replAiContent || 0) + (cfg.replEmailValid || 0);
+  const toolsSavedToDate     = startDate ? toolsReplacedMonthly * Math.ceil(monthsSinceStart) : 0;
 
   // ── Lead value from B2B Rocket platform ──
   const rtsLeadValueMonthly     = (cfg.rtsLeadsMonthly || 0) * (cfg.rtsLeadValue || 0.20);
   const contactValueMonthly     = (cfg.generalContactsMonthly || 0) * (cfg.contactValue || 0.05);
   const totalLeadValueMonthly   = rtsLeadValueMonthly + contactValueMonthly;
 
-  // ── What B2B Rocket replaces ──
+  // ── What B2B Rocket replaces (SDRs + previous tools) ──
   const prevCostsMonthly = (cfg.prevSdrCost || 0) + (cfg.prevToolsCost || 0);
-  const monthlySavings   = prevCostsMonthly > 0 ? prevCostsMonthly - totalB2BInvestment + infraValueMonthly : infraValueMonthly;
+  const totalReplacementMonthly = prevCostsMonthly + toolsReplacedMonthly;
+  const monthlySavings   = totalReplacementMonthly + infraValueMonthly;
 
   // ── Pipeline & revenue ──
   const dealsWonFromMeetings = perf.meetings * (cfg.closeRate / 100);
@@ -5413,8 +5436,15 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   const grossProfit          = projectedAnnualRev * (cfg.grossMargin / 100);
   const annualInvestment     = totalB2BInvestment * 12;
   const annualLeadValue      = totalLeadValueMonthly * 12;
-  const netROI               = annualInvestment > 0 ? Math.round(((grossProfit + annualLeadValue + (monthlySavings * 12) + timeSavingsValue - annualInvestment) / annualInvestment) * 100) : null;
-  const paybackMonths        = projectedMonthlyRev > 0 || monthlySavings > 0
+  const annualToolsSaved     = toolsReplacedMonthly * 12;
+
+  // ── Dynamic ROI (to-date if start date set, otherwise annual projection) ──
+  const valueToDate = startDate
+    ? (totalLeadValueMonthly * monthsSinceStart) + (monthlySavings * monthsSinceStart) + timeSavingsValue
+    : 0;
+  const netToDate   = startDate && paidToDate > 0 ? Math.round(((valueToDate + pipelineRevenue * (cfg.grossMargin/100) - paidToDate) / paidToDate) * 100) : null;
+  const netROI      = annualInvestment > 0 ? Math.round(((grossProfit + annualLeadValue + annualToolsSaved + (monthlySavings * 12) + timeSavingsValue - annualInvestment) / annualInvestment) * 100) : null;
+  const paybackMonths = projectedMonthlyRev > 0 || monthlySavings > 0
     ? Math.max(1, Math.ceil(totalB2BInvestment / (projectedMonthlyRev * (cfg.grossMargin/100) + monthlySavings + totalLeadValueMonthly)))
     : null;
 
@@ -5483,14 +5513,15 @@ Return ONLY valid JSON, no markdown, no explanation.`;
 
   // ── Bar data for ROI breakdown ──
   const barRows: {label:string;value:string;raw:number;max:number;color:string;sub?:string}[] = [];
-  const bigMax = Math.max(annualInvestment, grossProfit, annualLeadValue, monthlySavings*12, timeSavingsValue, 1);
-  if (annualInvestment > 0)   barRows.push({ label:"Annual B2B Rocket Investment", value:fc(annualInvestment), raw:annualInvestment, max:bigMax, color:C.accent });
-  if (grossProfit > 0)        barRows.push({ label:"Projected Gross Profit", value:fc(grossProfit), raw:grossProfit, max:bigMax, color:C.green, sub:`${cfg.closeRate}% close · ${fc(cfg.acv)} ACV` });
-  if (annualLeadValue > 0)    barRows.push({ label:"Lead Data Value", value:fc(annualLeadValue), raw:annualLeadValue, max:bigMax, color:C.green+"cc", sub:`${(cfg.rtsLeadsMonthly||0).toLocaleString()} RTS + ${(cfg.generalContactsMonthly||0).toLocaleString()} contacts/mo` });
-  if (timeSavingsValue > 0)   barRows.push({ label:"Time Savings Value", value:fc(timeSavingsValue), raw:timeSavingsValue, max:bigMax, color:C.blue, sub:`${hoursAutoSaved.toLocaleString()} hrs · ${totalEmailsSent.toLocaleString()} emails automated` });
-  if (monthlySavings > 0)     barRows.push({ label:"Annual Cost Savings", value:fc(monthlySavings*12), raw:monthlySavings*12, max:bigMax, color:C.amber, sub:prevCostsMonthly>0?"SDR + tool replacement + infra":"infrastructure included" });
-  if (costPerLead !== null)    barRows.push({ label:"Cost Per Lead", value:fc(costPerLead), raw:costPerLead, max:Math.max(costPerLead,costPerMeeting??0,1), color:C.blue, sub:`${perf.replies} replies` });
-  if (costPerMeeting !== null) barRows.push({ label:"Cost Per Meeting", value:fc(costPerMeeting), raw:costPerMeeting, max:Math.max(costPerLead??0,costPerMeeting,1), color:C.amber, sub:`${perf.meetings} meetings` });
+  const bigMax = Math.max(annualInvestment, grossProfit, annualLeadValue, annualToolsSaved, monthlySavings*12, timeSavingsValue, 1);
+  if (annualInvestment > 0)    barRows.push({ label:"Annual B2B Rocket Investment", value:fc(annualInvestment), raw:annualInvestment, max:bigMax, color:C.accent });
+  if (grossProfit > 0)         barRows.push({ label:"Projected Gross Profit", value:fc(grossProfit), raw:grossProfit, max:bigMax, color:C.green, sub:`${cfg.closeRate}% close · ${fc(cfg.acv)} ACV` });
+  if (annualLeadValue > 0)     barRows.push({ label:"Lead Data Value", value:fc(annualLeadValue), raw:annualLeadValue, max:bigMax, color:C.green+"cc", sub:`${(cfg.rtsLeadsMonthly||0).toLocaleString()} RTS + ${(cfg.generalContactsMonthly||0).toLocaleString()} contacts/mo` });
+  if (annualToolsSaved > 0)    barRows.push({ label:"Tools Replaced (Annual Savings)", value:fc(annualToolsSaved), raw:annualToolsSaved, max:bigMax, color:C.amber, sub:"lead DB + outreach + AI content + email validation" });
+  if (timeSavingsValue > 0)    barRows.push({ label:"Time Savings Value", value:fc(timeSavingsValue), raw:timeSavingsValue, max:bigMax, color:C.blue, sub:`${hoursAutoSaved.toLocaleString()} hrs · ${totalEmailsSent.toLocaleString()} emails automated` });
+  if (monthlySavings > 0)      barRows.push({ label:"Total Annual Savings", value:fc(monthlySavings*12), raw:monthlySavings*12, max:bigMax, color:C.amber+"cc", sub:"all replaced costs + infrastructure" });
+  if (costPerLead !== null)     barRows.push({ label:"Cost Per Lead", value:fc(costPerLead), raw:costPerLead, max:Math.max(costPerLead,costPerMeeting??0,1), color:C.blue, sub:`${perf.replies} replies` });
+  if (costPerMeeting !== null)  barRows.push({ label:"Cost Per Meeting", value:fc(costPerMeeting), raw:costPerMeeting, max:Math.max(costPerLead??0,costPerMeeting,1), color:C.amber, sub:`${perf.meetings} meetings` });
 
   return (
     <div style={{ animation:"fadeIn .3s ease" }}>
@@ -5521,14 +5552,14 @@ Return ONLY valid JSON, no markdown, no explanation.`;
         <div style={{ background:C.canvas, border:`1px solid ${C.border}`, borderRadius:12,
           padding:"22px 26px", marginBottom:28, animation:"fadeIn .18s ease" }}>
 
-          {/* Row 1: B2B Rocket Investment */}
+          {/* Row 1: B2B Rocket Investment + Start Date */}
           <div style={{ marginBottom:20 }}>
             <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.5, marginBottom:12 }}>B2B ROCKET INVESTMENT</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:10 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))", gap:10 }}>
               {([
                 { key:"b2bRocketCost", label:"MONTHLY SUBSCRIPTION", ph:"5000" },
-                { key:"mailboxes",     label:"MAILBOXES INCLUDED",   ph:"10", int:true },
-                { key:"domains",       label:"DOMAINS INCLUDED",     ph:"5",  int:true },
+                { key:"mailboxes",     label:"MAILBOXES INCLUDED",   ph:"201", int:true },
+                { key:"domains",       label:"DOMAINS INCLUDED",     ph:"67",  int:true },
               ] as any[]).map(f => (
                 <div key={f.key}>
                   <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>{f.label}</label>
@@ -5537,6 +5568,14 @@ Return ONLY valid JSON, no markdown, no explanation.`;
                     onFocus={e=>e.target.style.borderColor=C.accent+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
                 </div>
               ))}
+              <div>
+                <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>START DATE</label>
+                <input type="date" value={cfg.startDate||""} onChange={e=>upd({startDate:e.target.value})} style={inputSt}
+                  onFocus={e=>e.target.style.borderColor=C.accent+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
+                <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>
+                  {startDate ? `${daysSinceStart} days · ${fullMonths} mo · ${fc(paidToDate)} paid` : "Set to track ROI over time"}
+                </div>
+              </div>
               <div>
                 <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>CURRENCY</label>
                 <select value={cfg.currency} onChange={e=>upd({currency:e.target.value})}
@@ -5596,9 +5635,33 @@ Return ONLY valid JSON, no markdown, no explanation.`;
             </div>
           </div>
 
-          {/* Row 4: What B2B Rocket Replaces */}
+          {/* Row 4: Tools Replaced by B2B Rocket */}
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5, marginBottom:4 }}>TOOLS YOU NO LONGER NEED</div>
+            <div style={{ fontSize:11, fontFamily:body, color:C.muted, marginBottom:12 }}>B2B Rocket includes all of these — enter what you would pay separately</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))", gap:10, alignItems:"end" }}>
+              {TOOLS_REPLACED.map(t => (
+                <div key={t.key}>
+                  <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>{t.label.toUpperCase()}</label>
+                  <input type="number" min={0} value={(cfg as any)[t.key]||""} placeholder={String(t.defaultCost)}
+                    onChange={e=>upd({[t.key]:parseFloat(e.target.value)||0})} style={inputSt}
+                    onFocus={e=>e.target.style.borderColor=C.amber+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
+                  <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>vs. {t.example}</div>
+                </div>
+              ))}
+              {toolsReplacedMonthly > 0 && (
+                <div style={{ padding:"10px 14px", background:C.amberLo, border:`1px solid ${C.amberBorder}`, borderRadius:8 }}>
+                  <div style={{ fontSize:10, fontFamily:mono, color:C.amber, fontWeight:700 }}>TOOLS SAVINGS</div>
+                  <div style={{ fontSize:18, fontFamily:head, fontWeight:800, color:C.green }}>{fc(toolsReplacedMonthly)}<span style={{ fontSize:11, fontWeight:400 }}>/mo</span></div>
+                  <div style={{ fontSize:9, fontFamily:body, color:C.muted }}>{fc(toolsReplacedMonthly*12)}/yr · all included in B2B Rocket</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Row 5: Previous SDR / Other costs */}
           <div>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5, marginBottom:12 }}>WHAT B2B ROCKET REPLACES</div>
+            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5, marginBottom:12 }}>PREVIOUS HEADCOUNT & OTHER COSTS</div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:10 }}>
               <div>
                 <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>PREVIOUS SDR COST / MONTH</label>
@@ -5608,20 +5671,17 @@ Return ONLY valid JSON, no markdown, no explanation.`;
                 <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>Fully loaded SDR cost being replaced</div>
               </div>
               <div>
-                <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>PREVIOUS TOOLS COST / MONTH</label>
+                <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>OTHER TOOLS COST / MONTH</label>
                 <input type="number" min={0} value={cfg.prevToolsCost||""} placeholder="0"
                   onChange={e=>upd({prevToolsCost:parseFloat(e.target.value)||0})} style={inputSt}
                   onFocus={e=>e.target.style.borderColor=C.amber+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
-                <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>ZoomInfo, Apollo, Outreach, etc.</div>
+                <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>Any additional tools not listed above</div>
               </div>
-              {prevCostsMonthly > 0 && (
-                <div style={{ padding:"10px 14px", background:C.amberLo||"rgba(245,158,11,0.08)",
-                  border:`1px solid ${C.amberBorder||C.amber+"33"}`, borderRadius:8, display:"flex", flexDirection:"column", justifyContent:"center" }}>
-                  <div style={{ fontSize:10, fontFamily:mono, color:C.amber, fontWeight:700 }}>MONTHLY SAVINGS</div>
-                  <div style={{ fontSize:18, fontFamily:head, fontWeight:800, color:monthlySavings>=0?C.green:C.red }}>
-                    {monthlySavings >= 0 ? fc(monthlySavings) : `-${fc(Math.abs(monthlySavings))}`}
-                  </div>
-                  <div style={{ fontSize:9, fontFamily:body, color:C.muted }}>vs. previous setup</div>
+              {monthlySavings > 0 && (
+                <div style={{ padding:"10px 14px", background:C.greenLo, border:`1px solid ${C.greenBorder}`, borderRadius:8 }}>
+                  <div style={{ fontSize:10, fontFamily:mono, color:C.green, fontWeight:700 }}>TOTAL MONTHLY SAVINGS</div>
+                  <div style={{ fontSize:18, fontFamily:head, fontWeight:800, color:C.green }}>{fc(monthlySavings)}<span style={{ fontSize:11, fontWeight:400 }}>/mo</span></div>
+                  <div style={{ fontSize:9, fontFamily:body, color:C.green+"aa" }}>tools + SDR + infra vs. {fc(totalB2BInvestment)}/mo B2B Rocket</div>
                 </div>
               )}
             </div>
@@ -5629,13 +5689,47 @@ Return ONLY valid JSON, no markdown, no explanation.`;
         </div>
       )}
 
+      {/* ── Dynamic To-Date Banner (if start date set) ── */}
+      {startDate && paidToDate > 0 && (
+        <div style={{ background:C.canvas, border:`1px solid ${C.border}`, borderRadius:12,
+          padding:"16px 22px", marginBottom:16, display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:16, alignItems:"center" }}>
+          <div>
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5 }}>ENGAGEMENT</div>
+            <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C.text }}>{daysSinceStart} days</div>
+            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>{fullMonths} months since {startDate.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+          </div>
+          <div>
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.5 }}>PAID TO DATE</div>
+            <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C.accent }}>{fc(paidToDate)}</div>
+            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>{Math.ceil(monthsSinceStart)} payments × {fc(totalB2BInvestment)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.green, letterSpacing:.5 }}>VALUE TO DATE</div>
+            <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C.green }}>{fc(valueToDate + pipelineRevenue * (cfg.grossMargin/100))}</div>
+            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>leads + savings + revenue</div>
+          </div>
+          <div>
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5 }}>TOOLS SAVED TO DATE</div>
+            <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C.amber }}>{fc(toolsSavedToDate)}</div>
+            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>{fc(toolsReplacedMonthly)}/mo × {Math.ceil(monthsSinceStart)} mo</div>
+          </div>
+          <div>
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:netToDate!==null&&netToDate>=0?C.green:C.red, letterSpacing:.5 }}>ROI TO DATE</div>
+            <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:netToDate!==null&&netToDate>=0?C.green:netToDate!==null?C.red:C.muted }}>
+              {netToDate !== null ? pct(netToDate) : "—"}
+            </div>
+            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>{netToDate!==null&&netToDate>=0?"positive":"building"} since day 1</div>
+          </div>
+        </div>
+      )}
+
       {/* ── TOP: Key Metrics ── */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:12, marginBottom:20 }}>
         {[
-          { label:"Monthly Investment",  value:totalB2BInvestment>0?`${fc(totalB2BInvestment)}/mo`:"—", color:C.accent,
+          { label:"Monthly Investment",   value:totalB2BInvestment>0?`${fc(totalB2BInvestment)}/mo`:"—", color:C.accent,
             sub:infraValueMonthly>0?`incl. ${fc(infraValueMonthly)} infra value`:undefined },
-          { label:"Lead Value Generated", value:totalLeadValueMonthly>0?`${fc(totalLeadValueMonthly)}/mo`:"—", color:C.green,
-            sub:totalLeadValueMonthly>0?`${(cfg.rtsLeadsMonthly||0).toLocaleString()} RTS + ${(cfg.generalContactsMonthly||0).toLocaleString()} contacts`:undefined },
+          { label:"Tools Replaced",       value:toolsReplacedMonthly>0?`${fc(toolsReplacedMonthly)}/mo`:"—", color:C.amber,
+            sub:toolsReplacedMonthly>0?"lead DB + outreach + AI + validation":"configure replaced tools" },
           { label:"Time Saved",           value:hoursAutoSaved>0?`${hoursAutoSaved.toLocaleString()} hrs`:"—", color:C.blue,
             sub:hoursAutoSaved>0?`${fc(timeSavingsValue)} value · ${fteSaved} FTEs`:`log emails sent` },
           { label:"Projected Annual ROI", value:netROI!==null?pct(netROI):"—", color:roiClr,
@@ -5671,10 +5765,17 @@ Return ONLY valid JSON, no markdown, no explanation.`;
                 detail:contactValueMonthly>0?`${fc(contactValueMonthly)}/mo value`:null, color:C.blue },
               { icon:"◑", label:"Infrastructure Included", value:infraValueMonthly>0?`${fc(infraValueMonthly)}/mo`:"—",
                 detail:infraValueMonthly>0?`${cfg.mailboxes} mailboxes · ${cfg.domains} domains`:null, color:C.accent },
+              ...(toolsReplacedMonthly > 0 ? [{ icon:"◒", label:"Tools Replaced", value:`${fc(toolsReplacedMonthly)}/mo saved`,
+                detail:[
+                  cfg.replLeadDb ? `Lead DB: ${fc(cfg.replLeadDb)}` : "",
+                  cfg.replOutreach ? `Outreach: ${fc(cfg.replOutreach)}` : "",
+                  cfg.replAiContent ? `AI Tools: ${fc(cfg.replAiContent)}` : "",
+                  cfg.replEmailValid ? `Email Valid: ${fc(cfg.replEmailValid)}` : "",
+                ].filter(Boolean).join(" · "), color:C.amber }] : []),
               ...(hoursAutoSaved > 0 ? [{ icon:"◉", label:"Time Savings (Automation)", value:`${hoursAutoSaved.toLocaleString()} hrs saved`,
                 detail:`${totalEmailsSent.toLocaleString()} emails × 30 min each · worth ${fc(timeSavingsValue)} · ${fteSaved} FTEs`, color:C.blue }] : []),
-              ...(prevCostsMonthly > 0 ? [{ icon:"◐", label:"Replaces Previous Costs", value:fc(prevCostsMonthly)+"/mo",
-                detail:`SDR: ${fc(cfg.prevSdrCost||0)} · Tools: ${fc(cfg.prevToolsCost||0)}`, color:C.amber }] : []),
+              ...(prevCostsMonthly > 0 ? [{ icon:"◐", label:"Replaces SDRs & Other", value:fc(prevCostsMonthly)+"/mo",
+                detail:`SDR: ${fc(cfg.prevSdrCost||0)} · Other: ${fc(cfg.prevToolsCost||0)}`, color:C.amber }] : []),
             ].map(row => (
               <div key={row.label} style={{ padding:"10px 14px", background:C.faint, borderRadius:8, borderLeft:`3px solid ${row.color}` }}>
                 <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
@@ -5687,15 +5788,29 @@ Return ONLY valid JSON, no markdown, no explanation.`;
             ))}
 
             {/* Total value summary */}
-            {(totalLeadValueMonthly + infraValueMonthly + prevCostsMonthly + timeSavingsValue) > 0 && (
+            {(totalLeadValueMonthly + infraValueMonthly + toolsReplacedMonthly + timeSavingsValue) > 0 && (
               <div style={{ marginTop:"auto", padding:"12px 14px", background:C.greenLo,
                 border:`1px solid ${C.greenBorder}`, borderRadius:8, textAlign:"center" }}>
-                <div style={{ fontSize:10, fontFamily:mono, color:C.green, fontWeight:700, marginBottom:4 }}>TOTAL VALUE DELIVERED</div>
+                <div style={{ fontSize:10, fontFamily:mono, color:C.green, fontWeight:700, marginBottom:4 }}>
+                  {startDate ? "TOTAL VALUE TO DATE" : "TOTAL MONTHLY VALUE"}
+                </div>
                 <div style={{ fontSize:22, fontFamily:head, fontWeight:800, color:C.green }}>
-                  {fc(totalLeadValueMonthly + infraValueMonthly + timeSavingsValue + (prevCostsMonthly > totalB2BInvestment ? prevCostsMonthly - totalB2BInvestment : 0))}
+                  {startDate
+                    ? fc(valueToDate + pipelineRevenue * (cfg.grossMargin/100))
+                    : fc(totalLeadValueMonthly + infraValueMonthly + toolsReplacedMonthly + (prevCostsMonthly > 0 ? prevCostsMonthly : 0))
+                  }
                 </div>
                 <div style={{ fontSize:10, fontFamily:body, color:C.green+"aa", marginTop:2 }}>
-                  leads + infrastructure + time savings{prevCostsMonthly > 0 ? " + cost replacement" : ""}
+                  {startDate
+                    ? `over ${daysSinceStart} days vs. ${fc(paidToDate)} paid`
+                    : [
+                        totalLeadValueMonthly > 0 ? "leads" : "",
+                        infraValueMonthly > 0 ? "infra" : "",
+                        toolsReplacedMonthly > 0 ? "tools" : "",
+                        timeSavingsValue > 0 ? "time" : "",
+                        prevCostsMonthly > 0 ? "SDR" : "",
+                      ].filter(Boolean).join(" + ")
+                  }
                 </div>
               </div>
             )}
@@ -5742,9 +5857,10 @@ Return ONLY valid JSON, no markdown, no explanation.`;
                     <div style={{ fontSize:10, fontFamily:body, color:C.muted, marginTop:2 }}>
                       {[
                         grossProfit > 0 ? `${fc(grossProfit)} profit` : "",
-                        annualLeadValue > 0 ? `${fc(annualLeadValue)} lead value` : "",
-                        timeSavingsValue > 0 ? `${fc(timeSavingsValue)} time savings` : "",
-                        monthlySavings > 0 ? `${fc(monthlySavings*12)} cost savings` : "",
+                        annualLeadValue > 0 ? `${fc(annualLeadValue)} leads` : "",
+                        annualToolsSaved > 0 ? `${fc(annualToolsSaved)} tools` : "",
+                        timeSavingsValue > 0 ? `${fc(timeSavingsValue)} time` : "",
+                        monthlySavings > 0 ? `${fc(monthlySavings*12)} savings` : "",
                       ].filter(Boolean).join(" + ")}
                     </div>
                   </div>
