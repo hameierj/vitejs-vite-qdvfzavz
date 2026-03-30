@@ -4631,11 +4631,11 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
     setIncomingTab(newTab);
     setIsSwapping(true);
     setLeavingBehind(false);
-    // Phase 1: card lifts and sweeps out (stays on top)
-    // Phase 2: at midpoint, z-index flips so card goes behind as it returns
-    setTimeout(() => { setLeavingBehind(true); }, 550);
-    setTimeout(() => { setSecTab(newTab); }, 600);
-    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); setIncomingTab(null); setLeavingBehind(false); }, 1300);
+    // Phase 1: card lifts and flips out in 3D (stays on top)
+    // Phase 2: at midpoint the card passes behind via z-index swap
+    setTimeout(() => { setLeavingBehind(true); }, 600);
+    setTimeout(() => { setSecTab(newTab); }, 650);
+    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); setIncomingTab(null); setLeavingBehind(false); }, 1400);
   };
 
   return (
@@ -4669,7 +4669,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
       </div>
 
       {/* Fields — card stack (all sections always rendered, stacked) */}
-      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0, perspective:"1200px" }}>
+      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0, perspective:"1800px", perspectiveOrigin:"70% 50%" }}>
         {secKeys.map(key => {
           const s = COMPANY_SECTIONS[key];
           if (!s) return null;
@@ -4690,14 +4690,15 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
               overflowY: isActive && !isSwapping ? "auto" : "hidden",
               background: C2.canvas,
               borderRadius:4,
+              transformStyle:"preserve-3d" as const,
+              backfaceVisibility:"hidden" as const,
               boxShadow: isVisible ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "none",
               zIndex: z,
-              // Incoming card starts at full scale immediately (visible under the leaving card)
               transform: isLeaving ? undefined
-                : (isActive || isIncoming) ? "scale(1) translateY(0)"
-                : "scale(0.97) translateY(8px)",
-              transition: !isLeaving ? "transform .6s ease-in-out, box-shadow .6s ease" : undefined,
-              animation: isLeaving ? "cardPullOut 1.2s ease-in-out forwards" : undefined,
+                : (isActive || isIncoming) ? "translateZ(0px) scale(1)"
+                : "translateZ(-30px) scale(0.97) translateY(8px)",
+              transition: !isLeaving ? "transform .7s ease-in-out, box-shadow .7s ease" : undefined,
+              animation: isLeaving ? "cardFlipBehind 1.3s ease-in-out forwards" : undefined,
               willChange: isLeaving ? "transform" : undefined,
               pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
               // Hide non-participating cards completely
@@ -8957,12 +8958,12 @@ Raw JSON only.`, "", 1400);
         input,textarea,select{outline:none;}
         select option{background:${C.canvas};}
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes cardPullOut{
-          0%{transform:translateX(0) translateY(0) rotate(0deg) scale(1)}
-          35%{transform:translateX(140px) translateY(-16px) rotate(2.5deg) scale(1.01)}
-          50%{transform:translateX(160px) translateY(-8px) rotate(1.5deg) scale(1)}
-          70%{transform:translateX(80px) translateY(2px) rotate(0.5deg) scale(0.98)}
-          100%{transform:translateX(0) translateY(6px) rotate(0deg) scale(0.97)}
+        @keyframes cardFlipBehind{
+          0%{transform:translateX(0) translateY(0) translateZ(0px) rotateY(0deg) scale(1)}
+          30%{transform:translateX(80px) translateY(-10px) translateZ(40px) rotateY(-15deg) scale(1.01)}
+          50%{transform:translateX(120px) translateY(0px) translateZ(20px) rotateY(-35deg) scale(1)}
+          70%{transform:translateX(60px) translateY(4px) translateZ(-20px) rotateY(-15deg) scale(0.98)}
+          100%{transform:translateX(0) translateY(8px) translateZ(-30px) rotateY(0deg) scale(0.97)}
         }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
