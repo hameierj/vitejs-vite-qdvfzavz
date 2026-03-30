@@ -4692,6 +4692,8 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
               borderRadius:4,
               transformStyle:"preserve-3d" as const,
               backfaceVisibility:"hidden" as const,
+              transformOrigin: isLeaving ? "right center" : isIncoming ? "left center" : "center center",
+              willChange:"transform" as const,
               boxShadow: isVisible ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "none",
               zIndex: z,
               transform: isLeaving ? undefined
@@ -4702,7 +4704,6 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
               animation: isLeaving ? "cardFlipBehind 1.3s ease-in-out forwards"
                 : isIncoming ? "cardRiseUp 1.3s ease-in-out forwards"
                 : undefined,
-              willChange: (isLeaving || isIncoming) ? "transform" : undefined,
               pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
               // Hide non-participating cards completely
               visibility: isVisible ? "visible" as const : "hidden" as const,
@@ -8970,9 +8971,9 @@ Raw JSON only.`, "", 1400);
           100%{transform:translateX(0) translateY(8px) translateZ(-30px) rotateY(0deg) scale(0.97)}
         }
         @keyframes cardRiseUp{
-          0%{transform:translateY(8px) translateZ(-30px) scale(0.97)}
-          50%{transform:translateY(-4px) translateZ(-10px) scale(0.99)}
-          100%{transform:translateY(0) translateZ(0px) scale(1)}
+          0%{transform:translateX(0) translateY(8px) translateZ(-30px) rotateY(0deg) scale(0.97)}
+          40%{transform:translateX(-40px) translateY(2px) translateZ(-10px) rotateY(8deg) scale(0.985)}
+          100%{transform:translateX(0) translateY(0) translateZ(0px) rotateY(0deg) scale(1)}
         }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
