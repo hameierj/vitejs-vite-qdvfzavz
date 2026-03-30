@@ -4641,10 +4641,10 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
               cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:4 }}
               onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C2.canvas; }}
               onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-              <span style={{ fontSize:13, fontFamily:head, fontWeight: on ? 700 : 500, color: on ? C2.text : C2.textSoft }}>{s.label}</span>
+              <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight: on ? 700 : 500, color: on ? C2.text : C2.textSoft }}>{s.label}</span>
               <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:allFilled?C2.green:on?C2.accent:C2.muted,
                 background:allFilled?C2.greenLo:on?`${C2.accent}11`:C2.canvas,
-                padding:"2px 8px", borderRadius:8, flexShrink:0 }}>
+                padding:"2px 8px", borderRadius:8, flexShrink:0, marginLeft:"auto" }}>
                 {allFilled?"Done":`${gf}/${s.fields.length}`}
               </span>
             </button>
