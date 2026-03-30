@@ -4622,14 +4622,16 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
 
   // Card-stack animation state
   const [leavingTab, setLeavingTab] = useState<string|null>(null);
+  const [incomingTab, setIncomingTab] = useState<string|null>(null);
   const [isSwapping, setIsSwapping] = useState(false);
   const swapTab = (newTab: string) => {
     if (newTab === secTab || isSwapping) return;
     setLeavingTab(secTab);
+    setIncomingTab(newTab);
     setIsSwapping(true);
-    // Delay the tab switch so the card lifts and travels before revealing the new one
-    setTimeout(() => { setSecTab(newTab); }, 400);
-    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); }, 1250);
+    // Switch active tab partway through so the reveal feels natural
+    setTimeout(() => { setSecTab(newTab); }, 500);
+    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); setIncomingTab(null); }, 1300);
   };
 
   return (
@@ -4669,20 +4671,31 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
           if (!s) return null;
           const isActive = secTab === key;
           const isLeaving = leavingTab === key;
+          const isIncoming = incomingTab === key;
+          const isVisible = isActive || isLeaving || isIncoming;
           const sf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
+
+          // z-index: leaving card on top (animating out), incoming/active underneath, rest hidden
+          const z = isLeaving ? 10 : (isActive || isIncoming) ? 5 : 1;
 
           return (
             <div key={key} style={{
-              position:"absolute" as const, inset:0, padding:"28px 32px", overflowY: isActive && !isSwapping ? "auto" : "hidden",
+              position:"absolute" as const, inset:0, padding:"28px 32px",
+              overflowY: isActive && !isSwapping ? "auto" : "hidden",
               background: C2.canvas,
               borderRadius:4,
-              boxShadow: isActive || isLeaving ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "0 2px 8px rgba(45,52,54,.04)",
-              zIndex: isLeaving ? 10 : isActive ? 5 : 1,
-              transform: isLeaving ? undefined : !isActive ? "scale(0.97) translateY(8px)" : "scale(1) translateY(0)",
-              transition: !isLeaving ? "transform .8s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .8s ease, z-index 0s .35s" : undefined,
+              boxShadow: isVisible ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "none",
+              zIndex: z,
+              // Incoming card starts at full scale immediately (visible under the leaving card)
+              transform: isLeaving ? undefined
+                : (isActive || isIncoming) ? "scale(1) translateY(0)"
+                : "scale(0.97) translateY(8px)",
+              transition: !isLeaving ? "transform .6s ease-in-out, box-shadow .6s ease" : undefined,
               animation: isLeaving ? "cardPullOut 1.2s ease-in-out forwards" : undefined,
-              willChange: isLeaving ? "transform, opacity" : undefined,
+              willChange: isLeaving ? "transform" : undefined,
               pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
+              // Hide non-participating cards completely
+              visibility: isVisible ? "visible" as const : "hidden" as const,
             }}>
               <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
