@@ -8637,13 +8637,19 @@ function AppMain() {
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
     saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks });
-    // Sync co_industry back to ClientRecord so admin panel stays current
+    // Sync co_name and co_industry back to ClientRecord so admin panel + sidebar stay current
     const cd = companyData as Record<string,string>;
-    if (cd.co_industry) {
-      const cls = loadClients();
-      const match = cls.find(c => c.id === activeWorkspace.id);
-      if (match && match.industry !== cd.co_industry) {
-        saveClients(cls.map(c => c.id === activeWorkspace.id ? { ...c, industry: cd.co_industry } : c));
+    const cls = loadClients();
+    const match = cls.find(c => c.id === activeWorkspace.id);
+    if (match) {
+      let changed = false;
+      const patch: any = {};
+      if (cd.co_name && match.name !== cd.co_name) { patch.name = cd.co_name; changed = true; }
+      if (cd.co_industry && match.industry !== cd.co_industry) { patch.industry = cd.co_industry; changed = true; }
+      if (changed) {
+        saveClients(cls.map(c => c.id === activeWorkspace.id ? { ...c, ...patch } : c));
+        // Also update the active workspace reference so sidebar/header reflect the new name immediately
+        if (patch.name) setActiveWorkspace((prev: any) => prev ? { ...prev, name: patch.name } : prev);
       }
     }
   }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks]);
