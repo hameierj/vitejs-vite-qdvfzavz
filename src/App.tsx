@@ -2665,6 +2665,60 @@ function FilesPanel({ files, onFilesChange, links, onLinksChange, onUploadFiles 
 }
 
 // ─── ICP KANBAN CARD ─────────────────────────────────────────────────────────
+// ═══════════ V2 ICP CARD ═══════════
+function ICPCardV2({ icp, idx, onOpen, onDuplicate, onDelete, isSelected = false }) {
+  const filled   = ALL_ICP_FIELDS.filter(f=>fieldFilled(f,icp.data[f.id])).length;
+  const pct      = Math.round(filled/TOTAL_FIELDS*100);
+  const hasOut   = !!icp.outputs;
+  const [hov, setHov] = useState(false);
+  return (
+    <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      onClick={()=>onOpen(icp)}
+      style={{ borderRadius:14, border:`2px solid ${isSelected?icp.color+"66":hov?icp.color+"33":C2.border}`,
+        background:C2.canvas, overflow:"hidden", cursor:"pointer",
+        boxShadow: isSelected ? `0 4px 20px ${icp.color}22` : hov ? `0 4px 20px rgba(108,92,231,0.08)` : "0 1px 4px rgba(0,0,0,0.03)",
+        transform: hov && !isSelected ? "translateY(-2px)" : "none",
+        transition:"all .25s ease" }}>
+      <div style={{ padding:"14px 16px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+          <div style={{ width:8, height:8, borderRadius:4, background:icp.color, flexShrink:0 }} />
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:C2.text, fontFamily:head,
+              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              {icp.name || `ICP ${idx+1}`}
+            </div>
+          </div>
+          {(hov || isSelected) && (
+            <div style={{ display:"flex", gap:3, flexShrink:0 }} onClick={e=>e.stopPropagation()}>
+              <button title="Duplicate" onClick={()=>onDuplicate(icp)} style={{ width:24, height:24, borderRadius:6,
+                border:`1px solid ${C2.border}`, background:"transparent", color:C2.muted, fontSize:10, cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center", transition:"all .15s" }}
+                onMouseEnter={e=>{(e.target as HTMLElement).style.borderColor=C2.accent;(e.target as HTMLElement).style.color=C2.accent;}}
+                onMouseLeave={e=>{(e.target as HTMLElement).style.borderColor=C2.border;(e.target as HTMLElement).style.color=C2.muted;}}>+</button>
+              <button title="Delete" onClick={()=>onDelete(icp.id)} style={{ width:24, height:24, borderRadius:6,
+                border:`1px solid ${C2.border}`, background:"transparent", color:C2.muted, fontSize:10, cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center", transition:"all .15s" }}
+                onMouseEnter={e=>{(e.target as HTMLElement).style.borderColor=C2.red;(e.target as HTMLElement).style.color=C2.red;}}
+                onMouseLeave={e=>{(e.target as HTMLElement).style.borderColor=C2.border;(e.target as HTMLElement).style.color=C2.muted;}}>×</button>
+            </div>
+          )}
+        </div>
+        {/* Progress */}
+        <div style={{ marginBottom:8 }}>
+          <div style={{ height:4, borderRadius:2, background:C2.faint, overflow:"hidden" }}>
+            <div style={{ height:"100%", borderRadius:2, width:`${pct}%`, background:icp.color, transition:"width .4s ease" }} />
+          </div>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <span style={{ fontSize:10, color:C2.muted, fontFamily:mono }}>{pct}% complete</span>
+          {hasOut && <span style={{ fontSize:9, color:C2.green, fontFamily:mono, fontWeight:600 }}>Outputs ready</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════ V1 ICP CARD (original) ═══════════
 function ICPCard({ icp, idx, onOpen, onDuplicate, onDelete }) {
   const filled   = ALL_ICP_FIELDS.filter(f=>fieldFilled(f,icp.data[f.id])).length;
   const pct      = Math.round(filled/TOTAL_FIELDS*100);
@@ -3770,7 +3824,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
 
         <div style={{ display:"flex", minHeight: inline ? 0 : 580, flex: inline ? "1 1 0%" : "unset", overflow: inline ? "hidden" : "visible", minWidth:0 }}>
           {/* Left nav */}
-          <div style={{ width:160, background:C.surface, borderRight:`1px solid ${C.border}`, flexShrink:0, padding:"10px 0", overflowY:"auto", minHeight:0 }}>
+          <div style={{ width: useV2 ? 180 : 160, background: useV2?C2.faint:C.surface, borderRight:`1px solid ${useV2?C2.border:C.border}`, flexShrink:0, padding: useV2 ? "14px 8px" : "10px 0", overflowY:"auto", minHeight:0 }}>
             {panel==="form" && (
               <div style={{ margin:"4px 6px", border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden" }}>
                 <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
@@ -9797,9 +9851,9 @@ Raw JSON only.`, "", 1400);
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
 
                 {/* ── Page Header ── */}
-                <div style={{ padding:"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${C.border}` }}>
-                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>ICP Profiles</h2>
-                  <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
+                <div style={{ padding: useV2 ? "20px clamp(20px, 3vw, 48px) 14px" : "16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${useV2?C2.border:C.border}` }}>
+                  <h2 style={{ fontSize: useV2 ? 22 : 20, fontWeight: useV2 ? 800 : 700, color: useV2?C2.text:C.text, fontFamily:head, margin:"0 0 5px" }}>ICP Profiles</h2>
+                  <p style={{ fontSize: useV2 ? 13 : 12, color: useV2?C2.muted:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
                     Define target segments, personas, pains, and messaging strategies
                   </p>
                 </div>
@@ -9808,11 +9862,11 @@ Raw JSON only.`, "", 1400);
                 <div style={{ display:"flex", flex:1, minHeight:0, overflow:"hidden" }}>
 
                 {/* ── ICP list sidebar ── */}
-                <div style={{ width:242, flexShrink:0, display:"flex", flexDirection:"column",
-                  borderRight:`1px solid ${C.border}`, background:C.canvas, overflow:"hidden" }}>
+                <div style={{ width: useV2 ? 260 : 242, flexShrink:0, display:"flex", flexDirection:"column",
+                  borderRight:`1px solid ${useV2?C2.border:C.border}`, background: useV2?C2.canvas:C.canvas, overflow:"hidden" }}>
 
                   {/* Sidebar header */}
-                  <div style={{ padding:"8px 8px 6px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+                  <div style={{ padding: useV2 ? "10px 12px 8px" : "8px 8px 6px", borderBottom:`1px solid ${useV2?C2.border:C.border}`, flexShrink:0 }}>
                       {/* Add ICP button + popover */}
                       <div style={{ position:"relative" }}>
                         <button ref={addBtnRef} onClick={()=>{ if(!drafting){ const r=addBtnRef.current?.getBoundingClientRect(); if(r) setAddPopPos({top:r.bottom+8,left:r.right-300}); setShowAddPop(p=>!p); } }} disabled={!!drafting}
@@ -9903,8 +9957,8 @@ Raw JSON only.`, "", 1400);
                     {icps.length === 0 && (
                       <div style={{ padding:"32px 12px", textAlign:"center" }}>
                         <div style={{ fontSize:22, marginBottom:8, opacity:.5 }}>🎯</div>
-                        <div style={{ fontSize:12, fontWeight:700, color:C.text, fontFamily:head, marginBottom:4 }}>No ICPs yet</div>
-                        <div style={{ fontSize:11, color:C.muted, fontFamily:body, lineHeight:1.5 }}>Use the + button above to add your first profile.</div>
+                        <div style={{ fontSize:12, fontWeight:700, color:useV2?C2.text:C.text, fontFamily:head, marginBottom:4 }}>No ICPs yet</div>
+                        <div style={{ fontSize:11, color:useV2?C2.muted:C.muted, fontFamily:body, lineHeight:1.5 }}>Use the + button above to add your first profile.</div>
                       </div>
                     )}
                     {(icps as any[]).map((icp, i) => {
@@ -9916,14 +9970,23 @@ Raw JSON only.`, "", 1400);
                       return (
                         <div key={icp.id} data-icp-id={icp.id}
                           onClick={()=>setEditingId(icp.id)}
-                          style={{ padding:"8px 10px", borderRadius:7, marginBottom:2, cursor:"pointer", position:"relative",
+                          style={ useV2 ? {
+                            padding:"10px 12px", borderRadius:12, marginBottom:4, cursor:"pointer", position:"relative",
+                            border:`2px solid ${isSelected?icp.color+"55":C2.border}`,
+                            background: isSelected ? `${icp.color}08` : C2.canvas,
+                            boxShadow: isSelected ? `0 2px 12px ${icp.color}15` : "0 1px 3px rgba(0,0,0,0.03)",
+                            animation:"icpSlideIn .35s cubic-bezier(0.16, 1, 0.3, 1)",
+                            transition:"all .25s ease",
+                          } : {
+                            padding:"8px 10px", borderRadius:7, marginBottom:2, cursor:"pointer", position:"relative",
                             borderLeft:`3px solid ${isSelected?icp.color:"transparent"}`,
                             background: isSelected ? C.faint : "transparent",
                             animation:"icpSlideIn .35s cubic-bezier(0.16, 1, 0.3, 1)",
                             transition:"border-color .3s cubic-bezier(0.16, 1, 0.3, 1), background .25s cubic-bezier(0.16, 1, 0.3, 1), transform .3s cubic-bezier(0.16, 1, 0.3, 1)",
-                            transform: isSelected ? "translateX(2px)" : "translateX(0)" }}
-                          onMouseEnter={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=C.faint; (e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="1"); }}
-                          onMouseLeave={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background="transparent"; if(icpConfirm?.id!==icp.id && icpFill?.id!==icp.id)(e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="0"); }}>
+                            transform: isSelected ? "translateX(2px)" : "translateX(0)",
+                          }}
+                          onMouseEnter={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=useV2?C2.faint:C.faint; (e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="1"); }}
+                          onMouseLeave={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=useV2&&isSelected?`${icp.color}08`:isSelected?C.faint:"transparent"; if(icpConfirm?.id!==icp.id && icpFill?.id!==icp.id)(e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="0"); }}>
                           {/* Name + actions row */}
                           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                             <div style={{ flex:1, minWidth:0 }}>
