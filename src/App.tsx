@@ -4625,8 +4625,6 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
       background:C2.canvas, boxShadow:"0 2px 12px rgba(108,92,231,.04)" }}>
       {/* Section nav */}
       <div style={{ width:220, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
-        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5,
-          padding:"0 10px", marginBottom:12, textTransform:"uppercase" as const }}>SECTIONS</div>
         {secKeys.map(key => {
           const s = COMPANY_SECTIONS[key];
           if (!s) return null;
