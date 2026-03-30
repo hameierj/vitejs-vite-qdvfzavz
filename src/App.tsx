@@ -8984,36 +8984,25 @@ Raw JSON only.`, "", 1400);
             display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden",
             boxShadow:"2px 0 12px rgba(108,92,231,.04)" }}>
 
-            {/* Logo / Brand */}
-            <div style={{ padding:"20px 20px 16px", flexShrink:0 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <div style={{ width:36, height:36, borderRadius:12, background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`,
-                  display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 4px 12px ${C2.accent}33` }}>
-                  <img src="/logo.svg" alt="" style={{ width:20, height:20, filter:"brightness(10)" }} onError={e=>{(e.target as HTMLImageElement).style.display="none"}} />
-                </div>
-                <span style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C2.text, letterSpacing:-.3 }}>CX Tool</span>
-              </div>
-            </div>
-
-            {/* Client selector */}
-            {activeWorkspace && (
-              <div style={{ padding:"0 16px 12px", flexShrink:0 }}>
-                <div style={{ padding:"10px 14px", borderRadius:12, background:C2.faint, border:`1px solid ${C2.border}`,
-                  display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:32, height:32, borderRadius:10,
+            {/* Client Name Header */}
+            <div style={{ padding:"14px 16px 12px", borderBottom:`1px solid ${C2.border}`, flexShrink:0 }}>
+              {activeWorkspace ? (
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:30, height:30, borderRadius:10,
                     background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`, color:"#fff",
                     display:"flex", alignItems:"center", justifyContent:"center",
                     fontSize:13, fontWeight:700, fontFamily:head, flexShrink:0 }}>
                     {(activeWorkspace.name||"?").charAt(0).toUpperCase()}
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text,
+                    <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text,
                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeWorkspace.name}</div>
-                    <div style={{ fontSize:10, color:C2.muted, fontFamily:body }}>Active workspace</div>
                   </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.muted }}>Select a client</div>
+              )}
+            </div>
 
             {/* Navigation */}
             <div style={{ flex:1, overflowY:"auto", padding:"0 12px" }}>
