@@ -9309,8 +9309,13 @@ Raw JSON only.`, "", 1400);
 
             </div>
 
-            {/* Profile menu portal */}
-            {profileMenuOpen && profileMenuPos && createPortal(
+            {/* Profile menu portal — moved outside sidebar IIFE for V1/V2 compat */}
+          </div>
+          );
+        })()}
+
+        {/* ── Profile menu portal (shared V1/V2) ── */}
+        {profileMenuOpen && profileMenuPos && createPortal(
               <>
                 {/* Backdrop */}
                 <div onClick={()=>{ setProfileMenuOpen(false); setMenuApiOpen(false); setConfirmSignOut(false); }}
@@ -9451,9 +9456,6 @@ Raw JSON only.`, "", 1400);
               </>,
               document.body
             )}
-          </div>
-          );
-        })()}
 
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
