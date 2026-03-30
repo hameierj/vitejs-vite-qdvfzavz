@@ -134,9 +134,39 @@ const C = {
   blueBorder:  "#1D65D433",
 };
 
+// V2 Design System — inspired by SaaS Dashboard Template
+const C2 = {
+  bg:          "#F8F9FE",
+  canvas:      "#FFFFFF",
+  surface:     "#F3F4FB",
+  card:        "#FFFFFF",
+  border:      "#EDF2F7",
+  borderHi:    "#D8DEE9",
+  text:        "#2D3436",
+  textSoft:    "#636E82",
+  muted:       "#8E94A7",
+  faint:       "#F3F4FB",
+  accent:      "#6C5CE7",
+  accentLo:    "#6C5CE70D",
+  accentMid:   "#6C5CE722",
+  accentHi:    "#5A4BD6",
+  accentBorder:"#6C5CE733",
+  green:       "#00D68F",
+  greenLo:     "#00D68F0F",
+  greenBorder: "#00D68F33",
+  amber:       "#FFC048",
+  amberLo:     "#FFC0480F",
+  amberBorder: "#FFC04830",
+  red:         "#FF6B6B",
+  redLo:       "#FF6B6B0F",
+  blue:        "#54A0FF",
+  blueLo:      "#54A0FF0F",
+  blueBorder:  "#54A0FF33",
+};
+
 const ICP_COLORS = [
-  "#5956D6","#0E9E6E","#E8470A","#1D65D4",
-  "#9333EA","#B45309","#BE185D","#0891B2",
+  "#6C5CE7","#00D68F","#FF6B6B","#54A0FF",
+  "#9B59B6","#FFC048","#E84393","#00CEC9",
 ];
 
 const head = "'Inter', 'Plus Jakarta Sans', system-ui, sans-serif";
@@ -4555,6 +4585,116 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
 }
 
 // ─── COMPANY PANEL ────────────────────────────────────────────────────────────
+// ═══════════ V2 COMPANY PANEL ═══════════
+function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, onConfLock, fileContext = "" }) {
+  const [aiOn, setAiOn] = useState(null);
+  const [aiOptions, setAiOptions] = useState<Record<string,any[]>>({});
+  const [secTab, setSecTab] = useState("client");
+  const origRef = useRef<Record<string,any>>({});
+
+  const upd = (id: string, v: any) => onChange({ ...data, [id]: v });
+  const handleUnlock = (id: string) => { origRef.current[id] = data[id]; onConfLock?.(id, false); };
+  const handleSave = async (f: any, id: string) => { onConfLock?.(id, true); const score = await scoreWithAI(f, data[id]); onConfChange?.(id, score); };
+  const handleCancel = (id: string) => { const orig = origRef.current[id]; if (orig !== undefined) { onChange({ ...data, [id]: orig }); delete origRef.current[id]; } onConfLock?.(id, true); };
+
+  const handleAI = async (f: any, instructions: string) => {
+    setAiOn(f.id);
+    const extra = instructions ? `\nExtra instructions: ${instructions}` : "";
+    try {
+      const raw = await callAI(`Generate 3 distinct options for this B2B company profile field. Return ONLY a valid JSON array:\n[{"text":"...","conf":87},{"text":"...","conf":72},{"text":"...","conf":65}]\n\nField: "${f.label}"\nHint: "${f.ph||""}"\nContext: ${JSON.stringify(data)}${extra}${fileContext ? `\n${fileContext}` : ""}`,"",600);
+      const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+      if (Array.isArray(parsed) && parsed.length > 0) setAiOptions(p => ({ ...p, [f.id]: parsed.slice(0,3) }));
+    } catch {
+      const v = await callAI(`Fill this company field.\nContext: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}${fileContext ? `\n${fileContext}` : ""}\nReturn ONLY the answer.`,"",180);
+      upd(f.id, v.trim()); onConfLock?.(f.id, true); scoreWithAI(f, v.trim()).then(score => onConfChange?.(f.id, score));
+    }
+    setAiOn(null);
+  };
+  const handleOptionPick = (fieldId: string, opt: any) => {
+    setAiOptions(p => { const n = {...p}; delete n[fieldId]; return n; });
+    if (!opt) return;
+    upd(fieldId, opt.text); onConfChange?.(fieldId, opt.conf); onConfLock?.(fieldId, true);
+  };
+
+  const secKeys = ["client","business","guardrails"];
+  const sec = COMPANY_SECTIONS[secTab];
+  const secFill = sec?.fields.filter((f: any) => fieldFilled(f, data[f.id])).length ?? 0;
+
+  return (
+    <div style={{ display:"flex", height:"100%", overflow:"hidden", borderRadius:16, border:`1px solid ${C2.border}`,
+      background:C2.canvas, boxShadow:"0 2px 12px rgba(108,92,231,.04)" }}>
+      {/* Section nav */}
+      <div style={{ width:200, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
+        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5,
+          padding:"0 10px", marginBottom:12, textTransform:"uppercase" as const }}>SECTIONS</div>
+        {secKeys.map(key => {
+          const s = COMPANY_SECTIONS[key];
+          if (!s) return null;
+          const gf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
+          const on = secTab === key;
+          const allFilled = gf === s.fields.length;
+          return (
+            <button key={key} onClick={() => setSecTab(key)} style={{
+              display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+              background: on ? `${C2.accent}14` : "transparent",
+              borderRadius:12, border:"none",
+              cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:4 }}
+              onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C2.canvas; }}
+              onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontFamily:head, fontWeight: on ? 700 : 500, color: on ? C2.text : C2.textSoft }}>{s.label}</div>
+              </div>
+              <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:allFilled?C2.green:on?C2.accent:C2.muted,
+                background:allFilled?C2.greenLo:on?`${C2.accent}11`:C2.canvas,
+                padding:"2px 8px", borderRadius:8, flexShrink:0 }}>
+                {allFilled?"Done":`${gf}/${s.fields.length}`}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Fields */}
+      <div style={{ flex:1, padding:"28px 32px", overflowY:"auto", minHeight:0 }}>
+        <div key={secTab} style={{ display:"flex", flexDirection:"column", gap:20,
+          animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+            <div>
+              <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head }}>{sec.label}</div>
+              <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:2 }}>Fill in each field or use AI to auto-generate</div>
+            </div>
+            <span style={{ fontSize:12, color:C2.muted, fontFamily:mono, background:C2.faint,
+              padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{secFill}/{sec.fields.length}</span>
+          </div>
+          {sec.fields.map((f: any) => (
+            <Field key={f.id} f={f} val={data[f.id]} onChange={(v: any) => upd(f.id, v)}
+              onAI={handleAI} aiOn={aiOn} accentColor={C2.accent}
+              confidence={(confidence ?? {})[f.id]}
+              locked={!!(confLocked ?? {})[f.id]}
+              onUnlock={() => handleUnlock(f.id)}
+              onSave={() => handleSave(f, f.id)}
+              onCancel={() => handleCancel(f.id)}
+              aiOptions={aiOptions[f.id] ?? null}
+              onOptionPick={(opt: any) => handleOptionPick(f.id, opt)}
+              onSubmitField={(fieldId: string) => {
+                onConfLock?.(fieldId, true);
+                scoreWithAI(f, data[fieldId]).then((score: number) => onConfChange?.(fieldId, score));
+                const idx = sec.fields.findIndex((x: any) => x.id === fieldId);
+                for (let n = idx + 1; n < sec.fields.length; n++) {
+                  if (!(confLocked ?? {})[sec.fields[n].id]) {
+                    setTimeout(() => { const el = document.querySelector(`[data-field-id="${sec.fields[n].id}"]`) as HTMLElement; el?.focus(); }, 50);
+                    return;
+                  }
+                }
+              }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════ V1 COMPANY PANEL (original) ═══════════
 function CompanyPanel({ data, confidence, confLocked, onChange, onConfChange, onConfLock, fileContext = "" }) {
   const [aiOn, setAiOn] = useState(null);
   const [aiOptions, setAiOptions] = useState<Record<string,any[]>>({});
@@ -8325,6 +8465,8 @@ function AppMain() {
       return user;
     } catch { return null; }
   });
+  const [useV2,          setUseV2]          = useState(() => { try { return localStorage.getItem("b2br_v2") === "1"; } catch { return false; } });
+  const T = useV2 ? C2 : C; // Theme — V1 or V2
   const [view,           setView]           = useState("accounts");
   const [analyticsTab,   setAnalyticsTab]   = useState<"perf"|"roi">("perf");
   const [acctSearch,     setAcctSearch]     = useState("");
@@ -8820,7 +8962,7 @@ Raw JSON only.`, "", 1400);
         ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
       `}</style>
 
-      <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:C.bg }}>
+      <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:useV2?C2.bg:C.bg }}>
 
         {/* ── SIDEBAR ── */}
         {(() => {
@@ -8835,6 +8977,175 @@ Raw JSON only.`, "", 1400);
                 { id:"analytics", label:"Analytics",        icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
                 { id:"files",   label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
               ];
+
+          /* ═══════════ V2 SIDEBAR ═══════════ */
+          if (useV2) return (
+          <div style={{ width:"clamp(220px, 18vw, 270px)", background:C2.canvas, borderRight:`1px solid ${C2.border}`,
+            display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden",
+            boxShadow:"2px 0 12px rgba(108,92,231,.04)" }}>
+
+            {/* Logo / Brand */}
+            <div style={{ padding:"20px 20px 16px", flexShrink:0 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ width:36, height:36, borderRadius:12, background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`,
+                  display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 4px 12px ${C2.accent}33` }}>
+                  <img src="/logo.svg" alt="" style={{ width:20, height:20, filter:"brightness(10)" }} onError={e=>{(e.target as HTMLImageElement).style.display="none"}} />
+                </div>
+                <span style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C2.text, letterSpacing:-.3 }}>CX Tool</span>
+              </div>
+            </div>
+
+            {/* Client selector */}
+            {activeWorkspace && (
+              <div style={{ padding:"0 16px 12px", flexShrink:0 }}>
+                <div style={{ padding:"10px 14px", borderRadius:12, background:C2.faint, border:`1px solid ${C2.border}`,
+                  display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:32, height:32, borderRadius:10,
+                    background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`, color:"#fff",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:13, fontWeight:700, fontFamily:head, flexShrink:0 }}>
+                    {(activeWorkspace.name||"?").charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeWorkspace.name}</div>
+                    <div style={{ fontSize:10, color:C2.muted, fontFamily:body }}>Active workspace</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Navigation */}
+            <div style={{ flex:1, overflowY:"auto", padding:"0 12px" }}>
+
+              {/* + New */}
+              {activeWorkspace && currentRole === "team" && (
+                <div style={{ position:"relative", marginBottom:8 }}>
+                  <button onClick={e=>{
+                    const menu = e.currentTarget.nextElementSibling as HTMLElement;
+                    menu.style.display = menu.style.display === "block" ? "none" : "block";
+                  }}
+                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:"11px 14px",
+                      borderRadius:12, border:"none", background:C2.accent, color:"#fff", cursor:"pointer",
+                      fontSize:13, fontFamily:head, fontWeight:700, boxShadow:`0 4px 14px ${C2.accent}44`,
+                      transition:"all .2s" }}
+                    onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.transform="translateY(-1px)";(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 6px 20px ${C2.accent}55`;}}
+                    onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.transform="translateY(0)";(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 4px 14px ${C2.accent}44`;}}>
+                    <span style={{ fontSize:15 }}>+</span> New
+                  </button>
+                  <div style={{ display:"none", position:"absolute", top:"100%", left:0, right:0, marginTop:6,
+                    background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:12,
+                    boxShadow:"0 10px 40px rgba(45,52,54,.12)", zIndex:100, overflow:"hidden",
+                    animation:"contentFade .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
+                    onClick={e=>(e.currentTarget as HTMLElement).style.display="none"}>
+                    <button onClick={()=>setShowQS(true)}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"12px 16px",
+                        border:"none", background:"transparent", cursor:"pointer", textAlign:"left" }}
+                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C2.faint}
+                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                      <span style={{ fontSize:15 }}>⚡</span>
+                      <div>
+                        <div style={{ fontSize:12.5, fontFamily:head, fontWeight:700, color:C2.text }}>Quick Start</div>
+                        <div style={{ fontSize:10.5, color:C2.muted, fontFamily:body }}>Build from website, docs, or text</div>
+                      </div>
+                    </button>
+                    <button onClick={()=>setShowAnalyzer(true)}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"12px 16px",
+                        border:"none", background:"transparent", cursor:"pointer", textAlign:"left" }}
+                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C2.faint}
+                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                      <span style={{ fontSize:15 }}>🔍</span>
+                      <div>
+                        <div style={{ fontSize:12.5, fontFamily:head, fontWeight:700, color:C2.text }}>Analyze Existing</div>
+                        <div style={{ fontSize:10.5, color:C2.muted, fontFamily:body }}>Reverse-engineer from screenshots</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Copilot */}
+              {activeWorkspace && (
+                <button onClick={()=>setView("chat")}
+                  style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"11px 14px",
+                    borderRadius:12, border:"none",
+                    background: view==="chat" ? `${C2.accent}14` : "transparent",
+                    color: view==="chat" ? C2.accent : C2.muted,
+                    cursor:"pointer", textAlign:"left", marginBottom:4, transition:"all .2s" }}
+                  onMouseEnter={e=>{ if(view!=="chat")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                  onMouseLeave={e=>{ if(view!=="chat")(e.currentTarget as HTMLButtonElement).style.background=view==="chat"?`${C2.accent}14`:"transparent"; }}>
+                  <span style={{ fontSize:16, width:20, textAlign:"center" }}>◎</span>
+                  <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="chat"?700:600 }}>Copilot</span>
+                  {chats.length > 0 && (
+                    <span style={{ fontSize:10, fontFamily:mono, color:C2.muted, background:C2.faint,
+                      padding:"2px 7px", borderRadius:10, marginLeft:"auto" }}>{chats.length}</span>
+                  )}
+                </button>
+              )}
+
+              {/* Nav items */}
+              {activeWorkspace && (
+                <>
+                  <div style={{ height:1, background:C2.border, margin:"8px 4px 12px" }} />
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5,
+                    padding:"0 14px", marginBottom:8, textTransform:"uppercase" as const }}>WORKSPACE</div>
+                  {wsNavItems.map(n => {
+                    const on = view === n.id;
+                    return (
+                      <button key={n.id} onClick={()=>guardedNav(()=>setView(n.id))}
+                        style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                          borderRadius:12, border:"none",
+                          background: on ? `${C2.accent}14` : "transparent",
+                          cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                        onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                        onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=on?`${C2.accent}14`:"transparent"; }}>
+                        <span style={{ fontSize:14, width:20, textAlign:"center", color:on?C2.accent:C2.muted }}>{n.icon}</span>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontFamily:head, fontWeight:on?700:500, color:on?C2.text:C2.textSoft }}>{n.label}</div>
+                        </div>
+                        <span style={{ fontSize:10, fontFamily:mono, color:on?C2.accent:C2.muted, background:on?`${C2.accent}11`:C2.faint,
+                          padding:"2px 7px", borderRadius:8 }}>{n.sub}</span>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+
+            {/* User footer */}
+            <div style={{ flexShrink:0, borderTop:`1px solid ${C2.border}`, padding:"12px 12px 14px" }}>
+              <div style={{ padding:"8px 10px", borderRadius:12, background:C2.faint,
+                display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ width:36, height:36, borderRadius:10, flexShrink:0,
+                  background:`linear-gradient(135deg, ${avatarColor(loggedInUser.name)}, ${avatarColor(loggedInUser.name)}dd)`,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:12, fontWeight:800, color:"#fff", fontFamily:mono }}>
+                  {loggedInUser.name.split(" ").map((w:string)=>w[0]).join("").slice(0,2).toUpperCase()}
+                </div>
+                <div style={{ minWidth:0, flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head, lineHeight:1.2,
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.name}</div>
+                  <div style={{ fontSize:10, color:C2.muted, fontFamily:body, lineHeight:1.2,
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{loggedInUser.email}</div>
+                </div>
+                <button ref={profileMenuBtnRef}
+                  onClick={()=>{
+                    if (profileMenuOpen) { setProfileMenuOpen(false); return; }
+                    const r = profileMenuBtnRef.current?.getBoundingClientRect();
+                    if (r) setProfileMenuPos({ bottom: window.innerHeight - r.bottom, left: r.right + 8, width: 240 });
+                    setMenuApiOpen(false);
+                    setConfirmSignOut(false);
+                    setProfileMenuOpen(true);
+                  }}
+                  style={{ width:30, height:30, borderRadius:8, border:`1px solid ${profileMenuOpen?C2.accentBorder:C2.border}`,
+                    background:profileMenuOpen?C2.accentLo:"transparent", color:profileMenuOpen?C2.accent:C2.muted,
+                    fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                    flexShrink:0, transition:"all .15s" }}>⋯</button>
+              </div>
+            </div>
+          </div>
+          );
+          /* ═══════════ V1 SIDEBAR (original) ═══════════ */
           return (
           <div style={{ width:"clamp(200px, 18vw, 260px)", background:C.canvas, borderRight:`1px solid ${C.border}`,
             display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden" }}>
@@ -9098,6 +9409,21 @@ Raw JSON only.`, "", 1400);
                     </div>
                   )}
 
+                  {/* V2 Design Toggle */}
+                  <button onClick={()=>{ const next = !useV2; setUseV2(next); try { localStorage.setItem("b2br_v2", next?"1":"0"); } catch {} }}
+                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
+                      borderRadius:7, border:"none", background:useV2?C2.accentLo:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
+                    onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.background=useV2?C2.accentMid:C.faint; }}
+                    onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.background=useV2?C2.accentLo:"transparent"; }}>
+                    <span style={{ fontSize:13, width:18, textAlign:"center", color:useV2?C2.accent:C.muted }}>◑</span>
+                    <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:useV2?C2.accent:C.textSoft }}>V2 Design {useV2?"On":"Off"}</span>
+                    <div style={{ marginLeft:"auto", width:32, height:18, borderRadius:9, background:useV2?C2.accent:C.border,
+                      transition:"background .2s", position:"relative" as const, flexShrink:0 }}>
+                      <div style={{ width:14, height:14, borderRadius:7, background:"#fff", position:"absolute" as const,
+                        top:2, left:useV2?16:2, transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,.15)" }} />
+                    </div>
+                  </button>
+
                   <div style={{ height:1, background:C.border, margin:"4px 0" }} />
 
                   {/* Sign out */}
@@ -9357,10 +9683,37 @@ Raw JSON only.`, "", 1400);
               </div>
             )}
 
-            {view==="company" && (
+            {view==="company" && (useV2 ? (
+              /* ═══ V2 Company View ═══ */
               <div style={{ position:"absolute" as const, inset:0, textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                {/* Header */}
+                <div style={{ padding:"20px 0 16px", flexShrink:0 }}>
+                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Client Profile</h2>
+                  <p style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.5, margin:"0 0 14px" }}>
+                    Fill this once. Every ICP inherits this context when AI auto-drafts their profile.
+                  </p>
+                  <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                    <div style={{ flex:1, height:6, borderRadius:3, background:C2.faint, overflow:"hidden" }}>
+                      <div style={{ height:"100%", borderRadius:3, width:`${companyPct}%`,
+                        background:`linear-gradient(90deg, ${C2.accent}, ${C2.accentHi})`,
+                        transition:"width .6s ease", boxShadow:`0 0 8px ${C2.accent}33` }} />
+                    </div>
+                    <span style={{ fontSize:12, color:companyPct===100?C2.green:C2.accent, fontFamily:mono, fontWeight:700,
+                      background:companyPct===100?C2.greenLo:`${C2.accent}11`, padding:"3px 10px", borderRadius:8 }}>{companyPct}%</span>
+                  </div>
+                </div>
+                <div style={{ flex:1, minHeight:0, marginBottom:16 }}>
+                  <CompanyPanelV2 data={companyData} confidence={companyConf} confLocked={companyConfLocked}
+                    onChange={setCompanyData}
+                    onConfChange={(id: string, score: number) => setCompanyConf((p:any) => ({ ...p, [id]: score }))}
+                    onConfLock={(id: string, locked: boolean) => setCompanyConfLocked((p:any) => ({ ...p, [id]: locked }))}
+                    fileContext={buildFileContext(wsFiles)} />
+                </div>
+              </div>
+            ) : (
+              /* ═══ V1 Company View (original) ═══ */
+              <div style={{ position:"absolute" as const, inset:0, textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ padding:"16px 0 12px", flexShrink:0 }}>
                   <div style={{ marginBottom:6 }}>
                     <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:0, textAlign:"left" }}>Client Profile</h2>
@@ -9381,7 +9734,7 @@ Raw JSON only.`, "", 1400);
                     fileContext={buildFileContext(wsFiles)} />
                 </div>
               </div>
-            )}
+            ))}
 
             {view==="icps" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
