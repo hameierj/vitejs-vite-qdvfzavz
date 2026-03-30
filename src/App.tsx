@@ -7331,6 +7331,8 @@ const saveWorkspaceData = (clientId: string, data: object) => {
 const EMPTY_CLIENT: Omit<ClientRecord, "id"|"createdAt"> = { name:"", industry:"", status:"active", assignedUserId:null };
 
 function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () => void }) {
+  const _v2 = (() => { try { return localStorage.getItem("b2br_v2") === "1"; } catch { return false; } })();
+  const _C = _v2 ? C2 : C;
   const [section,   setSection]   = useState<"users"|"clients"|"logs">("users");
 
   // ── Users state ──
@@ -7529,16 +7531,16 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
     c.industry.toLowerCase().includes(clientSearch.toLowerCase())
   );
 
-  const roleColor   = (r: string) => r === "team"   ? { bg: C.accentLo,    text: C.accent } : { bg: C.greenLo,  text: C.green };
-  const statusColor = (s: string) => s === "active"  ? { bg: C.greenLo,    text: C.green  } : { bg: "#EEF0F8",  text: C.muted };
+  const roleColor   = (r: string) => r === "team"   ? { bg: _C.accentLo,    text: _C.accent } : { bg: _C.greenLo,  text: _C.green };
+  const statusColor = (s: string) => s === "active"  ? { bg: _C.greenLo,    text: _C.green  } : { bg: "#EEF0F8",  text: _C.muted };
 
   return (
-    <div style={{ display:"flex", height:"100vh", background:C.bg, overflow:"hidden" }}>
+    <div style={{ display:"flex", height:"100vh", background:_C.bg, overflow:"hidden" }}>
       {/* Sidebar */}
-      <div style={{ width:224, background:C.canvas, borderRight:`1px solid ${C.border}`,
+      <div style={{ width:224, background:_C.canvas, borderRight:`1px solid ${_C.border}`,
         display:"flex", flexDirection:"column", flexShrink:0, padding:"18px 16px" }}>
         <img src="/logo.svg" alt="B2B Rocket" style={{ width:"100%", maxWidth:160, height:"auto", display:"block", marginBottom:20 }} />
-        <div style={{ fontSize:9, color:C.muted, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:12 }}>ADMIN</div>
+        <div style={{ fontSize:9, color:_C.muted, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:12 }}>ADMIN</div>
         {[
           { id:"users",   label:"Users",   icon:"👤", count: users.length   },
           { id:"clients", label:"Clients", icon:"🏢", count: clients.length },
@@ -7547,25 +7549,25 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           const on = section === item.id;
           return (
             <button key={item.id} onClick={()=>setSection(item.id as any)}
-              style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 11px",
-                borderRadius:8, background: on ? C.accentLo : "transparent",
-                border:`1px solid ${on ? C.accentBorder : "transparent"}`,
-                cursor:"pointer", textAlign:"left", marginBottom:4, transition:"all .15s" }}
-              onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
-              onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-              <span style={{ fontSize:13 }}>{item.icon}</span>
-              <span style={{ fontSize:12, fontFamily:head, fontWeight:on?700:500, color:on?C.text:C.muted, flex:1 }}>{item.label}</span>
-              <span style={{ fontSize:10, fontFamily:mono, color:on?C.accent:C.muted,
-                background: on?C.accentMid:"transparent", padding:"1px 6px", borderRadius:4 }}>{item.count}</span>
+              style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding: _v2?"11px 14px":"10px 11px",
+                borderRadius: _v2?12:8, background: on ? (_v2?`${_C.accent}14`:_C.accentLo) : "transparent",
+                border: _v2?"none":`1px solid ${on ? _C.accentBorder : "transparent"}`,
+                cursor:"pointer", textAlign:"left", marginBottom:4, transition:"all .2s" }}
+              onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=_C.faint; }}
+              onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=on?(_v2?`${_C.accent}14`:_C.accentLo):"transparent"; }}>
+              <span style={{ fontSize:14 }}>{item.icon}</span>
+              <span style={{ fontSize: _v2?13:12, fontFamily:head, fontWeight:on?700:500, color:on?_C.text:_C.textSoft, flex:1 }}>{item.label}</span>
+              <span style={{ fontSize:10, fontFamily:mono, color:on?_C.accent:_C.muted,
+                background: on?`${_C.accent}11`:_C.faint, padding:"2px 7px", borderRadius: _v2?8:4 }}>{item.count}</span>
             </button>
           );
         })}
         <div style={{ marginTop:"auto" }}>
           <button onClick={signOut ?? onClose} style={{ display:"flex", alignItems:"center", gap:8, width:"100%",
-            padding:"9px 11px", borderRadius:8, border:`1px solid ${C.border}`,
+            padding:"9px 11px", borderRadius:8, border:`1px solid ${_C.border}`,
             background:"transparent", cursor:"pointer", textAlign:"left" }}>
             <span style={{ fontSize:12 }}>{signOut ? "⏻" : "←"}</span>
-            <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C.muted }}>{signOut ? "Sign Out" : "Back to App"}</span>
+            <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:_C.muted }}>{signOut ? "Sign Out" : "Back to App"}</span>
           </button>
         </div>
       </div>
@@ -7577,29 +7579,29 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           {/* Header */}
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28 }}>
             <div>
-              <div style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>
+              <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>
                 {section === "users" ? "USER MANAGEMENT" : "CLIENT MANAGEMENT"}
               </div>
-              <h2 style={{ fontSize:26, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>
+              <h2 style={{ fontSize:26, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:6 }}>
                 {section === "users" ? "Users" : "Clients"}
               </h2>
-              <p style={{ fontSize:13.5, color:C.textSoft, fontFamily:body }}>
+              <p style={{ fontSize:13.5, color:_C.textSoft, fontFamily:body }}>
                 {section === "users" ? "Manage team members and client users." : section === "clients" ? "Manage clients and assign them to team members." : "API usage tracking and cost breakdown by user."}
               </p>
             </div>
             <div style={{ display:"flex", gap:8, flexShrink:0, marginTop:4 }}>
               {section === "clients" && (
                 <button onClick={openBulkImport}
-                  style={{ padding:"10px 16px", borderRadius:8, border:`1px solid ${C.border}`,
-                    background:C.canvas, color:C.text, fontSize:12, fontFamily:head, fontWeight:700,
+                  style={{ padding:"10px 16px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.canvas, color:_C.text, fontSize:12, fontFamily:head, fontWeight:700,
                     cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
                   <span style={{ fontSize:14 }}>⬆</span> Bulk Import
                 </button>
               )}
               <button onClick={section === "users" ? openAdd : openAddClient}
                 style={{ padding:"10px 20px", borderRadius:8, border:"none",
-                  background:C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
-                  cursor:"pointer", boxShadow:`0 2px 10px ${C.accent}40` }}>
+                  background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
+                  cursor:"pointer", boxShadow:`0 2px 10px ${_C.accent}40` }}>
                 {section === "users" ? "+ Add User" : "+ Add Client"}
               </button>
             </div>
@@ -7610,26 +7612,26 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
 
           {/* Search */}
           <div style={{ position:"relative", marginBottom:16 }}>
-            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:13, color:C.muted, pointerEvents:"none" }}>⌕</span>
+            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:13, color:_C.muted, pointerEvents:"none" }}>⌕</span>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search users…"
-              style={{ width:"100%", padding:"9px 12px 9px 34px", borderRadius:8, border:`1px solid ${C.border}`,
-                background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
+              style={{ width:"100%", padding:"9px 12px 9px 34px", borderRadius:8, border:`1px solid ${_C.border}`,
+                background:_C.canvas, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }} />
           </div>
 
           {/* Table */}
-          <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+          <div style={{ background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`, overflow:"hidden" }}>
             {/* Table header */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 90px",
-              padding:"10px 20px", borderBottom:`1px solid ${C.border}`, gap:12 }}>
+              padding:"10px 20px", borderBottom:`1px solid ${_C.border}`, gap:12 }}>
               {["Name","Email","Role","Status",""].map((h,i) => (
                 <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
-                  color:C.muted, letterSpacing:.5, textAlign: i===4?"right":"left" }}>{h}</div>
+                  color:_C.muted, letterSpacing:.5, textAlign: i===4?"right":"left" }}>{h}</div>
               ))}
             </div>
 
             {/* Rows */}
             {filtered.length === 0 && (
-              <div style={{ padding:"40px 20px", textAlign:"center", fontSize:13, color:C.muted, fontFamily:body }}>
+              <div style={{ padding:"40px 20px", textAlign:"center", fontSize:13, color:_C.muted, fontFamily:body }}>
                 {users.length === 0 ? "No users yet. Add your first user above." : "No users match your search."}
               </div>
             )}
@@ -7641,9 +7643,9 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
               return (
                 <div key={u.id} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 90px",
                   padding:"13px 20px", gap:12, alignItems:"center",
-                  borderBottom: idx < filtered.length-1 ? `1px solid ${C.border}` : "none",
+                  borderBottom: idx < filtered.length-1 ? `1px solid ${_C.border}` : "none",
                   transition:"background .12s" }}
-                  onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.background=C.faint}
+                  onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.background=_C.faint}
                   onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.background="transparent"}>
                   {/* Name */}
                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -7653,14 +7655,14 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                       {initials || "?"}
                     </div>
                     <div>
-                      <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head }}>{u.name}</div>
-                      <div style={{ fontSize:10, color:C.muted, fontFamily:mono }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:_C.text, fontFamily:head }}>{u.name}</div>
+                      <div style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
                         {new Date(u.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
                       </div>
                     </div>
                   </div>
                   {/* Email */}
-                  <div style={{ fontSize:12.5, color:C.textSoft, fontFamily:body,
+                  <div style={{ fontSize:12.5, color:_C.textSoft, fontFamily:body,
                     overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.email}</div>
                   {/* Role */}
                   <div>
@@ -7682,19 +7684,19 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                   {/* Actions */}
                   <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
                     <button onClick={()=>openEdit(u)} title="Edit"
-                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
-                        background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${_C.border}`,
+                        background:"transparent", color:_C.muted, fontSize:12, cursor:"pointer",
                         display:"flex", alignItems:"center", justifyContent:"center" }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=C.accent;}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=_C.accent;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.border;(e.currentTarget as HTMLButtonElement).style.color=_C.muted;}}>
                       ✎
                     </button>
                     <button onClick={()=>setDeleteId(u.id)} title="Delete"
-                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
-                        background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${_C.border}`,
+                        background:"transparent", color:_C.muted, fontSize:12, cursor:"pointer",
                         display:"flex", alignItems:"center", justifyContent:"center" }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"66";(e.currentTarget as HTMLButtonElement).style.color=C.red;}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.red+"66";(e.currentTarget as HTMLButtonElement).style.color=_C.red;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.border;(e.currentTarget as HTMLButtonElement).style.color=_C.muted;}}>
                       ✕
                     </button>
                   </div>
@@ -7705,7 +7707,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
 
           {/* Summary */}
           {users.length > 0 && (
-            <div style={{ marginTop:12, fontSize:11, color:C.muted, fontFamily:mono }}>
+            <div style={{ marginTop:12, fontSize:11, color:_C.muted, fontFamily:mono }}>
               {users.filter(u=>u.status==="active").length} active · {users.filter(u=>u.role==="team").length} team · {users.filter(u=>u.role==="client").length} client
             </div>
           )}
@@ -7714,53 +7716,53 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           {/* ── CLIENTS SECTION ── */}
           {section === "clients" && <>
           <div style={{ position:"relative", marginBottom:selectedClientIds.size > 0 ? 8 : 16 }}>
-            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:13, color:C.muted, pointerEvents:"none" }}>⌕</span>
+            <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:13, color:_C.muted, pointerEvents:"none" }}>⌕</span>
             <input value={clientSearch} onChange={e=>{ setClientSearch(e.target.value); setSelectedClientIds(new Set()); }} placeholder="Search clients…"
-              style={{ width:"100%", padding:"9px 12px 9px 34px", borderRadius:8, border:`1px solid ${C.border}`,
-                background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
+              style={{ width:"100%", padding:"9px 12px 9px 34px", borderRadius:8, border:`1px solid ${_C.border}`,
+                background:_C.canvas, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }} />
           </div>
 
           {/* Bulk action bar */}
           {selectedClientIds.size > 0 && (
             <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", marginBottom:8,
-              background:C.accentLo, borderRadius:8, border:`1px solid ${C.accent}33` }}>
-              <span style={{ fontSize:12, fontFamily:mono, fontWeight:700, color:C.accent, marginRight:4 }}>
+              background:_C.accentLo, borderRadius:8, border:`1px solid ${_C.accent}33` }}>
+              <span style={{ fontSize:12, fontFamily:mono, fontWeight:700, color:_C.accent, marginRight:4 }}>
                 {selectedClientIds.size} selected
               </span>
               <button onClick={handleBulkEdit}
-                style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${C.accent}55`,
-                  background:C.accent, color:"#fff", fontSize:11.5, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${_C.accent}55`,
+                  background:_C.accent, color:"#fff", fontSize:11.5, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
                 Edit Fields
               </button>
               <button onClick={handleBulkDelete}
-                style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${C.red}55`,
-                  background:"transparent", color:C.red, fontSize:11.5, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${_C.red}55`,
+                  background:"transparent", color:_C.red, fontSize:11.5, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
                 Delete
               </button>
               <button onClick={()=>setSelectedClientIds(new Set())}
-                style={{ marginLeft:"auto", padding:"6px 12px", borderRadius:6, border:`1px solid ${C.border}`,
-                  background:"transparent", color:C.muted, fontSize:11.5, fontFamily:head, cursor:"pointer" }}>
+                style={{ marginLeft:"auto", padding:"6px 12px", borderRadius:6, border:`1px solid ${_C.border}`,
+                  background:"transparent", color:_C.muted, fontSize:11.5, fontFamily:head, cursor:"pointer" }}>
                 Clear
               </button>
             </div>
           )}
 
-          <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+          <div style={{ background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`, overflow:"hidden" }}>
             {/* Table header */}
             <div style={{ display:"grid", gridTemplateColumns:"36px 1fr 140px 160px 90px 90px",
-              padding:"10px 16px", borderBottom:`1px solid ${C.border}`, gap:12, alignItems:"center" }}>
+              padding:"10px 16px", borderBottom:`1px solid ${_C.border}`, gap:12, alignItems:"center" }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <input type="checkbox" style={{ accentColor:C.accent, cursor:"pointer" }}
+                <input type="checkbox" style={{ accentColor:_C.accent, cursor:"pointer" }}
                   checked={allFilteredSelected(filteredClients)}
                   onChange={()=>toggleSelectAll(filteredClients)} />
               </div>
               {["Company","Industry","Assigned To","Status",""].map((h,i) => (
                 <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
-                  color:C.muted, letterSpacing:.5, textAlign:i===4?"right":"left" }}>{h}</div>
+                  color:_C.muted, letterSpacing:.5, textAlign:i===4?"right":"left" }}>{h}</div>
               ))}
             </div>
             {filteredClients.length === 0 && (
-              <div style={{ padding:"40px 20px", textAlign:"center", fontSize:13, color:C.muted, fontFamily:body }}>
+              <div style={{ padding:"40px 20px", textAlign:"center", fontSize:13, color:_C.muted, fontFamily:body }}>
                 {clients.length === 0 ? "No clients yet. Add your first client above." : "No clients match your search."}
               </div>
             )}
@@ -7772,14 +7774,14 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
               return (
                 <div key={c.id} style={{ display:"grid", gridTemplateColumns:"36px 1fr 140px 160px 90px 90px",
                   padding:"13px 16px", gap:12, alignItems:"center",
-                  borderBottom: idx < filteredClients.length-1 ? `1px solid ${C.border}` : "none",
-                  background: isSelected ? C.accentLo : "transparent", transition:"background .12s" }}
-                  onMouseEnter={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=C.faint; }}
+                  borderBottom: idx < filteredClients.length-1 ? `1px solid ${_C.border}` : "none",
+                  background: isSelected ? _C.accentLo : "transparent", transition:"background .12s" }}
+                  onMouseEnter={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=_C.faint; }}
                   onMouseLeave={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background="transparent"; }}>
                   {/* Checkbox */}
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
                     <input type="checkbox" checked={isSelected} onChange={()=>toggleClientSelect(c.id)}
-                      style={{ accentColor:C.accent, cursor:"pointer" }} />
+                      style={{ accentColor:_C.accent, cursor:"pointer" }} />
                   </div>
                   {/* Name */}
                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -7788,15 +7790,15 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                       fontSize:10, fontWeight:800, color:av, fontFamily:mono }}>
                       {c.name.charAt(0).toUpperCase()}
                     </div>
-                    <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head }}>{c.name}</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:_C.text, fontFamily:head }}>{c.name}</div>
                   </div>
                   {/* Industry */}
-                  <div style={{ fontSize:12.5, color:C.textSoft, fontFamily:body }}>{c.industry || "—"}</div>
+                  <div style={{ fontSize:12.5, color:_C.textSoft, fontFamily:body }}>{c.industry || "—"}</div>
                   {/* Assigned */}
                   <div style={{ fontSize:12.5, fontFamily:body }}>
                     {assignedUser
-                      ? <span style={{ color:C.text }}>{assignedUser.name}</span>
-                      : <span style={{ color:C.muted, fontStyle:"italic" }}>Unassigned</span>}
+                      ? <span style={{ color:_C.text }}>{assignedUser.name}</span>
+                      : <span style={{ color:_C.muted, fontStyle:"italic" }}>Unassigned</span>}
                   </div>
                   {/* Status */}
                   <div>
@@ -7810,19 +7812,19 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                   {/* Actions */}
                   <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
                     <button onClick={()=>openEditClient(c)} title="Edit"
-                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
-                        background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${_C.border}`,
+                        background:"transparent", color:_C.muted, fontSize:12, cursor:"pointer",
                         display:"flex", alignItems:"center", justifyContent:"center" }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=C.accent;}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=_C.accent;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.border;(e.currentTarget as HTMLButtonElement).style.color=_C.muted;}}>
                       ✎
                     </button>
                     <button onClick={()=>setDeleteClientId(c.id)} title="Delete"
-                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
-                        background:"transparent", color:C.muted, fontSize:12, cursor:"pointer",
+                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${_C.border}`,
+                        background:"transparent", color:_C.muted, fontSize:12, cursor:"pointer",
                         display:"flex", alignItems:"center", justifyContent:"center" }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.red+"66";(e.currentTarget as HTMLButtonElement).style.color=C.red;}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;(e.currentTarget as HTMLButtonElement).style.color=C.muted;}}>
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.red+"66";(e.currentTarget as HTMLButtonElement).style.color=_C.red;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.border;(e.currentTarget as HTMLButtonElement).style.color=_C.muted;}}>
                       ✕
                     </button>
                   </div>
@@ -7831,7 +7833,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
             })}
           </div>
           {clients.length > 0 && (
-            <div style={{ marginTop:12, fontSize:11, color:C.muted, fontFamily:mono }}>
+            <div style={{ marginTop:12, fontSize:11, color:_C.muted, fontFamily:mono }}>
               {clients.filter(c=>c.status==="active").length} active · {clients.filter(c=>c.assignedUserId).length} assigned · {clients.filter(c=>!c.assignedUserId).length} unassigned
             </div>
           )}
@@ -7845,9 +7847,9 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
         <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
           display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
           onClick={e=>{ if(e.target===e.currentTarget) setModal(null); }}>
-          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+          <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
             padding:"28px 32px", width:420, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
-            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:20 }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:20 }}>
               {modal === "add" ? "Add User" : "Edit User"}
             </div>
 
@@ -7856,41 +7858,41 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
               { label:"Email",     key:"email", type:"email",  placeholder:"e.g. sarah@company.com" },
             ].map(f => (
               <div key={f.key} style={{ marginBottom:14 }}>
-                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>{f.label}</label>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>{f.label}</label>
                 <input type={f.type} value={(form as any)[f.key]} placeholder={f.placeholder}
                   onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}
-                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none",
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none",
                     boxSizing:"border-box" as const }} />
               </div>
             ))}
 
             <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>
                 PASSWORD{modal === "edit" && <span style={{ fontWeight:400, marginLeft:6 }}>(leave blank to keep existing)</span>}
               </label>
               <input type="password" value={form.password} placeholder={modal === "edit" ? "••••••••" : "Set a password"}
                 onChange={e=>setForm(p=>({...p,password:e.target.value}))}
-                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none",
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none",
                   boxSizing:"border-box" as const }} />
             </div>
 
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:22 }}>
               <div>
-                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>Role</label>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Role</label>
                 <select value={form.role} onChange={e=>setForm(p=>({...p,role:e.target.value as "team"|"client"}))}
-                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }}>
                   <option value="team">Team</option>
                   <option value="client">Client</option>
                 </select>
               </div>
               <div>
-                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>Status</label>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Status</label>
                 <select value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value as "active"|"inactive"}))}
-                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }}>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
@@ -7901,16 +7903,16 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
               <button onClick={handleSave}
                 disabled={!form.name.trim() || !form.email.trim() || (modal==="add" && !form.password.trim())}
                 style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
-                  background:(form.name.trim()&&form.email.trim()&&(modal!=="add"||form.password.trim()))?C.accent:C.border,
-                  color:(form.name.trim()&&form.email.trim()&&(modal!=="add"||form.password.trim()))?"#fff":C.muted,
+                  background:(form.name.trim()&&form.email.trim()&&(modal!=="add"||form.password.trim()))?_C.accent:_C.border,
+                  color:(form.name.trim()&&form.email.trim()&&(modal!=="add"||form.password.trim()))?"#fff":_C.muted,
                   fontSize:13, fontFamily:head, fontWeight:700,
                   cursor:(form.name.trim()&&form.email.trim()&&(modal!=="add"||form.password.trim()))?"pointer":"default" }}>
                 {modal === "add" ? "Add User" : "Save Changes"}
               </button>
               <button onClick={()=>setModal(null)}
                 style={{ flex:1, padding:"11px 0", borderRadius:8,
-                  border:`1px solid ${C.border}`, background:"transparent",
-                  color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                  border:`1px solid ${_C.border}`, background:"transparent",
+                  color:_C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
                 Cancel
               </button>
             </div>
@@ -7922,21 +7924,21 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
       {deleteId && (
         <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
           display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}>
-          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+          <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
             padding:"28px 32px", width:360, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
-            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:10 }}>Delete user?</div>
-            <div style={{ fontSize:13, color:C.textSoft, fontFamily:body, marginBottom:22, lineHeight:1.6 }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:10 }}>Delete user?</div>
+            <div style={{ fontSize:13, color:_C.textSoft, fontFamily:body, marginBottom:22, lineHeight:1.6 }}>
               This will permanently remove <strong>{users.find(u=>u.id===deleteId)?.name}</strong> from the system.
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={handleDelete}
                 style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
-                  background:C.red, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                  background:_C.red, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
                 Delete
               </button>
               <button onClick={()=>setDeleteId(null)}
-                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:"transparent", color:_C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
                 Cancel
               </button>
             </div>
@@ -7949,34 +7951,34 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
         <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
           display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
           onClick={e=>{ if(e.target===e.currentTarget) setClientModal(null); }}>
-          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+          <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
             padding:"28px 32px", width:440, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
-            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:20 }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:20 }}>
               {clientModal === "add" ? "Add Client" : "Edit Client"}
             </div>
 
             <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>COMPANY NAME</label>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>COMPANY NAME</label>
               <input type="text" value={clientForm.name} placeholder="e.g. Acme Corp"
                 onChange={e=>setClientForm(p=>({...p,name:e.target.value}))}
-                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
             </div>
 
             <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>INDUSTRY</label>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>INDUSTRY</label>
               <input type="text" value={clientForm.industry} placeholder="e.g. B2B SaaS"
                 onChange={e=>setClientForm(p=>({...p,industry:e.target.value}))}
-                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
             </div>
 
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:22 }}>
               <div>
-                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>ASSIGNED TO</label>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>ASSIGNED TO</label>
                 <select value={clientForm.assignedUserId ?? ""} onChange={e=>setClientForm(p=>({...p,assignedUserId:e.target.value||null}))}
-                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }}>
                   <option value="">Unassigned</option>
                   {users.filter(u=>u.status==="active").map(u => (
                     <option key={u.id} value={u.id}>{u.name}</option>
@@ -7984,10 +7986,10 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                 </select>
               </div>
               <div>
-                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>STATUS</label>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>STATUS</label>
                 <select value={clientForm.status} onChange={e=>setClientForm(p=>({...p,status:e.target.value as "active"|"inactive"}))}
-                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }}>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
@@ -7997,15 +7999,15 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={handleSaveClient} disabled={!clientForm.name.trim()}
                 style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
-                  background:clientForm.name.trim()?C.accent:C.border,
-                  color:clientForm.name.trim()?"#fff":C.muted,
+                  background:clientForm.name.trim()?_C.accent:_C.border,
+                  color:clientForm.name.trim()?"#fff":_C.muted,
                   fontSize:13, fontFamily:head, fontWeight:700,
                   cursor:clientForm.name.trim()?"pointer":"default" }}>
                 {clientModal === "add" ? "Add Client" : "Save Changes"}
               </button>
               <button onClick={()=>setClientModal(null)}
-                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:"transparent", color:_C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
                 Cancel
               </button>
             </div>
@@ -8017,21 +8019,21 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
       {deleteClientId && (
         <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
           display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}>
-          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+          <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
             padding:"28px 32px", width:360, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
-            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:10 }}>Delete client?</div>
-            <div style={{ fontSize:13, color:C.textSoft, fontFamily:body, marginBottom:22, lineHeight:1.6 }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:10 }}>Delete client?</div>
+            <div style={{ fontSize:13, color:_C.textSoft, fontFamily:body, marginBottom:22, lineHeight:1.6 }}>
               This will permanently remove <strong>{clients.find(c=>c.id===deleteClientId)?.name}</strong>.
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={handleDeleteClient}
                 style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
-                  background:C.red, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                  background:_C.red, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
                 Delete
               </button>
               <button onClick={()=>setDeleteClientId(null)}
-                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:"transparent", color:_C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
                 Cancel
               </button>
             </div>
@@ -8043,28 +8045,28 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
         <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
           display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
           onClick={e=>{ if(e.target===e.currentTarget) setShowBulkEdit(false); }}>
-          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+          <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
             padding:"28px 32px", width:440, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
-            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text, marginBottom:6 }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:6 }}>
               Edit {selectedClientIds.size} Client{selectedClientIds.size!==1?"s":""}
             </div>
-            <div style={{ fontSize:12.5, color:C.muted, fontFamily:body, marginBottom:22 }}>
+            <div style={{ fontSize:12.5, color:_C.muted, fontFamily:body, marginBottom:22 }}>
               Only filled fields will be updated — leave blank to keep existing values.
             </div>
 
             <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>INDUSTRY</label>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>INDUSTRY</label>
               <input type="text" value={bulkEditForm.industry} placeholder="e.g. B2B SaaS — leave blank to skip"
                 onChange={e=>setBulkEditForm(p=>({...p,industry:e.target.value}))}
-                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
             </div>
 
             <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>ASSIGN TO</label>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>ASSIGN TO</label>
               <select value={bulkEditForm.assignedUserId} onChange={e=>setBulkEditForm(p=>({...p,assignedUserId:e.target.value}))}
-                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }}>
                 <option value="">— keep existing —</option>
                 <option value="unassign">Unassigned</option>
                 {users.filter(u=>u.status==="active"&&u.role==="team").map(u=>(
@@ -8074,10 +8076,10 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
             </div>
 
             <div style={{ marginBottom:24 }}>
-              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>STATUS</label>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>STATUS</label>
               <select value={bulkEditForm.status} onChange={e=>setBulkEditForm(p=>({...p,status:e.target.value}))}
-                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }}>
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }}>
                 <option value="">— keep existing —</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
@@ -8088,15 +8090,15 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
               <button onClick={handleBulkEditSave}
                 disabled={!bulkEditForm.industry && !bulkEditForm.assignedUserId && !bulkEditForm.status}
                 style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
-                  background:(bulkEditForm.industry||bulkEditForm.assignedUserId||bulkEditForm.status)?C.accent:C.border,
-                  color:(bulkEditForm.industry||bulkEditForm.assignedUserId||bulkEditForm.status)?"#fff":C.muted,
+                  background:(bulkEditForm.industry||bulkEditForm.assignedUserId||bulkEditForm.status)?_C.accent:_C.border,
+                  color:(bulkEditForm.industry||bulkEditForm.assignedUserId||bulkEditForm.status)?"#fff":_C.muted,
                   fontSize:13, fontFamily:head, fontWeight:700,
                   cursor:(bulkEditForm.industry||bulkEditForm.assignedUserId||bulkEditForm.status)?"pointer":"default" }}>
                 Apply to {selectedClientIds.size} Client{selectedClientIds.size!==1?"s":""}
               </button>
               <button onClick={()=>setShowBulkEdit(false)}
-                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
-                  background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:"transparent", color:_C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
                 Cancel
               </button>
             </div>
@@ -8109,21 +8111,21 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
         <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.6)", backdropFilter:"blur(4px)",
           display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
           onClick={e=>{ if(e.target===e.currentTarget && !bulkLoading) setShowBulkImport(false); }}>
-          <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+          <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
             padding:"28px 32px", width:500, maxWidth:"95vw", boxShadow:"0 20px 60px rgba(0,0,0,.2)", animation:"slideUp .2s ease" }}>
 
             {/* Header */}
             <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20 }}>
               <div>
-                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C.text }}>Bulk Import Clients</div>
-                <div style={{ fontSize:12.5, color:C.muted, fontFamily:body, marginTop:3 }}>
+                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Bulk Import Clients</div>
+                <div style={{ fontSize:12.5, color:_C.muted, fontFamily:body, marginTop:3 }}>
                   {bulkStep === "upload" ? "Upload a screenshot — AI will extract all company names." : `${bulkNames.filter(n=>n.include).length} of ${bulkNames.length} names selected`}
                 </div>
               </div>
               {!bulkLoading && (
                 <button onClick={()=>setShowBulkImport(false)}
-                  style={{ width:28, height:28, borderRadius:6, border:`1px solid ${C.border}`,
-                    background:"transparent", color:C.muted, fontSize:14, cursor:"pointer",
+                  style={{ width:28, height:28, borderRadius:6, border:`1px solid ${_C.border}`,
+                    background:"transparent", color:_C.muted, fontSize:14, cursor:"pointer",
                     display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>✕</button>
               )}
             </div>
@@ -8136,9 +8138,9 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                   onDragLeave={()=>setBulkDragOver(false)}
                   onDrop={e=>{ e.preventDefault(); setBulkDragOver(false); const f=e.dataTransfer.files[0]; if(f) handleBulkImageSelect(f); }}
                   onClick={()=>{ const inp = document.getElementById("bulkFileInput") as HTMLInputElement; inp?.click(); }}
-                  style={{ border:`2px dashed ${bulkDragOver ? C.accent : bulkImageFile ? C.green : C.border}`,
+                  style={{ border:`2px dashed ${bulkDragOver ? _C.accent : bulkImageFile ? _C.green : _C.border}`,
                     borderRadius:10, padding:"32px 20px", textAlign:"center", cursor:"pointer",
-                    background: bulkDragOver ? C.accentLo : bulkImageFile ? C.greenLo : C.bg,
+                    background: bulkDragOver ? _C.accentLo : bulkImageFile ? _C.greenLo : _C.bg,
                     transition:"all .15s", marginBottom:16, position:"relative", minHeight:140,
                     display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10 }}>
                   <input id="bulkFileInput" type="file" accept="image/*" style={{ display:"none" }}
@@ -8147,29 +8149,29 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                     <>
                       <img src={bulkImageUrl} alt="preview"
                         style={{ maxHeight:120, maxWidth:"100%", borderRadius:6, objectFit:"contain" }} />
-                      <div style={{ fontSize:12, color:C.green, fontFamily:mono, fontWeight:700 }}>✓ {bulkImageFile.name}</div>
+                      <div style={{ fontSize:12, color:_C.green, fontFamily:mono, fontWeight:700 }}>✓ {bulkImageFile.name}</div>
                     </>
                   ) : (
                     <>
                       <div style={{ fontSize:28 }}>🖼</div>
-                      <div style={{ fontSize:13.5, fontWeight:600, color:C.text, fontFamily:head }}>Paste, drop, or click to upload</div>
-                      <div style={{ fontSize:12, color:C.muted, fontFamily:body }}>⌘V to paste from clipboard · PNG, JPG, WebP</div>
+                      <div style={{ fontSize:13.5, fontWeight:600, color:_C.text, fontFamily:head }}>Paste, drop, or click to upload</div>
+                      <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>⌘V to paste from clipboard · PNG, JPG, WebP</div>
                     </>
                   )}
                 </div>
                 <div style={{ display:"flex", gap:10 }}>
                   <button onClick={runBulkExtract} disabled={!bulkImageFile || bulkLoading}
                     style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
-                      background:bulkImageFile && !bulkLoading ? C.accent : C.border,
-                      color:bulkImageFile && !bulkLoading ? "#fff" : C.muted,
+                      background:bulkImageFile && !bulkLoading ? _C.accent : _C.border,
+                      color:bulkImageFile && !bulkLoading ? "#fff" : _C.muted,
                       fontSize:13, fontFamily:head, fontWeight:700,
                       cursor:bulkImageFile && !bulkLoading ? "pointer" : "default",
                       display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                     {bulkLoading ? <><span style={{ animation:"spin 1s linear infinite", display:"inline-block" }}>⟳</span> Extracting…</> : "✦ Extract Names"}
                   </button>
                   <button onClick={()=>setShowBulkImport(false)} disabled={bulkLoading}
-                    style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${C.border}`,
-                      background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                    style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${_C.border}`,
+                      background:"transparent", color:_C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
                     Cancel
                   </button>
                 </div>
@@ -8180,33 +8182,33 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
             {bulkStep === "review" && (
               <>
                 {bulkNames.length === 0 ? (
-                  <div style={{ padding:"24px 0", textAlign:"center", fontSize:13, color:C.muted, fontFamily:body }}>
+                  <div style={{ padding:"24px 0", textAlign:"center", fontSize:13, color:_C.muted, fontFamily:body }}>
                     No names could be extracted. Try a clearer screenshot.
                   </div>
                 ) : (
-                  <div style={{ maxHeight:300, overflowY:"auto", marginBottom:16, border:`1px solid ${C.border}`, borderRadius:8 }}>
+                  <div style={{ maxHeight:300, overflowY:"auto", marginBottom:16, border:`1px solid ${_C.border}`, borderRadius:8 }}>
                     {/* Select all / none */}
-                    <div style={{ padding:"10px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:10,
-                      background:C.bg, position:"sticky", top:0 }}>
+                    <div style={{ padding:"10px 14px", borderBottom:`1px solid ${_C.border}`, display:"flex", alignItems:"center", gap:10,
+                      background:_C.bg, position:"sticky", top:0 }}>
                       <input type="checkbox"
                         checked={bulkNames.every(n=>n.include)}
                         onChange={e=>setBulkNames(p=>p.map(n=>({...n,include:e.target.checked})))}
-                        style={{ accentColor:C.accent, cursor:"pointer" }} />
-                      <span style={{ fontSize:11, fontFamily:mono, color:C.muted, fontWeight:700 }}>SELECT ALL</span>
-                      <span style={{ marginLeft:"auto", fontSize:11, color:C.muted, fontFamily:mono }}>
+                        style={{ accentColor:_C.accent, cursor:"pointer" }} />
+                      <span style={{ fontSize:11, fontFamily:mono, color:_C.muted, fontWeight:700 }}>SELECT ALL</span>
+                      <span style={{ marginLeft:"auto", fontSize:11, color:_C.muted, fontFamily:mono }}>
                         {bulkNames.filter(n=>n.include).length}/{bulkNames.length}
                       </span>
                     </div>
                     {bulkNames.map((n, i) => (
                       <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px",
-                        borderBottom: i < bulkNames.length-1 ? `1px solid ${C.border}` : "none",
-                        background: n.include ? "transparent" : C.faint }}>
+                        borderBottom: i < bulkNames.length-1 ? `1px solid ${_C.border}` : "none",
+                        background: n.include ? "transparent" : _C.faint }}>
                         <input type="checkbox" checked={n.include}
                           onChange={e=>setBulkNames(p=>p.map((x,j)=>j===i?{...x,include:e.target.checked}:x))}
-                          style={{ accentColor:C.accent, cursor:"pointer", flexShrink:0 }} />
+                          style={{ accentColor:_C.accent, cursor:"pointer", flexShrink:0 }} />
                         <input value={n.name}
                           onChange={e=>setBulkNames(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
-                          style={{ flex:1, fontSize:13, fontFamily:body, color:C.text,
+                          style={{ flex:1, fontSize:13, fontFamily:body, color:_C.text,
                             background:"transparent", border:"none", outline:"none",
                             opacity: n.include ? 1 : 0.4 }} />
                       </div>
@@ -8216,15 +8218,15 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                 <div style={{ display:"flex", gap:10 }}>
                   <button onClick={handleBulkConfirm} disabled={!bulkNames.some(n=>n.include&&n.name.trim())}
                     style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
-                      background:bulkNames.some(n=>n.include&&n.name.trim()) ? C.accent : C.border,
-                      color:bulkNames.some(n=>n.include&&n.name.trim()) ? "#fff" : C.muted,
+                      background:bulkNames.some(n=>n.include&&n.name.trim()) ? _C.accent : _C.border,
+                      color:bulkNames.some(n=>n.include&&n.name.trim()) ? "#fff" : _C.muted,
                       fontSize:13, fontFamily:head, fontWeight:700,
                       cursor:bulkNames.some(n=>n.include&&n.name.trim()) ? "pointer" : "default" }}>
                     Add {bulkNames.filter(n=>n.include&&n.name.trim()).length} Client{bulkNames.filter(n=>n.include&&n.name.trim()).length!==1?"s":""}
                   </button>
                   <button onClick={()=>setBulkStep("upload")}
-                    style={{ padding:"11px 18px", borderRadius:8, border:`1px solid ${C.border}`,
-                      background:"transparent", color:C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                    style={{ padding:"11px 18px", borderRadius:8, border:`1px solid ${_C.border}`,
+                      background:"transparent", color:_C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
                     ← Back
                   </button>
                 </div>
@@ -8259,26 +8261,26 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
             {/* Summary cards */}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:12, marginBottom:24 }}>
               {[
-                { label:"Total Calls", value:fmt(totals.calls), color:C.accent },
-                { label:"Input Tokens", value:fmt(totals.input), color:C.amber },
-                { label:"Output Tokens", value:fmt(totals.output), color:C.green },
-                { label:"Total Cost", value:fmtCost(totals.cost), color:C.red },
+                { label:"Total Calls", value:fmt(totals.calls), color:_C.accent },
+                { label:"Input Tokens", value:fmt(totals.input), color:_C.amber },
+                { label:"Output Tokens", value:fmt(totals.output), color:_C.green },
+                { label:"Total Cost", value:fmtCost(totals.cost), color:_C.red },
               ].map(c => (
-                <div key={c.label} style={{ padding:"14px 16px", borderRadius:10, border:`1px solid ${C.border}`,
-                  background:C.canvas }}>
-                  <div style={{ fontSize:10, fontFamily:mono, color:C.muted, fontWeight:600, marginBottom:4 }}>{c.label}</div>
+                <div key={c.label} style={{ padding:"14px 16px", borderRadius:10, border:`1px solid ${_C.border}`,
+                  background:_C.canvas }}>
+                  <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, marginBottom:4 }}>{c.label}</div>
                   <div style={{ fontSize:20, fontFamily:head, fontWeight:700, color:c.color }}>{c.value}</div>
                 </div>
               ))}
             </div>
 
             {/* Per-user breakdown */}
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:10 }}>USAGE BY USER</div>
-            <div style={{ background:C.canvas, borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:24 }}>
+            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:10 }}>USAGE BY USER</div>
+            <div style={{ background:_C.canvas, borderRadius:10, border:`1px solid ${_C.border}`, overflow:"hidden", marginBottom:24 }}>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 80px 100px 100px 80px 80px",
-                padding:"10px 16px", borderBottom:`1px solid ${C.border}`, gap:8 }}>
+                padding:"10px 16px", borderBottom:`1px solid ${_C.border}`, gap:8 }}>
                 {["User","Calls","Input Tokens","Output Tokens","Cost","Avg/Call"].map(h => (
-                  <div key={h} style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4 }}>{h}</div>
+                  <div key={h} style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4 }}>{h}</div>
                 ))}
               </div>
               {Object.entries(byUser).sort((a,b) => b[1].length - a[1].length).map(([email, userLogs]) => {
@@ -8288,14 +8290,14 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                 const avgCost = userLogs.length > 0 ? userCost / userLogs.length : 0;
                 return (
                   <div key={email} style={{ display:"grid", gridTemplateColumns:"1fr 80px 100px 100px 80px 80px",
-                    padding:"10px 16px", gap:8, borderBottom:`1px solid ${C.border}` }}>
-                    <div style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C.text,
+                    padding:"10px 16px", gap:8, borderBottom:`1px solid ${_C.border}` }}>
+                    <div style={{ fontSize:12, fontFamily:head, fontWeight:600, color:_C.text,
                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{email}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:C.text }}>{userLogs.length}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:C.amber }}>{fmt(userInput)}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:C.green }}>{fmt(userOutput)}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:C.red, fontWeight:600 }}>{fmtCost(userCost)}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:C.muted }}>{fmtCost(avgCost)}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:_C.text }}>{userLogs.length}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:_C.amber }}>{fmt(userInput)}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:_C.green }}>{fmt(userOutput)}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:_C.red, fontWeight:600 }}>{fmtCost(userCost)}</div>
+                    <div style={{ fontSize:12, fontFamily:mono, color:_C.muted }}>{fmtCost(avgCost)}</div>
                   </div>
                 );
               })}
@@ -8303,29 +8305,29 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
 
             {/* Recent log entries */}
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5 }}>RECENT CALLS</div>
+              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5 }}>RECENT CALLS</div>
               <button onClick={()=>{ if(confirm("Clear all API logs?")) { localStorage.setItem("b2br_api_logs","[]"); syncToCloud("api_logs",[]); }}}
-                style={{ fontSize:10, fontFamily:mono, color:C.red, background:"none", border:"none", cursor:"pointer" }}>Clear Logs</button>
+                style={{ fontSize:10, fontFamily:mono, color:_C.red, background:"none", border:"none", cursor:"pointer" }}>Clear Logs</button>
             </div>
-            <div style={{ background:C.canvas, borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden", maxHeight:400, overflowY:"auto" }}>
+            <div style={{ background:_C.canvas, borderRadius:10, border:`1px solid ${_C.border}`, overflow:"hidden", maxHeight:400, overflowY:"auto" }}>
               <div style={{ display:"grid", gridTemplateColumns:"140px 1fr 80px 80px 70px 60px",
-                padding:"8px 16px", borderBottom:`1px solid ${C.border}`, gap:8, position:"sticky", top:0, background:C.canvas, zIndex:1 }}>
+                padding:"8px 16px", borderBottom:`1px solid ${_C.border}`, gap:8, position:"sticky", top:0, background:_C.canvas, zIndex:1 }}>
                 {["Time","Action","Input","Output","Cost","Duration"].map(h => (
-                  <div key={h} style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4 }}>{h}</div>
+                  <div key={h} style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4 }}>{h}</div>
                 ))}
               </div>
               {[...logs].reverse().slice(0,100).map(l => (
                 <div key={l.id} style={{ display:"grid", gridTemplateColumns:"140px 1fr 80px 80px 70px 60px",
-                  padding:"6px 16px", gap:8, borderBottom:`1px solid ${C.faint}`, fontSize:11 }}>
-                  <div style={{ fontFamily:mono, color:C.muted, fontSize:10 }}>
+                  padding:"6px 16px", gap:8, borderBottom:`1px solid ${_C.faint}`, fontSize:11 }}>
+                  <div style={{ fontFamily:mono, color:_C.muted, fontSize:10 }}>
                     {new Date(l.timestamp).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
-                    <div style={{ fontSize:9, color:C.border }}>{l.userEmail}</div>
+                    <div style={{ fontSize:9, color:_C.border }}>{l.userEmail}</div>
                   </div>
-                  <div style={{ fontFamily:body, color:C.textSoft, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{l.action}</div>
-                  <div style={{ fontFamily:mono, color:C.amber }}>{fmt(l.inputTokens)}</div>
-                  <div style={{ fontFamily:mono, color:C.green }}>{fmt(l.outputTokens)}</div>
-                  <div style={{ fontFamily:mono, color:C.red }}>{fmtCost(l.cost)}</div>
-                  <div style={{ fontFamily:mono, color:C.muted }}>{l.durationMs>1000?`${(l.durationMs/1000).toFixed(1)}s`:`${l.durationMs}ms`}</div>
+                  <div style={{ fontFamily:body, color:_C.textSoft, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{l.action}</div>
+                  <div style={{ fontFamily:mono, color:_C.amber }}>{fmt(l.inputTokens)}</div>
+                  <div style={{ fontFamily:mono, color:_C.green }}>{fmt(l.outputTokens)}</div>
+                  <div style={{ fontFamily:mono, color:_C.red }}>{fmtCost(l.cost)}</div>
+                  <div style={{ fontFamily:mono, color:_C.muted }}>{l.durationMs>1000?`${(l.durationMs/1000).toFixed(1)}s`:`${l.durationMs}ms`}</div>
                 </div>
               ))}
             </div>
