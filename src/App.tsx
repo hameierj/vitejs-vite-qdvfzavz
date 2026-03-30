@@ -4669,7 +4669,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
       </div>
 
       {/* Fields — card stack (all sections always rendered, stacked) */}
-      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0, perspective:"1800px", perspectiveOrigin:"70% 50%" }}>
+      <div style={{ flex:1, position:"relative" as const, overflow: isSwapping ? "visible" : "hidden", minHeight:0, perspective:"1800px", perspectiveOrigin:"70% 50%" }}>
         {secKeys.map(key => {
           const s = COMPANY_SECTIONS[key];
           if (!s) return null;
@@ -8963,9 +8963,10 @@ Raw JSON only.`, "", 1400);
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
         @keyframes cardFlipBehind{
           0%{transform:translateX(0) translateY(0) translateZ(0px) rotateY(0deg) scale(1)}
-          30%{transform:translateX(80px) translateY(-10px) translateZ(40px) rotateY(-15deg) scale(1.01)}
-          50%{transform:translateX(120px) translateY(0px) translateZ(20px) rotateY(-35deg) scale(1)}
-          70%{transform:translateX(60px) translateY(4px) translateZ(-20px) rotateY(-15deg) scale(0.98)}
+          25%{transform:translateX(45%) translateY(-14px) translateZ(50px) rotateY(-12deg) scale(1.01)}
+          45%{transform:translateX(85%) translateY(-6px) translateZ(30px) rotateY(-30deg) scale(1)}
+          65%{transform:translateX(50%) translateY(2px) translateZ(-15px) rotateY(-18deg) scale(0.98)}
+          85%{transform:translateX(15%) translateY(6px) translateZ(-25px) rotateY(-6deg) scale(0.97)}
           100%{transform:translateX(0) translateY(8px) translateZ(-30px) rotateY(0deg) scale(0.97)}
         }
         @keyframes cardRiseUp{
