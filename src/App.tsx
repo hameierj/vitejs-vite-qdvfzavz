@@ -9071,10 +9071,6 @@ Raw JSON only.`, "", 1400);
                   onMouseLeave={e=>{ if(view!=="chat")(e.currentTarget as HTMLButtonElement).style.background=view==="chat"?`${C2.accent}14`:"transparent"; }}>
                   <span style={{ fontSize:16, width:20, textAlign:"center" }}>◎</span>
                   <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="chat"?700:600 }}>Copilot</span>
-                  {chats.length > 0 && (
-                    <span style={{ fontSize:10, fontFamily:mono, color:C2.muted, background:C2.faint,
-                      padding:"2px 7px", borderRadius:10, marginLeft:"auto" }}>{chats.length}</span>
-                  )}
                 </button>
               )}
 
@@ -9095,11 +9091,7 @@ Raw JSON only.`, "", 1400);
                         onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                         onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=on?`${C2.accent}14`:"transparent"; }}>
                         <span style={{ fontSize:14, width:20, textAlign:"center", color:on?C2.accent:C2.muted }}>{n.icon}</span>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontFamily:head, fontWeight:on?700:500, color:on?C2.text:C2.textSoft }}>{n.label}</div>
-                        </div>
-                        <span style={{ fontSize:10, fontFamily:mono, color:on?C2.accent:C2.muted, background:on?`${C2.accent}11`:C2.faint,
-                          padding:"2px 7px", borderRadius:8 }}>{n.sub}</span>
+                        <span style={{ fontSize:13, fontFamily:head, fontWeight:on?700:500, color:on?C2.text:C2.textSoft }}>{n.label}</span>
                       </button>
                     );
                   })}
