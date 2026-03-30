@@ -4624,7 +4624,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
     <div style={{ display:"flex", height:"100%", overflow:"hidden", borderRadius:16, border:`1px solid ${C2.border}`,
       background:C2.canvas, boxShadow:"0 2px 12px rgba(108,92,231,.04)" }}>
       {/* Section nav */}
-      <div style={{ minWidth:180, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
+      <div style={{ width:220, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
         <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5,
           padding:"0 10px", marginBottom:12, textTransform:"uppercase" as const }}>SECTIONS</div>
         {secKeys.map(key => {
