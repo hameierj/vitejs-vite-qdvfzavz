@@ -4624,14 +4624,18 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
   const [leavingTab, setLeavingTab] = useState<string|null>(null);
   const [incomingTab, setIncomingTab] = useState<string|null>(null);
   const [isSwapping, setIsSwapping] = useState(false);
+  const [leavingBehind, setLeavingBehind] = useState(false); // true once card should be behind
   const swapTab = (newTab: string) => {
     if (newTab === secTab || isSwapping) return;
     setLeavingTab(secTab);
     setIncomingTab(newTab);
     setIsSwapping(true);
-    // Switch active tab partway through so the reveal feels natural
-    setTimeout(() => { setSecTab(newTab); }, 500);
-    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); setIncomingTab(null); }, 1300);
+    setLeavingBehind(false);
+    // Phase 1: card lifts and sweeps out (stays on top)
+    // Phase 2: at midpoint, z-index flips so card goes behind as it returns
+    setTimeout(() => { setLeavingBehind(true); }, 550);
+    setTimeout(() => { setSecTab(newTab); }, 600);
+    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); setIncomingTab(null); setLeavingBehind(false); }, 1300);
   };
 
   return (
@@ -4675,8 +4679,10 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
           const isVisible = isActive || isLeaving || isIncoming;
           const sf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
 
-          // z-index: incoming/active card on top, leaving card starts on top but animation ends behind
-          const z = (isActive || isIncoming) ? 10 : isLeaving ? 5 : 1;
+          // Leaving card starts on top, then drops behind at midpoint via state
+          const z = isLeaving
+            ? (leavingBehind ? 1 : 15)
+            : (isActive || isIncoming) ? 10 : 1;
 
           return (
             <div key={key} style={{
@@ -8952,10 +8958,11 @@ Raw JSON only.`, "", 1400);
         select option{background:${C.canvas};}
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
         @keyframes cardPullOut{
-          0%{transform:translateX(0) translateY(0) rotate(0deg) scale(1);z-index:20}
-          40%{transform:translateX(160px) translateY(-20px) rotate(3deg) scale(1.01);z-index:20}
-          60%{transform:translateX(100px) translateY(0px) rotate(1.5deg) scale(0.99);z-index:1}
-          100%{transform:translateX(0) translateY(8px) rotate(0deg) scale(0.97);z-index:1}
+          0%{transform:translateX(0) translateY(0) rotate(0deg) scale(1)}
+          35%{transform:translateX(140px) translateY(-16px) rotate(2.5deg) scale(1.01)}
+          50%{transform:translateX(160px) translateY(-8px) rotate(1.5deg) scale(1)}
+          70%{transform:translateX(80px) translateY(2px) rotate(0.5deg) scale(0.98)}
+          100%{transform:translateX(0) translateY(6px) rotate(0deg) scale(0.97)}
         }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
