@@ -5369,22 +5369,23 @@ const TOOLS_REPLACED = [
 
 const EMPTY_ROI_CONFIG = {
   currency:"USD",
-  // B2B Rocket VIP plan investment
+  // B2B Rocket VIP plan investment (static)
   b2bRocketCost:5000, mailboxes:201, domains:67,
-  startDate:"", // ISO date string — when B2B Rocket engagement started
-  // Lead value
-  rtsLeadsMonthly:0, generalContactsMonthly:0,
-  rtsLeadValue:0.20, contactValue:0.05,
-  // Sales metrics
+  startDate:"",
+  // Sales metrics (static)
   closeRate:20, acv:0, grossMargin:70, avgSalesCycle:30,
-  // What it replaces — SDRs + individual tool costs
+  // Tools replaced (static monthly costs)
   prevSdrCost:0, prevToolsCost:0,
   replLeadDb:1500, replOutreach:150, replAiContent:200, replEmailValid:100,
+  // Lead value rates (static)
+  rtsLeadValue:0.20, contactValue:0.05,
+  // Monthly activity log (dynamic — updated as campaigns scale)
+  monthlyLog:[] as {month:string; emailsSent:number; rtsLeads:number; generalContacts:number; interestedLeads:number; notInterested:number; meetings:number; revenueClosed:number}[],
 };
 
 function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }) {
-  const cfg = { ...EMPTY_ROI_CONFIG, ...(roiConfig ?? {}) };
-  const [configOpen, setConfigOpen] = useState(true);
+  const cfg = { ...EMPTY_ROI_CONFIG, ...(roiConfig ?? {}), monthlyLog: (roiConfig?.monthlyLog ?? []) };
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const upd = (patch: any) => onConfigChange({ ...cfg, ...patch });
 
@@ -5393,135 +5394,134 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
     return new Intl.NumberFormat("en-US",{style:"currency",currency:cfg.currency,maximumFractionDigits:decimals}).format(n);
   };
   const pct = (n: number | null) => n === null || n === undefined ? "—" : `${n > 0 ? "+" : ""}${n}%`;
-
-  // ── Perf log totals ──
-  const perf = perfLogs.reduce((a: any, e: any) => {
-    const m = e.metrics ?? {};
-    return { sent:a.sent+(m.sent||0), replies:a.replies+(m.replies||0),
-             meetings:a.meetings+(m.meetings||0), revenue:a.revenue+(m.revenue||0) };
-  }, { sent:0, replies:0, meetings:0, revenue:0 });
+  const inputSt: any = { padding:"7px 10px", borderRadius:7, border:`1px solid ${C.border}`,
+    background:C.faint, color:C.text, fontSize:12, fontFamily:body, outline:"none",
+    width:"100%", transition:"border-color .15s" };
 
   // ── Time-based tracking ──
   const startDate   = cfg.startDate ? new Date(cfg.startDate) : null;
   const now         = new Date();
   const daysSinceStart = startDate ? Math.max(1, Math.floor((now.getTime() - startDate.getTime()) / 86400000)) : 0;
-  const monthsSinceStart = startDate ? Math.max(0.03, daysSinceStart / 30.44) : 0; // fractional months
+  const monthsSinceStart = startDate ? Math.max(0.03, daysSinceStart / 30.44) : 0;
   const fullMonths  = Math.floor(monthsSinceStart);
   const paidToDate  = startDate ? cfg.b2bRocketCost * Math.ceil(monthsSinceStart) : 0;
 
-  // ── Cost calculations ──
-  const infraValueMonthly  = cfg.mailboxes * GWS_STARTER_PER_MAILBOX + cfg.domains * DOMAIN_COST_PER_MONTH;
-  const totalB2BInvestment = cfg.b2bRocketCost;
-
-  // ── Tools replaced by B2B Rocket ──
+  // ── Static cost calculations ──
+  const infraValueMonthly    = cfg.mailboxes * GWS_STARTER_PER_MAILBOX + cfg.domains * DOMAIN_COST_PER_MONTH;
   const toolsReplacedMonthly = (cfg.replLeadDb || 0) + (cfg.replOutreach || 0) + (cfg.replAiContent || 0) + (cfg.replEmailValid || 0);
-  const toolsSavedToDate     = startDate ? toolsReplacedMonthly * Math.ceil(monthsSinceStart) : 0;
+  const prevCostsMonthly     = (cfg.prevSdrCost || 0) + (cfg.prevToolsCost || 0);
+  const monthlySavings       = toolsReplacedMonthly + prevCostsMonthly + infraValueMonthly;
 
-  // ── Lead value from B2B Rocket platform ──
-  const rtsLeadValueMonthly     = (cfg.rtsLeadsMonthly || 0) * (cfg.rtsLeadValue || 0.20);
-  const contactValueMonthly     = (cfg.generalContactsMonthly || 0) * (cfg.contactValue || 0.05);
-  const totalLeadValueMonthly   = rtsLeadValueMonthly + contactValueMonthly;
+  // ── Cumulative totals from monthly activity log ──
+  const log = cfg.monthlyLog || [];
+  const totals = log.reduce((a: any, e: any) => ({
+    emailsSent:      a.emailsSent      + (e.emailsSent || 0),
+    rtsLeads:        a.rtsLeads        + (e.rtsLeads || 0),
+    generalContacts: a.generalContacts + (e.generalContacts || 0),
+    interestedLeads: a.interestedLeads + (e.interestedLeads || 0),
+    notInterested:   a.notInterested   + (e.notInterested || 0),
+    meetings:        a.meetings        + (e.meetings || 0),
+    revenueClosed:   a.revenueClosed   + (e.revenueClosed || 0),
+  }), { emailsSent:0, rtsLeads:0, generalContacts:0, interestedLeads:0, notInterested:0, meetings:0, revenueClosed:0 });
 
-  // ── What B2B Rocket replaces (SDRs + previous tools) ──
-  const prevCostsMonthly = (cfg.prevSdrCost || 0) + (cfg.prevToolsCost || 0);
-  const totalReplacementMonthly = prevCostsMonthly + toolsReplacedMonthly;
-  const monthlySavings   = totalReplacementMonthly + infraValueMonthly;
+  // ── Value calculations from actual data ──
+  const leadDataValue    = totals.rtsLeads * (cfg.rtsLeadValue || 0.20) + totals.generalContacts * (cfg.contactValue || 0.05);
+  const monthsLogged     = log.length || 1;
+  const savingsToDate    = monthlySavings * (startDate ? Math.ceil(monthsSinceStart) : monthsLogged);
+  const toolsSavedToDate = toolsReplacedMonthly * (startDate ? Math.ceil(monthsSinceStart) : monthsLogged);
 
-  // ── Pipeline & revenue ──
-  const dealsWonFromMeetings = perf.meetings * (cfg.closeRate / 100);
-  const pipelineRevenue      = perf.revenue > 0 ? perf.revenue : dealsWonFromMeetings * (cfg.acv || 0);
-  const rtsDealsMonthly      = (cfg.rtsLeadsMonthly || 0) * (cfg.closeRate / 100) / 100;
-  const projectedMonthlyRev  = rtsDealsMonthly * (cfg.acv || 0);
-  const projectedAnnualRev   = projectedMonthlyRev * 12;
-  const grossProfit          = projectedAnnualRev * (cfg.grossMargin / 100);
-  const annualInvestment     = totalB2BInvestment * 12;
-  const annualLeadValue      = totalLeadValueMonthly * 12;
-  const annualToolsSaved     = toolsReplacedMonthly * 12;
+  // Time savings from automated emails
+  const hoursAutoSaved   = totals.emailsSent > 0 ? Math.round((totals.emailsSent * 30) / 60) : 0; // 30 min/email manual
+  const timeSavingsValue = hoursAutoSaved * 35; // $35/hr SDR rate
+  const fteSaved         = hoursAutoSaved > 0 ? parseFloat((hoursAutoSaved / 160).toFixed(1)) : 0;
 
-  // ── Time savings (based on emails sent) ──
-  // Manual outbound benchmarks: ~15 min to research a prospect, ~12 min to write a personalized email,
-  // ~3 min for follow-up admin → ~30 min per email manually. B2B Rocket automates all of this.
-  const MINS_PER_EMAIL_MANUAL  = 30;
-  const AVG_HOURLY_SDR_COST    = 35;  // ~$70K/yr fully loaded SDR ÷ 2000 hrs
-  const totalEmailsSent        = perf.sent;
-  const hoursAutoSaved         = totalEmailsSent > 0 ? Math.round((totalEmailsSent * MINS_PER_EMAIL_MANUAL) / 60) : 0;
-  const timeSavingsValue       = hoursAutoSaved * AVG_HOURLY_SDR_COST;
-  const fteSaved               = hoursAutoSaved > 0 ? parseFloat((hoursAutoSaved / 160).toFixed(1)) : 0; // 160 hrs/mo FTE
+  // Pipeline from actual data
+  const actualRevenue    = totals.revenueClosed;
+  const projectedRev     = actualRevenue > 0 ? actualRevenue : totals.meetings * (cfg.closeRate / 100) * (cfg.acv || 0);
+  const grossProfit      = projectedRev * (cfg.grossMargin / 100);
 
-  // ── Dynamic ROI (to-date if start date set, otherwise annual projection) ──
-  const valueToDate = startDate
-    ? (totalLeadValueMonthly * monthsSinceStart) + (monthlySavings * monthsSinceStart) + timeSavingsValue
-    : 0;
-  const netToDate   = startDate && paidToDate > 0 ? Math.round(((valueToDate + pipelineRevenue * (cfg.grossMargin/100) - paidToDate) / paidToDate) * 100) : null;
-  const netROI      = annualInvestment > 0 ? Math.round(((grossProfit + annualLeadValue + annualToolsSaved + (monthlySavings * 12) + timeSavingsValue - annualInvestment) / annualInvestment) * 100) : null;
-  const paybackMonths = projectedMonthlyRev > 0 || monthlySavings > 0
-    ? Math.max(1, Math.ceil(totalB2BInvestment / (projectedMonthlyRev * (cfg.grossMargin/100) + monthlySavings + totalLeadValueMonthly)))
-    : null;
+  // ── Total value delivered to date ──
+  const totalValueToDate = leadDataValue + savingsToDate + timeSavingsValue + grossProfit;
+  const totalInvestToDate = paidToDate > 0 ? paidToDate : cfg.b2bRocketCost * monthsLogged;
+  const roiToDate = totalInvestToDate > 0 ? Math.round(((totalValueToDate - totalInvestToDate) / totalInvestToDate) * 100) : null;
+  const roiClr = roiToDate === null ? C.muted : roiToDate >= 100 ? C.green : roiToDate >= 0 ? C.amber : C.red;
 
-  // ── Efficiency metrics from perf data ──
-  const costPerLead    = perf.replies  > 0 && totalB2BInvestment > 0 ? Math.round(totalB2BInvestment / perf.replies)  : null;
-  const costPerMeeting = perf.meetings > 0 && totalB2BInvestment > 0 ? Math.round(totalB2BInvestment / perf.meetings) : null;
-
-  const roiClr = netROI === null ? C.muted : netROI >= 100 ? C.green : netROI >= 0 ? C.amber : C.red;
-
-  const inputSt: any = { padding:"8px 11px", borderRadius:7, border:`1px solid ${C.border}`,
-    background:C.faint, color:C.text, fontSize:13, fontFamily:body, outline:"none",
-    width:"100%", transition:"border-color .15s" };
+  // ── Monthly log management ──
+  const addMonth = () => {
+    const lastMonth = log.length > 0 ? log[log.length - 1].month : "";
+    let nextMonth = "";
+    if (lastMonth) {
+      const d = new Date(lastMonth + "-01");
+      d.setMonth(d.getMonth() + 1);
+      nextMonth = d.toISOString().slice(0, 7);
+    } else if (startDate) {
+      nextMonth = cfg.startDate.slice(0, 7);
+    } else {
+      nextMonth = now.toISOString().slice(0, 7);
+    }
+    upd({ monthlyLog: [...log, { month:nextMonth, emailsSent:0, rtsLeads:0, generalContacts:0, interestedLeads:0, notInterested:0, meetings:0, revenueClosed:0 }] });
+  };
+  const updMonth = (idx: number, patch: any) => {
+    const updated = [...log];
+    updated[idx] = { ...updated[idx], ...patch };
+    upd({ monthlyLog: updated });
+  };
+  const delMonth = (idx: number) => {
+    upd({ monthlyLog: log.filter((_:any, i:number) => i !== idx) });
+  };
 
   // ── AI Auto-fill ──
   const handleAiFill = async () => {
     setAiLoading(true);
     try {
       const ctx = buildClientContext(companyData, icps, perfLogs);
-      const prompt = `Based on this B2B client profile, estimate realistic ROI dashboard inputs. Return ONLY a JSON object with these fields (numbers only, no text):
+      const prompt = `Based on this B2B client profile, estimate realistic ROI inputs. Return ONLY a JSON object:
 
 ${ctx}
 
 Fields to estimate:
-- rtsLeadsMonthly: estimated monthly RTS (ready-to-sell) leads from B2B Rocket outbound (typically 50-500 based on industry/ICP count)
-- generalContactsMonthly: estimated monthly general contacts/prospects reached (typically 2000-10000)
-- closeRate: realistic close rate % for this industry (typically 5-30%)
-- acv: average contract value in USD based on the company's deal size / product
-- grossMargin: gross margin % typical for this industry (typically 50-85%)
-- avgSalesCycle: average sales cycle in days for this industry
-- prevSdrCost: estimated previous monthly cost of SDRs this replaces (1 SDR ~ $5000-7000/mo fully loaded, 0 if unknown)
-- prevToolsCost: estimated previous monthly cost of sales tools replaced (ZoomInfo, Apollo, Outreach etc, typically $500-3000/mo, 0 if unknown)
+- closeRate: realistic close rate % (5-30%)
+- acv: average contract value in USD
+- grossMargin: gross margin % (50-85%)
+- avgSalesCycle: sales cycle in days
+- prevSdrCost: previous monthly SDR cost (0 if unknown)
+- prevToolsCost: previous monthly other tools cost (0 if unknown)
 
-Consider the company's industry, deal size, product type, and ICP targets. Be optimistic but realistic — B2B Rocket typically delivers strong lead generation results.
-
-Return ONLY valid JSON, no markdown, no explanation.`;
-
+Return ONLY valid JSON, no markdown.`;
       const result = await callAI(prompt, "You are a B2B sales analytics expert. Return only valid JSON.", 500);
       if (result) {
         try {
           const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
           const parsed = JSON.parse(cleaned);
           const patch: any = {};
-          if (parsed.rtsLeadsMonthly) patch.rtsLeadsMonthly = parsed.rtsLeadsMonthly;
-          if (parsed.generalContactsMonthly) patch.generalContactsMonthly = parsed.generalContactsMonthly;
-          if (parsed.closeRate) patch.closeRate = parsed.closeRate;
-          if (parsed.acv) patch.acv = parsed.acv;
-          if (parsed.grossMargin) patch.grossMargin = parsed.grossMargin;
-          if (parsed.avgSalesCycle) patch.avgSalesCycle = parsed.avgSalesCycle;
-          if (parsed.prevSdrCost) patch.prevSdrCost = parsed.prevSdrCost;
-          if (parsed.prevToolsCost) patch.prevToolsCost = parsed.prevToolsCost;
+          ["closeRate","acv","grossMargin","avgSalesCycle","prevSdrCost","prevToolsCost"].forEach(k => {
+            if (parsed[k]) patch[k] = parsed[k];
+          });
           upd(patch);
         } catch { console.error("Failed to parse AI ROI response"); }
       }
     } finally { setAiLoading(false); }
   };
 
-  // ── Bar data for ROI breakdown ──
+  // ── Bar data ──
   const barRows: {label:string;value:string;raw:number;max:number;color:string;sub?:string}[] = [];
-  const bigMax = Math.max(annualInvestment, grossProfit, annualLeadValue, annualToolsSaved, monthlySavings*12, timeSavingsValue, 1);
-  if (annualInvestment > 0)    barRows.push({ label:"Annual B2B Rocket Investment", value:fc(annualInvestment), raw:annualInvestment, max:bigMax, color:C.accent });
-  if (grossProfit > 0)         barRows.push({ label:"Projected Gross Profit", value:fc(grossProfit), raw:grossProfit, max:bigMax, color:C.green, sub:`${cfg.closeRate}% close · ${fc(cfg.acv)} ACV` });
-  if (annualLeadValue > 0)     barRows.push({ label:"Lead Data Value", value:fc(annualLeadValue), raw:annualLeadValue, max:bigMax, color:C.green+"cc", sub:`${(cfg.rtsLeadsMonthly||0).toLocaleString()} RTS + ${(cfg.generalContactsMonthly||0).toLocaleString()} contacts/mo` });
-  if (annualToolsSaved > 0)    barRows.push({ label:"Tools Replaced (Annual Savings)", value:fc(annualToolsSaved), raw:annualToolsSaved, max:bigMax, color:C.amber, sub:"lead DB + outreach + AI content + email validation" });
-  if (timeSavingsValue > 0)    barRows.push({ label:"Time Savings Value", value:fc(timeSavingsValue), raw:timeSavingsValue, max:bigMax, color:C.blue, sub:`${hoursAutoSaved.toLocaleString()} hrs · ${totalEmailsSent.toLocaleString()} emails automated` });
-  if (monthlySavings > 0)      barRows.push({ label:"Total Annual Savings", value:fc(monthlySavings*12), raw:monthlySavings*12, max:bigMax, color:C.amber+"cc", sub:"all replaced costs + infrastructure" });
-  if (costPerLead !== null)     barRows.push({ label:"Cost Per Lead", value:fc(costPerLead), raw:costPerLead, max:Math.max(costPerLead,costPerMeeting??0,1), color:C.blue, sub:`${perf.replies} replies` });
-  if (costPerMeeting !== null)  barRows.push({ label:"Cost Per Meeting", value:fc(costPerMeeting), raw:costPerMeeting, max:Math.max(costPerLead??0,costPerMeeting,1), color:C.amber, sub:`${perf.meetings} meetings` });
+  const bigMax = Math.max(totalInvestToDate, grossProfit, leadDataValue, savingsToDate, timeSavingsValue, 1);
+  if (totalInvestToDate > 0) barRows.push({ label:"Total Investment", value:fc(totalInvestToDate), raw:totalInvestToDate, max:bigMax, color:C.accent, sub:startDate?`${Math.ceil(monthsSinceStart)} months`:`${monthsLogged} months logged` });
+  if (grossProfit > 0)       barRows.push({ label:"Revenue / Gross Profit", value:fc(grossProfit), raw:grossProfit, max:bigMax, color:C.green, sub:actualRevenue>0?`${fc(actualRevenue)} closed`:`${totals.meetings} meetings × ${cfg.closeRate}% close` });
+  if (leadDataValue > 0)     barRows.push({ label:"Lead Data Value", value:fc(leadDataValue), raw:leadDataValue, max:bigMax, color:C.green+"cc", sub:`${totals.rtsLeads.toLocaleString()} RTS + ${totals.generalContacts.toLocaleString()} contacts` });
+  if (savingsToDate > 0)     barRows.push({ label:"Cost Savings", value:fc(savingsToDate), raw:savingsToDate, max:bigMax, color:C.amber, sub:`${fc(monthlySavings)}/mo × tools + SDR + infra` });
+  if (timeSavingsValue > 0)  barRows.push({ label:"Time Savings", value:fc(timeSavingsValue), raw:timeSavingsValue, max:bigMax, color:C.blue, sub:`${hoursAutoSaved.toLocaleString()} hrs · ${totals.emailsSent.toLocaleString()} emails` });
+
+  // ── Activity log column defs ──
+  const logCols = [
+    { key:"emailsSent",      label:"Emails Sent",  color:C.text },
+    { key:"rtsLeads",        label:"RTS Leads",    color:C.green },
+    { key:"generalContacts", label:"Contacts",     color:C.blue },
+    { key:"interestedLeads", label:"Interested",   color:C.green },
+    { key:"notInterested",   label:"Not Interested",color:C.red },
+    { key:"meetings",        label:"Meetings",     color:C.amber },
+    { key:"revenueClosed",   label:"Revenue",      color:"#8B5CF6" },
+  ];
 
   return (
     <div style={{ animation:"fadeIn .3s ease" }}>
@@ -5529,159 +5529,100 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       {/* ── Actions ── */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", marginBottom:16, gap:8 }}>
         <button onClick={handleAiFill} disabled={aiLoading}
-          style={{ padding:"8px 16px", borderRadius:8,
-            border:`1px solid ${C.greenBorder}`, background:C.greenLo,
+          style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${C.greenBorder}`, background:C.greenLo,
             color:C.green, fontSize:12, fontFamily:head, fontWeight:600, cursor:aiLoading?"wait":"pointer",
-            display:"flex", alignItems:"center", gap:6, flexShrink:0, transition:"all .15s",
-            opacity:aiLoading?0.6:1 }}>
+            display:"flex", alignItems:"center", gap:6, opacity:aiLoading?0.6:1, transition:"all .15s" }}>
           {aiLoading ? "◌ Analyzing..." : "◎ AI Auto-Fill"}
         </button>
-        <button onClick={()=>setConfigOpen(p=>!p)}
+        <button onClick={()=>setSettingsOpen(p=>!p)}
           style={{ padding:"8px 16px", borderRadius:8,
-            border:`1px solid ${configOpen ? C.accentBorder : C.border}`,
-            background: configOpen ? C.accentLo : C.canvas,
-            color: configOpen ? C.accent : C.textSoft,
+            border:`1px solid ${settingsOpen ? C.accentBorder : C.border}`,
+            background: settingsOpen ? C.accentLo : C.canvas,
+            color: settingsOpen ? C.accent : C.textSoft,
             fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer",
-            display:"flex", alignItems:"center", gap:6, flexShrink:0, transition:"all .15s" }}>
-          ⚙ {configOpen ? "Hide inputs" : "Edit inputs"}
+            display:"flex", alignItems:"center", gap:6, transition:"all .15s" }}>
+          ⚙ {settingsOpen ? "Hide settings" : "Settings"}
         </button>
       </div>
 
-      {/* ── Config panel ── */}
-      {configOpen && (
+      {/* ── Settings panel (static config) ── */}
+      {settingsOpen && (
         <div style={{ background:C.canvas, border:`1px solid ${C.border}`, borderRadius:12,
-          padding:"22px 26px", marginBottom:28, animation:"fadeIn .18s ease" }}>
+          padding:"22px 26px", marginBottom:20, animation:"fadeIn .18s ease" }}>
 
-          {/* Row 1: B2B Rocket Investment + Start Date */}
-          <div style={{ marginBottom:20 }}>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.5, marginBottom:12 }}>B2B ROCKET INVESTMENT</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))", gap:10 }}>
-              {([
-                { key:"b2bRocketCost", label:"MONTHLY SUBSCRIPTION", ph:"5000" },
-                { key:"mailboxes",     label:"MAILBOXES INCLUDED",   ph:"201", int:true },
-                { key:"domains",       label:"DOMAINS INCLUDED",     ph:"67",  int:true },
-              ] as any[]).map(f => (
-                <div key={f.key}>
-                  <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>{f.label}</label>
-                  <input type="number" min={0} value={(cfg as any)[f.key]||""} placeholder={f.ph}
-                    onChange={e=>upd({[f.key]: f.int ? parseInt(e.target.value)||0 : parseFloat(e.target.value)||0})} style={inputSt}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+            {/* Left: Investment & Sales */}
+            <div>
+              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.5, marginBottom:10 }}>B2B ROCKET PLAN</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
+                {([
+                  { key:"b2bRocketCost", label:"MONTHLY COST",   ph:"5000" },
+                  { key:"mailboxes",     label:"MAILBOXES",      ph:"201", int:true },
+                  { key:"domains",       label:"DOMAINS",        ph:"67",  int:true },
+                ] as any[]).map(f => (
+                  <div key={f.key}>
+                    <label style={{ fontSize:9, fontFamily:mono, color:C.muted, display:"block", marginBottom:3 }}>{f.label}</label>
+                    <input type="number" min={0} value={(cfg as any)[f.key]||""} placeholder={f.ph}
+                      onChange={e=>upd({[f.key]: f.int ? parseInt(e.target.value)||0 : parseFloat(e.target.value)||0})} style={inputSt}
+                      onFocus={e=>e.target.style.borderColor=C.accent+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
+                  </div>
+                ))}
+                <div>
+                  <label style={{ fontSize:9, fontFamily:mono, color:C.muted, display:"block", marginBottom:3 }}>START DATE</label>
+                  <input type="date" value={cfg.startDate||""} onChange={e=>upd({startDate:e.target.value})} style={inputSt}
                     onFocus={e=>e.target.style.borderColor=C.accent+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
                 </div>
-              ))}
-              <div>
-                <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>START DATE</label>
-                <input type="date" value={cfg.startDate||""} onChange={e=>upd({startDate:e.target.value})} style={inputSt}
-                  onFocus={e=>e.target.style.borderColor=C.accent+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
-                <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>
-                  {startDate ? `${daysSinceStart} days · ${fullMonths} mo · ${fc(paidToDate)} paid` : "Set to track ROI over time"}
-                </div>
               </div>
-              <div>
-                <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>CURRENCY</label>
-                <select value={cfg.currency} onChange={e=>upd({currency:e.target.value})}
-                  style={{...inputSt, cursor:"pointer"}}>
-                  {ROI_CURRENCY_OPTS.map(c=><option key={c}>{c}</option>)}
-                </select>
+              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.5, marginBottom:10 }}>SALES METRICS</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                {([
+                  { key:"closeRate",     label:"CLOSE RATE (%)",     ph:"20" },
+                  { key:"acv",           label:"AVG CONTRACT VALUE", ph:"0" },
+                  { key:"grossMargin",   label:"GROSS MARGIN (%)",   ph:"70" },
+                  { key:"avgSalesCycle", label:"SALES CYCLE (DAYS)", ph:"30" },
+                ] as {key:string;label:string;ph:string}[]).map(f => (
+                  <div key={f.key}>
+                    <label style={{ fontSize:9, fontFamily:mono, color:C.muted, display:"block", marginBottom:3 }}>{f.label}</label>
+                    <input type="number" min={0} value={(cfg as any)[f.key]||""} placeholder={f.ph}
+                      onChange={e=>upd({[f.key]:parseFloat(e.target.value)||0})} style={inputSt}
+                      onFocus={e=>e.target.style.borderColor=C.accent+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-
-          {/* Row 2: Lead Generation Volume */}
-          <div style={{ marginBottom:20 }}>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.green, letterSpacing:.5, marginBottom:12 }}>LEAD GENERATION VOLUME</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:10 }}>
-              <div>
-                <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>RTS LEADS / MONTH</label>
-                <input type="number" min={0} value={cfg.rtsLeadsMonthly||""} placeholder="0"
-                  onChange={e=>upd({rtsLeadsMonthly:parseInt(e.target.value)||0})} style={inputSt}
-                  onFocus={e=>e.target.style.borderColor=C.green+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
-                <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>Ready-to-sell leads · valued at {fc(cfg.rtsLeadValue||0.20, 2)}/lead</div>
+            {/* Right: Tools Replaced */}
+            <div>
+              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5, marginBottom:4 }}>TOOLS REPLACED BY B2B ROCKET</div>
+              <div style={{ fontSize:10, fontFamily:body, color:C.muted, marginBottom:10 }}>What you would pay separately — all included</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
+                {TOOLS_REPLACED.map(t => (
+                  <div key={t.key}>
+                    <label style={{ fontSize:9, fontFamily:mono, color:C.muted, display:"block", marginBottom:3 }}>{t.label.toUpperCase()}</label>
+                    <input type="number" min={0} value={(cfg as any)[t.key]||""} placeholder={String(t.defaultCost)}
+                      onChange={e=>upd({[t.key]:parseFloat(e.target.value)||0})} style={inputSt}
+                      onFocus={e=>e.target.style.borderColor=C.amber+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
+                    <div style={{ fontSize:8, fontFamily:body, color:C.muted, marginTop:2 }}>vs. {t.example}</div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>GENERAL CONTACTS / MONTH</label>
-                <input type="number" min={0} value={cfg.generalContactsMonthly||""} placeholder="0"
-                  onChange={e=>upd({generalContactsMonthly:parseInt(e.target.value)||0})} style={inputSt}
-                  onFocus={e=>e.target.style.borderColor=C.green+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
-                <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>Prospects reached · valued at {fc(cfg.contactValue||0.05, 2)}/contact</div>
-              </div>
-              {totalLeadValueMonthly > 0 && (
-                <div style={{ padding:"10px 14px", background:C.greenLo,
-                  border:`1px solid ${C.greenBorder}`, borderRadius:8, display:"flex", flexDirection:"column", justifyContent:"center" }}>
-                  <div style={{ fontSize:10, fontFamily:mono, color:C.green, fontWeight:700 }}>MONTHLY LEAD VALUE</div>
-                  <div style={{ fontSize:18, fontFamily:head, fontWeight:800, color:C.green }}>{fc(totalLeadValueMonthly)}</div>
-                  <div style={{ fontSize:9, fontFamily:body, color:C.green+"aa" }}>{fc(totalLeadValueMonthly*12)}/yr in lead data</div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Row 3: Sales Metrics */}
-          <div style={{ marginBottom:20 }}>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.5, marginBottom:12 }}>SALES METRICS</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))", gap:10 }}>
-              {([
-                { key:"closeRate",      label:"CLOSE RATE (%)",       ph:"20" },
-                { key:"acv",            label:"AVG CONTRACT VALUE",   ph:"0"  },
-                { key:"grossMargin",    label:"GROSS MARGIN (%)",     ph:"70" },
-                { key:"avgSalesCycle",  label:"SALES CYCLE (DAYS)",   ph:"30" },
-              ] as {key:string;label:string;ph:string}[]).map(f => (
-                <div key={f.key}>
-                  <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>{f.label}</label>
-                  <input type="number" min={0} value={(cfg as any)[f.key]||""} placeholder={f.ph}
-                    onChange={e=>upd({[f.key]:parseFloat(e.target.value)||0})} style={inputSt}
-                    onFocus={e=>e.target.style.borderColor=C.accent+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Row 4: Tools Replaced by B2B Rocket */}
-          <div style={{ marginBottom:20 }}>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5, marginBottom:4 }}>TOOLS YOU NO LONGER NEED</div>
-            <div style={{ fontSize:11, fontFamily:body, color:C.muted, marginBottom:12 }}>B2B Rocket includes all of these — enter what you would pay separately</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))", gap:10, alignItems:"end" }}>
-              {TOOLS_REPLACED.map(t => (
-                <div key={t.key}>
-                  <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>{t.label.toUpperCase()}</label>
-                  <input type="number" min={0} value={(cfg as any)[t.key]||""} placeholder={String(t.defaultCost)}
-                    onChange={e=>upd({[t.key]:parseFloat(e.target.value)||0})} style={inputSt}
+              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5, marginBottom:10 }}>PREVIOUS COSTS</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                <div>
+                  <label style={{ fontSize:9, fontFamily:mono, color:C.muted, display:"block", marginBottom:3 }}>PREV SDR COST/MO</label>
+                  <input type="number" min={0} value={cfg.prevSdrCost||""} placeholder="0"
+                    onChange={e=>upd({prevSdrCost:parseFloat(e.target.value)||0})} style={inputSt}
                     onFocus={e=>e.target.style.borderColor=C.amber+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
-                  <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>vs. {t.example}</div>
                 </div>
-              ))}
-              {toolsReplacedMonthly > 0 && (
-                <div style={{ padding:"10px 14px", background:C.amberLo, border:`1px solid ${C.amberBorder}`, borderRadius:8 }}>
-                  <div style={{ fontSize:10, fontFamily:mono, color:C.amber, fontWeight:700 }}>TOOLS SAVINGS</div>
-                  <div style={{ fontSize:18, fontFamily:head, fontWeight:800, color:C.green }}>{fc(toolsReplacedMonthly)}<span style={{ fontSize:11, fontWeight:400 }}>/mo</span></div>
-                  <div style={{ fontSize:9, fontFamily:body, color:C.muted }}>{fc(toolsReplacedMonthly*12)}/yr · all included in B2B Rocket</div>
+                <div>
+                  <label style={{ fontSize:9, fontFamily:mono, color:C.muted, display:"block", marginBottom:3 }}>PREV TOOLS/MO</label>
+                  <input type="number" min={0} value={cfg.prevToolsCost||""} placeholder="0"
+                    onChange={e=>upd({prevToolsCost:parseFloat(e.target.value)||0})} style={inputSt}
+                    onFocus={e=>e.target.style.borderColor=C.amber+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Row 5: Previous SDR / Other costs */}
-          <div>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5, marginBottom:12 }}>PREVIOUS HEADCOUNT & OTHER COSTS</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:10 }}>
-              <div>
-                <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>PREVIOUS SDR COST / MONTH</label>
-                <input type="number" min={0} value={cfg.prevSdrCost||""} placeholder="0"
-                  onChange={e=>upd({prevSdrCost:parseFloat(e.target.value)||0})} style={inputSt}
-                  onFocus={e=>e.target.style.borderColor=C.amber+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
-                <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>Fully loaded SDR cost being replaced</div>
-              </div>
-              <div>
-                <label style={{ fontSize:10, fontFamily:mono, color:C.muted, display:"block", marginBottom:4 }}>OTHER TOOLS COST / MONTH</label>
-                <input type="number" min={0} value={cfg.prevToolsCost||""} placeholder="0"
-                  onChange={e=>upd({prevToolsCost:parseFloat(e.target.value)||0})} style={inputSt}
-                  onFocus={e=>e.target.style.borderColor=C.amber+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
-                <div style={{ fontSize:9, fontFamily:body, color:C.muted, marginTop:3 }}>Any additional tools not listed above</div>
               </div>
               {monthlySavings > 0 && (
-                <div style={{ padding:"10px 14px", background:C.greenLo, border:`1px solid ${C.greenBorder}`, borderRadius:8 }}>
-                  <div style={{ fontSize:10, fontFamily:mono, color:C.green, fontWeight:700 }}>TOTAL MONTHLY SAVINGS</div>
-                  <div style={{ fontSize:18, fontFamily:head, fontWeight:800, color:C.green }}>{fc(monthlySavings)}<span style={{ fontSize:11, fontWeight:400 }}>/mo</span></div>
-                  <div style={{ fontSize:9, fontFamily:body, color:C.green+"aa" }}>tools + SDR + infra vs. {fc(totalB2BInvestment)}/mo B2B Rocket</div>
+                <div style={{ marginTop:12, padding:"10px 14px", background:C.greenLo, border:`1px solid ${C.greenBorder}`, borderRadius:8, textAlign:"center" }}>
+                  <div style={{ fontSize:9, fontFamily:mono, color:C.green, fontWeight:700 }}>TOTAL SAVINGS: {fc(monthlySavings)}/mo · {fc(monthlySavings*12)}/yr</div>
                 </div>
               )}
             </div>
@@ -5689,138 +5630,120 @@ Return ONLY valid JSON, no markdown, no explanation.`;
         </div>
       )}
 
-      {/* ── Dynamic To-Date Banner (if start date set) ── */}
-      {startDate && paidToDate > 0 && (
-        <div style={{ background:C.canvas, border:`1px solid ${C.border}`, borderRadius:12,
-          padding:"16px 22px", marginBottom:16, display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:16, alignItems:"center" }}>
-          <div>
-            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5 }}>ENGAGEMENT</div>
-            <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C.text }}>{daysSinceStart} days</div>
-            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>{fullMonths} months since {startDate.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
-          </div>
-          <div>
-            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.5 }}>PAID TO DATE</div>
-            <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C.accent }}>{fc(paidToDate)}</div>
-            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>{Math.ceil(monthsSinceStart)} payments × {fc(totalB2BInvestment)}</div>
-          </div>
-          <div>
-            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.green, letterSpacing:.5 }}>VALUE TO DATE</div>
-            <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C.green }}>{fc(valueToDate + pipelineRevenue * (cfg.grossMargin/100))}</div>
-            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>leads + savings + revenue</div>
-          </div>
-          <div>
-            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5 }}>TOOLS SAVED TO DATE</div>
-            <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C.amber }}>{fc(toolsSavedToDate)}</div>
-            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>{fc(toolsReplacedMonthly)}/mo × {Math.ceil(monthsSinceStart)} mo</div>
-          </div>
-          <div>
-            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:netToDate!==null&&netToDate>=0?C.green:C.red, letterSpacing:.5 }}>ROI TO DATE</div>
-            <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:netToDate!==null&&netToDate>=0?C.green:netToDate!==null?C.red:C.muted }}>
-              {netToDate !== null ? pct(netToDate) : "—"}
-            </div>
-            <div style={{ fontSize:10, color:C.muted, fontFamily:body }}>{netToDate!==null&&netToDate>=0?"positive":"building"} since day 1</div>
-          </div>
+      {/* ── Live ROI Banner ── */}
+      <div style={{ background:C.canvas, border:`1px solid ${C.border}`, borderRadius:12,
+        padding:"18px 22px", marginBottom:16, display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:14, alignItems:"center" }}>
+        {startDate && (<div>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5 }}>ACTIVE</div>
+          <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C.text }}>{daysSinceStart}<span style={{ fontSize:11, fontWeight:400, color:C.muted }}> days</span></div>
+          <div style={{ fontSize:9, color:C.muted, fontFamily:body }}>since {startDate.toLocaleDateString("en-US",{month:"short",year:"numeric"})}</div>
+        </div>)}
+        <div>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.5 }}>INVESTED</div>
+          <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C.accent }}>{fc(totalInvestToDate)}</div>
+          <div style={{ fontSize:9, color:C.muted, fontFamily:body }}>{fc(cfg.b2bRocketCost)}/mo</div>
         </div>
-      )}
-
-      {/* ── TOP: Key Metrics ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:12, marginBottom:20 }}>
-        {[
-          { label:"Monthly Investment",   value:totalB2BInvestment>0?`${fc(totalB2BInvestment)}/mo`:"—", color:C.accent,
-            sub:infraValueMonthly>0?`incl. ${fc(infraValueMonthly)} infra value`:undefined },
-          { label:"Tools Replaced",       value:toolsReplacedMonthly>0?`${fc(toolsReplacedMonthly)}/mo`:"—", color:C.amber,
-            sub:toolsReplacedMonthly>0?"lead DB + outreach + AI + validation":"configure replaced tools" },
-          { label:"Time Saved",           value:hoursAutoSaved>0?`${hoursAutoSaved.toLocaleString()} hrs`:"—", color:C.blue,
-            sub:hoursAutoSaved>0?`${fc(timeSavingsValue)} value · ${fteSaved} FTEs`:`log emails sent` },
-          { label:"Projected Annual ROI", value:netROI!==null?pct(netROI):"—", color:roiClr,
-            sub:netROI!==null?(netROI>=100?"strong return":"building momentum"):"fill in inputs" },
-          { label:"Payback Period",       value:paybackMonths!==null?`${paybackMonths} mo`:"—", color:paybackMonths!==null&&paybackMonths<=3?C.green:paybackMonths!==null&&paybackMonths<=6?C.amber:C.muted,
-            sub:paybackMonths!==null?(paybackMonths<=3?"fast payback":"avg. for B2B"):undefined },
-        ].map(m => (
-          <div key={m.label} style={{ background:C.canvas, border:`1px solid ${C.border}`,
-            borderTop:`3px solid ${m.color}`, borderRadius:10, padding:"14px 16px" }}>
-            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:6, textTransform:"uppercase" as const }}>{m.label}</div>
-            <div style={{ fontSize:22, fontWeight:800, fontFamily:head, color:m.value==="—"?C.muted:m.color, lineHeight:1 }}>{m.value}</div>
-            {m.sub && <div style={{ fontSize:10, color:C.muted, fontFamily:body, marginTop:5, lineHeight:1.3 }}>{m.sub}</div>}
-          </div>
-        ))}
+        <div>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.green, letterSpacing:.5 }}>VALUE DELIVERED</div>
+          <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C.green }}>{fc(totalValueToDate)}</div>
+          <div style={{ fontSize:9, color:C.muted, fontFamily:body }}>leads + savings + revenue</div>
+        </div>
+        <div>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.amber, letterSpacing:.5 }}>TOOLS SAVED</div>
+          <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C.amber }}>{fc(toolsSavedToDate)}</div>
+          <div style={{ fontSize:9, color:C.muted, fontFamily:body }}>{fc(toolsReplacedMonthly)}/mo</div>
+        </div>
+        <div>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.blue, letterSpacing:.5 }}>TIME SAVED</div>
+          <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C.blue }}>{hoursAutoSaved > 0 ? `${hoursAutoSaved.toLocaleString()} hrs` : "—"}</div>
+          <div style={{ fontSize:9, color:C.muted, fontFamily:body }}>{hoursAutoSaved > 0 ? `${fc(timeSavingsValue)} · ${fteSaved} FTEs` : "log emails"}</div>
+        </div>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:roiClr, letterSpacing:.5 }}>ROI TO DATE</div>
+          <div style={{ fontSize:26, fontWeight:800, fontFamily:head, color:roiClr, lineHeight:1.1 }}>{roiToDate !== null ? pct(roiToDate) : "—"}</div>
+          <div style={{ fontSize:9, color:C.muted, fontFamily:body }}>{roiToDate !== null && roiToDate >= 0 ? "positive return" : "add activity data"}</div>
+        </div>
       </div>
 
-      {/* ── BOTTOM: Value Story + Bars ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1.7fr", gap:16 }}>
-
-        {/* Left: B2B Rocket Value Story */}
-        <div style={{ background:C.canvas, border:`1px solid ${C.border}`, borderRadius:12,
-          padding:"22px", display:"flex", flexDirection:"column" }}>
-          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:20 }}>
-            B2B ROCKET VALUE
-          </div>
-
-          <div style={{ display:"flex", flexDirection:"column", gap:12, flex:1 }}>
-            {/* What you get */}
-            {[
-              { icon:"◎", label:"RTS Lead Generation", value:cfg.rtsLeadsMonthly>0?`${cfg.rtsLeadsMonthly.toLocaleString()} leads/mo`:"—",
-                detail:rtsLeadValueMonthly>0?`${fc(rtsLeadValueMonthly)}/mo value`:null, color:C.green },
-              { icon:"◈", label:"Contact Enrichment", value:cfg.generalContactsMonthly>0?`${cfg.generalContactsMonthly.toLocaleString()} contacts/mo`:"—",
-                detail:contactValueMonthly>0?`${fc(contactValueMonthly)}/mo value`:null, color:C.blue },
-              { icon:"◑", label:"Infrastructure Included", value:infraValueMonthly>0?`${fc(infraValueMonthly)}/mo`:"—",
-                detail:infraValueMonthly>0?`${cfg.mailboxes} mailboxes · ${cfg.domains} domains`:null, color:C.accent },
-              ...(toolsReplacedMonthly > 0 ? [{ icon:"◒", label:"Tools Replaced", value:`${fc(toolsReplacedMonthly)}/mo saved`,
-                detail:[
-                  cfg.replLeadDb ? `Lead DB: ${fc(cfg.replLeadDb)}` : "",
-                  cfg.replOutreach ? `Outreach: ${fc(cfg.replOutreach)}` : "",
-                  cfg.replAiContent ? `AI Tools: ${fc(cfg.replAiContent)}` : "",
-                  cfg.replEmailValid ? `Email Valid: ${fc(cfg.replEmailValid)}` : "",
-                ].filter(Boolean).join(" · "), color:C.amber }] : []),
-              ...(hoursAutoSaved > 0 ? [{ icon:"◉", label:"Time Savings (Automation)", value:`${hoursAutoSaved.toLocaleString()} hrs saved`,
-                detail:`${totalEmailsSent.toLocaleString()} emails × 30 min each · worth ${fc(timeSavingsValue)} · ${fteSaved} FTEs`, color:C.blue }] : []),
-              ...(prevCostsMonthly > 0 ? [{ icon:"◐", label:"Replaces SDRs & Other", value:fc(prevCostsMonthly)+"/mo",
-                detail:`SDR: ${fc(cfg.prevSdrCost||0)} · Other: ${fc(cfg.prevToolsCost||0)}`, color:C.amber }] : []),
-            ].map(row => (
-              <div key={row.label} style={{ padding:"10px 14px", background:C.faint, borderRadius:8, borderLeft:`3px solid ${row.color}` }}>
-                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
-                  <span style={{ fontSize:13 }}>{row.icon}</span>
-                  <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C.text }}>{row.label}</span>
-                </div>
-                <div style={{ fontSize:16, fontFamily:head, fontWeight:800, color:row.value==="—"?C.muted:row.color }}>{row.value}</div>
-                {row.detail && <div style={{ fontSize:10, fontFamily:body, color:C.muted, marginTop:2 }}>{row.detail}</div>}
-              </div>
-            ))}
-
-            {/* Total value summary */}
-            {(totalLeadValueMonthly + infraValueMonthly + toolsReplacedMonthly + timeSavingsValue) > 0 && (
-              <div style={{ marginTop:"auto", padding:"12px 14px", background:C.greenLo,
-                border:`1px solid ${C.greenBorder}`, borderRadius:8, textAlign:"center" }}>
-                <div style={{ fontSize:10, fontFamily:mono, color:C.green, fontWeight:700, marginBottom:4 }}>
-                  {startDate ? "TOTAL VALUE TO DATE" : "TOTAL MONTHLY VALUE"}
-                </div>
-                <div style={{ fontSize:22, fontFamily:head, fontWeight:800, color:C.green }}>
-                  {startDate
-                    ? fc(valueToDate + pipelineRevenue * (cfg.grossMargin/100))
-                    : fc(totalLeadValueMonthly + infraValueMonthly + toolsReplacedMonthly + (prevCostsMonthly > 0 ? prevCostsMonthly : 0))
-                  }
-                </div>
-                <div style={{ fontSize:10, fontFamily:body, color:C.green+"aa", marginTop:2 }}>
-                  {startDate
-                    ? `over ${daysSinceStart} days vs. ${fc(paidToDate)} paid`
-                    : [
-                        totalLeadValueMonthly > 0 ? "leads" : "",
-                        infraValueMonthly > 0 ? "infra" : "",
-                        toolsReplacedMonthly > 0 ? "tools" : "",
-                        timeSavingsValue > 0 ? "time" : "",
-                        prevCostsMonthly > 0 ? "SDR" : "",
-                      ].filter(Boolean).join(" + ")
-                  }
-                </div>
-              </div>
-            )}
-          </div>
+      {/* ── Monthly Activity Log ── */}
+      <div style={{ background:C.canvas, border:`1px solid ${C.border}`, borderRadius:12, padding:"18px 22px", marginBottom:16 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5 }}>MONTHLY ACTIVITY LOG</div>
+          <button onClick={addMonth}
+            style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${C.greenBorder}`, background:C.greenLo,
+              color:C.green, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+            + Add Month
+          </button>
         </div>
 
-        {/* Right: ROI Breakdown bars */}
+        {log.length > 0 ? (
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12, fontFamily:body }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign:"left", padding:"6px 8px", fontSize:9, fontFamily:mono, color:C.muted, fontWeight:700, letterSpacing:.4, borderBottom:`1px solid ${C.border}` }}>MONTH</th>
+                  {logCols.map(c => (
+                    <th key={c.key} style={{ textAlign:"right", padding:"6px 8px", fontSize:9, fontFamily:mono, color:c.color, fontWeight:700, letterSpacing:.4, borderBottom:`1px solid ${C.border}`, whiteSpace:"nowrap" as const }}>{c.label.toUpperCase()}</th>
+                  ))}
+                  <th style={{ width:30, borderBottom:`1px solid ${C.border}` }} />
+                </tr>
+              </thead>
+              <tbody>
+                {log.map((entry: any, idx: number) => (
+                  <tr key={idx} style={{ borderBottom:`1px solid ${C.faint}` }}>
+                    <td style={{ padding:"6px 8px" }}>
+                      <input type="month" value={entry.month||""} onChange={e=>updMonth(idx,{month:e.target.value})}
+                        style={{ ...inputSt, width:140, fontSize:12, padding:"4px 8px" }} />
+                    </td>
+                    {logCols.map(c => (
+                      <td key={c.key} style={{ padding:"4px 6px" }}>
+                        <input type="number" min={0} value={(entry as any)[c.key]||""} placeholder="0"
+                          onChange={e=>updMonth(idx,{[c.key]: c.key === "revenueClosed" ? parseFloat(e.target.value)||0 : parseInt(e.target.value)||0})}
+                          style={{ ...inputSt, width:80, textAlign:"right" as const, fontSize:12, padding:"4px 8px" }}
+                          onFocus={e=>e.target.style.borderColor=c.color+"66"} onBlur={e=>e.target.style.borderColor=C.border} />
+                      </td>
+                    ))}
+                    <td style={{ padding:"4px" }}>
+                      <button onClick={()=>delMonth(idx)} title="Remove month"
+                        style={{ width:22, height:22, borderRadius:5, border:`1px solid ${C.border}`, background:"transparent",
+                          color:C.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+                        onMouseEnter={e=>{(e.target as HTMLElement).style.color=C.red;(e.target as HTMLElement).style.borderColor=C.red;}}
+                        onMouseLeave={e=>{(e.target as HTMLElement).style.color=C.muted;(e.target as HTMLElement).style.borderColor=C.border;}}>×</button>
+                    </td>
+                  </tr>
+                ))}
+                {/* Totals row */}
+                <tr style={{ background:C.faint }}>
+                  <td style={{ padding:"8px", fontSize:10, fontFamily:mono, fontWeight:700, color:C.text }}>TOTALS</td>
+                  {logCols.map(c => (
+                    <td key={c.key} style={{ padding:"8px 6px", textAlign:"right" as const, fontSize:12, fontFamily:mono, fontWeight:700, color:c.color }}>
+                      {c.key === "revenueClosed" ? fc((totals as any)[c.key]) : ((totals as any)[c.key] || 0).toLocaleString()}
+                    </td>
+                  ))}
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ textAlign:"center", padding:"24px 0" }}>
+            <div style={{ fontSize:12, color:C.muted, fontFamily:body, marginBottom:10 }}>No activity logged yet. Add your first month to start tracking ROI.</div>
+            <button onClick={addMonth}
+              style={{ padding:"8px 20px", borderRadius:8, border:"none", background:C.green, color:"#fff",
+                fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+              + Add First Month
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Value Breakdown: Bars + Value Story ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1.7fr 1fr", gap:16 }}>
+
+        {/* Left: ROI Breakdown bars */}
         <div style={{ background:C.canvas, border:`1px solid ${C.border}`, borderRadius:12, padding:"22px" }}>
           <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:20 }}>
-            ROI BREAKDOWN (ANNUAL PROJECTION)
+            ROI BREAKDOWN (TO DATE)
           </div>
 
           {barRows.length > 0 ? (
@@ -5834,56 +5757,70 @@ Return ONLY valid JSON, no markdown, no explanation.`;
                         <span style={{ fontSize:12.5, fontFamily:body, color:C.text }}>{row.label}</span>
                         {row.sub && <span style={{ fontSize:10, color:C.muted, fontFamily:body, marginLeft:6 }}>{row.sub}</span>}
                       </div>
-                      <span style={{ fontSize:14, fontFamily:head, fontWeight:800, flexShrink:0,
-                        color:row.raw<=0?C.muted:row.color }}>{row.value}</span>
+                      <span style={{ fontSize:14, fontFamily:head, fontWeight:800, flexShrink:0, color:row.raw<=0?C.muted:row.color }}>{row.value}</span>
                     </div>
                     <div style={{ height:8, borderRadius:4, background:C.faint, overflow:"hidden" }}>
                       <div style={{ height:"100%", borderRadius:4, background:row.color,
-                        width:`${w}%`, transition:"width .6s ease",
-                        boxShadow:`0 0 8px ${row.color}44` }} />
+                        width:`${w}%`, transition:"width .6s ease", boxShadow:`0 0 8px ${row.color}44` }} />
                     </div>
                   </div>
                 );
               })}
 
-              {/* Net ROI summary at bottom */}
-              {netROI !== null && (
+              {roiToDate !== null && (
                 <div style={{ marginTop:10, padding:"14px 18px", borderRadius:10,
-                  background: netROI >= 0 ? C.greenLo : `${C.red}11`,
-                  border:`1px solid ${netROI >= 0 ? C.greenBorder : C.red+"33"}`,
+                  background: roiToDate >= 0 ? C.greenLo : `${C.red}11`,
+                  border:`1px solid ${roiToDate >= 0 ? C.greenBorder : C.red+"33"}`,
                   display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <div>
-                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:netROI>=0?C.green:C.red, letterSpacing:.5 }}>NET ANNUAL ROI</div>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:roiToDate>=0?C.green:C.red, letterSpacing:.5 }}>NET ROI TO DATE</div>
                     <div style={{ fontSize:10, fontFamily:body, color:C.muted, marginTop:2 }}>
                       {[
                         grossProfit > 0 ? `${fc(grossProfit)} profit` : "",
-                        annualLeadValue > 0 ? `${fc(annualLeadValue)} leads` : "",
-                        annualToolsSaved > 0 ? `${fc(annualToolsSaved)} tools` : "",
+                        leadDataValue > 0 ? `${fc(leadDataValue)} leads` : "",
+                        savingsToDate > 0 ? `${fc(savingsToDate)} savings` : "",
                         timeSavingsValue > 0 ? `${fc(timeSavingsValue)} time` : "",
-                        monthlySavings > 0 ? `${fc(monthlySavings*12)} savings` : "",
                       ].filter(Boolean).join(" + ")}
                     </div>
                   </div>
-                  <div style={{ fontSize:28, fontFamily:head, fontWeight:800, color:netROI>=0?C.green:C.red }}>
-                    {pct(netROI)}
+                  <div style={{ fontSize:28, fontFamily:head, fontWeight:800, color:roiToDate>=0?C.green:C.red }}>
+                    {pct(roiToDate)}
                   </div>
                 </div>
               )}
             </div>
           ) : (
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-              height:200, textAlign:"center" }}>
-              <div style={{ fontSize:12, color:C.muted, fontFamily:body, lineHeight:1.7 }}>
-                Fill in your inputs or use AI Auto-Fill<br/>to see your ROI breakdown.
-              </div>
-              <button onClick={handleAiFill} disabled={aiLoading}
-                style={{ marginTop:12, padding:"7px 16px",
-                borderRadius:7, border:"none", background:C.green, color:"#fff",
-                fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
-                {aiLoading ? "Analyzing..." : "AI Auto-Fill"}
-              </button>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:160, textAlign:"center" }}>
+              <div style={{ fontSize:12, color:C.muted, fontFamily:body, lineHeight:1.7 }}>Add monthly activity data<br/>to see your ROI breakdown.</div>
             </div>
           )}
+        </div>
+
+        {/* Right: What B2B Rocket includes */}
+        <div style={{ background:C.canvas, border:`1px solid ${C.border}`, borderRadius:12, padding:"22px", display:"flex", flexDirection:"column" }}>
+          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:16 }}>INCLUDED IN YOUR PLAN</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10, flex:1 }}>
+            {[
+              { label:"Email Infrastructure", value:`${cfg.mailboxes} mailboxes · ${cfg.domains} domains`, sub:fc(infraValueMonthly)+"/mo value", color:C.accent },
+              { label:"Lead Database", value:"Unlimited access", sub:`vs. ${fc(cfg.replLeadDb||0)}/mo ZoomInfo`, color:C.green },
+              { label:"Outreach Platform", value:"Built-in sequences", sub:`vs. ${fc(cfg.replOutreach||0)}/mo Outreach`, color:C.blue },
+              { label:"AI Content Generation", value:"Emails, LinkedIn, scripts", sub:`vs. ${fc(cfg.replAiContent||0)}/mo Jasper`, color:"#8B5CF6" },
+              { label:"Email Validation", value:"All contacts verified", sub:`vs. ${fc(cfg.replEmailValid||0)}/mo ZeroBounce`, color:C.amber },
+            ].map(row => (
+              <div key={row.label} style={{ padding:"8px 12px", background:C.faint, borderRadius:7, borderLeft:`3px solid ${row.color}` }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize:11.5, fontFamily:head, fontWeight:600, color:C.text }}>{row.label}</span>
+                  <span style={{ fontSize:10, fontFamily:body, color:C.green }}>Included</span>
+                </div>
+                <div style={{ fontSize:10, fontFamily:body, color:C.muted }}>{row.value}</div>
+                <div style={{ fontSize:9, fontFamily:body, color:row.color+"99" }}>{row.sub}</div>
+              </div>
+            ))}
+            <div style={{ marginTop:"auto", padding:"10px 12px", background:C.amberLo, border:`1px solid ${C.amberBorder}`, borderRadius:8, textAlign:"center" }}>
+              <div style={{ fontSize:9, fontFamily:mono, color:C.amber, fontWeight:700 }}>YOU SAVE {fc(toolsReplacedMonthly + infraValueMonthly)}/MO ON TOOLS ALONE</div>
+              <div style={{ fontSize:11, fontFamily:body, color:C.muted, marginTop:2 }}>{fc((toolsReplacedMonthly + infraValueMonthly) * 12)}/yr vs. buying separately</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
