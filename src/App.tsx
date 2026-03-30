@@ -4620,19 +4620,16 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
   const sec = COMPANY_SECTIONS[secTab];
   const secFill = sec?.fields.filter((f: any) => fieldFilled(f, data[f.id])).length ?? 0;
 
-  // Card-swap animation state
-  const [prevTab, setPrevTab] = useState<string|null>(null);
+  // Card-stack animation state
+  const [leavingTab, setLeavingTab] = useState<string|null>(null);
   const [isSwapping, setIsSwapping] = useState(false);
-  const swapDir = useRef<"left"|"right">("right");
   const swapTab = (newTab: string) => {
     if (newTab === secTab || isSwapping) return;
-    const curIdx = secKeys.indexOf(secTab);
-    const newIdx = secKeys.indexOf(newTab);
-    swapDir.current = newIdx > curIdx ? "right" : "left";
-    setPrevTab(secTab);
-    setSecTab(newTab);
+    setLeavingTab(secTab);
     setIsSwapping(true);
-    setTimeout(() => { setIsSwapping(false); setPrevTab(null); }, 550);
+    // Small delay so the "pull out" animation starts before we switch
+    setTimeout(() => { setSecTab(newTab); }, 60);
+    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); }, 600);
   };
 
   return (
@@ -4665,79 +4662,63 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
         })}
       </div>
 
-      {/* Fields — card swap container */}
-      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0 }}>
+      {/* Fields — card stack (all sections always rendered, stacked) */}
+      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0, perspective:"1200px" }}>
+        {secKeys.map(key => {
+          const s = COMPANY_SECTIONS[key];
+          if (!s) return null;
+          const isActive = secTab === key;
+          const isLeaving = leavingTab === key;
+          const sf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
 
-        {/* Outgoing card (previous tab) */}
-        {isSwapping && prevTab && (() => {
-          const prevSec = COMPANY_SECTIONS[prevTab];
-          const prevFill = prevSec?.fields.filter((f: any) => fieldFilled(f, data[f.id])).length ?? 0;
-          const dir = swapDir.current;
           return (
-            <div style={{ position:"absolute" as const, inset:0, padding:"28px 32px", overflowY:"auto",
-              animation:`cardOut${dir === "right" ? "L" : "R"} .55s cubic-bezier(0.16, 1, 0.3, 1) forwards`,
-              willChange:"opacity, transform", zIndex:1 }}>
+            <div key={key} style={{
+              position:"absolute" as const, inset:0, padding:"28px 32px", overflowY: isActive && !isSwapping ? "auto" : "hidden",
+              background: C2.canvas,
+              borderRadius:4,
+              boxShadow: isActive || isLeaving ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "0 2px 8px rgba(45,52,54,.04)",
+              zIndex: isLeaving ? 10 : isActive ? 5 : 1,
+              transform: isLeaving ? undefined : !isActive ? "scale(0.97) translateY(6px)" : "scale(1) translateY(0)",
+              transition: !isLeaving ? "transform .5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .5s ease" : undefined,
+              animation: isLeaving ? "cardPullOut .55s cubic-bezier(0.22, 1, 0.36, 1) forwards" : undefined,
+              willChange: isLeaving ? "transform, opacity" : undefined,
+              pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
+            }}>
               <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
                   <div>
-                    <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head }}>{prevSec.label}</div>
+                    <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head }}>{s.label}</div>
                     <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:2 }}>Fill in each field or use AI to auto-generate</div>
                   </div>
                   <span style={{ fontSize:12, color:C2.muted, fontFamily:mono, background:C2.faint,
-                    padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{prevFill}/{prevSec.fields.length}</span>
+                    padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{sf}/{s.fields.length}</span>
                 </div>
-                {prevSec.fields.map((f: any) => (
-                  <Field key={f.id} f={f} val={data[f.id]} onChange={() => {}}
-                    onAI={() => {}} aiOn={null} accentColor={C2.accent}
+                {s.fields.map((f: any) => (
+                  <Field key={f.id} f={f} val={data[f.id]} onChange={(v: any) => upd(f.id, v)}
+                    onAI={handleAI} aiOn={isActive ? aiOn : null} accentColor={C2.accent}
                     confidence={(confidence ?? {})[f.id]}
-                    locked={true} onUnlock={() => {}} onSave={() => {}} onCancel={() => {}}
-                    aiOptions={null} onOptionPick={() => {}} onSubmitField={() => {}} />
+                    locked={!!(confLocked ?? {})[f.id]}
+                    onUnlock={() => handleUnlock(f.id)}
+                    onSave={() => handleSave(f, f.id)}
+                    onCancel={() => handleCancel(f.id)}
+                    aiOptions={isActive ? (aiOptions[f.id] ?? null) : null}
+                    onOptionPick={(opt: any) => handleOptionPick(f.id, opt)}
+                    onSubmitField={(fieldId: string) => {
+                      onConfLock?.(fieldId, true);
+                      scoreWithAI(f, data[fieldId]).then((score: number) => onConfChange?.(fieldId, score));
+                      const idx = s.fields.findIndex((x: any) => x.id === fieldId);
+                      for (let n = idx + 1; n < s.fields.length; n++) {
+                        if (!(confLocked ?? {})[s.fields[n].id]) {
+                          setTimeout(() => { const el = document.querySelector(`[data-field-id="${s.fields[n].id}"]`) as HTMLElement; el?.focus(); }, 50);
+                          return;
+                        }
+                      }
+                    }} />
                 ))}
               </div>
             </div>
           );
-        })()}
-
-        {/* Incoming card (current tab) */}
-        <div key={secTab} style={{ position: isSwapping ? "absolute" as const : "relative" as const,
-          inset: isSwapping ? 0 : undefined, padding:"28px 32px", overflowY:"auto", height: isSwapping ? "100%" : undefined,
-          animation: isSwapping
-            ? `cardIn${swapDir.current === "right" ? "R" : "L"} .55s cubic-bezier(0.16, 1, 0.3, 1) forwards`
-            : undefined,
-          willChange: isSwapping ? "opacity, transform" : undefined, zIndex:2 }}>
-          <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
-            <div>
-              <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head }}>{sec.label}</div>
-              <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:2 }}>Fill in each field or use AI to auto-generate</div>
-            </div>
-            <span style={{ fontSize:12, color:C2.muted, fontFamily:mono, background:C2.faint,
-              padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{secFill}/{sec.fields.length}</span>
-          </div>
-          {sec.fields.map((f: any) => (
-            <Field key={f.id} f={f} val={data[f.id]} onChange={(v: any) => upd(f.id, v)}
-              onAI={handleAI} aiOn={aiOn} accentColor={C2.accent}
-              confidence={(confidence ?? {})[f.id]}
-              locked={!!(confLocked ?? {})[f.id]}
-              onUnlock={() => handleUnlock(f.id)}
-              onSave={() => handleSave(f, f.id)}
-              onCancel={() => handleCancel(f.id)}
-              aiOptions={aiOptions[f.id] ?? null}
-              onOptionPick={(opt: any) => handleOptionPick(f.id, opt)}
-              onSubmitField={(fieldId: string) => {
-                onConfLock?.(fieldId, true);
-                scoreWithAI(f, data[fieldId]).then((score: number) => onConfChange?.(fieldId, score));
-                const idx = sec.fields.findIndex((x: any) => x.id === fieldId);
-                for (let n = idx + 1; n < sec.fields.length; n++) {
-                  if (!(confLocked ?? {})[sec.fields[n].id]) {
-                    setTimeout(() => { const el = document.querySelector(`[data-field-id="${sec.fields[n].id}"]`) as HTMLElement; el?.focus(); }, 50);
-                    return;
-                  }
-                }
-              }} />
-          ))}
-          </div>
-        </div>
+        })}
       </div>
     </div>
   );
@@ -8957,21 +8938,11 @@ Raw JSON only.`, "", 1400);
         input,textarea,select{outline:none;}
         select option{background:${C.canvas};}
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes cardOutL{
-          0%{opacity:1;transform:translateX(0) scale(1)}
-          100%{opacity:0;transform:translateX(-50px) scale(0.94)}
-        }
-        @keyframes cardOutR{
-          0%{opacity:1;transform:translateX(0) scale(1)}
-          100%{opacity:0;transform:translateX(50px) scale(0.94)}
-        }
-        @keyframes cardInR{
-          0%{opacity:0;transform:translateX(50px) scale(0.94)}
-          100%{opacity:1;transform:translateX(0) scale(1)}
-        }
-        @keyframes cardInL{
-          0%{opacity:0;transform:translateX(-50px) scale(0.94)}
-          100%{opacity:1;transform:translateX(0) scale(1)}
+        @keyframes cardPullOut{
+          0%{transform:scale(1) translateY(0) rotateX(0deg);opacity:1;z-index:10}
+          30%{transform:scale(1.02) translateY(-12px) rotateX(-2deg);opacity:1}
+          60%{transform:scale(0.98) translateX(70px) translateY(-8px) rotateX(-1deg) rotateY(4deg);opacity:0.9}
+          100%{transform:scale(0.96) translateY(8px) rotateX(0deg);opacity:0.7;z-index:0}
         }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
