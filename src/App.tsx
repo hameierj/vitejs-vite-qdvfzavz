@@ -8239,7 +8239,9 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
       )}
 
       {/* ── API LOGS SECTION ── */}
-      {section === "logs" && (() => {
+      {section === "logs" && (
+        <div style={{ maxWidth:1000, margin:"0 auto" }}>
+      {(() => {
         const logs = loadApiLogs();
         const allUsers = loadUsers();
         // Group by user
@@ -8258,20 +8260,24 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
         const fmt = (n:number) => n>=1000000?`${(n/1000000).toFixed(1)}M`:n>=1000?`${(n/1000).toFixed(1)}K`:String(n);
         const fmtCost = (n:number) => `$${n.toFixed(4)}`;
 
+        const avgCostPerCall = totals.calls > 0 ? totals.cost / totals.calls : 0;
+        const topUser = Object.entries(byUser).sort((a,b) => b[1].reduce((s,l)=>s+l.cost,0) - a[1].reduce((s,l)=>s+l.cost,0))[0];
+
         return (
-          <div>
+          <div style={{ animation:"fadeIn .3s ease" }}>
             {/* Summary cards */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:12, marginBottom:24 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:14, marginBottom:28 }}>
               {[
-                { label:"Total Calls", value:fmt(totals.calls), color:_C.accent },
-                { label:"Input Tokens", value:fmt(totals.input), color:_C.amber },
-                { label:"Output Tokens", value:fmt(totals.output), color:_C.green },
-                { label:"Total Cost", value:fmtCost(totals.cost), color:_C.red },
+                { label:"Total API Calls", value:fmt(totals.calls), sub:`${Object.keys(byUser).length} user${Object.keys(byUser).length!==1?"s":""}`, color:_C.accent },
+                { label:"Tokens Used", value:fmt(totals.input + totals.output), sub:`${fmt(totals.input)} in · ${fmt(totals.output)} out`, color:_C.blue },
+                { label:"Total Cost", value:fmtCost(totals.cost), sub:totals.calls>0?`avg ${fmtCost(avgCostPerCall)}/call`:"no calls yet", color:_C.red },
+                { label:"Top User", value:topUser?topUser[0].split("@")[0]:"—", sub:topUser?`${topUser[1].length} calls · ${fmtCost(topUser[1].reduce((s,l)=>s+l.cost,0))}`:"", color:_C.green },
               ].map(c => (
-                <div key={c.label} style={{ padding:"14px 16px", borderRadius:10, border:`1px solid ${_C.border}`,
-                  background:_C.canvas }}>
-                  <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, marginBottom:4 }}>{c.label}</div>
-                  <div style={{ fontSize:20, fontFamily:head, fontWeight:700, color:c.color }}>{c.value}</div>
+                <div key={c.label} style={{ padding:"18px 20px", borderRadius:14, border:`1px solid ${_C.border}`,
+                  background:_C.canvas, borderTop:`3px solid ${c.color}` }}>
+                  <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, letterSpacing:.4, marginBottom:8 }}>{c.label.toUpperCase()}</div>
+                  <div style={{ fontSize:22, fontFamily:head, fontWeight:800, color:c.color, marginBottom:4 }}>{c.value}</div>
+                  {c.sub && <div style={{ fontSize:11, fontFamily:body, color:_C.muted }}>{c.sub}</div>}
                 </div>
               ))}
             </div>
@@ -8336,6 +8342,8 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           </div>
         );
       })()}
+        </div>
+      )}
 
     </div>
   );
