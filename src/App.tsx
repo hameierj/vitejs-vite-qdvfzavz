@@ -4675,8 +4675,8 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
           const isVisible = isActive || isLeaving || isIncoming;
           const sf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
 
-          // z-index: leaving card on top (animating out), incoming/active underneath, rest hidden
-          const z = isLeaving ? 10 : (isActive || isIncoming) ? 5 : 1;
+          // z-index: incoming/active card on top, leaving card starts on top but animation ends behind
+          const z = (isActive || isIncoming) ? 10 : isLeaving ? 5 : 1;
 
           return (
             <div key={key} style={{
@@ -8952,9 +8952,10 @@ Raw JSON only.`, "", 1400);
         select option{background:${C.canvas};}
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
         @keyframes cardPullOut{
-          0%{transform:translateX(0) translateY(0) rotate(0deg) scale(1)}
-          50%{transform:translateX(140px) translateY(-24px) rotate(3deg) scale(1.01)}
-          100%{transform:translateX(0) translateY(8px) rotate(0deg) scale(0.97)}
+          0%{transform:translateX(0) translateY(0) rotate(0deg) scale(1);z-index:20}
+          40%{transform:translateX(160px) translateY(-20px) rotate(3deg) scale(1.01);z-index:20}
+          60%{transform:translateX(100px) translateY(0px) rotate(1.5deg) scale(0.99);z-index:1}
+          100%{transform:translateX(0) translateY(8px) rotate(0deg) scale(0.97);z-index:1}
         }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
