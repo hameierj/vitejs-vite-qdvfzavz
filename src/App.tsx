@@ -4628,8 +4628,8 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
     setLeavingTab(secTab);
     setIsSwapping(true);
     // Delay the tab switch so the card lifts and travels before revealing the new one
-    setTimeout(() => { setSecTab(newTab); }, 350);
-    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); }, 1150);
+    setTimeout(() => { setSecTab(newTab); }, 400);
+    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); }, 1250);
   };
 
   return (
@@ -4680,7 +4680,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
               zIndex: isLeaving ? 10 : isActive ? 5 : 1,
               transform: isLeaving ? undefined : !isActive ? "scale(0.97) translateY(8px)" : "scale(1) translateY(0)",
               transition: !isLeaving ? "transform .8s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .8s ease, z-index 0s .35s" : undefined,
-              animation: isLeaving ? "cardPullOut 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards" : undefined,
+              animation: isLeaving ? "cardPullOut 1.2s ease-in-out forwards" : undefined,
               willChange: isLeaving ? "transform, opacity" : undefined,
               pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
             }}>
@@ -8939,12 +8939,9 @@ Raw JSON only.`, "", 1400);
         select option{background:${C.canvas};}
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
         @keyframes cardPullOut{
-          0%{transform:scale(1) translateX(0) translateY(0) rotate(0deg);opacity:1}
-          15%{transform:scale(1.015) translateX(0) translateY(-20px) rotate(0deg);opacity:1}
-          40%{transform:scale(1.01) translateX(120px) translateY(-30px) rotate(3deg);opacity:1}
-          65%{transform:scale(1.005) translateX(180px) translateY(-10px) rotate(4deg);opacity:1}
-          85%{transform:scale(0.98) translateX(60px) translateY(10px) rotate(1deg);opacity:0.95}
-          100%{transform:scale(0.97) translateX(0) translateY(6px) rotate(0deg);opacity:0.85}
+          0%{transform:translateX(0) translateY(0) rotate(0deg) scale(1)}
+          50%{transform:translateX(140px) translateY(-24px) rotate(3deg) scale(1.01)}
+          100%{transform:translateX(0) translateY(8px) rotate(0deg) scale(0.97)}
         }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
