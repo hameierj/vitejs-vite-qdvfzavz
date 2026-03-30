@@ -68,10 +68,35 @@ async function syncFromCloud() {
 }
 
 // Push local data to cloud
-async function syncToCloud(key: string, value: any, table = "app_data") {
-  if (!supabase) { console.log("[DB] No supabase client — skip sync"); return; }
-  console.log("[DB] Syncing to cloud:", table, key);
-  dbPut(table, key, value).catch(e => console.error("[DB] Background sync failed:", e));
+// ── Debounced cloud sync: writes locally immediately, batches Supabase pushes ──
+const _cloudQueue = new Map<string, { table: string; key: string; value: any }>();
+let _cloudFlushTimer: ReturnType<typeof setTimeout> | null = null;
+const CLOUD_SYNC_DELAY = 5000; // 5 seconds — batch writes within this window
+
+async function _flushCloudQueue() {
+  if (!supabase || _cloudQueue.size === 0) return;
+  const batch = Array.from(_cloudQueue.values());
+  _cloudQueue.clear();
+  console.log(`[DB] Flushing ${batch.length} queued sync(s) to cloud`);
+  for (const item of batch) {
+    try { await dbPut(item.table, item.key, item.value); }
+    catch (e) { console.error("[DB] Cloud sync failed for", item.key, e); }
+  }
+}
+
+function syncToCloud(key: string, value: any, table = "app_data") {
+  if (!supabase) return;
+  // Queue the write (overwrites previous pending write for same key)
+  _cloudQueue.set(`${table}:${key}`, { table, key, value });
+  // Reset the debounce timer
+  if (_cloudFlushTimer) clearTimeout(_cloudFlushTimer);
+  _cloudFlushTimer = setTimeout(_flushCloudQueue, CLOUD_SYNC_DELAY);
+}
+
+// Flush pending writes when user navigates away
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => { _flushCloudQueue(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") _flushCloudQueue(); });
 }
 
 // ─── LOGO (embedded) ─────────────────────────────────────────────────────────
