@@ -4632,7 +4632,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
     setPrevTab(secTab);
     setSecTab(newTab);
     setIsSwapping(true);
-    setTimeout(() => { setIsSwapping(false); setPrevTab(null); }, 350);
+    setTimeout(() => { setIsSwapping(false); setPrevTab(null); }, 550);
   };
 
   return (
@@ -4675,7 +4675,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
           const dir = swapDir.current;
           return (
             <div style={{ position:"absolute" as const, inset:0, padding:"28px 32px", overflowY:"auto",
-              animation:`cardOut${dir === "right" ? "L" : "R"} .35s cubic-bezier(0.16, 1, 0.3, 1) forwards`,
+              animation:`cardOut${dir === "right" ? "L" : "R"} .55s cubic-bezier(0.16, 1, 0.3, 1) forwards`,
               willChange:"opacity, transform", zIndex:1 }}>
               <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
@@ -4702,7 +4702,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
         <div key={secTab} style={{ position: isSwapping ? "absolute" as const : "relative" as const,
           inset: isSwapping ? 0 : undefined, padding:"28px 32px", overflowY:"auto", height: isSwapping ? "100%" : undefined,
           animation: isSwapping
-            ? `cardIn${swapDir.current === "right" ? "R" : "L"} .35s cubic-bezier(0.16, 1, 0.3, 1) forwards`
+            ? `cardIn${swapDir.current === "right" ? "R" : "L"} .55s cubic-bezier(0.16, 1, 0.3, 1) forwards`
             : undefined,
           willChange: isSwapping ? "opacity, transform" : undefined, zIndex:2 }}>
           <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
@@ -8959,18 +8959,18 @@ Raw JSON only.`, "", 1400);
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
         @keyframes cardOutL{
           0%{opacity:1;transform:translateX(0) scale(1)}
-          100%{opacity:0;transform:translateX(-60px) scale(0.92)}
+          100%{opacity:0;transform:translateX(-50px) scale(0.94)}
         }
         @keyframes cardOutR{
           0%{opacity:1;transform:translateX(0) scale(1)}
-          100%{opacity:0;transform:translateX(60px) scale(0.92)}
+          100%{opacity:0;transform:translateX(50px) scale(0.94)}
         }
         @keyframes cardInR{
-          0%{opacity:0;transform:translateX(60px) scale(0.92)}
+          0%{opacity:0;transform:translateX(50px) scale(0.94)}
           100%{opacity:1;transform:translateX(0) scale(1)}
         }
         @keyframes cardInL{
-          0%{opacity:0;transform:translateX(-60px) scale(0.92)}
+          0%{opacity:0;transform:translateX(-50px) scale(0.94)}
           100%{opacity:1;transform:translateX(0) scale(1)}
         }
         @keyframes contentFade{
