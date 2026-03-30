@@ -4653,7 +4653,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
       {/* Fields */}
       <div style={{ flex:1, padding:"28px 32px", overflowY:"auto", minHeight:0 }}>
         <div key={secTab} style={{ display:"flex", flexDirection:"column", gap:20,
-          animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+          animation:"cardSwapIn .35s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform, filter" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
             <div>
               <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head }}>{sec.label}</div>
@@ -8904,6 +8904,10 @@ Raw JSON only.`, "", 1400);
         input,textarea,select{outline:none;}
         select option{background:${C.canvas};}
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes cardSwapIn{
+          0%{opacity:0;transform:translateX(40px) scale(0.96);filter:blur(1px)}
+          100%{opacity:1;transform:translateX(0) scale(1);filter:blur(0px)}
+        }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
           100%{opacity:1;transform:scale(1);filter:blur(0px)}
