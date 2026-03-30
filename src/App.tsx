@@ -4695,11 +4695,14 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
               boxShadow: isVisible ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "none",
               zIndex: z,
               transform: isLeaving ? undefined
-                : (isActive || isIncoming) ? "translateZ(0px) scale(1)"
+                : isIncoming ? undefined
+                : isActive ? "translateZ(0px) scale(1)"
                 : "translateZ(-30px) scale(0.97) translateY(8px)",
-              transition: !isLeaving ? "transform .7s ease-in-out, box-shadow .7s ease" : undefined,
-              animation: isLeaving ? "cardFlipBehind 1.3s ease-in-out forwards" : undefined,
-              willChange: isLeaving ? "transform" : undefined,
+              transition: (!isLeaving && !isIncoming) ? "transform .7s ease-in-out, box-shadow .7s ease" : undefined,
+              animation: isLeaving ? "cardFlipBehind 1.3s ease-in-out forwards"
+                : isIncoming ? "cardRiseUp 1.3s ease-in-out forwards"
+                : undefined,
+              willChange: (isLeaving || isIncoming) ? "transform" : undefined,
               pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
               // Hide non-participating cards completely
               visibility: isVisible ? "visible" as const : "hidden" as const,
@@ -8964,6 +8967,13 @@ Raw JSON only.`, "", 1400);
           50%{transform:translateX(120px) translateY(0px) translateZ(20px) rotateY(-35deg) scale(1)}
           70%{transform:translateX(60px) translateY(4px) translateZ(-20px) rotateY(-15deg) scale(0.98)}
           100%{transform:translateX(0) translateY(8px) translateZ(-30px) rotateY(0deg) scale(0.97)}
+        }
+        @keyframes cardRiseUp{
+          0%{transform:translateX(0) translateY(8px) translateZ(-30px) rotateY(0deg) scale(0.97)}
+          30%{transform:translateX(-40px) translateY(4px) translateZ(-15px) rotateY(8deg) scale(0.98)}
+          50%{transform:translateX(-60px) translateY(-6px) translateZ(10px) rotateY(12deg) scale(0.99)}
+          70%{transform:translateX(-30px) translateY(-4px) translateZ(20px) rotateY(6deg) scale(1)}
+          100%{transform:translateX(0) translateY(0) translateZ(0px) rotateY(0deg) scale(1)}
         }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
