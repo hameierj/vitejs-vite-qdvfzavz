@@ -4624,7 +4624,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
     <div style={{ display:"flex", height:"100%", overflow:"hidden", borderRadius:16, border:`1px solid ${C2.border}`,
       background:C2.canvas, boxShadow:"0 2px 12px rgba(108,92,231,.04)" }}>
       {/* Section nav */}
-      <div style={{ width:200, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
+      <div style={{ minWidth:180, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
         <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5,
           padding:"0 10px", marginBottom:12, textTransform:"uppercase" as const }}>SECTIONS</div>
         {secKeys.map(key => {
@@ -4637,13 +4637,11 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
             <button key={key} onClick={() => setSecTab(key)} style={{
               display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
               background: on ? `${C2.accent}14` : "transparent",
-              borderRadius:12, border:"none",
+              borderRadius:12, border:"none", whiteSpace:"nowrap" as const,
               cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:4 }}
               onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C2.canvas; }}
               onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:13, fontFamily:head, fontWeight: on ? 700 : 500, color: on ? C2.text : C2.textSoft }}>{s.label}</div>
-              </div>
+              <span style={{ fontSize:13, fontFamily:head, fontWeight: on ? 700 : 500, color: on ? C2.text : C2.textSoft }}>{s.label}</span>
               <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:allFilled?C2.green:on?C2.accent:C2.muted,
                 background:allFilled?C2.greenLo:on?`${C2.accent}11`:C2.canvas,
                 padding:"2px 8px", borderRadius:8, flexShrink:0 }}>
