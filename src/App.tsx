@@ -8066,12 +8066,25 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState(false);
   const [loading,  setLoading]  = useState(false);
+  const [cloudReady, setCloudReady] = useState(false);
+
+  // Sync users from Supabase before first login attempt so admin-created users are available
+  useEffect(() => {
+    if (DB_ENABLED) {
+      syncFromCloud().then(() => { setCloudReady(true); console.log("[Auth] Cloud sync ready for login"); });
+    } else {
+      setCloudReady(true);
+    }
+  }, []);
 
   const handleLogin = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!email.trim() || !password.trim()) return;
     setLoading(true); setError(false);
-    await new Promise(r => setTimeout(r, 300));
+    // If cloud hasn't synced yet, wait for it (max 5s)
+    if (!cloudReady && DB_ENABLED) {
+      try { await syncFromCloud(); } catch {}
+    }
     const users = loadUsers();
     console.log("[Auth] Login attempt:", email.trim(), "| Available users:", users.map(u => u.email));
     const match = users.find(u =>
