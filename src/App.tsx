@@ -4627,9 +4627,9 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
     if (newTab === secTab || isSwapping) return;
     setLeavingTab(secTab);
     setIsSwapping(true);
-    // Small delay so the "pull out" animation starts before we switch
-    setTimeout(() => { setSecTab(newTab); }, 60);
-    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); }, 600);
+    // Delay the tab switch so the card lifts and travels before revealing the new one
+    setTimeout(() => { setSecTab(newTab); }, 350);
+    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); }, 1150);
   };
 
   return (
@@ -4678,9 +4678,9 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
               borderRadius:4,
               boxShadow: isActive || isLeaving ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "0 2px 8px rgba(45,52,54,.04)",
               zIndex: isLeaving ? 10 : isActive ? 5 : 1,
-              transform: isLeaving ? undefined : !isActive ? "scale(0.97) translateY(6px)" : "scale(1) translateY(0)",
-              transition: !isLeaving ? "transform .5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .5s ease" : undefined,
-              animation: isLeaving ? "cardPullOut .55s cubic-bezier(0.22, 1, 0.36, 1) forwards" : undefined,
+              transform: isLeaving ? undefined : !isActive ? "scale(0.97) translateY(8px)" : "scale(1) translateY(0)",
+              transition: !isLeaving ? "transform .8s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .8s ease, z-index 0s .35s" : undefined,
+              animation: isLeaving ? "cardPullOut 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards" : undefined,
               willChange: isLeaving ? "transform, opacity" : undefined,
               pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
             }}>
@@ -8939,10 +8939,12 @@ Raw JSON only.`, "", 1400);
         select option{background:${C.canvas};}
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
         @keyframes cardPullOut{
-          0%{transform:scale(1) translateY(0) rotateX(0deg);opacity:1;z-index:10}
-          30%{transform:scale(1.02) translateY(-12px) rotateX(-2deg);opacity:1}
-          60%{transform:scale(0.98) translateX(70px) translateY(-8px) rotateX(-1deg) rotateY(4deg);opacity:0.9}
-          100%{transform:scale(0.96) translateY(8px) rotateX(0deg);opacity:0.7;z-index:0}
+          0%{transform:scale(1) translateX(0) translateY(0) rotate(0deg);opacity:1}
+          15%{transform:scale(1.015) translateX(0) translateY(-20px) rotate(0deg);opacity:1}
+          40%{transform:scale(1.01) translateX(120px) translateY(-30px) rotate(3deg);opacity:1}
+          65%{transform:scale(1.005) translateX(180px) translateY(-10px) rotate(4deg);opacity:1}
+          85%{transform:scale(0.98) translateX(60px) translateY(10px) rotate(1deg);opacity:0.95}
+          100%{transform:scale(0.97) translateX(0) translateY(6px) rotate(0deg);opacity:0.85}
         }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
