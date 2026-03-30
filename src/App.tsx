@@ -3824,7 +3824,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
 
         <div style={{ display:"flex", minHeight: inline ? 0 : 580, flex: inline ? "1 1 0%" : "unset", overflow: inline ? "hidden" : "visible", minWidth:0 }}>
           {/* Left nav */}
-          <div style={{ width: useV2 ? 180 : 160, background: useV2?C2.faint:C.surface, borderRight:`1px solid ${useV2?C2.border:C.border}`, flexShrink:0, padding: useV2 ? "14px 8px" : "10px 0", overflowY:"auto", minHeight:0 }}>
+          <div style={{ width:160, background:C.surface, borderRight:`1px solid ${C.border}`, flexShrink:0, padding:"10px 0", overflowY:"auto", minHeight:0 }}>
             {panel==="form" && (
               <div style={{ margin:"4px 6px", border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden" }}>
                 <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
