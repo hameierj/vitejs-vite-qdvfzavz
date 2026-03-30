@@ -3756,9 +3756,8 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           <div style={{ display:"flex", alignItems:"center", gap:0 }}>
             {[
               { id:"form", label:"Fill Profile", done: totFill > 0, active: panel==="form", icon: totFill===TOTAL_FIELDS?"✓":"1" },
-              { id:"outputs", label:"Generate", done: !!icp.outputs, active: panel==="outputs", icon: icp.outputs?"✓":"2" },
-              { id:"outputs", label:"Review", done: allApproved, active: panel==="outputs"&&!!icp.outputs, icon: allApproved?"✓":"3" },
-              { id:"comments", label:"Comments", done: false, active: panel==="comments", icon: openComm>0?String(openComm):"4" },
+              { id:"outputs", label:"Outputs", done: !!icp.outputs, active: panel==="outputs", icon: icp.outputs?"✓":"2" },
+              { id:"comments", label:"Comments", done: false, active: panel==="comments", icon: openComm>0?String(openComm):"3" },
             ].map((step, i, arr) => (
               <div key={i} style={{ display:"flex", alignItems:"center" }}>
                 <button onClick={()=>setPanel(step.id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 10px",
