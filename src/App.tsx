@@ -7580,15 +7580,16 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28 }}>
             <div>
               <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>
-                {section === "users" ? "USER MANAGEMENT" : "CLIENT MANAGEMENT"}
+                {section === "users" ? "USER MANAGEMENT" : section === "clients" ? "CLIENT MANAGEMENT" : "API MONITORING"}
               </div>
               <h2 style={{ fontSize:26, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:6 }}>
-                {section === "users" ? "Users" : "Clients"}
+                {section === "users" ? "Users" : section === "clients" ? "Clients" : "API Logs"}
               </h2>
               <p style={{ fontSize:13.5, color:_C.textSoft, fontFamily:body }}>
                 {section === "users" ? "Manage team members and client users." : section === "clients" ? "Manage clients and assign them to team members." : "API usage tracking and cost breakdown by user."}
               </p>
             </div>
+            {section !== "logs" && (
             <div style={{ display:"flex", gap:8, flexShrink:0, marginTop:4 }}>
               {section === "clients" && (
                 <button onClick={openBulkImport}
@@ -7605,6 +7606,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                 {section === "users" ? "+ Add User" : "+ Add Client"}
               </button>
             </div>
+            )}
           </div>
 
           {/* ── USERS SECTION ── */}
