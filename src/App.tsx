@@ -4620,6 +4620,21 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
   const sec = COMPANY_SECTIONS[secTab];
   const secFill = sec?.fields.filter((f: any) => fieldFilled(f, data[f.id])).length ?? 0;
 
+  // Card-swap animation state
+  const [prevTab, setPrevTab] = useState<string|null>(null);
+  const [isSwapping, setIsSwapping] = useState(false);
+  const swapDir = useRef<"left"|"right">("right");
+  const swapTab = (newTab: string) => {
+    if (newTab === secTab || isSwapping) return;
+    const curIdx = secKeys.indexOf(secTab);
+    const newIdx = secKeys.indexOf(newTab);
+    swapDir.current = newIdx > curIdx ? "right" : "left";
+    setPrevTab(secTab);
+    setSecTab(newTab);
+    setIsSwapping(true);
+    setTimeout(() => { setIsSwapping(false); setPrevTab(null); }, 350);
+  };
+
   return (
     <div style={{ display:"flex", height:"100%", overflow:"hidden", borderRadius:16, border:`1px solid ${C2.border}`,
       background:C2.canvas, boxShadow:"0 2px 12px rgba(108,92,231,.04)" }}>
@@ -4632,7 +4647,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
           const on = secTab === key;
           const allFilled = gf === s.fields.length;
           return (
-            <button key={key} onClick={() => setSecTab(key)} style={{
+            <button key={key} onClick={() => swapTab(key)} style={{
               display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
               background: on ? `${C2.accent}14` : "transparent",
               borderRadius:12, border:"none", whiteSpace:"nowrap" as const,
@@ -4650,10 +4665,47 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
         })}
       </div>
 
-      {/* Fields */}
-      <div style={{ flex:1, padding:"28px 32px", overflowY:"auto", minHeight:0 }}>
-        <div key={secTab} style={{ display:"flex", flexDirection:"column", gap:20,
-          animation:"cardSwapIn .35s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform, filter" }}>
+      {/* Fields — card swap container */}
+      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0 }}>
+
+        {/* Outgoing card (previous tab) */}
+        {isSwapping && prevTab && (() => {
+          const prevSec = COMPANY_SECTIONS[prevTab];
+          const prevFill = prevSec?.fields.filter((f: any) => fieldFilled(f, data[f.id])).length ?? 0;
+          const dir = swapDir.current;
+          return (
+            <div style={{ position:"absolute" as const, inset:0, padding:"28px 32px", overflowY:"auto",
+              animation:`cardOut${dir === "right" ? "L" : "R"} .35s cubic-bezier(0.16, 1, 0.3, 1) forwards`,
+              willChange:"opacity, transform", zIndex:1 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                  <div>
+                    <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head }}>{prevSec.label}</div>
+                    <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:2 }}>Fill in each field or use AI to auto-generate</div>
+                  </div>
+                  <span style={{ fontSize:12, color:C2.muted, fontFamily:mono, background:C2.faint,
+                    padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{prevFill}/{prevSec.fields.length}</span>
+                </div>
+                {prevSec.fields.map((f: any) => (
+                  <Field key={f.id} f={f} val={data[f.id]} onChange={() => {}}
+                    onAI={() => {}} aiOn={null} accentColor={C2.accent}
+                    confidence={(confidence ?? {})[f.id]}
+                    locked={true} onUnlock={() => {}} onSave={() => {}} onCancel={() => {}}
+                    aiOptions={null} onOptionPick={() => {}} onSubmitField={() => {}} />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Incoming card (current tab) */}
+        <div key={secTab} style={{ position: isSwapping ? "absolute" as const : "relative" as const,
+          inset: isSwapping ? 0 : undefined, padding:"28px 32px", overflowY:"auto", height: isSwapping ? "100%" : undefined,
+          animation: isSwapping
+            ? `cardIn${swapDir.current === "right" ? "R" : "L"} .35s cubic-bezier(0.16, 1, 0.3, 1) forwards`
+            : undefined,
+          willChange: isSwapping ? "opacity, transform" : undefined, zIndex:2 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
             <div>
               <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head }}>{sec.label}</div>
@@ -4684,6 +4736,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
                 }
               }} />
           ))}
+          </div>
         </div>
       </div>
     </div>
@@ -8904,9 +8957,21 @@ Raw JSON only.`, "", 1400);
         input,textarea,select{outline:none;}
         select option{background:${C.canvas};}
         @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes cardSwapIn{
-          0%{opacity:0;transform:translateX(40px) scale(0.96);filter:blur(1px)}
-          100%{opacity:1;transform:translateX(0) scale(1);filter:blur(0px)}
+        @keyframes cardOutL{
+          0%{opacity:1;transform:translateX(0) scale(1)}
+          100%{opacity:0;transform:translateX(-60px) scale(0.92)}
+        }
+        @keyframes cardOutR{
+          0%{opacity:1;transform:translateX(0) scale(1)}
+          100%{opacity:0;transform:translateX(60px) scale(0.92)}
+        }
+        @keyframes cardInR{
+          0%{opacity:0;transform:translateX(60px) scale(0.92)}
+          100%{opacity:1;transform:translateX(0) scale(1)}
+        }
+        @keyframes cardInL{
+          0%{opacity:0;transform:translateX(-60px) scale(0.92)}
+          100%{opacity:1;transform:translateX(0) scale(1)}
         }
         @keyframes contentFade{
           0%{opacity:0;transform:scale(0.995);filter:blur(1px)}
