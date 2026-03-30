@@ -1646,7 +1646,7 @@ You are reverse-engineering an existing campaign from screenshots. The screensho
 EXTRACTED CAMPAIGN CONTENT & ANALYSIS:
 ${allContent.slice(0,5000)}
 
-${companyData?.co_name ? `Known company info: ${JSON.stringify(companyData)}` : ""}
+${(companyData as any)?.co_name ? `Known company info: ${JSON.stringify(companyData)}` : ""}
 
 Based on ALL the extracted data, infer the company profile. Key approach:
 - If you see CONTACT LISTS or PROSPECT DATA: analyze the domains, company names, and industries to determine who is being targeted and what the campaign is selling to them.
@@ -4022,7 +4022,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                       } else if (format === "campaign") {
                         const payload = {
                           exportDate: new Date().toISOString(),
-                          companyName: companyData?.co_name || "",
+                          companyName: (companyData as any)?.co_name || "",
                           icpName: icp.name || "",
                           targeting: {
                             industries: icpObj.industries || "",
@@ -4287,7 +4287,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                       <div style={{ marginBottom:14 }}>
                         <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, marginBottom:6 }}>COMPANY</div>
                         {[
-                          ["Name", companyData?.co_name],
+                          ["Name", (companyData as any)?.co_name],
                           ["Value Prop", companyData?.co_pitch],
                           ["Product", companyData?.co_product],
                           ["KSPs", companyData?.co_ksp],
@@ -9320,7 +9320,7 @@ Raw JSON only.`, "", 1400);
                     boxShadow:`0 2px 10px ${C.accent}40` }}>
                     ⚡ Quick Start
                   </button>
-                  <button onClick={()=>exportFullPDF(companyData, icps, activeWorkspace?.name||companyData?.co_name||"Client")}
+                  <button onClick={()=>exportFullPDF(companyData, icps, activeWorkspace?.name||(companyData as any)?.co_name||"Client")}
                     style={{ padding:"10px 18px", borderRadius:8, border:`1px solid ${C.border}`,
                       background:C.canvas, color:C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer",
                       transition:"all .15s" }}
@@ -9511,7 +9511,7 @@ Raw JSON only.`, "", 1400);
                               <button className="icp-card-action"
                                 onClick={e=>{
                                   const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                  setIcpConfirm(icpConfirm?.id===icp.id&&icpConfirm.action==="menu"?null:{id:icp.id,action:"menu" as any,top:r.bottom+4,left:r.left});
+                                  setIcpConfirm(icpConfirm?.id===icp.id&&(icpConfirm.action as string)==="menu"?null:{id:icp.id,action:"menu" as any,top:r.bottom+4,left:r.left});
                                 }}
                                 style={{ width:22, height:22, borderRadius:5, border:`1px solid ${C.border}`, background:C.canvas,
                                   color:C.textSoft, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
@@ -9615,7 +9615,7 @@ Raw JSON only.`, "", 1400);
                   {/* Export */}
                   <div style={{ padding:"10px 10px", borderTop:`1px solid ${C.border}`, flexShrink:0, display:"flex", flexDirection:"column", gap:6 }}>
                     {icps.length > 0 && (
-                      <button onClick={()=>exportFullPDF(companyData, icps, activeWorkspace?.name||companyData?.co_name||"Client")}
+                      <button onClick={()=>exportFullPDF(companyData, icps, activeWorkspace?.name||(companyData as any)?.co_name||"Client")}
                         style={{ width:"100%", padding:"8px", borderRadius:7,
                           border:`1px solid ${C.border}`, background:"transparent", color:C.textSoft, fontSize:11, fontFamily:head,
                           fontWeight:600, cursor:"pointer", transition:"all .15s" }}
