@@ -3151,7 +3151,8 @@ function IntelligencePanel({ result, date, onClose }: { result:string; date:stri
 }
 
 // ─── ICP EDITOR MODAL ─────────────────────────────────────────────────────────
-function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast, inline = false, fileContext = "" }) {
+function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast, inline = false, fileContext = "", v2 = false }) {
+  const _C = v2 ? C2 : C; // Theme colors for this component
   const [data,           setData]          = useState({ ...icp.data });
   const [localConf,      setLocalConf]     = useState<any>({ ...(icp.confidence ?? {}) });
   const [localConfLocked,setLocalConfLocked]= useState<Record<string,boolean>>(() => {
@@ -3733,23 +3734,23 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
       display:"flex", alignItems:"flex-start", justifyContent:"center",
       padding:"20px 16px", overflowY:"auto", backdropFilter:"blur(4px)" }}>
       <div style={inline
-        ? { position:"absolute" as const, inset:0, background:C.canvas, display:"flex", flexDirection:"column" as const, overflow:"hidden" }
-        : { width:"100%", maxWidth:980, background:C.canvas, borderRadius:14,
-            border:`1px solid ${C.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.18)",
+        ? { position:"absolute" as const, inset:0, background:_C.canvas, display:"flex", flexDirection:"column" as const, overflow:"hidden" }
+        : { width:"100%", maxWidth:980, background:_C.canvas, borderRadius:14,
+            border:`1px solid ${_C.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.18)",
             animation:"slideUp .3s cubic-bezier(.2,0,.1,1)" }}>
 
         {/* Header */}
         <div style={{ display:"flex", alignItems:"center", gap:12, padding:"16px 22px",
-          borderBottom:`1px solid ${C.border}`, background:C.surface,
+          borderBottom:`1px solid ${_C.border}`, background:_C.surface,
           borderRadius: inline ? 0 : "13px 13px 0 0", position:"relative", flexShrink:0 }}>
           <div style={{ width:10, height:10, borderRadius:"50%", background:icp.color, flexShrink:0 }} />
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:head,
+            <div style={{ fontSize:15, fontWeight:700, color:_C.text, fontFamily:head,
               whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{icp.name||"New ICP"}</div>
             <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:2 }}>
               <StatusBadge status={icp.approval} size="xs" />
-              <span style={{ fontSize:10, color:C.muted, fontFamily:mono }}>{totFill}/{TOTAL_FIELDS} fields</span>
-              {allApproved && <span style={{ fontSize:10, color:C.green, fontFamily:mono, fontWeight:700 }}>✓ All approved</span>}
+              <span style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>{totFill}/{TOTAL_FIELDS} fields</span>
+              {allApproved && <span style={{ fontSize:10, color:_C.green, fontFamily:mono, fontWeight:700 }}>✓ All approved</span>}
             </div>
           </div>
           {/* Workflow stepper */}
@@ -3762,20 +3763,20 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               <div key={i} style={{ display:"flex", alignItems:"center" }}>
                 <button onClick={()=>setPanel(step.id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 10px",
                   borderRadius:6, border:"none", cursor:"pointer",
-                  background:step.active?C.accentLo:"transparent",
+                  background:step.active?_C.accentLo:"transparent",
                   transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
-                  onMouseEnter={e=>{if(!step.active)(e.currentTarget as HTMLButtonElement).style.background=C.faint;}}
+                  onMouseEnter={e=>{if(!step.active)(e.currentTarget as HTMLButtonElement).style.background=_C.faint;}}
                   onMouseLeave={e=>{if(!step.active)(e.currentTarget as HTMLButtonElement).style.background="transparent";}}>
                   <span style={{ width:18, height:18, borderRadius:"50%", fontSize:9, fontWeight:700, fontFamily:mono,
                     display:"flex", alignItems:"center", justifyContent:"center",
-                    background:step.done?C.green:step.active?C.accent:C.border,
-                    color:step.done||step.active?"#fff":C.muted,
+                    background:step.done?_C.green:step.active?_C.accent:_C.border,
+                    color:step.done||step.active?"#fff":_C.muted,
                     transition:"all .2s" }}>{step.icon}</span>
                   <span style={{ fontSize:10, fontFamily:head, fontWeight:step.active?700:500,
-                    color:step.active?C.text:step.done?C.green:C.muted }}>{step.label}</span>
+                    color:step.active?_C.text:step.done?_C.green:_C.muted }}>{step.label}</span>
                 </button>
                 {i < arr.length-1 && (
-                  <div style={{ width:16, height:1, background:step.done?C.green:C.border, margin:"0 -2px",
+                  <div style={{ width:16, height:1, background:step.done?_C.green:_C.border, margin:"0 -2px",
                     transition:"background .3s" }} />
                 )}
               </div>
@@ -3784,7 +3785,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           {icp.outputs && !allApproved && !isFinalized && (
             <button onClick={()=>{setPanel("outputs"); setOutTab(OUTPUT_TABS[0].id); approveAll();}}
               style={{ padding:"7px 14px", borderRadius:7,
-              border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green,
+              border:`1px solid ${_C.greenBorder}`, background:_C.greenLo, color:_C.green,
               fontSize:11, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve All</button>
           )}
           {allApproved && !isFinalized && (
@@ -3799,22 +3800,22 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           )}
           {!inline && (
             <button onClick={()=> isModalDirty ? setConfirmClose(true) : onClose()} style={{ padding:"6px 10px", borderRadius:7,
-              border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:12, cursor:"pointer" }}>✕ Close</button>
+              border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:12, cursor:"pointer" }}>✕ Close</button>
           )}
           {!inline && confirmClose && (
             <div style={{ position:"absolute", inset:0, background:"rgba(13,15,26,0.5)", borderRadius:"13px 13px 0 0",
               display:"flex", alignItems:"center", justifyContent:"center", gap:12, zIndex:10 }}>
-              <span style={{ fontSize:12, color:C.text, fontFamily:head, fontWeight:600 }}>You have unsaved fields.</span>
+              <span style={{ fontSize:12, color:_C.text, fontFamily:head, fontWeight:600 }}>You have unsaved fields.</span>
               <button onClick={()=>{ setLocalConfLocked(p=>Object.fromEntries(Object.entries(p).map(([k])=>[k,true]))); setConfirmClose(false); onClose(); }}
-                style={{ padding:"6px 14px", borderRadius:7, border:"none", background:C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                style={{ padding:"6px 14px", borderRadius:7, border:"none", background:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
                 Save all & close
               </button>
               <button onClick={()=>{ setConfirmClose(false); onClose(); }}
-                style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
                 Close without saving
               </button>
               <button onClick={()=>setConfirmClose(false)}
-                style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
                 Stay
               </button>
             </div>
@@ -3823,30 +3824,34 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
 
         <div style={{ display:"flex", minHeight: inline ? 0 : 580, flex: inline ? "1 1 0%" : "unset", overflow: inline ? "hidden" : "visible", minWidth:0 }}>
           {/* Left nav */}
-          <div style={{ width:160, background:C.surface, borderRight:`1px solid ${C.border}`, flexShrink:0, padding:"10px 0", overflowY:"auto", minHeight:0 }}>
+          <div style={{ width: v2?190:160, background: v2?_C.faint:_C.surface, borderRight:`1px solid ${_C.border}`, flexShrink:0, padding: v2?"14px 8px":"10px 0", overflowY:"auto", minHeight:0 }}>
             {panel==="form" && (
-              <div style={{ margin:"4px 6px", border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden" }}>
-                <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
+              <div style={ v2 ? { display:"flex", flexDirection:"column" as const, gap:2 } : { margin:"4px 6px", border:`1px solid ${_C.border}`, borderRadius:7, overflow:"hidden" }}>
+                {!v2 && <div style={{ padding:"7px 10px", fontSize:11, color:_C.text, fontFamily:head,
                   fontWeight:700, textTransform:"uppercase" as const,
-                  background:C.faint, borderBottom:`1px solid ${C.border}` }}>Sections</div>
+                  background:_C.faint, borderBottom:`1px solid ${_C.border}` }}>Sections</div>}
                 {Object.entries(ICP_SECTIONS).map(([key,s]) => {
                   const gf = s.fields.filter(f=>fieldFilled(f,data[f.id])).length;
                   const on = secTab===key;
                   const allFilled = gf === s.fields.length;
                   return (
-                    <button key={key} onClick={()=>setSecTab(key)} style={{
+                    <button key={key} onClick={()=>setSecTab(key)} style={ v2 ? {
+                      display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px",
+                      background:on?`${_C.accent}14`:"transparent", border:"none", borderRadius:10,
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", whiteSpace:"nowrap" as const }
+                    : {
                       display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
-                      background:on?`${C.accent}0C`:"transparent", border:"none",
-                      borderLeft:`2px solid ${on?C.accent:"transparent"}`,
+                      background:on?`${_C.accent}0C`:"transparent", border:"none",
+                      borderLeft:`2px solid ${on?_C.accent:"transparent"}`,
                       cursor:"pointer", textAlign:"left", transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
-                      onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                      onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=v2?_C.canvas:_C.faint; }}
                       onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:11, fontFamily:head, fontWeight:on?600:400, color:on?C.text:C.muted,
-                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.label}</div>
-                      </div>
-                      <span style={{ fontSize:9, fontFamily:mono, color:allFilled?C.green:C.muted, flexShrink:0 }}>
-                        {allFilled?"✓":`${gf}/${s.fields.length}`}
+                      <span style={{ flex:1, fontSize: v2?12:11, fontFamily:head, fontWeight:on?600:400, color:on?_C.text:_C.muted,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.label}</span>
+                      <span style={{ fontSize: v2?10:9, fontFamily:mono, fontWeight:v2?600:400,
+                        color:allFilled?_C.green:on&&v2?_C.accent:_C.muted, flexShrink:0,
+                        ...(v2 ? { background:allFilled?_C.greenLo:on?`${_C.accent}11`:_C.canvas, padding:"2px 7px", borderRadius:6 } : {}) }}>
+                        {allFilled?"Done":`${gf}/${s.fields.length}`}
                       </span>
                     </button>
                   );
@@ -3854,28 +3859,30 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               </div>
             )}
             {panel==="outputs" && icp.outputs && (
-              <div style={{ margin:"0 6px 6px", border:`1px solid ${C.border}`, borderRadius:7, overflow:"hidden" }}>
-                <div style={{ padding:"7px 10px", fontSize:11, color:C.text, fontFamily:head,
+              <div style={ v2 ? { display:"flex", flexDirection:"column" as const, gap:2 } : { margin:"0 6px 6px", border:`1px solid ${_C.border}`, borderRadius:7, overflow:"hidden" }}>
+                {!v2 && <div style={{ padding:"7px 10px", fontSize:11, color:_C.text, fontFamily:head,
                   fontWeight:700, textTransform:"uppercase" as const,
-                  background:C.faint, borderBottom:`1px solid ${C.border}` }}>Outputs</div>
+                  background:_C.faint, borderBottom:`1px solid ${_C.border}` }}>Outputs</div>}
                 {OUTPUT_TABS.map(t => {
                   const on = outTab===t.id;
                   const apr = (t as any).multi
                     ? ((t as any).multi as string[]).every(k => (icp.sectionApprovals??{})[k]==="approved")
                     : (icp.sectionApprovals??{})[t.id]==="approved";
                   return (
-                    <button key={t.id} onClick={()=>setOutTab(t.id)} style={{
+                    <button key={t.id} onClick={()=>setOutTab(t.id)} style={ v2 ? {
+                      display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px",
+                      background:on?`${t.color}14`:"transparent", border:"none", borderRadius:10,
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", whiteSpace:"nowrap" as const }
+                    : {
                       display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 10px",
                       background:on?`${t.color}0C`:"transparent", border:"none",
                       borderLeft:`2px solid ${on?t.color:"transparent"}`,
                       cursor:"pointer", textAlign:"left", transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
-                      onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                      onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=v2?_C.canvas:_C.faint; }}
                       onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:11, fontFamily:head, fontWeight:on?600:400, color:on?C.text:C.muted,
-                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.label}</div>
-                      </div>
-                      {apr && <span style={{ fontSize:9, color:C.green, flexShrink:0 }}>✓</span>}
+                      <span style={{ flex:1, fontSize: v2?12:11, fontFamily:head, fontWeight:on?600:400, color:on?_C.text:_C.muted,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.label}</span>
+                      {apr && <span style={{ fontSize:9, color:_C.green, flexShrink:0 }}>✓</span>}
                     </button>
                   );
                 })}
@@ -3895,8 +3902,8 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   </div>
                 )}
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:C.text, fontFamily:head }}>{sec.label}</div>
-                  <span style={{ fontSize:11, color:C.muted, fontFamily:mono }}>{secFill}/{sec.fields.length} filled</span>
+                  <div style={{ fontSize:13, fontWeight:600, color:_C.text, fontFamily:head }}>{sec.label}</div>
+                  <span style={{ fontSize:11, color:_C.muted, fontFamily:mono }}>{secFill}/{sec.fields.length} filled</span>
                 </div>
                 {(() => {
                   const essential = new Set(["industries","buyer","pain1","tone","cta","co_sizes","geo"]);
@@ -3931,7 +3938,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     ))}
                     {optionalFields.length > 0 && (
                       <details style={{ marginTop:8 }}>
-                        <summary style={{ fontSize:10, fontFamily:mono, color:C.muted, cursor:"pointer", fontWeight:600,
+                        <summary style={{ fontSize:10, fontFamily:mono, color:_C.muted, cursor:"pointer", fontWeight:600,
                           padding:"8px 0", userSelect:"none" }}>
                           + {optionalFields.length} more field{optionalFields.length!==1?"s":""} (optional)
                         </summary>
@@ -3959,13 +3966,13 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
             {/* Campaign Analysis Report */}
             {icp.campaignAnalysis && (
               <details style={{ marginBottom:16 }}>
-                <summary style={{ fontSize:11, fontFamily:head, fontWeight:700, color:C.amber, cursor:"pointer",
-                  padding:"10px 14px", background:C.amberLo, border:`1px solid ${C.amberBorder}`, borderRadius:8,
+                <summary style={{ fontSize:11, fontFamily:head, fontWeight:700, color:_C.amber, cursor:"pointer",
+                  padding:"10px 14px", background:_C.amberLo, border:`1px solid ${_C.amberBorder}`, borderRadius:8,
                   userSelect:"none", display:"flex", alignItems:"center", gap:8 }}>
                   🔍 Campaign Analysis Report — Gap Analysis & Improvements
                 </summary>
-                <div style={{ padding:"16px", border:`1px solid ${C.border}`, borderTop:"none", borderRadius:"0 0 8px 8px",
-                  fontSize:13, fontFamily:body, color:C.textSoft, lineHeight:1.8 }}>
+                <div style={{ padding:"16px", border:`1px solid ${_C.border}`, borderTop:"none", borderRadius:"0 0 8px 8px",
+                  fontSize:13, fontFamily:body, color:_C.textSoft, lineHeight:1.8 }}>
                   {renderOutputContent(icp.campaignAnalysis)}
                 </div>
               </details>
@@ -3974,23 +3981,23 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
                 gap:16, padding:"60px 24px", textAlign:"center", animation:"fadeIn .25s ease" }}>
                 <div style={{ fontSize:28 }}>✦</div>
-                <div style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:head }}>No outputs yet</div>
-                <div style={{ fontSize:12, color:C.muted, fontFamily:body, lineHeight:1.6, maxWidth:320 }}>
+                <div style={{ fontSize:14, fontWeight:700, color:_C.text, fontFamily:head }}>No outputs yet</div>
+                <div style={{ fontSize:12, color:_C.muted, fontFamily:body, lineHeight:1.6, maxWidth:320 }}>
                   Generate AI-powered campaign outputs including email copy, LinkedIn messages, call scripts, and more — tailored to this ICP.
                 </div>
                 {!data.industries && (
-                  <div style={{ fontSize:11, color:C.amber, fontFamily:mono, background:C.amberLo,
-                    border:`1px solid ${C.amberBorder}`, borderRadius:6, padding:"7px 14px" }}>
+                  <div style={{ fontSize:11, color:_C.amber, fontFamily:mono, background:_C.amberLo,
+                    border:`1px solid ${_C.amberBorder}`, borderRadius:6, padding:"7px 14px" }}>
                     Fill in the Industries field to enable generation
                   </div>
                 )}
                 <button onClick={generateAll} disabled={genState==="running"||!data.industries} style={{
                   padding:"12px 28px", borderRadius:9, border:"none",
-                  background:data.industries&&genState!=="running"?C.accent:C.faint,
-                  color:data.industries&&genState!=="running"?"#fff":C.muted,
+                  background:data.industries&&genState!=="running"?_C.accent:_C.faint,
+                  color:data.industries&&genState!=="running"?"#fff":_C.muted,
                   fontSize:13, fontFamily:head, fontWeight:700,
                   cursor:data.industries&&genState!=="running"?"pointer":"default",
-                  boxShadow:data.industries&&genState!=="running"?`0 2px 16px ${C.accent}40`:"none",
+                  boxShadow:data.industries&&genState!=="running"?`0 2px 16px ${_C.accent}40`:"none",
                   transition:"all .15s" }}>
                   {genState==="running" ? "Generating…" : "Generate All Outputs →"}
                 </button>
@@ -4000,14 +4007,14 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               <div key={outTab} style={{ animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18 }}>
                   <span style={{ fontSize:15, color:curOT.color }}>{curOT.icon}</span>
-                  <span style={{ fontSize:13, fontWeight:700, color:C.text, fontFamily:head }}>{curOT.label}</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:_C.text, fontFamily:head }}>{curOT.label}</span>
                   {outTab==="email_copy" && icp.aiCouncil && (() => {
                     const sc = icp.aiCouncil.finalScore ?? 0;
                     const ok = sc >= 10;
                     return (
                       <span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:10, fontFamily:mono, fontWeight:700,
-                        color:ok?C.green:C.amber, background:ok?C.greenLo:C.amberLo,
-                        border:`1px solid ${ok?C.greenBorder:C.amberBorder}`,
+                        color:ok?_C.green:_C.amber, background:ok?_C.greenLo:_C.amberLo,
+                        border:`1px solid ${ok?_C.greenBorder:_C.amberBorder}`,
                         padding:"2px 8px", borderRadius:5 }}>
                         {ok?"✦ 10/10":"⚠ "+sc+"/10"}
                       </span>
@@ -4019,8 +4026,8 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     const ok = worst >= 8;
                     return (
                       <span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:10, fontFamily:mono, fontWeight:700,
-                        color:ok?C.green:C.amber, background:ok?C.greenLo:C.amberLo,
-                        border:`1px solid ${ok?C.greenBorder:C.amberBorder}`,
+                        color:ok?_C.green:_C.amber, background:ok?_C.greenLo:_C.amberLo,
+                        border:`1px solid ${ok?_C.greenBorder:_C.amberBorder}`,
                         padding:"2px 8px", borderRadius:5 }}>
                         {ok?"✓":"⚠"} {avg}/10 avg
                       </span>
@@ -4029,8 +4036,8 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   <div style={{ flex:1 }} />
                   {outTab==="email_copy" && icp.outputs.email_copy && intelligence.status!=="running" && (
                     <button onClick={runDeepAnalysis} style={{ padding:"5px 13px", borderRadius:6,
-                      border:`1px solid ${C.accentBorder}`, background:C.accentLo,
-                      color:C.accent, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700,
+                      border:`1px solid ${_C.accentBorder}`, background:_C.accentLo,
+                      color:_C.accent, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700,
                       display:"flex", alignItems:"center", gap:5 }}>
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                         <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.2"/>
@@ -4040,36 +4047,36 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     </button>
                   )}
                   {outTab==="email_copy" && intelligence.status==="running" && (
-                    <span style={{ fontSize:10, color:C.accent, fontFamily:mono, display:"flex", alignItems:"center", gap:5 }}>
+                    <span style={{ fontSize:10, color:_C.accent, fontFamily:mono, display:"flex", alignItems:"center", gap:5 }}>
                       <svg width="10" height="10" viewBox="0 0 10 10" style={{ animation:"spin 1s linear infinite" }}>
-                        <circle cx="5" cy="5" r="4" stroke={C.accent} strokeWidth="1.5" strokeDasharray="12 6" fill="none"/>
+                        <circle cx="5" cy="5" r="4" stroke={_C.accent} strokeWidth="1.5" strokeDasharray="12 6" fill="none"/>
                       </svg>
                       {intelligence.phase || "Analyzing…"}
                     </span>
                   )}
                   {outTab==="email_copy" && councilState.status==="running" && (
-                    <span style={{ fontSize:10, color:C.accent, fontFamily:mono, fontWeight:700,
+                    <span style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700,
                       display:"flex", alignItems:"center", gap:5 }}>
                       <svg width="10" height="10" viewBox="0 0 10 10" style={{ animation:"spin 1s linear infinite" }}>
-                        <circle cx="5" cy="5" r="4" stroke={C.accent} strokeWidth="1.5" strokeDasharray="12 6" fill="none"/>
+                        <circle cx="5" cy="5" r="4" stroke={_C.accent} strokeWidth="1.5" strokeDasharray="12 6" fill="none"/>
                       </svg>
                       {councilState.phase}
                     </span>
                   )}
                   {outTab==="email_copy" && councilState.status!=="running" && (
                     <span title="Coming soon — requires OpenAI (GPT-4o) + Google (Gemini) API keys"
-                      style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${C.border}`,
-                        background:C.faint, color:C.muted, fontSize:10, fontFamily:mono,
+                      style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${_C.border}`,
+                        background:_C.faint, color:_C.muted, fontSize:10, fontFamily:mono,
                         fontWeight:700, opacity:.5, cursor:"not-allowed",
                         display:"flex", alignItems:"center", gap:5 }}>
                       ◈◉◇ AI Council
                     </span>
                   )}
                   {secApproved
-                    ? <span style={{ fontSize:10, color:C.green, background:C.greenLo, border:`1px solid ${C.greenBorder}`, padding:"3px 9px", borderRadius:5, fontFamily:mono, fontWeight:700 }}>✓ Approved</span>
-                    : <button onClick={()=>approveSection(outTab)} style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${C.greenBorder}`, background:C.greenLo, color:C.green, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve</button>
+                    ? <span style={{ fontSize:10, color:_C.green, background:_C.greenLo, border:`1px solid ${_C.greenBorder}`, padding:"3px 9px", borderRadius:5, fontFamily:mono, fontWeight:700 }}>✓ Approved</span>
+                    : <button onClick={()=>approveSection(outTab)} style={{ padding:"5px 13px", borderRadius:6, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo, color:_C.green, fontSize:10, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>✓ Approve</button>
                   }
-                  <button onClick={()=>copy(outTab,icp.outputs[outTab])} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:copied===outTab?C.greenLo:"transparent", color:copied===outTab?C.green:C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
+                  <button onClick={()=>copy(outTab,icp.outputs[outTab])} style={{ padding:"5px 11px", borderRadius:6, border:`1px solid ${_C.border}`, background:copied===outTab?_C.greenLo:"transparent", color:copied===outTab?_C.green:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
                     {copied===outTab?"✓":"⎘"}
                   </button>
                   {/* ⋯ Overflow menu */}
@@ -4077,30 +4084,30 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     <button onClick={e => {
                       const menu = e.currentTarget.nextElementSibling as HTMLElement;
                       menu.style.display = menu.style.display === "block" ? "none" : "block";
-                    }} style={{ padding:"5px 9px", borderRadius:6, border:`1px solid ${C.border}`, background:"transparent",
-                      color:C.muted, fontSize:12, fontFamily:mono, cursor:"pointer", fontWeight:700, lineHeight:1 }}>⋯</button>
+                    }} style={{ padding:"5px 9px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent",
+                      color:_C.muted, fontSize:12, fontFamily:mono, cursor:"pointer", fontWeight:700, lineHeight:1 }}>⋯</button>
                     <div style={{ display:"none", position:"absolute", top:"100%", right:0, marginTop:4, width:220,
-                      background:C.canvas, border:`1px solid ${C.border}`, borderRadius:8,
+                      background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:8,
                       boxShadow:"0 8px 24px rgba(13,15,26,.15)", zIndex:100, overflow:"hidden" }}
                       onClick={e=>(e.currentTarget as HTMLElement).style.display="none"}>
                       <button onClick={()=>setSplitView(v=>!v)} style={{ display:"flex", alignItems:"center", gap:8, width:"100%",
-                        padding:"9px 14px", border:"none", background:splitView?C.accentLo:"transparent",
-                        color:splitView?C.accent:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
-                        onMouseEnter={e=>{if(!splitView)(e.currentTarget as HTMLButtonElement).style.background=C.faint;}}
+                        padding:"9px 14px", border:"none", background:splitView?_C.accentLo:"transparent",
+                        color:splitView?_C.accent:_C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
+                        onMouseEnter={e=>{if(!splitView)(e.currentTarget as HTMLButtonElement).style.background=_C.faint;}}
                         onMouseLeave={e=>{if(!splitView)(e.currentTarget as HTMLButtonElement).style.background="transparent";}}>
                         ◧ {splitView?"Hide":"Show"} Split View
                       </button>
                       {!isFinalized && (
                         <button onClick={()=>{ if(!genState&&data.industries) generateAll(); }} style={{ display:"block", width:"100%",
                           padding:"9px 14px", border:"none", background:"transparent",
-                          color:genState||!data.industries?C.muted:C.text, fontSize:11, fontFamily:mono,
+                          color:genState||!data.industries?_C.muted:_C.text, fontSize:11, fontFamily:mono,
                           cursor:genState||!data.industries?"default":"pointer", textAlign:"left" }}
-                          onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                          onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
                           onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
                           ↺ {genState==="running"?"Generating…":"Regenerate All"}
                         </button>
                       )}
-                      <div style={{ height:1, background:C.border, margin:"2px 0" }} />
+                      <div style={{ height:1, background:_C.border, margin:"2px 0" }} />
                   {(() => {
                     const exportFn = (format: "md"|"json"|"campaign") => {
                       const allOutputs = icp.outputs || {};
@@ -4195,20 +4202,20 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     };
                     return (<>
                           <button onClick={()=>exportFn("md")} style={{ display:"block", width:"100%", padding:"9px 14px", border:"none",
-                            background:"transparent", color:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
-                            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                            background:"transparent", color:_C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
+                            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
                             onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
                             ↓ Export Markdown
                           </button>
                           <button onClick={()=>exportFn("json")} style={{ display:"block", width:"100%", padding:"9px 14px", border:"none",
-                            background:"transparent", color:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
-                            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                            background:"transparent", color:_C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
+                            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
                             onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
                             ↓ Export JSON
                           </button>
                           <button onClick={()=>exportFn("campaign")} style={{ display:"block", width:"100%", padding:"9px 14px", border:"none",
-                            background:"transparent", color:C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
-                            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
+                            background:"transparent", color:_C.text, fontSize:11, fontFamily:mono, cursor:"pointer", textAlign:"left" }}
+                            onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
                             onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
                             ↓ Campaign Builder
                           </button>
@@ -4227,9 +4234,9 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                 {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script"||outTab==="reply_handlers"||outTab==="ai_call_script") && icp.outputs[outTab] && !isFinalized && (
                   <div style={{ marginBottom:14 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-                      <span style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4 }}>WRITING STYLE</span>
+                      <span style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, letterSpacing:.4 }}>WRITING STYLE</span>
                       {icp.writingStyle && (
-                        <span style={{ fontSize:9, fontFamily:mono, color:C.accent, fontWeight:600 }}>
+                        <span style={{ fontSize:9, fontFamily:mono, color:_C.accent, fontWeight:600 }}>
                           · {WRITING_STYLES.find(s=>s.id===icp.writingStyle)?.label || icp.writingStyle}
                         </span>
                       )}
@@ -4255,15 +4262,15 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                             setGenState(null);
                           }}
                             style={{ padding:"5px 10px", borderRadius:6,
-                              border:`1.5px solid ${active?style.color+"66":C.border}`,
+                              border:`1.5px solid ${active?style.color+"66":_C.border}`,
                               background:active?style.color+"0C":"transparent",
-                              color:active?style.color:C.textSoft,
+                              color:active?style.color:_C.textSoft,
                               fontSize:10, fontFamily:head, fontWeight:active?700:500,
                               cursor:genState==="running"?"default":"pointer",
                               transition:"all .2s cubic-bezier(0.16, 1, 0.3, 1)",
                               opacity:genState==="running"?.5:1 }}
                             onMouseEnter={e=>{if(!active&&genState!=="running"){(e.currentTarget as HTMLButtonElement).style.background=style.color+"08";(e.currentTarget as HTMLButtonElement).style.borderColor=style.color+"44";}}}
-                            onMouseLeave={e=>{if(!active){(e.currentTarget as HTMLButtonElement).style.background="transparent";(e.currentTarget as HTMLButtonElement).style.borderColor=C.border;}}}>
+                            onMouseLeave={e=>{if(!active){(e.currentTarget as HTMLButtonElement).style.background="transparent";(e.currentTarget as HTMLButtonElement).style.borderColor=_C.border;}}}>
                             {style.emoji} {style.label}
                           </button>
                         );
@@ -4288,9 +4295,9 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                         setGenState(null);
                       }}
                         style={{ padding:"5px 10px", borderRadius:6,
-                          border:`1.5px dashed ${icp.writingStyle==="custom"?C.accent+"66":C.border}`,
-                          background:icp.writingStyle==="custom"?C.accentLo:"transparent",
-                          color:icp.writingStyle==="custom"?C.accent:C.muted,
+                          border:`1.5px dashed ${icp.writingStyle==="custom"?_C.accent+"66":_C.border}`,
+                          background:icp.writingStyle==="custom"?_C.accentLo:"transparent",
+                          color:icp.writingStyle==="custom"?_C.accent:_C.muted,
                           fontSize:10, fontFamily:head, fontWeight:icp.writingStyle==="custom"?700:500,
                           cursor:genState==="running"?"default":"pointer",
                           opacity:genState==="running"?.5:1 }}>
@@ -4298,7 +4305,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                       </button>
                     </div>
                     {genState==="running" && (
-                      <div style={{ marginTop:8, fontSize:10, fontFamily:mono, color:C.accent, display:"flex", alignItems:"center", gap:6 }}>
+                      <div style={{ marginTop:8, fontSize:10, fontFamily:mono, color:_C.accent, display:"flex", alignItems:"center", gap:6 }}>
                         <span style={{ animation:"aiSpark 1.2s linear infinite", display:"inline-block" }}>✦</span>
                         Rewriting in new style…
                       </div>
@@ -4308,18 +4315,18 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                 {/* Version History */}
                 {(icp.versionHistory||[]).filter((v:any)=>v.tab===outTab).length > 0 && (
                   <details style={{ marginBottom:14 }}>
-                    <summary style={{ fontSize:10, fontFamily:mono, color:C.muted, cursor:"pointer", fontWeight:600, letterSpacing:.3,
+                    <summary style={{ fontSize:10, fontFamily:mono, color:_C.muted, cursor:"pointer", fontWeight:600, letterSpacing:.3,
                       padding:"6px 0", userSelect:"none" }}>
                       REWRITE HISTORY ({(icp.versionHistory||[]).filter((v:any)=>v.tab===outTab).length} version{(icp.versionHistory||[]).filter((v:any)=>v.tab===outTab).length!==1?"s":""})
                     </summary>
                     <div style={{ display:"flex", flexDirection:"column", gap:6, padding:"8px 0" }}>
                       {(icp.versionHistory||[]).filter((v:any)=>v.tab===outTab).map((v:any, i:number) => (
-                        <div key={i} style={{ padding:"8px 12px", borderRadius:7, border:`1px solid ${C.border}`, background:C.faint, fontSize:11 }}>
+                        <div key={i} style={{ padding:"8px 12px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:11 }}>
                           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                            <span style={{ fontFamily:mono, fontWeight:700, color:C.accent, fontSize:10 }}>{v.label}</span>
-                            <span style={{ fontFamily:mono, color:C.muted, fontSize:9 }}>{new Date(v.timestamp).toLocaleString()}</span>
+                            <span style={{ fontFamily:mono, fontWeight:700, color:_C.accent, fontSize:10 }}>{v.label}</span>
+                            <span style={{ fontFamily:mono, color:_C.muted, fontSize:9 }}>{new Date(v.timestamp).toLocaleString()}</span>
                           </div>
-                          <div style={{ fontFamily:body, color:C.textSoft, fontSize:10, lineHeight:1.4 }}>{v.instruction.slice(0,150)}{v.instruction.length>150?"…":""}</div>
+                          <div style={{ fontFamily:body, color:_C.textSoft, fontSize:10, lineHeight:1.4 }}>{v.instruction.slice(0,150)}{v.instruction.length>150?"…":""}</div>
                         </div>
                       ))}
                     </div>
@@ -4329,9 +4336,9 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:22 }}>
                     {(icp.emailScores as any[]).map((s, i) => {
                       const needsRevision = s.total < 8;
-                      const scoreColor = s.total >= 8 ? C.green : s.total >= 6 ? C.amber : C.red;
-                      const scoreBg    = s.total >= 8 ? C.greenLo : s.total >= 6 ? C.amberLo : C.redLo;
-                      const scoreBorder= s.total >= 8 ? C.greenBorder : s.total >= 6 ? C.amberBorder : `${C.red}44`;
+                      const scoreColor = s.total >= 8 ? _C.green : s.total >= 6 ? _C.amber : _C.red;
+                      const scoreBg    = s.total >= 8 ? _C.greenLo : s.total >= 6 ? _C.amberLo : _C.redLo;
+                      const scoreBorder= s.total >= 8 ? _C.greenBorder : s.total >= 6 ? _C.amberBorder : `${_C.red}44`;
                       const dims = [
                         { key:"opening",    label:"Opening"     },
                         { key:"pain",       label:"Pain"        },
@@ -4340,10 +4347,10 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                         { key:"cta",        label:"CTA"         },
                       ];
                       return (
-                        <div key={i} style={{ borderRadius:8, border:`1px solid ${needsRevision?scoreBorder:C.border}`,
-                          background:needsRevision?scoreBg:C.faint, padding:"10px 14px" }}>
+                        <div key={i} style={{ borderRadius:8, border:`1px solid ${needsRevision?scoreBorder:_C.border}`,
+                          background:needsRevision?scoreBg:_C.faint, padding:"10px 14px" }}>
                           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:7 }}>
-                            <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.text }}>Email {i+1}</span>
+                            <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:_C.text }}>Email {i+1}</span>
                             <span style={{ fontSize:12, fontFamily:mono, fontWeight:800, color:scoreColor,
                               background:"transparent", minWidth:32 }}>{s.total}/10</span>
                             {needsRevision && (
@@ -4353,14 +4360,14 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                             )}
                             <div style={{ flex:1 }} />
                             {s.verdict && (
-                              <span style={{ fontSize:10, color:C.muted, fontFamily:body, fontStyle:"italic",
+                              <span style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic",
                                 maxWidth:260, textAlign:"right", lineHeight:1.4 }}>{s.verdict}</span>
                             )}
                           </div>
                           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                             {dims.map(d => {
                               const v = s[d.key] ?? 0;
-                              const dc = v >= 2 ? C.green : v >= 1 ? C.amber : C.red;
+                              const dc = v >= 2 ? _C.green : v >= 1 ? _C.amber : _C.red;
                               return (
                                 <span key={d.key} style={{ fontSize:9, fontFamily:mono, fontWeight:600,
                                   color:dc, background:`${dc}18`,
@@ -4387,13 +4394,13 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   {/* Source context panel (split view only) */}
                   {splitView && (
                     <div style={{ width:"38%", flexShrink:0, padding:"16px", borderRadius:10,
-                      border:`1px solid ${C.border}`, background:C.faint, overflowY:"auto",
+                      border:`1px solid ${_C.border}`, background:_C.faint, overflowY:"auto",
                       position:"sticky" as const, top:0, alignSelf:"flex-start",
-                      height:"calc(100vh - 160px)", fontSize:11.5, fontFamily:body, lineHeight:1.7, color:C.textSoft }}>
-                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4, marginBottom:12 }}>SOURCE DATA</div>
+                      height:"calc(100vh - 160px)", fontSize:11.5, fontFamily:body, lineHeight:1.7, color:_C.textSoft }}>
+                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:12 }}>SOURCE DATA</div>
                       {/* Company context */}
                       <div style={{ marginBottom:14 }}>
-                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, marginBottom:6 }}>COMPANY</div>
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:6 }}>COMPANY</div>
                         {[
                           ["Name", (companyData as any)?.co_name],
                           ["Value Prop", companyData?.co_pitch],
@@ -4404,18 +4411,18 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                           ["Competitors", companyData?.co_competitors],
                         ].filter(([,v])=>v).map(([k,v]) => (
                           <div key={k as string} style={{ marginBottom:6 }}>
-                            <span style={{ fontFamily:mono, fontSize:9, color:C.muted, fontWeight:600 }}>{k}:</span>
-                            <div style={{ color:C.textSoft, marginTop:1 }}>{(v as string).slice(0,200)}{(v as string).length>200?"…":""}</div>
+                            <span style={{ fontFamily:mono, fontSize:9, color:_C.muted, fontWeight:600 }}>{k}:</span>
+                            <div style={{ color:_C.textSoft, marginTop:1 }}>{(v as string).slice(0,200)}{(v as string).length>200?"…":""}</div>
                           </div>
                         ))}
                       </div>
                       {/* ICP context */}
                       <div style={{ marginBottom:14 }}>
-                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.accent, marginBottom:6 }}>ICP: {icp.name}</div>
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:6 }}>ICP: {icp.name}</div>
                         {ALL_ICP_FIELDS.filter(f=>data[f.id]).map(f => (
                           <div key={f.id} style={{ marginBottom:6 }}>
-                            <span style={{ fontFamily:mono, fontSize:9, color:C.muted, fontWeight:600 }}>{f.label}:</span>
-                            <div style={{ color:C.textSoft, marginTop:1 }}>
+                            <span style={{ fontFamily:mono, fontSize:9, color:_C.muted, fontWeight:600 }}>{f.label}:</span>
+                            <div style={{ color:_C.textSoft, marginTop:1 }}>
                               {Array.isArray(data[f.id]) ? data[f.id].join(", ") : String(data[f.id]).slice(0,200)}{String(data[f.id]).length>200?"…":""}
                             </div>
                           </div>
@@ -4432,14 +4439,14 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     refiningEmail={refiningEmail}
                     onRefineAll={councilState.status==="idle" ? runAllWithFeedback : undefined} />
                 ) : curOT.multi ? (
-                  <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.8, fontFamily:body }}>
+                  <div style={{ fontSize:13.5, color:_C.textSoft, lineHeight:1.8, fontFamily:body }}>
                     {(curOT.multi as string[]).map(key => {
                       const content = icp.outputs[key];
                       if (!content) return null;
                       return (
                         <div key={key} style={{ marginBottom:24 }}>
-                          <div style={{ fontSize:13, fontWeight:700, color:C.text, fontFamily:head, marginBottom:8,
-                            padding:"8px 12px", background:C.faint, borderRadius:6, borderLeft:`3px solid ${curOT.color}` }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8,
+                            padding:"8px 12px", background:_C.faint, borderRadius:6, borderLeft:`3px solid ${curOT.color}` }}>
                             {OUTPUT_SECTION_LABELS[key] || key}
                           </div>
                           {renderOutputContent(content)}
@@ -4448,7 +4455,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     })}
                   </div>
                 ) : (
-                  <div style={{ fontSize:13.5, color:C.textSoft, lineHeight:1.8, fontFamily:body }}>
+                  <div style={{ fontSize:13.5, color:_C.textSoft, lineHeight:1.8, fontFamily:body }}>
                     {renderOutputContent(icp.outputs[outTab])}
                   </div>
                 )}
@@ -4463,22 +4470,22 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                       <div style={{ marginBottom:12 }}>
                         {tabComments.map((c:any) => (
                           <div key={c.id} style={{ display:"flex", gap:8, padding:"8px 10px", marginBottom:4,
-                            borderRadius:7, background:c.resolved?C.faint:C.amberLo, border:`1px solid ${c.resolved?C.border:C.amberBorder}`,
+                            borderRadius:7, background:c.resolved?_C.faint:_C.amberLo, border:`1px solid ${c.resolved?_C.border:_C.amberBorder}`,
                             animation:"contentFade .25s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, transform" }}>
-                            <div style={{ width:22, height:22, borderRadius:"50%", background:C.accent+"22",
+                            <div style={{ width:22, height:22, borderRadius:"50%", background:_C.accent+"22",
                               display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700,
-                              color:C.accent, flexShrink:0, fontFamily:mono }}>{(c.author||"?")[0].toUpperCase()}</div>
+                              color:_C.accent, flexShrink:0, fontFamily:mono }}>{(c.author||"?")[0].toUpperCase()}</div>
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-                                <span style={{ fontSize:11, fontWeight:600, color:C.text, fontFamily:head }}>{c.author}</span>
-                                <span style={{ fontSize:9, color:C.muted, fontFamily:mono }}>{c.created_at}</span>
+                                <span style={{ fontSize:11, fontWeight:600, color:_C.text, fontFamily:head }}>{c.author}</span>
+                                <span style={{ fontSize:9, color:_C.muted, fontFamily:mono }}>{c.created_at}</span>
                               </div>
-                              <div style={{ fontSize:11, color:C.textSoft, fontFamily:body, lineHeight:1.5 }}>{c.text}</div>
+                              <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, lineHeight:1.5 }}>{c.text}</div>
                             </div>
                             <button onClick={()=>{
                               const updated = (icp.comments||[]).map((x:any) => x.id===c.id?{...x,resolved:!x.resolved}:x);
                               onUpdate({ ...icp, comments:updated });
-                            }} style={{ background:"none", border:"none", color:c.resolved?C.green:C.muted, fontSize:10,
+                            }} style={{ background:"none", border:"none", color:c.resolved?_C.green:_C.muted, fontSize:10,
                               cursor:"pointer", flexShrink:0, fontFamily:mono }}>{c.resolved?"✓":"resolve"}</button>
                           </div>
                         ))}
@@ -4490,11 +4497,11 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                         <input value={newNote} onChange={e=>setNewNote(e.target.value)}
                           placeholder="Add a comment on this section…"
                           onKeyDown={e=>{ if(e.key==="Enter"&&newNote.trim()) { addComment(); } }}
-                          style={{ flex:1, padding:"7px 10px", borderRadius:6, border:`1px solid ${C.border}`,
-                            background:C.faint, color:C.text, fontSize:11, fontFamily:body, outline:"none" }} />
+                          style={{ flex:1, padding:"7px 10px", borderRadius:6, border:`1px solid ${_C.border}`,
+                            background:_C.faint, color:_C.text, fontSize:11, fontFamily:body, outline:"none" }} />
                         {newNote.trim() && (
                           <button onClick={addComment}
-                            style={{ padding:"7px 12px", borderRadius:6, border:"none", background:C.accent, color:"#fff",
+                            style={{ padding:"7px 12px", borderRadius:6, border:"none", background:_C.accent, color:"#fff",
                               fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer", flexShrink:0 }}>Post</button>
                         )}
                       </div>
@@ -4506,11 +4513,11 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               {/* QA Checklist */}
               {(outTab==="email_copy"||outTab==="linkedin_copy"||outTab==="call_script"||outTab==="reply_handlers"||outTab==="ai_call_script") && icp.outputs[outTab] && (
                 <details style={{ marginTop:24 }}>
-                  <summary style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.4,
+                  <summary style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4,
                     cursor:"pointer", userSelect:"none", padding:"10px 0" }}>
                     {(() => { const checks = icp.qaChecks ?? {}; const passed = [`${outTab}_qa_human`,`${outTab}_qa_pain`,`${outTab}_qa_cta`,`${outTab}_qa_audience`,`${outTab}_qa_no_buzz`,`${outTab}_qa_varied`,`${outTab}_qa_no_ai`].filter(k => checks[k]).length; return `QA CHECKLIST (${passed}/7)`; })()}
                   </summary>
-                <div style={{ padding:"12px 18px", borderRadius:10, border:`1px solid ${C.border}`, background:C.faint, marginTop:4 }}>
+                <div style={{ padding:"12px 18px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, marginTop:4 }}>
                   <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                     {[
                       { id:"qa_human", label:"Sounds like a real person wrote it" },
@@ -4526,13 +4533,13 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                       const checked = !!checks[key];
                       return (
                         <label key={key} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:12,
-                          fontFamily:body, color: checked ? C.green : C.textSoft }}>
+                          fontFamily:body, color: checked ? _C.green : _C.textSoft }}>
                           <input type="checkbox" checked={checked} onChange={() => {
                             const next = { ...checks, [key]: !checked };
                             onUpdate({ ...icp, qaChecks: next });
-                          }} style={{ accentColor: C.accent }} />
+                          }} style={{ accentColor: _C.accent }} />
                           {q.label}
-                          {checked && <span style={{ fontSize:10, color:C.green }}>✓</span>}
+                          {checked && <span style={{ fontSize:10, color:_C.green }}>✓</span>}
                         </label>
                       );
                     })}
@@ -4547,7 +4554,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     const allPassed = passed === total;
                     return (
                       <div style={{ marginTop:10, fontSize:10, fontFamily:mono, fontWeight:700,
-                        color: allPassed ? C.green : passed > 4 ? C.amber : C.muted }}>
+                        color: allPassed ? _C.green : passed > 4 ? _C.amber : _C.muted }}>
                         {passed}/{total} passed {allPassed && "— ready for approval"}
                       </div>
                     );
@@ -4559,36 +4566,36 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
             )}
             {panel==="comments" && (
               <div style={{ animation:"fadeIn .25s ease" }}>
-                <div style={{ fontSize:13, fontWeight:700, color:C.text, fontFamily:head, marginBottom:16 }}>
-                  Review Comments {openComm>0 && <span style={{ fontSize:11, color:C.amber, fontFamily:mono, fontWeight:400 }}>· {openComm} open</span>}
+                <div style={{ fontSize:13, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:16 }}>
+                  Review Comments {openComm>0 && <span style={{ fontSize:11, color:_C.amber, fontFamily:mono, fontWeight:400 }}>· {openComm} open</span>}
                 </div>
                 {(icp.comments??[]).length===0 && (
-                  <div style={{ padding:"24px", textAlign:"center", color:C.muted, fontFamily:mono, fontSize:11,
-                    borderRadius:8, border:`1px dashed ${C.border}`, background:C.faint, marginBottom:16 }}>No comments yet</div>
+                  <div style={{ padding:"24px", textAlign:"center", color:_C.muted, fontFamily:mono, fontSize:11,
+                    borderRadius:8, border:`1px dashed ${_C.border}`, background:_C.faint, marginBottom:16 }}>No comments yet</div>
                 )}
                 <div style={{ display:"flex", flexDirection:"column", gap:9, marginBottom:16 }}>
                   {(icp.comments??[]).map(c => (
                     <div key={c.id} style={{ padding:"12px 14px", borderRadius:8,
-                      border:`1px solid ${c.resolved?C.border:C.amberBorder}`,
-                      background:c.resolved?C.faint:C.amberLo, opacity:c.resolved?.55:1 }}>
+                      border:`1px solid ${c.resolved?_C.border:_C.amberBorder}`,
+                      background:c.resolved?_C.faint:_C.amberLo, opacity:c.resolved?.55:1 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-                        <span style={{ fontSize:10, color:c.resolved?C.muted:C.amber, fontFamily:mono, fontWeight:600 }}>{c.author} · {c.created_at}</span>
-                        {!c.resolved && <button onClick={()=>onUpdate({...icp,data,comments:(icp.comments??[]).map(x=>x.id===c.id?{...x,resolved:true}:x)})} style={{ fontSize:10, color:C.green, background:"transparent", border:"none", cursor:"pointer", fontFamily:mono, fontWeight:700 }}>✓ Resolve</button>}
+                        <span style={{ fontSize:10, color:c.resolved?_C.muted:_C.amber, fontFamily:mono, fontWeight:600 }}>{c.author} · {c.created_at}</span>
+                        {!c.resolved && <button onClick={()=>onUpdate({...icp,data,comments:(icp.comments??[]).map(x=>x.id===c.id?{...x,resolved:true}:x)})} style={{ fontSize:10, color:_C.green, background:"transparent", border:"none", cursor:"pointer", fontFamily:mono, fontWeight:700 }}>✓ Resolve</button>}
                       </div>
-                      <div style={{ fontSize:13, color:c.resolved?C.muted:C.text, fontFamily:body, lineHeight:1.55 }}>{c.text}</div>
+                      <div style={{ fontSize:13, color:c.resolved?_C.muted:_C.text, fontFamily:body, lineHeight:1.55 }}>{c.text}</div>
                     </div>
                   ))}
                 </div>
-                <div style={{ padding:"14px 16px", borderRadius:9, border:`1px solid ${C.border}`, background:C.faint }}>
-                  <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginBottom:10, fontWeight:600 }}>ADD A COMMENT</div>
+                <div style={{ padding:"14px 16px", borderRadius:9, border:`1px solid ${_C.border}`, background:_C.faint }}>
+                  <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, marginBottom:10, fontWeight:600 }}>ADD A COMMENT</div>
                   <input value={noteAuth} onChange={e=>setNoteAuth(e.target.value)} placeholder="Your name"
-                    style={{ width:"100%", padding:"8px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:C.canvas, color:C.text, fontSize:13, fontFamily:body, marginBottom:8, outline:"none" }} />
+                    style={{ width:"100%", padding:"8px 11px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:13, fontFamily:body, marginBottom:8, outline:"none" }} />
                   <textarea value={newNote} onChange={e=>setNewNote(e.target.value)} rows={2} placeholder="Note, flag, or question…"
-                    style={{ width:"100%", padding:"8px 11px", borderRadius:6, border:`1px solid ${C.border}`, background:C.canvas, color:C.text, fontSize:13, fontFamily:body, resize:"vertical", marginBottom:8, outline:"none" }} />
+                    style={{ width:"100%", padding:"8px 11px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", marginBottom:8, outline:"none" }} />
                   <button onClick={addComment} disabled={!newNote.trim()||!noteAuth.trim()} style={{
                     padding:"7px 16px", borderRadius:6, border:"none",
-                    background:newNote.trim()&&noteAuth.trim()?C.accent:C.border,
-                    color:newNote.trim()&&noteAuth.trim()?"#fff":C.muted,
+                    background:newNote.trim()&&noteAuth.trim()?_C.accent:_C.border,
+                    color:newNote.trim()&&noteAuth.trim()?"#fff":_C.muted,
                     fontSize:11, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>Add Comment</button>
                 </div>
 
@@ -4597,27 +4604,27 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   const activities: {time:string;icon:string;text:string;color:string}[] = [];
                   // Version history entries
                   for (const v of (icp.versionHistory||[])) {
-                    activities.push({ time:v.timestamp, icon:"✦", text:`Style changed to "${v.label}" on ${v.tab}`, color:C.accent });
+                    activities.push({ time:v.timestamp, icon:"✦", text:`Style changed to "${v.label}" on ${v.tab}`, color:_C.accent });
                   }
                   // Comments
                   for (const c of (icp.comments||[])) {
-                    activities.push({ time:c.created_at, icon:"💬", text:`${c.author}: "${c.text.slice(0,60)}${c.text.length>60?"…":""}"`, color:C.amber });
+                    activities.push({ time:c.created_at, icon:"💬", text:`${c.author}: "${c.text.slice(0,60)}${c.text.length>60?"…":""}"`, color:_C.amber });
                   }
                   // Sort by time descending
                   activities.sort((a,b) => new Date(b.time).getTime() - new Date(a.time).getTime());
                   if (!activities.length) return null;
                   return (
                     <details style={{ marginTop:20 }}>
-                      <summary style={{ fontSize:10, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.3,
+                      <summary style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, letterSpacing:.3,
                         cursor:"pointer", userSelect:"none", padding:"6px 0" }}>ACTIVITY LOG ({activities.length})</summary>
                       <div style={{ display:"flex", flexDirection:"column", gap:4, paddingTop:8 }}>
                         {activities.slice(0,20).map((a,i) => (
                           <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, padding:"6px 0",
-                            borderBottom:i<activities.length-1?`1px solid ${C.faint}`:"none" }}>
+                            borderBottom:i<activities.length-1?`1px solid ${_C.faint}`:"none" }}>
                             <span style={{ fontSize:11, flexShrink:0 }}>{a.icon}</span>
                             <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ fontSize:11, color:C.textSoft, fontFamily:body, lineHeight:1.4 }}>{a.text}</div>
-                              <div style={{ fontSize:9, color:C.muted, fontFamily:mono, marginTop:2 }}>
+                              <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, lineHeight:1.4 }}>{a.text}</div>
+                              <div style={{ fontSize:9, color:_C.muted, fontFamily:mono, marginTop:2 }}>
                                 {new Date(a.time).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
                               </div>
                             </div>
@@ -10128,7 +10135,7 @@ Raw JSON only.`, "", 1400);
                   {editingICP ? (
                     <ICPEditorModal key={editingICP.id} inline={true} icp={editingICP} companyData={companyData}
                       onUpdate={updateICP} onClose={()=>setEditingId(null)}
-                      addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} />
+                      addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2} />
                   ) : (
                     <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
                       <div style={{ textAlign:"center", animation:"fadeIn .3s ease" }}>
@@ -10243,7 +10250,7 @@ Raw JSON only.`, "", 1400);
 
       {editingICP && view !== "icps" && (
         <ICPEditorModal key={editingICP.id} icp={editingICP} companyData={companyData} onUpdate={updateICP} onClose={()=>setEditingId(null)}
-          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} />
+          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles} />}
 
