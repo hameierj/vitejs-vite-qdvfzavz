@@ -9207,21 +9207,84 @@ Raw JSON only.`, "", 1400);
                   <div style={{ height:1, background:C2.border, margin:"8px 4px 12px" }} />
                   <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5,
                     padding:"0 14px", marginBottom:8, textTransform:"uppercase" as const }}>WORKSPACE</div>
-                  {wsNavItems.map(n => {
-                    const on = view === n.id;
-                    return (
-                      <button key={n.id} onClick={()=>guardedNav(()=>setView(n.id))}
-                        style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
-                          borderRadius:12, border:"none",
-                          background: on ? `${C2.accent}14` : "transparent",
-                          cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                        onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                        onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=on?`${C2.accent}14`:"transparent"; }}>
-                        <span style={{ fontSize:14, width:20, textAlign:"center", color:on?C2.accent:C2.muted }}>{n.icon}</span>
-                        <span style={{ fontSize:13, fontFamily:head, fontWeight:on?700:500, color:on?C2.text:C2.textSoft }}>{n.label}</span>
-                      </button>
-                    );
-                  })}
+
+                  {/* Client Profile */}
+                  {currentRole !== "client" && (
+                    <button onClick={()=>guardedNav(()=>setView("company"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="company" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="company")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="company")(e.currentTarget as HTMLButtonElement).style.background=view==="company"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="company"?C2.accent:C2.muted }}>◉</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="company"?700:500, color:view==="company"?C2.text:C2.textSoft }}>Client Profile</span>
+                    </button>
+                  )}
+
+                  {/* ICP Profiles — expandable with sub-items */}
+                  <button onClick={()=>guardedNav(()=>{ setView("icps"); })}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="icps" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:0 }}
+                    onMouseEnter={e=>{ if(view!=="icps")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="icps")(e.currentTarget as HTMLButtonElement).style.background=view==="icps"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="icps"?C2.accent:C2.muted }}>◑</span>
+                    <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="icps"?700:500, color:view==="icps"?C2.text:C2.textSoft }}>ICP Profiles</span>
+                    {icps.length > 0 && <span style={{ fontSize:10, fontFamily:mono, color:C2.muted, marginLeft:"auto" }}>{icps.length}</span>}
+                  </button>
+                  {/* ICP sub-items when on ICP page */}
+                  {view === "icps" && icps.length > 0 && (
+                    <div style={{ padding:"4px 0 4px 20px", marginBottom:4 }}>
+                      {(icps as any[]).map((icp: any, i: number) => {
+                        const isOn = editingId === icp.id;
+                        return (
+                          <button key={icp.id} onClick={()=>setEditingId(icp.id)}
+                            style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"7px 12px",
+                              borderRadius:8, border:"none",
+                              background: isOn ? `${icp.color}14` : "transparent",
+                              cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
+                            onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                            onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=isOn?`${icp.color}14`:"transparent"; }}>
+                            <div style={{ width:6, height:6, borderRadius:3, background:icp.color, flexShrink:0 }} />
+                            <span style={{ fontSize:12, fontFamily:head, fontWeight:isOn?600:400, color:isOn?C2.text:C2.textSoft,
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              {icp.name || `ICP ${i+1}`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Analytics */}
+                  {currentRole !== "client" && (
+                    <button onClick={()=>guardedNav(()=>setView("analytics"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="analytics" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="analytics")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="analytics")(e.currentTarget as HTMLButtonElement).style.background=view==="analytics"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="analytics"?C2.accent:C2.muted }}>⊙</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="analytics"?700:500, color:view==="analytics"?C2.text:C2.textSoft }}>Analytics</span>
+                    </button>
+                  )}
+
+                  {/* My Files */}
+                  {currentRole !== "client" && (
+                    <button onClick={()=>guardedNav(()=>setView("files"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="files" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="files")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="files")(e.currentTarget as HTMLButtonElement).style.background=view==="files"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="files"?C2.accent:C2.muted }}>◇</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="files"?700:500, color:view==="files"?C2.text:C2.textSoft }}>My Files</span>
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -9852,14 +9915,67 @@ Raw JSON only.`, "", 1400);
               </div>
             ))}
 
-            {view==="icps" && (
+            {view==="icps" && (useV2 ? (
+              /* ═══════════ V2 ICP Layout — full width, no nested sidebars ═══════════ */
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+
+                {editingId && (() => {
+                  const editingICP = (icps as any[]).find(i => i.id === editingId);
+                  if (!editingICP) return null;
+                  const filled = ALL_ICP_FIELDS.filter((f: any) => fieldFilled(f, editingICP.data[f.id])).length;
+                  const icpPct = Math.round(filled / TOTAL_FIELDS * 100);
+                  return (
+                    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+                      {/* ICP Header — name + horizontal tabs */}
+                      <div style={{ padding:"16px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+                          <div style={{ width:10, height:10, borderRadius:5, background:editingICP.color, flexShrink:0 }} />
+                          <h2 style={{ fontSize:20, fontWeight:800, color:C2.text, fontFamily:head, margin:0, flex:1,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {editingICP.name || "Untitled ICP"}
+                          </h2>
+                          <span style={{ fontSize:11, fontFamily:mono, color:icpPct===100?C2.green:C2.muted, fontWeight:600 }}>
+                            {icpPct}% complete
+                          </span>
+                        </div>
+                      </div>
+                      {/* Full-width editor */}
+                      <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
+                        <ICPEditorModal key={editingICP.id} inline={true} icp={editingICP} companyData={companyData}
+                          onUpdate={updateICP} onClose={()=>setEditingId(null)}
+                          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2} />
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {!editingId && (
+                  <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 40px" }}>
+                    <div style={{ textAlign:"center", animation:"fadeIn .3s ease", maxWidth:400 }}>
+                      <div style={{ fontSize:36, marginBottom:16, opacity:.2 }}>🎯</div>
+                      <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:8 }}>Select an ICP</div>
+                      <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:20 }}>
+                        Choose a profile from the sidebar, or create a new one to get started.
+                      </div>
+                      <button onClick={()=>{ if(!drafting){ const r=addBtnRef.current?.getBoundingClientRect(); if(r) setAddPopPos({top:r.bottom+8,left:r.right-300}); setShowAddPop(true); } }}
+                        style={{ padding:"10px 24px", borderRadius:10, border:"none", background:C2.accent, color:"#fff",
+                          fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 14px ${C2.accent}44` }}>
+                        + Add ICP
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ═══════════ V1 ICP Layout (original 3-column) ═══════════ */
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
 
                 {/* ── Page Header ── */}
-                <div style={{ padding: useV2 ? "20px clamp(20px, 3vw, 48px) 14px" : "16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${useV2?C2.border:C.border}` }}>
-                  <h2 style={{ fontSize: useV2 ? 22 : 20, fontWeight: useV2 ? 800 : 700, color: useV2?C2.text:C.text, fontFamily:head, margin:"0 0 5px" }}>ICP Profiles</h2>
-                  <p style={{ fontSize: useV2 ? 13 : 12, color: useV2?C2.muted:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
+                <div style={{ padding:"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${C.border}` }}>
+                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>ICP Profiles</h2>
+                  <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
                     Define target segments, personas, pains, and messaging strategies
                   </p>
                 </div>
@@ -10148,7 +10264,7 @@ Raw JSON only.`, "", 1400);
                 </div>
               </div>
               </div>
-            )}
+            ))}
 
 
             {view==="analytics" && ((() => {
