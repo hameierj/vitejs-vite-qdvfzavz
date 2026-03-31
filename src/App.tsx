@@ -11806,56 +11806,135 @@ Raw JSON only.`, "", 1400);
 
 
             {view==="analytics" && ((() => {
-              const pct = (num:number, den:number) => !den ? null : Math.round(num / den * 100);
+              const _C = useV2 ? C2 : C;
+              const pctCalc = (num:number, den:number) => !den ? null : Math.round(num / den * 100);
               const totals = perfLogs.reduce((a:any,e:any) => {
                 const m = e.metrics ?? {};
                 return { sent:a.sent+(m.sent||0), opens:a.opens+(m.opens||0), replies:a.replies+(m.replies||0),
                   posReplies:a.posReplies+(m.posReplies||0), meetings:a.meetings+(m.meetings||0), revenue:a.revenue+(m.revenue||0) };
               }, { sent:0, opens:0, replies:0, posReplies:0, meetings:0, revenue:0 });
-              const openRate = pct(totals.opens, totals.sent);
-              const replyRate = pct(totals.replies, totals.sent);
-              const meetingRate = pct(totals.meetings, totals.replies);
+              const openRate = pctCalc(totals.opens, totals.sent);
+              const replyRate = pctCalc(totals.replies, totals.sent);
+              const meetingRate = pctCalc(totals.meetings, totals.replies);
               const fmt = (n:number) => n>=1000?`${(n/1000).toFixed(1)}K`:String(n);
+
+              // Per-campaign analysis
+              const activeCampaigns = campaigns.filter((c:any) => c.status === "active" || c.status === "reviewing");
+              const allCampaignsWithData = campaigns.filter((c:any) => c.performance?.entries?.length > 0 || c.status !== "planning");
+
+              // Benchmark health check for each campaign
+              const campaignHealth = campaigns.map((c:any) => {
+                const bm = c.benchmarks || {};
+                const perf = c.performance?.entries || [];
+                if (perf.length === 0) return { ...c, health: "no_data" };
+                const totSent = perf.reduce((s:number,e:any) => s + (e.sent||0), 0);
+                const totOpened = perf.reduce((s:number,e:any) => s + (e.opened||0), 0);
+                const totReplied = perf.reduce((s:number,e:any) => s + (e.replied||0), 0);
+                const totMeetings = perf.reduce((s:number,e:any) => s + (e.meetings||0), 0);
+                const or = totSent > 0 ? (totOpened/totSent*100) : 0;
+                const rr = totSent > 0 ? (totReplied/totSent*100) : 0;
+                const mr = totReplied > 0 ? (totMeetings/totReplied*100) : 0;
+                const orHealth = or >= (bm.openRate?.good||40) ? "good" : or >= (bm.openRate?.warning||25) ? "warning" : "action";
+                const rrHealth = rr >= (bm.replyRate?.good||3) ? "good" : rr >= (bm.replyRate?.warning||1.5) ? "warning" : "action";
+                return { ...c, health: orHealth === "good" && rrHealth === "good" ? "good" : orHealth === "action" || rrHealth === "action" ? "action" : "warning",
+                  metrics: { openRate: Math.round(or*10)/10, replyRate: Math.round(rr*10)/10, meetingRate: Math.round(mr*10)/10 } };
+              });
+
+              const healthColors: Record<string,string> = { good: _C.green, warning: _C.amber, action: _C.red, no_data: _C.muted };
+
               return (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ padding:"16px 0 0" }}>
-                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 20px" }}>Analytics</h2>
+                  <h2 style={{ fontSize: useV2?22:20, fontWeight: useV2?800:700, color:_C.text, fontFamily:head, margin:"0 0 6px" }}>Analytics</h2>
+                  <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:"0 0 20px" }}>Campaign performance, benchmarks, and ROI tracking.</p>
                 </div>
 
-                {/* ── SECTION 1: ROI Summary ── */}
-                <div style={{ marginBottom:28 }}>
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:10 }}>ROI OVERVIEW</div>
-                  <RoiDashboard roiConfig={roiConfig} onConfigChange={setRoiConfig} perfLogs={perfLogs} icps={icps} companyData={companyData} />
-                </div>
+                {/* ── Campaign Health Overview ── */}
+                {campaigns.length > 0 && (
+                  <div style={{ marginBottom:28 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:12 }}>CAMPAIGN HEALTH</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))", gap:14 }}>
+                      {campaignHealth.map((c: any) => {
+                        const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
+                        const statusObj = CAMPAIGN_STATUSES.find(s => s.id === c.status) || CAMPAIGN_STATUSES[0];
+                        const hColor = healthColors[c.health] || _C.muted;
+                        return (
+                          <div key={c.id} style={{ padding:"16px 20px", borderRadius: useV2?14:10, background:_C.canvas,
+                            border:`1px solid ${_C.border}`, borderLeft:`4px solid ${hColor}`,
+                            boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                              <span style={{ fontSize:14 }}>{typeObj.icon}</span>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text,
+                                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.name || "Untitled"}</div>
+                              </div>
+                              <span style={{ fontSize:9, fontFamily:mono, padding:"2px 8px", borderRadius:6,
+                                background:`${statusObj.color}15`, color:statusObj.color, fontWeight:600 }}>{statusObj.label}</span>
+                            </div>
+                            {c.metrics ? (
+                              <div style={{ display:"flex", gap:12 }}>
+                                {[
+                                  { label:"Open", value:`${c.metrics.openRate}%`, threshold:c.benchmarks?.openRate?.good },
+                                  { label:"Reply", value:`${c.metrics.replyRate}%`, threshold:c.benchmarks?.replyRate?.good },
+                                  { label:"Meeting", value:`${c.metrics.meetingRate}%`, threshold:c.benchmarks?.meetingRate?.good },
+                                ].map(m => {
+                                  const val = parseFloat(m.value);
+                                  const mColor = val >= (m.threshold||0) ? _C.green : val >= (m.threshold||0)*0.5 ? _C.amber : _C.red;
+                                  return (
+                                    <div key={m.label}>
+                                      <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600 }}>{m.label}</div>
+                                      <div style={{ fontSize:14, fontFamily:head, fontWeight:700, color:mColor }}>{m.value}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize:11, color:_C.muted, fontFamily:body }}>
+                                {c.sequence?.length||0} steps · No performance data yet
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
-                <div style={{ height:1, background:C.border, margin:"0 0 28px" }} />
-
-                {/* ── SECTION 2: Campaign Metrics ── */}
+                {/* ── Overall Metrics ── */}
                 <div style={{ marginBottom:28 }}>
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:10 }}>CAMPAIGN METRICS</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10 }}>
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:12 }}>OVERALL METRICS</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:14 }}>
                     {[
-                      { label:"Emails Sent", value:fmt(totals.sent), sub:null, color:C.text },
-                      { label:"Opens", value:fmt(totals.opens), sub:openRate!=null?`${openRate}% rate`:null, color:C.accent },
-                      { label:"Replies", value:fmt(totals.replies), sub:replyRate!=null?`${replyRate}% rate`:null, color:C.amber },
-                      { label:"Positive Replies", value:fmt(totals.posReplies), sub:totals.replies?`${pct(totals.posReplies,totals.replies)}% of replies`:null, color:C.green },
-                      { label:"Meetings Booked", value:fmt(totals.meetings), sub:meetingRate!=null?`${meetingRate}% conversion`:null, color:C.green },
-                      { label:"Revenue", value:totals.revenue?`$${totals.revenue.toLocaleString()}`:"-", sub:totals.meetings?`$${Math.round(totals.revenue/totals.meetings).toLocaleString()}/meeting`:null, color:"#8B5CF6" },
+                      { label:"Emails Sent", value:fmt(totals.sent), color:_C.text },
+                      { label:"Opens", value:fmt(totals.opens), sub:openRate!=null?`${openRate}%`:null, color:_C.accent },
+                      { label:"Replies", value:fmt(totals.replies), sub:replyRate!=null?`${replyRate}%`:null, color:_C.amber },
+                      { label:"Positive", value:fmt(totals.posReplies), sub:totals.replies?`${pctCalc(totals.posReplies,totals.replies)}%`:null, color:_C.green },
+                      { label:"Meetings", value:fmt(totals.meetings), sub:meetingRate!=null?`${meetingRate}%`:null, color:_C.green },
+                      { label:"Revenue", value:totals.revenue?`$${totals.revenue.toLocaleString()}`:"-", color:"#8B5CF6" },
                     ].map(m => (
-                      <div key={m.label} style={{ padding:"14px 16px", borderRadius:10, border:`1px solid ${C.border}`, background:C.canvas }}>
-                        <div style={{ fontSize:9, fontFamily:mono, color:C.muted, fontWeight:600, letterSpacing:.4, marginBottom:6 }}>{m.label}</div>
-                        <div style={{ fontSize:22, fontWeight:700, fontFamily:head, color:m.value==="-"?C.muted:m.color, lineHeight:1 }}>{m.value}</div>
-                        {m.sub && <div style={{ fontSize:10, fontFamily:mono, color:C.muted, marginTop:4 }}>{m.sub}</div>}
+                      <div key={m.label} style={{ padding:"16px 18px", borderRadius: useV2?14:10, border:`1px solid ${_C.border}`,
+                        background:_C.canvas, boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
+                        <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, letterSpacing:.4, marginBottom:6 }}>{m.label.toUpperCase()}</div>
+                        <div style={{ fontSize:22, fontWeight:800, fontFamily:head, color:m.value==="-"?_C.muted:m.color, lineHeight:1 }}>{m.value}</div>
+                        {(m as any).sub && <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginTop:4 }}>{(m as any).sub}</div>}
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div style={{ height:1, background:C.border, margin:"0 0 28px" }} />
+                <div style={{ height:1, background:_C.border, margin:"0 0 28px" }} />
 
-                {/* ── SECTION 3: Performance Log ── */}
+                {/* ── ROI Summary ── */}
+                <div style={{ marginBottom:28 }}>
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:10 }}>ROI OVERVIEW</div>
+                  <RoiDashboard roiConfig={roiConfig} onConfigChange={setRoiConfig} perfLogs={perfLogs} icps={icps} companyData={companyData} />
+                </div>
+
+                <div style={{ height:1, background:_C.border, margin:"0 0 28px" }} />
+
+                {/* ── Performance Log ── */}
                 <div>
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C.muted, letterSpacing:.5, marginBottom:10 }}>PERFORMANCE LOG</div>
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:10 }}>PERFORMANCE LOG</div>
                   <PerformancePanel perfLogs={perfLogs} onLogsChange={setPerfLogs} icps={icps} />
                 </div>
               </div>
