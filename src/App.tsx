@@ -8261,83 +8261,180 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
         const fmtCost = (n:number) => `$${n.toFixed(4)}`;
 
         const avgCostPerCall = totals.calls > 0 ? totals.cost / totals.calls : 0;
-        const topUser = Object.entries(byUser).sort((a,b) => b[1].reduce((s,l)=>s+l.cost,0) - a[1].reduce((s,l)=>s+l.cost,0))[0];
+        const userEntries = Object.entries(byUser).sort((a,b) => b[1].reduce((s,l)=>s+l.cost,0) - a[1].reduce((s,l)=>s+l.cost,0));
+        const iconColors = [_C.accent, _C.amber, _C.green, _C.blue];
+        const iconBgs = [`${_C.accent}15`, `${_C.amber}15`, `${_C.green}15`, `${_C.blue}15`];
+
+        // Token distribution for donut
+        const inputPct = (totals.input + totals.output) > 0 ? Math.round(totals.input / (totals.input + totals.output) * 100) : 50;
+        const inputDeg = Math.round(inputPct * 3.6);
+
+        // Cost by day for sparkline
+        const byDay: Record<string,number> = {};
+        for (const l of logs) {
+          const d = new Date(l.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric"});
+          byDay[d] = (byDay[d]||0) + l.cost;
+        }
+        const dayEntries = Object.entries(byDay).slice(-10);
+        const maxDayCost = Math.max(...dayEntries.map(d=>d[1]), 0.001);
 
         return (
           <div style={{ animation:"fadeIn .3s ease" }}>
-            {/* Summary cards */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:14, marginBottom:28 }}>
+
+            {/* ── Row 1: Stat cards with icon circles ── */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:16, marginBottom:24 }}>
               {[
-                { label:"Total API Calls", value:fmt(totals.calls), sub:`${Object.keys(byUser).length} user${Object.keys(byUser).length!==1?"s":""}`, color:_C.accent },
-                { label:"Tokens Used", value:fmt(totals.input + totals.output), sub:`${fmt(totals.input)} in · ${fmt(totals.output)} out`, color:_C.blue },
-                { label:"Total Cost", value:fmtCost(totals.cost), sub:totals.calls>0?`avg ${fmtCost(avgCostPerCall)}/call`:"no calls yet", color:_C.red },
-                { label:"Top User", value:topUser?topUser[0].split("@")[0]:"—", sub:topUser?`${topUser[1].length} calls · ${fmtCost(topUser[1].reduce((s,l)=>s+l.cost,0))}`:"", color:_C.green },
+                { label:"Total Calls", value:`${fmt(totals.calls)}`, icon:"◎", color:iconColors[0], bg:iconBgs[0] },
+                { label:"Input Tokens", value:`${fmt(totals.input)}`, icon:"◑", color:iconColors[1], bg:iconBgs[1] },
+                { label:"Output Tokens", value:`${fmt(totals.output)}`, icon:"◒", color:iconColors[2], bg:iconBgs[2] },
+                { label:"Total Cost", value:fmtCost(totals.cost), icon:"◉", color:iconColors[3], bg:iconBgs[3] },
               ].map(c => (
-                <div key={c.label} style={{ padding:"18px 20px", borderRadius:14, border:`1px solid ${_C.border}`,
-                  background:_C.canvas, borderTop:`3px solid ${c.color}` }}>
-                  <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, letterSpacing:.4, marginBottom:8 }}>{c.label.toUpperCase()}</div>
-                  <div style={{ fontSize:22, fontFamily:head, fontWeight:800, color:c.color, marginBottom:4 }}>{c.value}</div>
-                  {c.sub && <div style={{ fontSize:11, fontFamily:body, color:_C.muted }}>{c.sub}</div>}
+                <div key={c.label} style={{ padding:"20px 22px", borderRadius:16, background:_C.canvas,
+                  border:`1px solid ${_C.border}`, display:"flex", alignItems:"center", gap:16,
+                  boxShadow:"0 2px 8px rgba(0,0,0,.03)" }}>
+                  <div style={{ width:48, height:48, borderRadius:14, background:c.bg,
+                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:c.color, flexShrink:0 }}>
+                    {c.icon}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:24, fontWeight:800, fontFamily:head, color:_C.text, lineHeight:1 }}>{c.value}</div>
+                    <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:4 }}>{c.label}</div>
+                  </div>
                 </div>
               ))}
             </div>
 
-            {/* Per-user breakdown */}
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:10 }}>USAGE BY USER</div>
-            <div style={{ background:_C.canvas, borderRadius:10, border:`1px solid ${_C.border}`, overflow:"hidden", marginBottom:24 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 80px 100px 100px 80px 80px",
-                padding:"10px 16px", borderBottom:`1px solid ${_C.border}`, gap:8 }}>
-                {["User","Calls","Input Tokens","Output Tokens","Cost","Avg/Call"].map(h => (
-                  <div key={h} style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4 }}>{h}</div>
-                ))}
-              </div>
-              {Object.entries(byUser).sort((a,b) => b[1].length - a[1].length).map(([email, userLogs]) => {
-                const userInput = userLogs.reduce((a,l) => a+l.inputTokens, 0);
-                const userOutput = userLogs.reduce((a,l) => a+l.outputTokens, 0);
-                const userCost = userLogs.reduce((a,l) => a+l.cost, 0);
-                const avgCost = userLogs.length > 0 ? userCost / userLogs.length : 0;
-                return (
-                  <div key={email} style={{ display:"grid", gridTemplateColumns:"1fr 80px 100px 100px 80px 80px",
-                    padding:"10px 16px", gap:8, borderBottom:`1px solid ${_C.border}` }}>
-                    <div style={{ fontSize:12, fontFamily:head, fontWeight:600, color:_C.text,
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{email}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:_C.text }}>{userLogs.length}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:_C.amber }}>{fmt(userInput)}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:_C.green }}>{fmt(userOutput)}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:_C.red, fontWeight:600 }}>{fmtCost(userCost)}</div>
-                    <div style={{ fontSize:12, fontFamily:mono, color:_C.muted }}>{fmtCost(avgCost)}</div>
+            {/* ── Row 2: Cost chart + Token donut ── */}
+            <div style={{ display:"grid", gridTemplateColumns:"1.6fr 1fr", gap:16, marginBottom:24 }}>
+
+              {/* Cost over time */}
+              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, padding:"24px",
+                boxShadow:"0 2px 8px rgba(0,0,0,.03)" }}>
+                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:20 }}>Cost Over Time</div>
+                {dayEntries.length > 1 ? (
+                  <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:120 }}>
+                    {dayEntries.map(([day, cost], i) => {
+                      const h = Math.max(6, Math.round((cost / maxDayCost) * 100));
+                      return (
+                        <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+                          <div style={{ fontSize:8, fontFamily:mono, color:_C.accent, fontWeight:700 }}>{fmtCost(cost)}</div>
+                          <div style={{ width:"100%", height:h, borderRadius:6,
+                            background:`linear-gradient(180deg, ${_C.accent}, ${_C.accent}88)`,
+                            transition:"height .4s ease" }} />
+                          <div style={{ fontSize:8, fontFamily:mono, color:_C.muted }}>{day.replace(",","")}</div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                ) : (
+                  <div style={{ height:120, display:"flex", alignItems:"center", justifyContent:"center", color:_C.muted, fontSize:13, fontFamily:body }}>
+                    More data needed for chart
+                  </div>
+                )}
+              </div>
+
+              {/* Token distribution donut */}
+              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, padding:"24px",
+                boxShadow:"0 2px 8px rgba(0,0,0,.03)", display:"flex", flexDirection:"column", alignItems:"center" }}>
+                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:20, alignSelf:"flex-start" }}>Token Distribution</div>
+                <div style={{ position:"relative", width:130, height:130, marginBottom:16 }}>
+                  <div style={{ width:130, height:130, borderRadius:"50%",
+                    background:`conic-gradient(${_C.accent} 0deg ${inputDeg}deg, ${_C.green} ${inputDeg}deg 360deg)` }} />
+                  <div style={{ position:"absolute", inset:28, borderRadius:"50%", background:_C.canvas,
+                    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
+                    <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:_C.text }}>{fmt(totals.input + totals.output)}</div>
+                    <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>Total</div>
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:20 }}>
+                  {[
+                    { label:"Input", color:_C.accent, value:`${inputPct}%` },
+                    { label:"Output", color:_C.green, value:`${100-inputPct}%` },
+                  ].map(d => (
+                    <div key={d.label} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <div style={{ width:10, height:10, borderRadius:3, background:d.color }} />
+                      <span style={{ fontSize:12, fontFamily:body, color:_C.textSoft }}>{d.label}</span>
+                      <span style={{ fontSize:11, fontFamily:mono, color:_C.muted, fontWeight:600 }}>{d.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* Recent log entries */}
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5 }}>RECENT CALLS</div>
-              <button onClick={()=>{ if(confirm("Clear all API logs?")) { localStorage.setItem("b2br_api_logs","[]"); syncToCloud("api_logs",[]); }}}
-                style={{ fontSize:10, fontFamily:mono, color:_C.red, background:"none", border:"none", cursor:"pointer" }}>Clear Logs</button>
-            </div>
-            <div style={{ background:_C.canvas, borderRadius:10, border:`1px solid ${_C.border}`, overflow:"hidden", maxHeight:400, overflowY:"auto" }}>
-              <div style={{ display:"grid", gridTemplateColumns:"140px 1fr 80px 80px 70px 60px",
-                padding:"8px 16px", borderBottom:`1px solid ${_C.border}`, gap:8, position:"sticky", top:0, background:_C.canvas, zIndex:1 }}>
-                {["Time","Action","Input","Output","Cost","Duration"].map(h => (
-                  <div key={h} style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4 }}>{h}</div>
-                ))}
-              </div>
-              {[...logs].reverse().slice(0,100).map(l => (
-                <div key={l.id} style={{ display:"grid", gridTemplateColumns:"140px 1fr 80px 80px 70px 60px",
-                  padding:"6px 16px", gap:8, borderBottom:`1px solid ${_C.faint}`, fontSize:11 }}>
-                  <div style={{ fontFamily:mono, color:_C.muted, fontSize:10 }}>
-                    {new Date(l.timestamp).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
-                    <div style={{ fontSize:9, color:_C.border }}>{l.userEmail}</div>
-                  </div>
-                  <div style={{ fontFamily:body, color:_C.textSoft, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{l.action}</div>
-                  <div style={{ fontFamily:mono, color:_C.amber }}>{fmt(l.inputTokens)}</div>
-                  <div style={{ fontFamily:mono, color:_C.green }}>{fmt(l.outputTokens)}</div>
-                  <div style={{ fontFamily:mono, color:_C.red }}>{fmtCost(l.cost)}</div>
-                  <div style={{ fontFamily:mono, color:_C.muted }}>{l.durationMs>1000?`${(l.durationMs/1000).toFixed(1)}s`:`${l.durationMs}ms`}</div>
+            {/* ── Row 3: Recent calls table + Top users ── */}
+            <div style={{ display:"grid", gridTemplateColumns:"1.6fr 1fr", gap:16 }}>
+
+              {/* Recent calls */}
+              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, overflow:"hidden",
+                boxShadow:"0 2px 8px rgba(0,0,0,.03)" }}>
+                <div style={{ padding:"20px 24px 14px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Recent Calls</div>
+                  {logs.length > 0 && (
+                    <button onClick={()=>{ if(confirm("Clear all API logs?")) { localStorage.setItem("b2br_api_logs","[]"); syncToCloud("api_logs",[]); }}}
+                      style={{ fontSize:10, fontFamily:mono, color:_C.red, background:`${_C.red}0A`, border:`1px solid ${_C.red}22`,
+                        padding:"4px 10px", borderRadius:6, cursor:"pointer" }}>Clear</button>
+                  )}
                 </div>
-              ))}
+                <div style={{ maxHeight:320, overflowY:"auto" }}>
+                  {[...logs].reverse().slice(0,50).map((l,i) => (
+                    <div key={l.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 24px",
+                      borderTop:i===0?"none":`1px solid ${_C.faint}` }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:12, fontFamily:body, color:_C.text,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{l.action}</div>
+                        <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>
+                          {new Date(l.timestamp).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
+                          {" · "}{(l.userEmail||"").split("@")[0]}
+                        </div>
+                      </div>
+                      <div style={{ textAlign:"right", flexShrink:0 }}>
+                        <div style={{ fontSize:12, fontFamily:mono, fontWeight:600, color:_C.red }}>{fmtCost(l.cost)}</div>
+                        <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>
+                          {fmt(l.inputTokens)}↑ {fmt(l.outputTokens)}↓
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {logs.length === 0 && (
+                    <div style={{ padding:"40px 24px", textAlign:"center", color:_C.muted, fontFamily:body, fontSize:13 }}>No API calls logged yet</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Top users */}
+              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, overflow:"hidden",
+                boxShadow:"0 2px 8px rgba(0,0,0,.03)" }}>
+                <div style={{ padding:"20px 24px 14px" }}>
+                  <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Top Users</div>
+                </div>
+                <div style={{ maxHeight:320, overflowY:"auto" }}>
+                  {userEntries.map(([email, userLogs], i) => {
+                    const userCost = userLogs.reduce((a,l) => a+l.cost, 0);
+                    const costPct = totals.cost > 0 ? Math.round(userCost / totals.cost * 100) : 0;
+                    return (
+                      <div key={email} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 24px",
+                        borderTop:i===0?"none":`1px solid ${_C.faint}` }}>
+                        <div style={{ width:40, height:40, borderRadius:12, background:iconBgs[i % 4],
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          fontSize:13, fontWeight:700, fontFamily:mono, color:iconColors[i % 4], flexShrink:0 }}>
+                          {email.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.text,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{email.split("@")[0]}</div>
+                          <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{userLogs.length} calls · {costPct}% of total</div>
+                        </div>
+                        <div style={{ textAlign:"right", flexShrink:0 }}>
+                          <div style={{ fontSize:14, fontFamily:head, fontWeight:700, color:_C.text }}>{fmtCost(userCost)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {userEntries.length === 0 && (
+                    <div style={{ padding:"40px 24px", textAlign:"center", color:_C.muted, fontFamily:body, fontSize:13 }}>No users yet</div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         );
