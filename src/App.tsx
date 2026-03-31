@@ -10065,8 +10065,8 @@ function AppMain() {
       return user;
     } catch { return null; }
   });
-  const [useV2,          setUseV2]          = useState(() => { try { return localStorage.getItem("b2br_v2") === "1"; } catch { return false; } });
-  const T = useV2 ? C2 : C; // Theme — V1 or V2
+  const useV2 = true;
+  const T = C2;
   const [view,           setView]           = useState("accounts");
   const [analyticsTab,   setAnalyticsTab]   = useState<"perf"|"roi">("perf");
   const [acctSearch,     setAcctSearch]     = useState("");
@@ -10589,7 +10589,7 @@ Raw JSON only.`, "", 1400);
         ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
       `}</style>
 
-      <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:useV2?C2.bg:C.bg }}>
+      <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:C2.bg }}>
 
         {/* ── SIDEBAR ── */}
         {(() => {
@@ -11146,22 +11146,7 @@ Raw JSON only.`, "", 1400);
                     </div>
                   )}
 
-                  {/* V2 Design Toggle */}
-                  <button onClick={()=>{ const next = !useV2; setUseV2(next); try { localStorage.setItem("b2br_v2", next?"1":"0"); } catch {} }}
-                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
-                      borderRadius:7, border:"none", background:useV2?C2.accentLo:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
-                    onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.background=useV2?C2.accentMid:C.faint; }}
-                    onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.background=useV2?C2.accentLo:"transparent"; }}>
-                    <span style={{ fontSize:13, width:18, textAlign:"center", color:useV2?C2.accent:C.muted }}>◑</span>
-                    <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:useV2?C2.accent:C.textSoft }}>V2 Design {useV2?"On":"Off"}</span>
-                    <div style={{ marginLeft:"auto", width:32, height:18, borderRadius:9, background:useV2?C2.accent:C.border,
-                      transition:"background .2s", position:"relative" as const, flexShrink:0 }}>
-                      <div style={{ width:14, height:14, borderRadius:7, background:"#fff", position:"absolute" as const,
-                        top:2, left:useV2?16:2, transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,.15)" }} />
-                    </div>
-                  </button>
-
-                  <div style={{ height:1, background:C.border, margin:"4px 0" }} />
+                  <div style={{ height:1, background:C2.border, margin:"4px 0" }} />
 
                   {/* Sign out */}
                   {!confirmSignOut ? (
@@ -11473,15 +11458,15 @@ Raw JSON only.`, "", 1400);
             {view==="products" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                <div style={{ padding: useV2?"20px clamp(20px, 3vw, 48px) 14px":"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${useV2?C2.border:C.border}` }}>
-                  <h2 style={{ fontSize: useV2?22:20, fontWeight: useV2?800:700, color: useV2?C2.text:C.text, fontFamily:head, margin:"0 0 5px" }}>Products & Services</h2>
-                  <p style={{ fontSize: useV2?13:12, color: useV2?C2.muted:C.textSoft, fontFamily:body, margin:0 }}>
+                <div style={{ padding: "20px clamp(20px, 3vw, 48px) 14px", flexShrink:0, borderBottom:`1px solid ${C2.border}` }}>
+                  <h2 style={{ fontSize: 22, fontWeight: 800, color: C2.text, fontFamily:head, margin:"0 0 5px" }}>Products & Services</h2>
+                  <p style={{ fontSize: 13, color: C2.muted, fontFamily:body, margin:0 }}>
                     Define each product or service — this feeds into persona targeting, offers, and campaign copy.
                   </p>
                 </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <ProductsPage products={products} onProductsChange={setProducts} companyData={companyData}
-                    fileContext={buildFileContext(wsFiles)} v2={useV2} />
+                    fileContext={buildFileContext(wsFiles)} v2={true} />
                 </div>
               </div>
             )}
@@ -11489,15 +11474,15 @@ Raw JSON only.`, "", 1400);
             {view==="offers" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                <div style={{ padding: useV2?"20px clamp(20px, 3vw, 48px) 14px":"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${useV2?C2.border:C.border}` }}>
-                  <h2 style={{ fontSize: useV2?22:20, fontWeight: useV2?800:700, color: useV2?C2.text:C.text, fontFamily:head, margin:"0 0 5px" }}>Offers</h2>
-                  <p style={{ fontSize: useV2?13:12, color: useV2?C2.muted:C.textSoft, fontFamily:body, margin:0 }}>
+                <div style={{ padding: "20px clamp(20px, 3vw, 48px) 14px", flexShrink:0, borderBottom:`1px solid ${C2.border}` }}>
+                  <h2 style={{ fontSize: 22, fontWeight: 800, color: C2.text, fontFamily:head, margin:"0 0 5px" }}>Offers</h2>
+                  <p style={{ fontSize: 13, color: C2.muted, fontFamily:body, margin:0 }}>
                     Define the actual ask for each product — soft, medium, and hard CTAs that drive replies.
                   </p>
                 </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <OffersPage offers={offers} onOffersChange={setOffers} products={products}
-                    companyData={companyData} v2={useV2} />
+                    companyData={companyData} v2={true} />
                 </div>
               </div>
             )}
@@ -11507,7 +11492,7 @@ Raw JSON only.`, "", 1400);
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
-                    companyData={companyData} products={products} offers={offers} personas={icps} v2={useV2} />
+                    companyData={companyData} products={products} offers={offers} personas={icps} v2={true} />
                 </div>
               </div>
             )}
@@ -11515,15 +11500,15 @@ Raw JSON only.`, "", 1400);
             {view==="campaigns" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                <div style={{ padding: useV2?"20px clamp(20px, 3vw, 48px) 14px":"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${useV2?C2.border:C.border}` }}>
-                  <h2 style={{ fontSize: useV2?22:20, fontWeight: useV2?800:700, color: useV2?C2.text:C.text, fontFamily:head, margin:"0 0 5px" }}>Campaigns</h2>
-                  <p style={{ fontSize: useV2?13:12, color: useV2?C2.muted:C.textSoft, fontFamily:body, margin:0 }}>
+                <div style={{ padding: "20px clamp(20px, 3vw, 48px) 14px", flexShrink:0, borderBottom:`1px solid ${C2.border}` }}>
+                  <h2 style={{ fontSize: 22, fontWeight: 800, color: C2.text, fontFamily:head, margin:"0 0 5px" }}>Campaigns</h2>
+                  <p style={{ fontSize: 13, color: C2.muted, fontFamily:body, margin:0 }}>
                     Build and manage outreach campaigns with sequences, A/B tests, and benchmarks.
                   </p>
                 </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
-                    personas={icps} products={products} offers={offers} companyData={companyData} strategy={strategy} v2={useV2} />
+                    personas={icps} products={products} offers={offers} companyData={companyData} strategy={strategy} v2={true} />
                 </div>
               </div>
             )}
@@ -11557,7 +11542,7 @@ Raw JSON only.`, "", 1400);
                       <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                         <ICPEditorModal key={editingICP.id} inline={true} icp={editingICP} companyData={companyData}
                           onUpdate={updateICP} onClose={()=>setEditingId(null)}
-                          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2}
+                          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={true}
                           products={products} offers={offers} />
                       </div>
                     </div>
@@ -11598,11 +11583,11 @@ Raw JSON only.`, "", 1400);
                 <div style={{ display:"flex", flex:1, minHeight:0, overflow:"hidden" }}>
 
                 {/* ── ICP list sidebar ── */}
-                <div style={{ width: useV2 ? 260 : 242, flexShrink:0, display:"flex", flexDirection:"column",
-                  borderRight:`1px solid ${useV2?C2.border:C.border}`, background: useV2?C2.canvas:C.canvas, overflow:"hidden" }}>
+                <div style={{ width: 260, flexShrink:0, display:"flex", flexDirection:"column",
+                  borderRight:`1px solid ${C2.border}`, background: C2.canvas, overflow:"hidden" }}>
 
                   {/* Sidebar header */}
-                  <div style={{ padding: useV2 ? "10px 12px 8px" : "8px 8px 6px", borderBottom:`1px solid ${useV2?C2.border:C.border}`, flexShrink:0 }}>
+                  <div style={{ padding: "10px 12px 8px", borderBottom:`1px solid ${C2.border}`, flexShrink:0 }}>
                       {/* Add ICP button + popover */}
                       <div style={{ position:"relative" }}>
                         <button ref={addBtnRef} onClick={()=>{ if(!drafting){ const r=addBtnRef.current?.getBoundingClientRect(); if(r) setAddPopPos({top:r.bottom+8,left:r.right-300}); setShowAddPop(p=>!p); } }} disabled={!!drafting}
@@ -11693,8 +11678,8 @@ Raw JSON only.`, "", 1400);
                     {icps.length === 0 && (
                       <div style={{ padding:"32px 12px", textAlign:"center" }}>
                         <div style={{ fontSize:22, marginBottom:8, opacity:.5 }}>🎯</div>
-                        <div style={{ fontSize:12, fontWeight:700, color:useV2?C2.text:C.text, fontFamily:head, marginBottom:4 }}>No ICPs yet</div>
-                        <div style={{ fontSize:11, color:useV2?C2.muted:C.muted, fontFamily:body, lineHeight:1.5 }}>Use the + button above to add your first profile.</div>
+                        <div style={{ fontSize:12, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:4 }}>No ICPs yet</div>
+                        <div style={{ fontSize:11, color:C2.muted, fontFamily:body, lineHeight:1.5 }}>Use the + button above to add your first profile.</div>
                       </div>
                     )}
                     {(icps as any[]).map((icp, i) => {
@@ -11721,8 +11706,8 @@ Raw JSON only.`, "", 1400);
                             transition:"border-color .3s cubic-bezier(0.16, 1, 0.3, 1), background .25s cubic-bezier(0.16, 1, 0.3, 1), transform .3s cubic-bezier(0.16, 1, 0.3, 1)",
                             transform: isSelected ? "translateX(2px)" : "translateX(0)",
                           }}
-                          onMouseEnter={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=useV2?C2.faint:C.faint; (e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="1"); }}
-                          onMouseLeave={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=useV2&&isSelected?`${icp.color}08`:isSelected?C.faint:"transparent"; if(icpConfirm?.id!==icp.id && icpFill?.id!==icp.id)(e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="0"); }}>
+                          onMouseEnter={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=C2.faint; (e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="1"); }}
+                          onMouseLeave={e=>{ if(!isSelected)(e.currentTarget as HTMLDivElement).style.background=isSelected?`${icp.color}08`:"transparent"; if(icpConfirm?.id!==icp.id && icpFill?.id!==icp.id)(e.currentTarget as HTMLDivElement).querySelectorAll(".icp-card-action").forEach((el:any)=>el.style.opacity="0"); }}>
                           {/* Name + actions row */}
                           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                             <div style={{ flex:1, minWidth:0 }}>
@@ -11865,7 +11850,7 @@ Raw JSON only.`, "", 1400);
                   {editingICP ? (
                     <ICPEditorModal key={editingICP.id} inline={true} icp={editingICP} companyData={companyData}
                       onUpdate={updateICP} onClose={()=>setEditingId(null)}
-                      addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2}
+                      addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={true}
                       products={products} offers={offers} />
                   ) : (
                     <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -11883,7 +11868,7 @@ Raw JSON only.`, "", 1400);
 
 
             {view==="analytics" && ((() => {
-              const _C = useV2 ? C2 : C;
+              const _C = C2;
               const pctCalc = (num:number, den:number) => !den ? null : Math.round(num / den * 100);
               const totals = perfLogs.reduce((a:any,e:any) => {
                 const m = e.metrics ?? {};
@@ -11922,7 +11907,7 @@ Raw JSON only.`, "", 1400);
               return (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ padding:"16px 0 0" }}>
-                  <h2 style={{ fontSize: useV2?22:20, fontWeight: useV2?800:700, color:_C.text, fontFamily:head, margin:"0 0 6px" }}>Analytics</h2>
+                  <h2 style={{ fontSize: 22, fontWeight: 800, color:_C.text, fontFamily:head, margin:"0 0 6px" }}>Analytics</h2>
                   <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:"0 0 20px" }}>Campaign performance, benchmarks, and ROI tracking.</p>
                 </div>
 
@@ -11936,7 +11921,7 @@ Raw JSON only.`, "", 1400);
                         const statusObj = CAMPAIGN_STATUSES.find(s => s.id === c.status) || CAMPAIGN_STATUSES[0];
                         const hColor = healthColors[c.health] || _C.muted;
                         return (
-                          <div key={c.id} style={{ padding:"16px 20px", borderRadius: useV2?14:10, background:_C.canvas,
+                          <div key={c.id} style={{ padding:"16px 20px", borderRadius: 14, background:_C.canvas,
                             border:`1px solid ${_C.border}`, borderLeft:`4px solid ${hColor}`,
                             boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
                             <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
@@ -11989,7 +11974,7 @@ Raw JSON only.`, "", 1400);
                       { label:"Meetings", value:fmt(totals.meetings), sub:meetingRate!=null?`${meetingRate}%`:null, color:_C.green },
                       { label:"Revenue", value:totals.revenue?`$${totals.revenue.toLocaleString()}`:"-", color:"#8B5CF6" },
                     ].map(m => (
-                      <div key={m.label} style={{ padding:"16px 18px", borderRadius: useV2?14:10, border:`1px solid ${_C.border}`,
+                      <div key={m.label} style={{ padding:"16px 18px", borderRadius: 14, border:`1px solid ${_C.border}`,
                         background:_C.canvas, boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
                         <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, letterSpacing:.4, marginBottom:6 }}>{m.label.toUpperCase()}</div>
                         <div style={{ fontSize:22, fontWeight:800, fontFamily:head, color:m.value==="-"?_C.muted:m.color, lineHeight:1 }}>{m.value}</div>
@@ -12060,7 +12045,7 @@ Raw JSON only.`, "", 1400);
 
       {editingICP && view !== "icps" && (
         <ICPEditorModal key={editingICP.id} icp={editingICP} companyData={companyData} onUpdate={updateICP} onClose={()=>setEditingId(null)}
-          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2}
+          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={true}
           products={products} offers={offers} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles} />}
