@@ -7576,20 +7576,20 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
       <div style={{ flex:1, overflow:"auto", padding:"36px clamp(20px, 3vw, 48px)" }}>
         <div style={{ maxWidth:860, margin:"0 auto" }}>
 
-          {/* Header */}
+          {/* Header — only for users/clients */}
+          {section !== "logs" && (
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28 }}>
             <div>
               <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>
-                {section === "users" ? "USER MANAGEMENT" : section === "clients" ? "CLIENT MANAGEMENT" : "API MONITORING"}
+                {section === "users" ? "USER MANAGEMENT" : "CLIENT MANAGEMENT"}
               </div>
               <h2 style={{ fontSize:26, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:6 }}>
-                {section === "users" ? "Users" : section === "clients" ? "Clients" : "API Logs"}
+                {section === "users" ? "Users" : "Clients"}
               </h2>
               <p style={{ fontSize:13.5, color:_C.textSoft, fontFamily:body }}>
-                {section === "users" ? "Manage team members and client users." : section === "clients" ? "Manage clients and assign them to team members." : "API usage tracking and cost breakdown by user."}
+                {section === "users" ? "Manage team members and client users." : "Manage clients and assign them to team members."}
               </p>
             </div>
-            {section !== "logs" && (
             <div style={{ display:"flex", gap:8, flexShrink:0, marginTop:4 }}>
               {section === "clients" && (
                 <button onClick={openBulkImport}
@@ -7606,8 +7606,8 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                 {section === "users" ? "+ Add User" : "+ Add Client"}
               </button>
             </div>
-            )}
           </div>
+          )}
 
           {/* ── USERS SECTION ── */}
           {section === "users" && <>
@@ -8280,6 +8280,12 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
 
         return (
           <div style={{ animation:"fadeIn .3s ease" }}>
+
+            {/* Header */}
+            <div style={{ marginBottom:24 }}>
+              <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 6px" }}>API Logs</h2>
+              <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>API usage tracking and cost breakdown by user.</p>
+            </div>
 
             {/* ── Row 1: Stat cards with icon circles ── */}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:16, marginBottom:24 }}>
