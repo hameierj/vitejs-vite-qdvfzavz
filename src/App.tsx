@@ -250,6 +250,16 @@ const PRODUCT_SECTIONS = {
 const PRODUCT_FIELDS = Object.values(PRODUCT_SECTIONS).flatMap(s => s.fields);
 const EMPTY_PRODUCT = () => ({ id:uid(), ...Object.fromEntries(PRODUCT_FIELDS.map(f=>[f.id,""])), createdAt:new Date().toISOString() });
 
+// ─── OFFERS ──────────────────────────────────────────────────────────────────
+const OFFER_TIERS = [
+  { id:"soft",   label:"Soft CTA",   color:"#00D68F", bg:"#00D68F15", desc:"Low commitment — free resource, educational, 'worth a chat?'" },
+  { id:"medium", label:"Medium CTA", color:"#FFC048", bg:"#FFC04815", desc:"Some commitment — personalized audit, 'see what this looks like for you'" },
+  { id:"hard",   label:"Hard CTA",   color:"#FF6B6B", bg:"#FF6B6B15", desc:"Direct ask — 'book a demo', pricing discussion, direct pitch" },
+];
+const EMPTY_OFFER = (productId: string, tier: string) => ({
+  id:uid(), productId, tier, name:"", ctaText:"", whatTheyGet:"", frictionReduction:"", createdAt:new Date().toISOString(),
+});
+
 const ICP_SECTIONS = {
   targeting: { label:"Targeting", icon:"◎",
     fields:[
@@ -4921,6 +4931,188 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   );
 }
 
+// ─── OFFERS PAGE ─────────────────────────────────────────────────────────────
+function OffersPage({ offers, onOffersChange, products, companyData, v2 = false }: {
+  offers: any[]; onOffersChange: (o: any[]) => void; products: any[]; companyData: any; v2?: boolean;
+}) {
+  const _C = v2 ? C2 : C;
+  const [selectedProductId, setSelectedProductId] = useState<string|null>(products[0]?.id ?? null);
+  const [aiGenerating, setAiGenerating] = useState<string|null>(null); // productId being generated
+
+  const selectedProduct = products.find(p => p.id === selectedProductId) || null;
+  const productOffers = offers.filter(o => o.productId === selectedProductId);
+
+  const getOffer = (tier: string) => productOffers.find(o => o.tier === tier) || null;
+
+  const updOffer = (id: string, patch: any) => {
+    onOffersChange(offers.map(o => o.id === id ? { ...o, ...patch } : o));
+  };
+  const ensureOffer = (tier: string) => {
+    if (!selectedProductId) return;
+    const existing = getOffer(tier);
+    if (existing) return;
+    onOffersChange([...offers, EMPTY_OFFER(selectedProductId, tier)]);
+  };
+
+  const aiGenerateOffers = async (productId: string) => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    setAiGenerating(productId);
+    try {
+      const result = await callAI(
+        `Generate 3 offer tiers for cold B2B outreach for this product.\n\nProduct: ${product.name}\nDescription: ${product.description}\nProblems solved: ${product.problemsSolved}\nValue prop: ${product.valueProposition}\nCompany: ${(companyData as any)?.co_name || ""}\nIndustry: ${(companyData as any)?.co_industry || ""}\n\nFor each tier (soft, medium, hard), provide:\n- name: short name for the offer (e.g., "Free ROI Calculator")\n- ctaText: the exact CTA to use in emails (e.g., "Want me to send you our ROI calculator?")\n- whatTheyGet: what the prospect receives\n- frictionReduction: why this reduces buying friction\n\nReturn ONLY valid JSON array: [{tier:"soft",name,ctaText,whatTheyGet,frictionReduction},{tier:"medium",...},{tier:"hard",...}]`,
+        "You are a B2B cold outreach offer strategist. Return only valid JSON.", 800
+      );
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed)) {
+        // Remove existing offers for this product, add new ones
+        const otherOffers = offers.filter(o => o.productId !== productId);
+        const newOffers = parsed.map((p: any) => ({
+          ...EMPTY_OFFER(productId, p.tier || "soft"),
+          name: p.name || "", ctaText: p.ctaText || "", whatTheyGet: p.whatTheyGet || "", frictionReduction: p.frictionReduction || "",
+        }));
+        onOffersChange([...otherOffers, ...newOffers]);
+      }
+    } catch (e) { console.error("AI offer generation failed:", e); }
+    setAiGenerating(null);
+  };
+
+  const inputSt: any = { padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+    background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none",
+    width:"100%", transition:"border-color .15s", resize:"vertical" as const };
+
+  return (
+    <div style={{ display:"flex", height:"100%", overflow:"hidden" }}>
+      {/* Product selector sidebar */}
+      <div style={{ width:220, flexShrink:0, display:"flex", flexDirection:"column",
+        borderRight:`1px solid ${_C.border}`, background:v2?_C.faint:_C.surface, overflow:"hidden" }}>
+        <div style={{ padding:"14px 12px 10px", borderBottom:`1px solid ${_C.border}`, flexShrink:0 }}>
+          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5 }}>SELECT PRODUCT</div>
+        </div>
+        <div style={{ flex:1, overflowY:"auto", padding:"8px" }}>
+          {products.length === 0 && (
+            <div style={{ padding:"24px 12px", textAlign:"center", color:_C.muted, fontSize:12, fontFamily:body }}>
+              Add products first on the Products & Services page.
+            </div>
+          )}
+          {products.map((p: any) => {
+            const isOn = selectedProductId === p.id;
+            const tierCount = offers.filter(o => o.productId === p.id).length;
+            return (
+              <button key={p.id} onClick={()=>setSelectedProductId(p.id)}
+                style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 12px",
+                  borderRadius:10, border:"none",
+                  background: isOn ? `${_C.accent}14` : "transparent",
+                  cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:3 }}
+                onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=_C.canvas; }}
+                onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=isOn?`${_C.accent}14`:"transparent"; }}>
+                <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight:isOn?700:500, color:isOn?_C.text:_C.textSoft,
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name || "Unnamed"}</span>
+                <span style={{ fontSize:10, fontFamily:mono, color:tierCount===3?_C.green:_C.muted,
+                  background:tierCount===3?_C.greenLo:`${_C.accent}11`, padding:"2px 7px", borderRadius:6 }}>
+                  {tierCount}/3
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Offers editor */}
+      {selectedProduct ? (
+        <div style={{ flex:1, padding:"28px 32px", overflowY:"auto" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 }}>
+            <div>
+              <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head }}>{selectedProduct.name}</div>
+              <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>Define soft, medium, and hard CTAs for outreach</div>
+            </div>
+            <button onClick={()=>aiGenerateOffers(selectedProductId!)} disabled={aiGenerating===selectedProductId}
+              style={{ padding:"8px 18px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
+                color:_C.green, fontSize:12, fontFamily:head, fontWeight:700, cursor:aiGenerating?"wait":"pointer",
+                opacity:aiGenerating===selectedProductId?0.6:1 }}>
+              {aiGenerating===selectedProductId ? "◌ Generating..." : "◎ AI Generate All"}
+            </button>
+          </div>
+
+          {/* Three tier columns */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:20 }}>
+            {OFFER_TIERS.map(tier => {
+              const offer = getOffer(tier.id);
+              return (
+                <div key={tier.id} style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`,
+                  borderTop:`3px solid ${tier.color}`, overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
+                  {/* Tier header */}
+                  <div style={{ padding:"16px 20px 12px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                      <div style={{ width:8, height:8, borderRadius:4, background:tier.color }} />
+                      <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>{tier.label}</span>
+                    </div>
+                    <div style={{ fontSize:11, color:_C.muted, fontFamily:body, lineHeight:1.4 }}>{tier.desc}</div>
+                  </div>
+
+                  {/* Offer fields */}
+                  <div style={{ padding:"0 20px 20px" }}>
+                    {offer ? (
+                      <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                        <div>
+                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Offer Name</label>
+                          <input value={offer.name} onChange={e=>updOffer(offer.id, {name:e.target.value})}
+                            placeholder='e.g., "Free ROI Calculator"' style={inputSt}
+                            onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>CTA Text</label>
+                          <textarea value={offer.ctaText} onChange={e=>updOffer(offer.id, {ctaText:e.target.value})}
+                            rows={2} placeholder="The exact words to use in the email" style={inputSt}
+                            onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>What They Get</label>
+                          <textarea value={offer.whatTheyGet} onChange={e=>updOffer(offer.id, {whatTheyGet:e.target.value})}
+                            rows={2} placeholder="What does the prospect receive?" style={inputSt}
+                            onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Why It Reduces Friction</label>
+                          <textarea value={offer.frictionReduction} onChange={e=>updOffer(offer.id, {frictionReduction:e.target.value})}
+                            rows={2} placeholder="Why is this easy to say yes to?" style={inputSt}
+                            onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={()=>ensureOffer(tier.id)}
+                        style={{ width:"100%", padding:"20px", borderRadius:10, border:`2px dashed ${_C.border}`,
+                          background:"transparent", color:_C.muted, fontSize:12, fontFamily:head, fontWeight:600,
+                          cursor:"pointer", textAlign:"center" }}
+                        onMouseEnter={e=>{(e.target as HTMLElement).style.borderColor=tier.color;(e.target as HTMLElement).style.color=tier.color;}}
+                        onMouseLeave={e=>{(e.target as HTMLElement).style.borderColor=_C.border;(e.target as HTMLElement).style.color=_C.muted;}}>
+                        + Create {tier.label}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ textAlign:"center", maxWidth:360 }}>
+            <div style={{ fontSize:36, marginBottom:16, opacity:.2 }}>◇</div>
+            <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>Offers</div>
+            <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6 }}>
+              {products.length === 0
+                ? "Add products first on the Products & Services page, then create offers here."
+                : "Select a product from the sidebar to define its outreach offers."}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── COMPANY PANEL ────────────────────────────────────────────────────────────
 // ═══════════ V2 COMPANY PANEL ═══════════
 function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, onConfLock, fileContext = "" }) {
@@ -9027,6 +9219,7 @@ function AppMain() {
   const [wsFiles,        setWsFiles]        = useState<{id:string;name:string;type:string;b64:string;mime:string;uploadedAt:string;tags:string[]}[]>([]);
   const [wsLinks,        setWsLinks]        = useState<{id:string;name:string;url:string;description:string;addedAt:string}[]>([]);
   const [products,       setProducts]       = useState<any[]>([]);
+  const [offers,         setOffers]         = useState<any[]>([]);
 
   const addToast  = useCallback((t: Omit<Toast,"id">) => {
     const id = uid();
@@ -9136,6 +9329,7 @@ function AppMain() {
     setWsFiles(rawFiles);
     setWsLinks(saved?.wsLinks ?? []);
     setProducts(saved?.products ?? []);
+    setOffers(saved?.offers ?? []);
     // Load file blobs from IndexedDB async
     if (rawFiles.length && activeWorkspace) {
       loadWorkspaceFiles(activeWorkspace.id, rawFiles).then(loaded => setWsFiles(loaded.map((f:any) => ({ ...f, _loading: false }))));
@@ -9151,7 +9345,7 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers });
     // Sync co_name and co_industry back to ClientRecord so admin panel + sidebar stay current
     const cd = companyData as Record<string,string>;
     const cls = loadClients();
@@ -9167,7 +9361,7 @@ function AppMain() {
         if (patch.name) setActiveWorkspace((prev: any) => prev ? { ...prev, name: patch.name } : prev);
       }
     }
-  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products]);
+  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers]);
 
   // sync keys into global + localStorage
   useEffect(() => {
@@ -9508,6 +9702,7 @@ Raw JSON only.`, "", 1400);
             : [
                 { id:"company",  label:"Client Profile",      icon:"◉", sub:`${companyPct}% complete` },
                 { id:"products", label:"Products & Services", icon:"◆", sub:`${products.length} product${products.length!==1?"s":""}` },
+                { id:"offers",   label:"Offers",             icon:"◇", sub:`${offers.length} offer${offers.length!==1?"s":""}` },
                 { id:"icps",     label:"ICP Profiles",       icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
                 { id:"analytics",label:"Analytics",          icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
                 { id:"files",    label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
@@ -9635,6 +9830,20 @@ Raw JSON only.`, "", 1400);
                       onMouseLeave={e=>{ if(view!=="products")(e.currentTarget as HTMLButtonElement).style.background=view==="products"?`${C2.accent}14`:"transparent"; }}>
                       <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="products"?C2.accent:C2.muted }}>◆</span>
                       <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="products"?700:500, color:view==="products"?C2.text:C2.textSoft }}>Products & Services</span>
+                    </button>
+                  )}
+
+                  {/* Offers */}
+                  {currentRole !== "client" && (
+                    <button onClick={()=>guardedNav(()=>setView("offers"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="offers" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="offers")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="offers")(e.currentTarget as HTMLButtonElement).style.background=view==="offers"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="offers"?C2.accent:C2.muted }}>◇</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="offers"?700:500, color:view==="offers"?C2.text:C2.textSoft }}>Offers</span>
                     </button>
                   )}
 
@@ -10344,6 +10553,22 @@ Raw JSON only.`, "", 1400);
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <ProductsPage products={products} onProductsChange={setProducts} companyData={companyData}
                     fileContext={buildFileContext(wsFiles)} v2={useV2} />
+                </div>
+              </div>
+            )}
+
+            {view==="offers" && (
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                <div style={{ padding: useV2?"20px clamp(20px, 3vw, 48px) 14px":"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${useV2?C2.border:C.border}` }}>
+                  <h2 style={{ fontSize: useV2?22:20, fontWeight: useV2?800:700, color: useV2?C2.text:C.text, fontFamily:head, margin:"0 0 5px" }}>Offers</h2>
+                  <p style={{ fontSize: useV2?13:12, color: useV2?C2.muted:C.textSoft, fontFamily:body, margin:0 }}>
+                    Define the actual ask for each product — soft, medium, and hard CTAs that drive replies.
+                  </p>
+                </div>
+                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
+                  <OffersPage offers={offers} onOffersChange={setOffers} products={products}
+                    companyData={companyData} v2={useV2} />
                 </div>
               </div>
             )}
