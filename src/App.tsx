@@ -5036,16 +5036,17 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
   const selectedProduct = products.find(p => p.id === selectedProductId) || null;
   const productOffers = offers.filter(o => o.productId === selectedProductId);
 
-  const getOffer = (tier: string) => productOffers.find(o => o.tier === tier) || null;
+  const getOffers = (tier: string) => productOffers.filter(o => o.tier === tier);
 
   const updOffer = (id: string, patch: any) => {
     onOffersChange(offers.map(o => o.id === id ? { ...o, ...patch } : o));
   };
-  const ensureOffer = (tier: string) => {
+  const addOffer = (tier: string) => {
     if (!selectedProductId) return;
-    const existing = getOffer(tier);
-    if (existing) return;
     onOffersChange([...offers, EMPTY_OFFER(selectedProductId, tier)]);
+  };
+  const deleteOffer = (id: string) => {
+    onOffersChange(offers.filter(o => o.id !== id));
   };
 
   const [aiSingleTier, setAiSingleTier] = useState<string|null>(null);
@@ -5126,9 +5127,9 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
                 onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=isOn?`${_C.accent}14`:"transparent"; }}>
                 <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight:isOn?700:500, color:isOn?_C.text:_C.textSoft,
                   overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name || "Unnamed"}</span>
-                <span style={{ fontSize:10, fontFamily:mono, color:tierCount===3?_C.green:_C.muted,
-                  background:tierCount===3?_C.greenLo:`${_C.accent}11`, padding:"2px 7px", borderRadius:6 }}>
-                  {tierCount}/3
+                <span style={{ fontSize:10, fontFamily:mono, color:tierCount>0?_C.green:_C.muted,
+                  background:tierCount>0?_C.greenLo:`${_C.accent}11`, padding:"2px 7px", borderRadius:6 }}>
+                  {tierCount}
                 </span>
               </button>
             );
@@ -5155,63 +5156,77 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
           {/* Three tier columns */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:20 }}>
             {OFFER_TIERS.map(tier => {
-              const offer = getOffer(tier.id);
+              const tierOffers = getOffers(tier.id);
               return (
-                <div key={tier.id} style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`,
-                  borderTop:`3px solid ${tier.color}`, overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
+                <div key={tier.id} style={{ display:"flex", flexDirection:"column", gap:0 }}>
                   {/* Tier header */}
-                  <div style={{ padding:"16px 20px 12px" }}>
+                  <div style={{ padding:"14px 16px", borderRadius:"14px 14px 0 0", background:`${tier.color}11`,
+                    borderTop:`3px solid ${tier.color}`, border:`1px solid ${_C.border}`, borderBottom:"none" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
                       <div style={{ width:8, height:8, borderRadius:4, background:tier.color }} />
                       <span style={{ flex:1, fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>{tier.label}</span>
-                      <button onClick={()=>aiGenerateSingle(tier.id)} disabled={aiSingleTier===tier.id}
-                        style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${tier.color}33`,
-                          background:`${tier.color}11`, color:tier.color, fontSize:9, fontFamily:head, fontWeight:700,
-                          cursor:aiSingleTier===tier.id?"wait":"pointer", opacity:aiSingleTier===tier.id?0.5:1 }}>
-                        {aiSingleTier===tier.id ? "◌" : "◎ AI"}</button>
+                      <span style={{ fontSize:10, fontFamily:mono, color:tier.color, fontWeight:600 }}>{tierOffers.length}</span>
                     </div>
-                    <div style={{ fontSize:11, color:_C.muted, fontFamily:body, lineHeight:1.4 }}>{tier.desc}</div>
+                    <div style={{ fontSize:10, color:_C.muted, fontFamily:body, lineHeight:1.4 }}>{tier.desc}</div>
                   </div>
 
-                  {/* Offer fields */}
-                  <div style={{ padding:"0 20px 20px" }}>
-                    {offer ? (
-                      <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                        <div>
-                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Offer Name</label>
+                  {/* Offer cards */}
+                  <div style={{ display:"flex", flexDirection:"column", gap:0, border:`1px solid ${_C.border}`, borderTop:"none",
+                    borderRadius:"0 0 14px 14px", background:_C.canvas, overflow:"hidden" }}>
+                    {tierOffers.map((offer: any, oi: number) => (
+                      <div key={offer.id} style={{ padding:"14px 16px",
+                        borderTop: oi > 0 ? `1px solid ${_C.border}` : "none" }}>
+                        {/* Offer header */}
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                          <span style={{ fontSize:11, fontFamily:mono, color:tier.color, fontWeight:700, flexShrink:0 }}>#{oi+1}</span>
                           <input value={offer.name} onChange={e=>updOffer(offer.id, {name:e.target.value})}
-                            placeholder='e.g., "Free ROI Calculator"' style={inputSt}
+                            placeholder="Offer name..." style={{ flex:1, padding:"5px 8px", borderRadius:6,
+                              border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:12,
+                              fontFamily:head, fontWeight:600, outline:"none" }}
                             onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                          <button onClick={()=>aiGenerateSingle(tier.id)} disabled={aiSingleTier===tier.id}
+                            style={{ padding:"3px 8px", borderRadius:5, border:`1px solid ${tier.color}33`,
+                              background:`${tier.color}08`, color:tier.color, fontSize:9, fontFamily:head, fontWeight:700,
+                              cursor:aiSingleTier===tier.id?"wait":"pointer", opacity:aiSingleTier===tier.id?0.5:1, flexShrink:0 }}>
+                            {aiSingleTier===tier.id ? "◌" : "◎"}</button>
+                          <button onClick={()=>deleteOffer(offer.id)}
+                            style={{ width:22, height:22, borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent",
+                              color:_C.muted, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}
+                            onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;(e.target as HTMLElement).style.borderColor=_C.red;}}
+                            onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;(e.target as HTMLElement).style.borderColor=_C.border;}}>×</button>
                         </div>
-                        <div>
-                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>CTA Text</label>
-                          <textarea value={offer.ctaText} onChange={e=>updOffer(offer.id, {ctaText:e.target.value})}
-                            rows={2} placeholder="The exact words to use in the email" style={inputSt}
-                            onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
-                        </div>
-                        <div>
-                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>What They Get</label>
-                          <textarea value={offer.whatTheyGet} onChange={e=>updOffer(offer.id, {whatTheyGet:e.target.value})}
-                            rows={2} placeholder="What does the prospect receive?" style={inputSt}
-                            onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
-                        </div>
-                        <div>
-                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Why It Reduces Friction</label>
-                          <textarea value={offer.frictionReduction} onChange={e=>updOffer(offer.id, {frictionReduction:e.target.value})}
-                            rows={2} placeholder="Why is this easy to say yes to?" style={inputSt}
-                            onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                        {/* Offer fields */}
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          <div>
+                            <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>CTA TEXT</label>
+                            <textarea value={offer.ctaText} onChange={e=>updOffer(offer.id, {ctaText:e.target.value})}
+                              rows={2} placeholder='e.g., "Want me to send you our ROI calculator?"' style={inputSt}
+                              onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>WHAT THEY GET</label>
+                            <textarea value={offer.whatTheyGet} onChange={e=>updOffer(offer.id, {whatTheyGet:e.target.value})}
+                              rows={1} placeholder="What the prospect receives" style={inputSt}
+                              onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>FRICTION REDUCTION</label>
+                            <textarea value={offer.frictionReduction} onChange={e=>updOffer(offer.id, {frictionReduction:e.target.value})}
+                              rows={1} placeholder="Why it's easy to say yes" style={inputSt}
+                              onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                          </div>
                         </div>
                       </div>
-                    ) : (
-                      <button onClick={()=>ensureOffer(tier.id)}
-                        style={{ width:"100%", padding:"20px", borderRadius:10, border:`2px dashed ${_C.border}`,
-                          background:"transparent", color:_C.muted, fontSize:12, fontFamily:head, fontWeight:600,
-                          cursor:"pointer", textAlign:"center" }}
-                        onMouseEnter={e=>{(e.target as HTMLElement).style.borderColor=tier.color;(e.target as HTMLElement).style.color=tier.color;}}
-                        onMouseLeave={e=>{(e.target as HTMLElement).style.borderColor=_C.border;(e.target as HTMLElement).style.color=_C.muted;}}>
-                        + Create {tier.label}
-                      </button>
-                    )}
+                    ))}
+                    {/* Add offer button */}
+                    <button onClick={()=>addOffer(tier.id)}
+                      style={{ padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                        background:"transparent", border:"none", borderTop:`1px solid ${_C.border}`,
+                        color:_C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", transition:"all .15s" }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=_C.faint;(e.currentTarget as HTMLElement).style.color=tier.color;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background="transparent";(e.currentTarget as HTMLElement).style.color=_C.muted;}}>
+                      + Add {tier.label}
+                    </button>
                   </div>
                 </div>
               );
