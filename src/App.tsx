@@ -7574,7 +7574,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
 
       {/* Main content */}
       <div style={{ flex:1, overflow:"auto", padding:"36px clamp(20px, 3vw, 48px)" }}>
-        <div style={{ maxWidth:860, margin:"0 auto" }}>
+        <div style={{ maxWidth: section === "logs" ? 1100 : 860, margin:"0 auto" }}>
 
           {/* Header — only for users/clients */}
           {section !== "logs" && (
@@ -8239,205 +8239,214 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
       )}
 
       {/* ── API LOGS SECTION ── */}
-      {section === "logs" && (
-        <div style={{ maxWidth:1000, margin:"0 auto" }}>
-      {(() => {
+      {section === "logs" && (() => {
         const logs = loadApiLogs();
-        const allUsers = loadUsers();
-        // Group by user
         const byUser: Record<string, ApiLog[]> = {};
-        for (const log of logs) {
-          const key = log.userEmail || "unknown";
-          if (!byUser[key]) byUser[key] = [];
-          byUser[key].push(log);
-        }
-        const totals = {
-          calls: logs.length,
-          input: logs.reduce((a,l) => a+l.inputTokens, 0),
-          output: logs.reduce((a,l) => a+l.outputTokens, 0),
-          cost: logs.reduce((a,l) => a+l.cost, 0),
-        };
+        for (const log of logs) { const key = log.userEmail || "unknown"; if (!byUser[key]) byUser[key] = []; byUser[key].push(log); }
+        const totals = { calls: logs.length, input: logs.reduce((a,l) => a+l.inputTokens, 0), output: logs.reduce((a,l) => a+l.outputTokens, 0), cost: logs.reduce((a,l) => a+l.cost, 0) };
         const fmt = (n:number) => n>=1000000?`${(n/1000000).toFixed(1)}M`:n>=1000?`${(n/1000).toFixed(1)}K`:String(n);
         const fmtCost = (n:number) => `$${n.toFixed(4)}`;
-
-        const avgCostPerCall = totals.calls > 0 ? totals.cost / totals.calls : 0;
+        const avgCost = totals.calls > 0 ? totals.cost / totals.calls : 0;
         const userEntries = Object.entries(byUser).sort((a,b) => b[1].reduce((s,l)=>s+l.cost,0) - a[1].reduce((s,l)=>s+l.cost,0));
-        const iconColors = [_C.accent, _C.amber, _C.green, _C.blue];
-        const iconBgs = [`${_C.accent}15`, `${_C.amber}15`, `${_C.green}15`, `${_C.blue}15`];
-
-        // Token distribution for donut
+        const uColors = [_C.accent, _C.amber, _C.green, _C.blue];
+        const uBgs = [`${_C.accent}15`, `${_C.amber}15`, `${_C.green}15`, `${_C.blue}15`];
         const inputPct = (totals.input + totals.output) > 0 ? Math.round(totals.input / (totals.input + totals.output) * 100) : 50;
         const inputDeg = Math.round(inputPct * 3.6);
-
-        // Cost by day for sparkline
         const byDay: Record<string,number> = {};
-        for (const l of logs) {
-          const d = new Date(l.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric"});
-          byDay[d] = (byDay[d]||0) + l.cost;
-        }
+        for (const l of logs) { const d = new Date(l.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric"}); byDay[d] = (byDay[d]||0) + l.cost; }
         const dayEntries = Object.entries(byDay).slice(-10);
         const maxDayCost = Math.max(...dayEntries.map(d=>d[1]), 0.001);
+        const _shadow = "0 1px 3px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.03)";
 
         return (
-          <div style={{ animation:"fadeIn .3s ease" }}>
+          <div style={{ animation:"fadeIn .3s ease", paddingBottom:40 }}>
 
-            {/* Header */}
-            <div style={{ marginBottom:24 }}>
-              <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 6px" }}>API Logs</h2>
-              <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>API usage tracking and cost breakdown by user.</p>
+            {/* ── Header ── */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:28 }}>
+              <div>
+                <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>API Logs</h2>
+                <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>Usage tracking and cost breakdown</p>
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <div style={{ padding:"7px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`,
+                  fontSize:12, fontFamily:body, color:_C.textSoft }}>{totals.calls} total calls</div>
+                {logs.length > 0 && (
+                  <button onClick={()=>{ if(confirm("Clear all API logs?")) { localStorage.setItem("b2br_api_logs","[]"); syncToCloud("api_logs",[]); }}}
+                    style={{ padding:"7px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`,
+                      fontSize:12, fontFamily:head, fontWeight:600, color:_C.red, cursor:"pointer" }}>Clear Logs</button>
+                )}
+              </div>
             </div>
 
-            {/* ── Row 1: Stat cards with icon circles ── */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:16, marginBottom:24 }}>
+            {/* ── Row 1: Stat cards ── */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:20, marginBottom:28 }}>
               {[
-                { label:"Total Calls", value:`${fmt(totals.calls)}`, icon:"◎", color:iconColors[0], bg:iconBgs[0] },
-                { label:"Input Tokens", value:`${fmt(totals.input)}`, icon:"◑", color:iconColors[1], bg:iconBgs[1] },
-                { label:"Output Tokens", value:`${fmt(totals.output)}`, icon:"◒", color:iconColors[2], bg:iconBgs[2] },
-                { label:"Total Cost", value:fmtCost(totals.cost), icon:"◉", color:iconColors[3], bg:iconBgs[3] },
+                { label:"Total Calls", value:fmt(totals.calls), icon:"◎", color:uColors[0], bg:uBgs[0] },
+                { label:"Input Tokens", value:fmt(totals.input), icon:"◑", color:uColors[1], bg:uBgs[1] },
+                { label:"Output Tokens", value:fmt(totals.output), icon:"◒", color:uColors[2], bg:uBgs[2] },
+                { label:"Total Cost", value:fmtCost(totals.cost), icon:"◉", color:uColors[3], bg:uBgs[3] },
               ].map(c => (
-                <div key={c.label} style={{ padding:"20px 22px", borderRadius:16, background:_C.canvas,
-                  border:`1px solid ${_C.border}`, display:"flex", alignItems:"center", gap:16,
-                  boxShadow:"0 2px 8px rgba(0,0,0,.03)" }}>
+                <div key={c.label} style={{ padding:"22px 24px", borderRadius:16, background:_C.canvas,
+                  border:`1px solid ${_C.border}`, display:"flex", alignItems:"center", gap:16, boxShadow:_shadow }}>
                   <div style={{ width:48, height:48, borderRadius:14, background:c.bg,
                     display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:c.color, flexShrink:0 }}>
                     {c.icon}
                   </div>
                   <div>
-                    <div style={{ fontSize:24, fontWeight:800, fontFamily:head, color:_C.text, lineHeight:1 }}>{c.value}</div>
-                    <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:4 }}>{c.label}</div>
+                    <div style={{ fontSize:24, fontWeight:800, fontFamily:head, color:_C.text, lineHeight:1, letterSpacing:"-0.02em" }}>{c.value}</div>
+                    <div style={{ fontSize:12, fontWeight:500, color:_C.muted, fontFamily:body, marginTop:6 }}>{c.label}</div>
                   </div>
                 </div>
               ))}
             </div>
 
             {/* ── Row 2: Cost chart + Token donut ── */}
-            <div style={{ display:"grid", gridTemplateColumns:"1.6fr 1fr", gap:16, marginBottom:24 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:20, marginBottom:28 }}>
 
               {/* Cost over time */}
-              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, padding:"24px",
-                boxShadow:"0 2px 8px rgba(0,0,0,.03)" }}>
-                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:20 }}>Cost Over Time</div>
+              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, padding:"24px 28px", boxShadow:_shadow }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 }}>
+                  <div>
+                    <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Cost Over Time</div>
+                    <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>Daily API spend</div>
+                  </div>
+                  <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.accent }}>{fmtCost(totals.cost)}</div>
+                </div>
                 {dayEntries.length > 1 ? (
-                  <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:120 }}>
+                  <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:200 }}>
                     {dayEntries.map(([day, cost], i) => {
-                      const h = Math.max(6, Math.round((cost / maxDayCost) * 100));
+                      const h = Math.max(8, Math.round((cost / maxDayCost) * 170));
                       return (
-                        <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-                          <div style={{ fontSize:8, fontFamily:mono, color:_C.accent, fontWeight:700 }}>{fmtCost(cost)}</div>
-                          <div style={{ width:"100%", height:h, borderRadius:6,
-                            background:`linear-gradient(180deg, ${_C.accent}, ${_C.accent}88)`,
+                        <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:6, maxWidth:48 }}>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.accent, fontWeight:700 }}>{fmtCost(cost)}</div>
+                          <div style={{ width:"100%", height:h, borderRadius:8,
+                            background:`linear-gradient(180deg, ${_C.accent}, ${_C.accent}55)`,
                             transition:"height .4s ease" }} />
-                          <div style={{ fontSize:8, fontFamily:mono, color:_C.muted }}>{day.replace(",","")}</div>
+                          <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{day.split(" ")[1]}</div>
                         </div>
                       );
                     })}
                   </div>
                 ) : (
-                  <div style={{ height:120, display:"flex", alignItems:"center", justifyContent:"center", color:_C.muted, fontSize:13, fontFamily:body }}>
+                  <div style={{ height:200, display:"flex", alignItems:"center", justifyContent:"center", color:_C.muted, fontSize:13, fontFamily:body }}>
                     More data needed for chart
                   </div>
                 )}
               </div>
 
-              {/* Token distribution donut */}
-              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, padding:"24px",
-                boxShadow:"0 2px 8px rgba(0,0,0,.03)", display:"flex", flexDirection:"column", alignItems:"center" }}>
-                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:20, alignSelf:"flex-start" }}>Token Distribution</div>
-                <div style={{ position:"relative", width:130, height:130, marginBottom:16 }}>
-                  <div style={{ width:130, height:130, borderRadius:"50%",
+              {/* Token donut */}
+              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, padding:"24px 28px",
+                boxShadow:_shadow, display:"flex", flexDirection:"column", alignItems:"center" }}>
+                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4, alignSelf:"flex-start" }}>Token Distribution</div>
+                <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginBottom:24, alignSelf:"flex-start" }}>Input vs output split</div>
+                <div style={{ position:"relative", width:150, height:150, marginBottom:20 }}>
+                  <div style={{ width:150, height:150, borderRadius:"50%",
                     background:`conic-gradient(${_C.accent} 0deg ${inputDeg}deg, ${_C.green} ${inputDeg}deg 360deg)` }} />
-                  <div style={{ position:"absolute", inset:28, borderRadius:"50%", background:_C.canvas,
+                  <div style={{ position:"absolute", inset:32, borderRadius:"50%", background:_C.canvas,
                     display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-                    <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:_C.text }}>{fmt(totals.input + totals.output)}</div>
-                    <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>Total</div>
+                    <div style={{ fontSize:22, fontWeight:800, fontFamily:head, color:_C.text }}>{inputPct}%</div>
+                    <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>Input</div>
                   </div>
                 </div>
-                <div style={{ display:"flex", gap:20 }}>
+                <div style={{ display:"flex", gap:24 }}>
                   {[
-                    { label:"Input", color:_C.accent, value:`${inputPct}%` },
-                    { label:"Output", color:_C.green, value:`${100-inputPct}%` },
+                    { label:"Input", color:_C.accent, value:fmt(totals.input) },
+                    { label:"Output", color:_C.green, value:fmt(totals.output) },
+                    { label:"Avg/Call", color:_C.amber, value:fmtCost(avgCost) },
                   ].map(d => (
                     <div key={d.label} style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <div style={{ width:10, height:10, borderRadius:3, background:d.color }} />
-                      <span style={{ fontSize:12, fontFamily:body, color:_C.textSoft }}>{d.label}</span>
-                      <span style={{ fontSize:11, fontFamily:mono, color:_C.muted, fontWeight:600 }}>{d.value}</span>
+                      <div style={{ width:10, height:10, borderRadius:"50%", background:d.color }} />
+                      <div>
+                        <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft }}>{d.label}</div>
+                        <div style={{ fontSize:12, fontFamily:mono, fontWeight:600, color:_C.text }}>{d.value}</div>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* ── Row 3: Recent calls table + Top users ── */}
-            <div style={{ display:"grid", gridTemplateColumns:"1.6fr 1fr", gap:16 }}>
+            {/* ── Row 3: Recent calls + Top users ── */}
+            <div style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:20 }}>
 
               {/* Recent calls */}
-              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, overflow:"hidden",
-                boxShadow:"0 2px 8px rgba(0,0,0,.03)" }}>
-                <div style={{ padding:"20px 24px 14px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, overflow:"hidden", boxShadow:_shadow }}>
+                <div style={{ padding:"20px 24px 16px" }}>
                   <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Recent Calls</div>
-                  {logs.length > 0 && (
-                    <button onClick={()=>{ if(confirm("Clear all API logs?")) { localStorage.setItem("b2br_api_logs","[]"); syncToCloud("api_logs",[]); }}}
-                      style={{ fontSize:10, fontFamily:mono, color:_C.red, background:`${_C.red}0A`, border:`1px solid ${_C.red}22`,
-                        padding:"4px 10px", borderRadius:6, cursor:"pointer" }}>Clear</button>
-                  )}
                 </div>
-                <div style={{ maxHeight:320, overflowY:"auto" }}>
-                  {[...logs].reverse().slice(0,50).map((l,i) => (
-                    <div key={l.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 24px",
-                      borderTop:i===0?"none":`1px solid ${_C.faint}` }}>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:12, fontFamily:body, color:_C.text,
-                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{l.action}</div>
+                {/* Table header */}
+                <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 80px 80px 70px", padding:"8px 24px",
+                  borderTop:`1px solid ${_C.border}`, borderBottom:`1px solid ${_C.border}`, background:_C.faint }}>
+                  {["Action","User","Input","Output","Cost"].map(h => (
+                    <div key={h} style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4,
+                      textAlign:h==="Action"||h==="User"?"left":"right" }}>{h}</div>
+                  ))}
+                </div>
+                <div style={{ maxHeight:340, overflowY:"auto" }}>
+                  {[...logs].reverse().slice(0,50).map((l) => (
+                    <div key={l.id} style={{ display:"grid", gridTemplateColumns:"2fr 1fr 80px 80px 70px",
+                      padding:"10px 24px", borderBottom:`1px solid ${_C.faint}`, alignItems:"center",
+                      transition:"background .15s" }}
+                      onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=_C.faint}
+                      onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="transparent"}>
+                      <div>
+                        <div style={{ fontSize:12, fontFamily:body, color:_C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{l.action}</div>
                         <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>
                           {new Date(l.timestamp).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
-                          {" · "}{(l.userEmail||"").split("@")[0]}
                         </div>
                       </div>
-                      <div style={{ textAlign:"right", flexShrink:0 }}>
-                        <div style={{ fontSize:12, fontFamily:mono, fontWeight:600, color:_C.red }}>{fmtCost(l.cost)}</div>
-                        <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>
-                          {fmt(l.inputTokens)}↑ {fmt(l.outputTokens)}↓
-                        </div>
-                      </div>
+                      <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft }}>{(l.userEmail||"").split("@")[0]}</div>
+                      <div style={{ textAlign:"right", fontSize:11, fontFamily:mono, color:_C.amber }}>{fmt(l.inputTokens)}</div>
+                      <div style={{ textAlign:"right", fontSize:11, fontFamily:mono, color:_C.green }}>{fmt(l.outputTokens)}</div>
+                      <div style={{ textAlign:"right", fontSize:11, fontFamily:mono, fontWeight:600, color:_C.text }}>{fmtCost(l.cost)}</div>
                     </div>
                   ))}
                   {logs.length === 0 && (
-                    <div style={{ padding:"40px 24px", textAlign:"center", color:_C.muted, fontFamily:body, fontSize:13 }}>No API calls logged yet</div>
+                    <div style={{ padding:"48px 24px", textAlign:"center", color:_C.muted, fontFamily:body, fontSize:13 }}>No API calls logged yet</div>
                   )}
                 </div>
               </div>
 
               {/* Top users */}
-              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, overflow:"hidden",
-                boxShadow:"0 2px 8px rgba(0,0,0,.03)" }}>
-                <div style={{ padding:"20px 24px 14px" }}>
+              <div style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`, overflow:"hidden", boxShadow:_shadow }}>
+                <div style={{ padding:"20px 24px 16px" }}>
                   <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Top Users</div>
+                  <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>Ranked by total spend</div>
                 </div>
-                <div style={{ maxHeight:320, overflowY:"auto" }}>
+                <div style={{ maxHeight:340, overflowY:"auto" }}>
                   {userEntries.map(([email, userLogs], i) => {
                     const userCost = userLogs.reduce((a,l) => a+l.cost, 0);
                     const costPct = totals.cost > 0 ? Math.round(userCost / totals.cost * 100) : 0;
                     return (
-                      <div key={email} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 24px",
-                        borderTop:i===0?"none":`1px solid ${_C.faint}` }}>
-                        <div style={{ width:40, height:40, borderRadius:12, background:iconBgs[i % 4],
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          fontSize:13, fontWeight:700, fontFamily:mono, color:iconColors[i % 4], flexShrink:0 }}>
-                          {email.charAt(0).toUpperCase()}
+                      <div key={email} style={{ padding:"14px 24px", borderTop:i===0?"none":`1px solid ${_C.faint}`,
+                        transition:"background .15s" }}
+                        onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=_C.faint}
+                        onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="transparent"}>
+                        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+                          <div style={{ width:44, height:44, borderRadius:12, background:uBgs[i % 4],
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            fontSize:14, fontWeight:700, fontFamily:mono, color:uColors[i % 4], flexShrink:0 }}>
+                            {email.charAt(0).toUpperCase()}
+                          </div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:14, fontFamily:head, fontWeight:600, color:_C.text,
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{email.split("@")[0]}</div>
+                            <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{userLogs.length} calls</div>
+                          </div>
+                          <div style={{ textAlign:"right", flexShrink:0 }}>
+                            <div style={{ fontSize:14, fontFamily:head, fontWeight:700, color:_C.text }}>{fmtCost(userCost)}</div>
+                            <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{costPct}%</div>
+                          </div>
                         </div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.text,
-                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{email.split("@")[0]}</div>
-                          <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{userLogs.length} calls · {costPct}% of total</div>
-                        </div>
-                        <div style={{ textAlign:"right", flexShrink:0 }}>
-                          <div style={{ fontSize:14, fontFamily:head, fontWeight:700, color:_C.text }}>{fmtCost(userCost)}</div>
+                        {/* Progress bar */}
+                        <div style={{ height:4, borderRadius:2, background:_C.faint, overflow:"hidden" }}>
+                          <div style={{ height:"100%", borderRadius:2, width:`${costPct}%`, background:uColors[i % 4], transition:"width .4s ease" }} />
                         </div>
                       </div>
                     );
                   })}
                   {userEntries.length === 0 && (
-                    <div style={{ padding:"40px 24px", textAlign:"center", color:_C.muted, fontFamily:body, fontSize:13 }}>No users yet</div>
+                    <div style={{ padding:"48px 24px", textAlign:"center", color:_C.muted, fontFamily:body, fontSize:13 }}>No users yet</div>
                   )}
                 </div>
               </div>
@@ -8445,8 +8454,6 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           </div>
         );
       })()}
-        </div>
-      )}
 
     </div>
   );
@@ -9354,15 +9361,16 @@ Raw JSON only.`, "", 1400);
                     <div style={{ padding:"4px 0 4px 20px", marginBottom:4 }}>
                       {(icps as any[]).map((icp: any, i: number) => {
                         const isOn = editingId === icp.id;
+                        const dotColor = icp.approval === "approved" || icp.approval === "finalized" ? C2.green : C2.muted;
                         return (
                           <button key={icp.id} onClick={()=>setEditingId(icp.id)}
                             style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"7px 12px",
                               borderRadius:8, border:"none",
-                              background: isOn ? `${icp.color}14` : "transparent",
+                              background: isOn ? `${C2.accent}14` : "transparent",
                               cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
                             onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                            onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=isOn?`${icp.color}14`:"transparent"; }}>
-                            <div style={{ width:6, height:6, borderRadius:3, background:icp.color, flexShrink:0 }} />
+                            onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=isOn?`${C2.accent}14`:"transparent"; }}>
+                            <div style={{ width:6, height:6, borderRadius:3, background:dotColor, flexShrink:0 }} />
                             <span style={{ fontSize:12, fontFamily:head, fontWeight:isOn?600:400, color:isOn?C2.text:C2.textSoft,
                               overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                               {icp.name || `ICP ${i+1}`}
