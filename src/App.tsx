@@ -5048,6 +5048,29 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
     onOffersChange([...offers, EMPTY_OFFER(selectedProductId, tier)]);
   };
 
+  const [aiSingleTier, setAiSingleTier] = useState<string|null>(null);
+  const aiGenerateSingle = async (tier: string) => {
+    if (!selectedProduct) return;
+    setAiSingleTier(tier);
+    try {
+      const tierObj = OFFER_TIERS.find(t => t.id === tier);
+      const result = await callAI(
+        `Generate a ${tierObj?.label || tier} offer for cold B2B outreach.\n\nProduct: ${selectedProduct.name}\nDescription: ${selectedProduct.description || ""}\nProblems: ${selectedProduct.problemsSolved || ""}\nCompany: ${(companyData as any)?.co_name || ""}\nTier: ${tier} — ${tierObj?.desc || ""}\n\nProvide:\n- name: short offer name\n- ctaText: exact CTA for emails\n- whatTheyGet: what prospect receives\n- frictionReduction: why it's easy to say yes\n\nReturn ONLY valid JSON: {name,ctaText,whatTheyGet,frictionReduction}`,
+        "Return only valid JSON.", 400
+      );
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      const existing = getOffer(tier);
+      if (existing) {
+        updOffer(existing.id, { name: parsed.name||"", ctaText: parsed.ctaText||"", whatTheyGet: parsed.whatTheyGet||"", frictionReduction: parsed.frictionReduction||"" });
+      } else {
+        const newOffer = { ...EMPTY_OFFER(selectedProductId!, tier), name: parsed.name||"", ctaText: parsed.ctaText||"", whatTheyGet: parsed.whatTheyGet||"", frictionReduction: parsed.frictionReduction||"" };
+        onOffersChange([...offers, newOffer]);
+      }
+    } catch (e) { console.error("AI single offer failed:", e); }
+    setAiSingleTier(null);
+  };
+
   const aiGenerateOffers = async (productId: string) => {
     const product = products.find(p => p.id === productId);
     if (!product) return;
@@ -5140,7 +5163,12 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
                   <div style={{ padding:"16px 20px 12px" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
                       <div style={{ width:8, height:8, borderRadius:4, background:tier.color }} />
-                      <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>{tier.label}</span>
+                      <span style={{ flex:1, fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>{tier.label}</span>
+                      <button onClick={()=>aiGenerateSingle(tier.id)} disabled={aiSingleTier===tier.id}
+                        style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${tier.color}33`,
+                          background:`${tier.color}11`, color:tier.color, fontSize:9, fontFamily:head, fontWeight:700,
+                          cursor:aiSingleTier===tier.id?"wait":"pointer", opacity:aiSingleTier===tier.id?0.5:1 }}>
+                        {aiSingleTier===tier.id ? "◌" : "◎ AI"}</button>
                     </div>
                     <div style={{ fontSize:11, color:_C.muted, fontFamily:body, lineHeight:1.4 }}>{tier.desc}</div>
                   </div>
