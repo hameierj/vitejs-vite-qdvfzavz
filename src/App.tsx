@@ -1299,7 +1299,7 @@ function exportFullPDF(companyData: any, icps: any[], clientName: string) {
 
   // Table of contents
   html += `<div class="section-title">Table of Contents</div><div class="toc">`;
-  html += `<div class="toc-item"><span class="label">Client Profile</span><span class="dots"></span></div>`;
+  html += `<div class="toc-item"><span class="label">Company Profile</span><span class="dots"></span></div>`;
   for (const icp of icps) {
     html += `<div class="toc-item"><span class="label">${esc(icp.name||"Unnamed ICP")}</span><span class="dots"></span><span class="badge ${icp.approval==="finalized"?"badge-purple":icp.approval==="approved"?"badge-green":"badge-amber"}">${icp.approval==="finalized"?"Finalized":icp.approval==="approved"?"Approved":"Draft"}</span></div>`;
     if (icp.outputs) {
@@ -1310,8 +1310,8 @@ function exportFullPDF(companyData: any, icps: any[], clientName: string) {
   }
   html += `</div><div class="page-break"></div>`;
 
-  // Client Profile
-  html += `<div class="section-title">Client Profile</div><div class="section-subtitle">Company details and campaign configuration</div>`;
+  // Company Profile
+  html += `<div class="section-title">Company Profile</div><div class="section-subtitle">Company details and campaign configuration</div>`;
   for (const sec of Object.values(COMPANY_SECTIONS) as any[]) {
     const filledFields = sec.fields.filter((f:any) => companyData?.[f.id]);
     if (!filledFields.length) continue;
@@ -10422,7 +10422,7 @@ Raw JSON only.`, "", 1400);
   const navItems = currentRole === "client"
     ? [{ id:"icps", label:"Personas", sub:`${icpsWithOutputs} of ${icps.length} ready` }]
     : [
-        { id:"company", label:"Client Profile",  sub:`${companyPct}% complete`                         },
+        { id:"company", label:"Company Profile",  sub:`${companyPct}% complete`                         },
         { id:"icps",    label:"Personas",     sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
       ];
 
@@ -10522,7 +10522,7 @@ Raw JSON only.`, "", 1400);
           const wsNavItems = currentRole === "client"
             ? [{ id:"icps", label:"Personas", icon:"◑", sub:`${icpsWithOutputs} ready` }]
             : [
-                { id:"company",  label:"Client Profile",      icon:"◉", sub:`${companyPct}% complete` },
+                { id:"company",  label:"Company Profile",      icon:"◉", sub:`${companyPct}% complete` },
                 { id:"products", label:"Products & Services", icon:"◆", sub:`${products.length} product${products.length!==1?"s":""}` },
                 { id:"offers",   label:"Offers",             icon:"◇", sub:`${offers.length} offer${offers.length!==1?"s":""}` },
                 { id:"icps",     label:"Personas",       icon:"◑", sub:`${icps.length} persona${icps.length!==1?"s":""}` },
@@ -10629,7 +10629,7 @@ Raw JSON only.`, "", 1400);
                   <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5,
                     padding:"0 14px", marginBottom:8, textTransform:"uppercase" as const }}>WORKSPACE</div>
 
-                  {/* Client Profile */}
+                  {/* Company Profile */}
                   {currentRole !== "client" && (
                     <button onClick={()=>guardedNav(()=>setView("company"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
@@ -10639,7 +10639,7 @@ Raw JSON only.`, "", 1400);
                       onMouseEnter={e=>{ if(view!=="company")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                       onMouseLeave={e=>{ if(view!=="company")(e.currentTarget as HTMLButtonElement).style.background=view==="company"?`${C2.accent}14`:"transparent"; }}>
                       <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="company"?C2.accent:C2.muted }}>◉</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="company"?700:500, color:view==="company"?C2.text:C2.textSoft }}>Client Profile</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="company"?700:500, color:view==="company"?C2.text:C2.textSoft }}>Company Profile</span>
                     </button>
                   )}
 
@@ -11287,7 +11287,7 @@ Raw JSON only.`, "", 1400);
 
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:12, marginBottom:28 }}>
                   {[
-                    { label:"Client Profile", value:`${companyPct}%`, sub:"complete", color:companyPct===100?C.green:companyPct>50?C.amber:C.muted, action:()=>setView("company") },
+                    { label:"Company Profile", value:`${companyPct}%`, sub:"complete", color:companyPct===100?C.green:companyPct>50?C.amber:C.muted, action:()=>setView("company") },
                     { label:"Personas", value:String(icps.length), sub:`profile${icps.length!==1?"s":""}`, color:C.accent, action:()=>setView("icps") },
                     { label:"Outputs Ready", value:String(icps.filter(i=>i.outputs).length), sub:`of ${icps.length}`, color:icps.filter(i=>i.outputs).length>0?C.green:C.muted, action:()=>setView("icps") },
                     { label:"Files", value:String(wsFiles.length), sub:`uploaded`, color:C.accent, action:()=>setView("files") },
@@ -11314,7 +11314,7 @@ Raw JSON only.`, "", 1400);
                     transition:"all .15s" }}
                     onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
                     onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.canvas}>
-                    Edit Client Profile
+                    Edit Company Profile
                   </button>
                   <button onClick={()=>setView("icps")} style={{ padding:"10px 18px", borderRadius:8, border:`1px solid ${C.border}`,
                     background:C.canvas, color:C.text, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer",
@@ -11345,7 +11345,7 @@ Raw JSON only.`, "", 1400);
               <div style={{ position:"absolute" as const, inset:0, textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ padding:"20px 0 16px", flexShrink:0 }}>
-                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Client Profile</h2>
+                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Company Profile</h2>
                   <p style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.5, margin:"0 0 14px" }}>
                     Fill this once. Every ICP inherits this context when AI auto-drafts their profile.
                   </p>
@@ -11373,7 +11373,7 @@ Raw JSON only.`, "", 1400);
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ padding:"16px 0 12px", flexShrink:0 }}>
                   <div style={{ marginBottom:6 }}>
-                    <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:0, textAlign:"left" }}>Client Profile</h2>
+                    <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:0, textAlign:"left" }}>Company Profile</h2>
                   </div>
                   <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, lineHeight:1.5, margin:"0 0 10px" }}>
                     Fill this once. Every ICP inherits this context when AI auto-drafts their profile.
