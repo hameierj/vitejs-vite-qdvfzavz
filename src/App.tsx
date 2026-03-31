@@ -310,6 +310,33 @@ const ICP_SECTIONS = {
       { id:"seq_cta_style",label:"CTA Variation",               type:"select",   opts:["Same CTA style throughout","Varied CTAs per email","Escalating commitment"], noConf:true },
     ]
   },
+  competitorIntel: { label:"Competitor Intel", icon:"⊘",
+    fields:[
+      { id:"current_solutions",      label:"What They Currently Use",           type:"textarea", ph:"Salesforce + manual spreadsheets, incumbent vendor X, in-house solution…", rows:3, hint:"The tools/vendors this persona uses today that you'd replace" },
+      { id:"incumbent_strengths",    label:"Why They Stay With the Incumbent",  type:"textarea", ph:"Familiarity, sunk cost, integration with other tools, risk aversion…", rows:2, hint:"Understanding this helps craft displacement messaging" },
+      { id:"switching_triggers",     label:"Switching Triggers",                type:"textarea", ph:"Contract renewal, price increase, key feature missing, new leadership, compliance requirement…", rows:3, hint:"Events that make them willing to evaluate alternatives" },
+      { id:"displacement_messaging", label:"Displacement Messaging",           type:"textarea", ph:"How to position against their current tool — not bashing, but highlighting gaps they feel.", rows:3, hint:"'If you're using X, you're probably dealing with Y problem. We solve that by…'" },
+      { id:"win_loss_patterns",      label:"Win/Loss Patterns",                type:"textarea", ph:"We win when: they need speed. We lose when: they want enterprise compliance.", rows:2, hint:"Why have past deals been won or lost against this competitor?" },
+    ]
+  },
+  channelBehavior: { label:"Channel Behavior", icon:"⊕",
+    fields:[
+      { id:"best_channel",        label:"Best Outreach Channel",    type:"select",   opts:["Email","LinkedIn","Phone","Multi-channel (Email + LinkedIn)","Multi-channel (All)"], noConf:true },
+      { id:"best_time",           label:"Best Time to Reach",       type:"text",     ph:"Tuesday-Thursday 9-11am EST",                       hint:"Industry-specific — construction = early morning, SaaS = mid-morning" },
+      { id:"linkedin_activity",   label:"LinkedIn Activity Level",  type:"select",   opts:["Very Active (posts/comments weekly)","Moderate (engages occasionally)","Low (profile exists, rarely active)","Inactive / No profile"], noConf:true },
+      { id:"phone_accessibility", label:"Phone Accessibility",      type:"select",   opts:["Direct dial available","Mobile available","Gatekeeper (assistant)","Voicemail only","Not available / don't call"], noConf:true },
+      { id:"email_preference",    label:"Email Response Pattern",   type:"select",   opts:["Responds to short punchy emails","Prefers detailed/professional","Responds to personalization","Responds to data/stats","Mobile reader (keep very short)"], noConf:true },
+    ]
+  },
+  leadScoring: { label:"Lead Scoring", icon:"⊛",
+    fields:[
+      { id:"interested_criteria",     label:"Interested Reply",       type:"textarea", ph:"Asked a question, requested more info, said 'tell me more', forwarded to colleague…", rows:2, hint:"What does a positive signal look like for this persona?" },
+      { id:"warm_criteria",           label:"Warm Lead",              type:"textarea", ph:"Replied positively + matches ICP + has budget authority signals.", rows:2, hint:"Ready for a sales conversation but hasn't committed to a meeting" },
+      { id:"meeting_ready_criteria",  label:"Meeting-Ready",          type:"textarea", ph:"Expressed clear interest in next steps, asked about pricing/timeline, agreed to a call.", rows:2, hint:"Hand off to sales immediately" },
+      { id:"not_now_criteria",        label:"Not Now (Nurture)",      type:"textarea", ph:"Interested but timing is wrong — 'reach out in Q3', 'renewing current contract in 6 months'.", rows:2, hint:"Add to nurture sequence, follow up later" },
+      { id:"dead_criteria",           label:"Dead / Disqualified",    type:"textarea", ph:"Wrong person, no budget ever, competitor employee, explicit unsubscribe.", rows:2, hint:"Remove from outreach permanently" },
+    ]
+  },
 };
 
 const ALL_ICP_FIELDS = Object.values(ICP_SECTIONS).flatMap(s => s.fields);
@@ -632,7 +659,8 @@ function scoreWithAI(f: any, v: any): Promise<number> {
 
 function newICP(idx, data = {}, name = "", confidence = {}) {
   return { id:uid(), color:ICP_COLORS[idx%ICP_COLORS.length], name, data, outputs:null,
-           approval:"draft", sectionApprovals:{}, comments:[], confidence };
+           approval:"draft", sectionApprovals:{}, comments:[], confidence,
+           linkedProductIds:[] as string[], linkedOfferIds:[] as string[] };
 }
 
 function fieldFilled(f, val) {
@@ -3186,7 +3214,7 @@ function IntelligencePanel({ result, date, onClose }: { result:string; date:stri
 }
 
 // ─── ICP EDITOR MODAL ─────────────────────────────────────────────────────────
-function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast, inline = false, fileContext = "", v2 = false }) {
+function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateToast, inline = false, fileContext = "", v2 = false, products = [] as any[], offers = [] as any[] }) {
   const _C = v2 ? C2 : C; // Theme colors for this component
   const [data,           setData]          = useState({ ...icp.data });
   const [localConf,      setLocalConf]     = useState<any>({ ...(icp.confidence ?? {}) });
@@ -3936,6 +3964,55 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     This ICP is finalized as source of truth. Unlock to make changes.
                   </div>
                 )}
+                {/* Linked Products & Offers */}
+                {secTab === Object.keys(ICP_SECTIONS)[0] && products.length > 0 && (
+                  <div style={{ padding:"12px 16px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, marginBottom:4 }}>
+                    <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:8 }}>Linked Products & Offers</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                      {products.map((p: any) => {
+                        const linked = (icp.linkedProductIds || []).includes(p.id);
+                        return (
+                          <button key={p.id} onClick={()=>{
+                            const ids = icp.linkedProductIds || [];
+                            const next = linked ? ids.filter((x:string)=>x!==p.id) : [...ids, p.id];
+                            onUpdate({ ...icp, linkedProductIds: next });
+                          }}
+                            style={{ padding:"5px 12px", borderRadius:8, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer",
+                              border:`1.5px solid ${linked?_C.accent+"55":_C.border}`,
+                              background:linked?`${_C.accent}12`:"transparent",
+                              color:linked?_C.accent:_C.muted, transition:"all .15s" }}>
+                            {linked?"✓ ":""}{p.name || "Unnamed"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(icp.linkedProductIds || []).length > 0 && offers.length > 0 && (
+                      <div style={{ marginTop:8 }}>
+                        <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:6 }}>PREFERRED OFFER TIERS</div>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                          {offers.filter((o:any) => (icp.linkedProductIds||[]).includes(o.productId)).map((o:any) => {
+                            const tier = OFFER_TIERS.find(t=>t.id===o.tier);
+                            const linked = (icp.linkedOfferIds || []).includes(o.id);
+                            return (
+                              <button key={o.id} onClick={()=>{
+                                const ids = icp.linkedOfferIds || [];
+                                const next = linked ? ids.filter((x:string)=>x!==o.id) : [...ids, o.id];
+                                onUpdate({ ...icp, linkedOfferIds: next });
+                              }}
+                                style={{ padding:"4px 10px", borderRadius:6, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer",
+                                  border:`1.5px solid ${linked?tier?.color+"55":_C.border}`,
+                                  background:linked?tier?.bg||"transparent":"transparent",
+                                  color:linked?tier?.color||_C.text:_C.muted, transition:"all .15s" }}>
+                                {linked?"✓ ":""}{o.name || `${tier?.label} — ${products.find((p:any)=>p.id===o.productId)?.name||"?"}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
                   <div style={{ fontSize:13, fontWeight:600, color:_C.text, fontFamily:head }}>{sec.label}</div>
                   <span style={{ fontSize:11, color:_C.muted, fontFamily:mono }}>{secFill}/{sec.fields.length} filled</span>
@@ -9598,10 +9675,10 @@ Raw JSON only.`, "", 1400);
   };
 
   const navItems = currentRole === "client"
-    ? [{ id:"icps", label:"ICP Profiles", sub:`${icpsWithOutputs} of ${icps.length} ready` }]
+    ? [{ id:"icps", label:"Personas", sub:`${icpsWithOutputs} of ${icps.length} ready` }]
     : [
         { id:"company", label:"Client Profile",  sub:`${companyPct}% complete`                         },
-        { id:"icps",    label:"ICP Profiles",     sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
+        { id:"icps",    label:"Personas",     sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
       ];
 
   if (!loggedInUser) return <UserLoginGate onLogin={handleUserLogin} />;
@@ -9698,12 +9775,12 @@ Raw JSON only.`, "", 1400);
             currentRole !== "team" || !loggedInUser || loadClients().find(x=>x.id===c.id)
           ));
           const wsNavItems = currentRole === "client"
-            ? [{ id:"icps", label:"ICP Profiles", icon:"◑", sub:`${icpsWithOutputs} ready` }]
+            ? [{ id:"icps", label:"Personas", icon:"◑", sub:`${icpsWithOutputs} ready` }]
             : [
                 { id:"company",  label:"Client Profile",      icon:"◉", sub:`${companyPct}% complete` },
                 { id:"products", label:"Products & Services", icon:"◆", sub:`${products.length} product${products.length!==1?"s":""}` },
                 { id:"offers",   label:"Offers",             icon:"◇", sub:`${offers.length} offer${offers.length!==1?"s":""}` },
-                { id:"icps",     label:"ICP Profiles",       icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
+                { id:"icps",     label:"Personas",       icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
                 { id:"analytics",label:"Analytics",          icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
                 { id:"files",    label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
               ];
@@ -9856,7 +9933,7 @@ Raw JSON only.`, "", 1400);
                     onMouseEnter={e=>{ if(view!=="icps")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                     onMouseLeave={e=>{ if(view!=="icps")(e.currentTarget as HTMLButtonElement).style.background=view==="icps"?`${C2.accent}14`:"transparent"; }}>
                     <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="icps"?C2.accent:C2.muted }}>◑</span>
-                    <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="icps"?700:500, color:view==="icps"?C2.text:C2.textSoft }}>ICP Profiles</span>
+                    <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="icps"?700:500, color:view==="icps"?C2.text:C2.textSoft }}>Personas</span>
                     {icps.length > 0 && <span style={{ fontSize:10, fontFamily:mono, color:C2.muted, marginLeft:"auto" }}>{icps.length}</span>}
                   </button>
                   {/* ICP sub-items when on ICP page */}
@@ -10436,7 +10513,7 @@ Raw JSON only.`, "", 1400);
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:12, marginBottom:28 }}>
                   {[
                     { label:"Client Profile", value:`${companyPct}%`, sub:"complete", color:companyPct===100?C.green:companyPct>50?C.amber:C.muted, action:()=>setView("company") },
-                    { label:"ICP Profiles", value:String(icps.length), sub:`profile${icps.length!==1?"s":""}`, color:C.accent, action:()=>setView("icps") },
+                    { label:"Personas", value:String(icps.length), sub:`profile${icps.length!==1?"s":""}`, color:C.accent, action:()=>setView("icps") },
                     { label:"Outputs Ready", value:String(icps.filter(i=>i.outputs).length), sub:`of ${icps.length}`, color:icps.filter(i=>i.outputs).length>0?C.green:C.muted, action:()=>setView("icps") },
                     { label:"Files", value:String(wsFiles.length), sub:`uploaded`, color:C.accent, action:()=>setView("files") },
                   ].map(c => (
@@ -10602,7 +10679,8 @@ Raw JSON only.`, "", 1400);
                       <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                         <ICPEditorModal key={editingICP.id} inline={true} icp={editingICP} companyData={companyData}
                           onUpdate={updateICP} onClose={()=>setEditingId(null)}
-                          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2} />
+                          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2}
+                          products={products} offers={offers} />
                       </div>
                     </div>
                   );
@@ -10632,7 +10710,7 @@ Raw JSON only.`, "", 1400);
 
                 {/* ── Page Header ── */}
                 <div style={{ padding:"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${C.border}` }}>
-                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>ICP Profiles</h2>
+                  <h2 style={{ fontSize:20, fontWeight:700, color:C.text, fontFamily:head, margin:"0 0 5px" }}>Personas</h2>
                   <p style={{ fontSize:12, color:C.textSoft, fontFamily:body, margin:0, lineHeight:1.5 }}>
                     Define target segments, personas, pains, and messaging strategies
                   </p>
@@ -10909,7 +10987,8 @@ Raw JSON only.`, "", 1400);
                   {editingICP ? (
                     <ICPEditorModal key={editingICP.id} inline={true} icp={editingICP} companyData={companyData}
                       onUpdate={updateICP} onClose={()=>setEditingId(null)}
-                      addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2} />
+                      addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2}
+                      products={products} offers={offers} />
                   ) : (
                     <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
                       <div style={{ textAlign:"center", animation:"fadeIn .3s ease" }}>
@@ -11024,7 +11103,8 @@ Raw JSON only.`, "", 1400);
 
       {editingICP && view !== "icps" && (
         <ICPEditorModal key={editingICP.id} icp={editingICP} companyData={companyData} onUpdate={updateICP} onClose={()=>setEditingId(null)}
-          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2} />
+          addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={useV2}
+          products={products} offers={offers} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles} />}
 
