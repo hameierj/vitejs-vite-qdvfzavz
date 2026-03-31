@@ -225,6 +225,31 @@ const COMPANY_SECTIONS = {
 };
 const COMPANY_FIELDS = Object.values(COMPANY_SECTIONS).flatMap(s => s.fields);
 
+// ─── PRODUCTS & SERVICES ─────────────────────────────────────────────────────
+const PRODUCT_SECTIONS = {
+  core: { label:"Core Details", fields:[
+    { id:"name",              label:"Product / Service Name",   type:"text",     ph:"",                                                   required:true, noConf:true },
+    { id:"description",       label:"Description",              type:"textarea", ph:"What is it and how does it work?",                    rows:3 },
+    { id:"category",          label:"Category",                 type:"select",   opts:["Software","Platform","Service","Hardware","Consulting","Marketplace","Other"], noConf:true },
+    { id:"problemsSolved",    label:"Problems It Solves",       type:"textarea", ph:"What specific pain points does this address? Be concrete — not 'saves time' but 'eliminates 8hrs/week of manual data entry'.", rows:4, hint:"The more specific, the better the outreach copy" },
+    { id:"valueProposition",  label:"Value Proposition",        type:"textarea", ph:"Why should someone buy this instead of alternatives?", rows:3, hint:"The core promise — must be differentiated" },
+  ]},
+  market: { label:"Market Fit", fields:[
+    { id:"idealCustomer",     label:"Ideal Customer",           type:"textarea", ph:"What type of company/person is the perfect buyer?",   rows:3, hint:"Industry, size, role, situation" },
+    { id:"pricingRange",      label:"Pricing / Deal Size",      type:"text",     ph:"$5K-$25K per year",                                  hint:"Range is fine — helps size campaign benchmarks" },
+    { id:"dealCycle",         label:"Typical Sales Cycle",      type:"select",   opts:["<1 week","1-4 weeks","1-3 months","3-6 months","6+ months"], noConf:true },
+    { id:"competitors",       label:"Competitive Alternatives", type:"textarea", ph:"Who do prospects compare you to? Include the status quo (doing nothing).", rows:3, hint:"Both direct competitors and 'we'll just keep doing it manually'" },
+    { id:"switchTriggers",    label:"What Makes Them Switch",   type:"textarea", ph:"What events or frustrations cause them to look for a new solution?", rows:2 },
+  ]},
+  proof: { label:"Proof & Evidence", fields:[
+    { id:"proofPoints",       label:"Best Proof Points",        type:"textarea", ph:"'3x pipeline in 90 days for Acme Corp' — specific results, stats, logos.", rows:3, hint:"One strong proof > five vague claims" },
+    { id:"caseStudies",       label:"Case Studies",             type:"textarea", ph:"Customer name, problem they had, what you did, result achieved.",  rows:4, hint:"Story format: situation → solution → result" },
+    { id:"socialProof",       label:"Social Proof",             type:"textarea", ph:"G2 rating, awards, press mentions, number of customers.",  rows:2 },
+  ]},
+};
+const PRODUCT_FIELDS = Object.values(PRODUCT_SECTIONS).flatMap(s => s.fields);
+const EMPTY_PRODUCT = () => ({ id:uid(), ...Object.fromEntries(PRODUCT_FIELDS.map(f=>[f.id,""])), createdAt:new Date().toISOString() });
+
 const ICP_SECTIONS = {
   targeting: { label:"Targeting", icon:"◎",
     fields:[
@@ -4644,6 +4669,258 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
   );
 }
 
+// ─── PRODUCTS & SERVICES PAGE ─────────────────────────────────────────────────
+function ProductsPage({ products, onProductsChange, companyData, fileContext = "", v2 = false }: {
+  products: any[]; onProductsChange: (p: any[]) => void; companyData: any; fileContext?: string; v2?: boolean;
+}) {
+  const _C = v2 ? C2 : C;
+  const [selectedId, setSelectedId] = useState<string|null>(products[0]?.id ?? null);
+  const [secTab, setSecTab] = useState("core");
+  const [aiOn, setAiOn] = useState<string|null>(null);
+  const [aiExtracting, setAiExtracting] = useState(false);
+
+  const selected = products.find(p => p.id === selectedId) || null;
+  const secKeys = Object.keys(PRODUCT_SECTIONS);
+
+  const updProduct = (id: string, patch: any) => {
+    onProductsChange(products.map(p => p.id === id ? { ...p, ...patch } : p));
+  };
+  const addProduct = () => {
+    const p = EMPTY_PRODUCT();
+    onProductsChange([...products, p]);
+    setSelectedId(p.id);
+    setSecTab("core");
+  };
+  const deleteProduct = (id: string) => {
+    if (!confirm("Delete this product?")) return;
+    onProductsChange(products.filter(p => p.id !== id));
+    if (selectedId === id) setSelectedId(products.filter(p => p.id !== id)[0]?.id ?? null);
+  };
+
+  const aiExtractAll = async () => {
+    setAiExtracting(true);
+    try {
+      const ctx = JSON.stringify(companyData);
+      const result = await callAI(
+        `Analyze this company's profile and identify ALL distinct products and services they offer. For EACH product, provide:\n- name: product/service name\n- description: what it is and how it works\n- category: Software|Platform|Service|Hardware|Consulting|Other\n- problemsSolved: specific problems it addresses\n- valueProposition: why buy this vs alternatives\n- idealCustomer: who is the perfect buyer\n- pricingRange: approximate deal size\n- competitors: competitive alternatives\n- proofPoints: best evidence it works\n\nCompany context:\n${ctx}${fileContext ? `\n\nFiles:\n${fileContext}` : ""}\n\nReturn ONLY a valid JSON array of objects. No markdown.`,
+        "You are a B2B product analyst. Return only valid JSON.", 2000
+      );
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const newProducts = parsed.map((p: any) => ({
+          ...EMPTY_PRODUCT(),
+          name: p.name || "",
+          description: p.description || "",
+          category: p.category || "Other",
+          problemsSolved: p.problemsSolved || "",
+          valueProposition: p.valueProposition || "",
+          idealCustomer: p.idealCustomer || "",
+          pricingRange: p.pricingRange || "",
+          competitors: p.competitors || "",
+          proofPoints: p.proofPoints || "",
+          caseStudies: p.caseStudies || "",
+          socialProof: p.socialProof || "",
+          switchTriggers: p.switchTriggers || "",
+        }));
+        onProductsChange([...products, ...newProducts]);
+        setSelectedId(newProducts[0].id);
+      }
+    } catch (e) { console.error("AI extract failed:", e); }
+    setAiExtracting(false);
+  };
+
+  const aiField = async (f: any) => {
+    if (!selected) return;
+    setAiOn(f.id);
+    try {
+      const result = await callAI(
+        `Fill this product field.\nProduct: ${selected.name || "unnamed"}\nAll product data: ${JSON.stringify(selected)}\nCompany context: ${JSON.stringify(companyData)}\nField: "${f.label}"\nHint: ${f.ph || ""}\n${fileContext ? `Files:\n${fileContext}` : ""}\nReturn ONLY the field value, no explanation.`,
+        "", 400
+      );
+      updProduct(selected.id, { [f.id]: result.trim() });
+    } catch {}
+    setAiOn(null);
+  };
+
+  const sec = PRODUCT_SECTIONS[secTab as keyof typeof PRODUCT_SECTIONS];
+  const filled = selected ? PRODUCT_FIELDS.filter(f => selected[f.id] && String(selected[f.id]).trim()).length : 0;
+  const pct = PRODUCT_FIELDS.length > 0 ? Math.round(filled / PRODUCT_FIELDS.length * 100) : 0;
+
+  const inputSt: any = { padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+    background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none",
+    width:"100%", transition:"border-color .15s", resize:"vertical" as const };
+
+  return (
+    <div style={{ display:"flex", height:"100%", overflow:"hidden" }}>
+      {/* Product list sidebar */}
+      <div style={{ width:240, flexShrink:0, display:"flex", flexDirection:"column",
+        borderRight:`1px solid ${_C.border}`, background:v2?_C.faint:_C.surface, overflow:"hidden" }}>
+        <div style={{ padding:"12px", flexShrink:0, display:"flex", gap:6 }}>
+          <button onClick={addProduct}
+            style={{ flex:1, padding:"9px 14px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+              fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
+            + Add Product
+          </button>
+          <button onClick={aiExtractAll} disabled={aiExtracting}
+            style={{ padding:"9px 12px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
+              color:_C.green, fontSize:11, fontFamily:head, fontWeight:700, cursor:aiExtracting?"wait":"pointer",
+              opacity:aiExtracting?0.6:1 }}>
+            {aiExtracting ? "◌" : "◎"} AI
+          </button>
+        </div>
+        <div style={{ flex:1, overflowY:"auto", padding:"0 8px 8px" }}>
+          {products.length === 0 && (
+            <div style={{ padding:"32px 12px", textAlign:"center" }}>
+              <div style={{ fontSize:22, marginBottom:8, opacity:.3 }}>◆</div>
+              <div style={{ fontSize:12, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:4 }}>No products yet</div>
+              <div style={{ fontSize:11, color:_C.muted, fontFamily:body, lineHeight:1.5 }}>Add your first product or use AI to extract from company info.</div>
+            </div>
+          )}
+          {products.map((p, i) => {
+            const isOn = selectedId === p.id;
+            const pFilled = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
+            const pPct = Math.round(pFilled / PRODUCT_FIELDS.length * 100);
+            return (
+              <div key={p.id} onClick={()=>setSelectedId(p.id)}
+                style={{ padding:"10px 12px", borderRadius:10, marginBottom:4, cursor:"pointer",
+                  border:`2px solid ${isOn?_C.accent+"44":_C.border}`,
+                  background: isOn ? `${_C.accent}08` : _C.canvas,
+                  boxShadow: isOn ? `0 2px 8px ${_C.accent}11` : "none",
+                  transition:"all .2s" }}
+                onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=_C.canvas; }}
+                onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background="transparent"; }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                  <div style={{ fontSize:13, fontWeight:isOn?700:500, fontFamily:head, color:isOn?_C.text:_C.textSoft,
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1 }}>
+                    {p.name || `Product ${i+1}`}
+                  </div>
+                  <button onClick={e=>{e.stopPropagation(); deleteProduct(p.id);}}
+                    style={{ width:20, height:20, borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent",
+                      color:_C.muted, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                      opacity:isOn?1:0, transition:"opacity .15s" }}
+                    onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;}}
+                    onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;}}>×</button>
+                </div>
+                <div style={{ height:3, borderRadius:2, background:_C.faint, overflow:"hidden" }}>
+                  <div style={{ height:"100%", borderRadius:2, width:`${pPct}%`, background:pPct===100?_C.green:_C.accent, transition:"width .3s ease" }} />
+                </div>
+                <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginTop:4 }}>{pPct}% complete</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Editor */}
+      {selected ? (
+        <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
+          {/* Section nav */}
+          <div style={{ width:180, flexShrink:0, background:v2?_C.faint:_C.surface, borderRight:`1px solid ${_C.border}`,
+            padding:"16px 8px", overflowY:"auto" }}>
+            {secKeys.map(key => {
+              const s = PRODUCT_SECTIONS[key as keyof typeof PRODUCT_SECTIONS];
+              const sf = s.fields.filter(f => selected[f.id] && String(selected[f.id]).trim()).length;
+              const on = secTab === key;
+              const allDone = sf === s.fields.length;
+              return (
+                <button key={key} onClick={()=>setSecTab(key)}
+                  style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px",
+                    borderRadius:10, border:"none", whiteSpace:"nowrap",
+                    background: on ? `${_C.accent}14` : "transparent",
+                    cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:3 }}
+                  onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=_C.canvas; }}
+                  onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=on?`${_C.accent}14`:"transparent"; }}>
+                  <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight:on?700:500, color:on?_C.text:_C.textSoft }}>{s.label}</span>
+                  <span style={{ fontSize:10, fontFamily:mono, fontWeight:600,
+                    color:allDone?_C.green:on?_C.accent:_C.muted,
+                    background:allDone?_C.greenLo:on?`${_C.accent}11`:_C.canvas,
+                    padding:"2px 7px", borderRadius:6 }}>
+                    {allDone?"Done":`${sf}/${s.fields.length}`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Fields */}
+          <div style={{ flex:1, padding:"28px 32px", overflowY:"auto", minHeight:0 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+              <div>
+                <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head }}>{sec.label}</div>
+                <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>{selected.name || "Unnamed product"}</div>
+              </div>
+              <span style={{ fontSize:12, fontFamily:mono, color:_C.muted, background:_C.faint,
+                padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{pct}% complete</span>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:18,
+              animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)" }} key={secTab}>
+              {sec.fields.map(f => {
+                const val = selected[f.id] || "";
+                return (
+                  <div key={f.id}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                      <label style={{ fontSize:13, fontWeight:600, fontFamily:head, color:_C.text }}>
+                        {f.label} {(f as any).required && <span style={{ color:_C.red }}>*</span>}
+                      </label>
+                      <button onClick={()=>aiField(f)} disabled={aiOn===f.id}
+                        style={{ padding:"3px 10px", borderRadius:6, border:`1px solid ${_C.greenBorder}`,
+                          background:_C.greenLo, color:_C.green, fontSize:10, fontFamily:head, fontWeight:600,
+                          cursor:aiOn===f.id?"wait":"pointer", opacity:aiOn===f.id?0.5:1 }}>
+                        {aiOn===f.id ? "◌" : "◎ AI"}
+                      </button>
+                    </div>
+                    {(f as any).hint && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:4 }}>{(f as any).hint}</div>}
+                    {f.type === "select" ? (
+                      <select value={val} onChange={e=>updProduct(selected.id, {[f.id]:e.target.value})}
+                        style={{...inputSt, cursor:"pointer"}}>
+                        <option value="">Select...</option>
+                        {(f as any).opts?.map((o:string) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ) : f.type === "textarea" ? (
+                      <textarea value={val} onChange={e=>updProduct(selected.id, {[f.id]:e.target.value})}
+                        rows={(f as any).rows || 3} placeholder={(f as any).ph || ""}
+                        style={{...inputSt}}
+                        onFocus={e=>e.target.style.borderColor=_C.accent+"66"}
+                        onBlur={e=>e.target.style.borderColor=_C.border} />
+                    ) : (
+                      <input value={val} onChange={e=>updProduct(selected.id, {[f.id]:e.target.value})}
+                        placeholder={(f as any).ph || ""}
+                        style={inputSt}
+                        onFocus={e=>e.target.style.borderColor=_C.accent+"66"}
+                        onBlur={e=>e.target.style.borderColor=_C.border} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ textAlign:"center" }}>
+            <div style={{ fontSize:36, marginBottom:16, opacity:.2 }}>◆</div>
+            <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>Products & Services</div>
+            <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, marginBottom:20, maxWidth:360 }}>
+              Define each product or service your client sells. This feeds into persona targeting, offer creation, and campaign planning.
+            </div>
+            <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
+              <button onClick={addProduct}
+                style={{ padding:"10px 24px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+                  fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>+ Add Product</button>
+              <button onClick={aiExtractAll} disabled={aiExtracting}
+                style={{ padding:"10px 24px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
+                  color:_C.green, fontSize:13, fontFamily:head, fontWeight:700, cursor:aiExtracting?"wait":"pointer" }}>
+                {aiExtracting ? "Extracting..." : "AI Extract from Profile"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── COMPANY PANEL ────────────────────────────────────────────────────────────
 // ═══════════ V2 COMPANY PANEL ═══════════
 function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, onConfLock, fileContext = "" }) {
@@ -8749,6 +9026,7 @@ function AppMain() {
   const [roiConfig,      setRoiConfig]      = useState<any>({});
   const [wsFiles,        setWsFiles]        = useState<{id:string;name:string;type:string;b64:string;mime:string;uploadedAt:string;tags:string[]}[]>([]);
   const [wsLinks,        setWsLinks]        = useState<{id:string;name:string;url:string;description:string;addedAt:string}[]>([]);
+  const [products,       setProducts]       = useState<any[]>([]);
 
   const addToast  = useCallback((t: Omit<Toast,"id">) => {
     const id = uid();
@@ -8857,6 +9135,7 @@ function AppMain() {
     const rawFiles = (saved?.wsFiles ?? []).map((f:any) => ({ ...f, _loading: !f.b64 || f.b64 === "__IDB__" || f.b64 === "__REF__" || f.b64 === "" }));
     setWsFiles(rawFiles);
     setWsLinks(saved?.wsLinks ?? []);
+    setProducts(saved?.products ?? []);
     // Load file blobs from IndexedDB async
     if (rawFiles.length && activeWorkspace) {
       loadWorkspaceFiles(activeWorkspace.id, rawFiles).then(loaded => setWsFiles(loaded.map((f:any) => ({ ...f, _loading: false }))));
@@ -8872,7 +9151,7 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products });
     // Sync co_name and co_industry back to ClientRecord so admin panel + sidebar stay current
     const cd = companyData as Record<string,string>;
     const cls = loadClients();
@@ -8888,7 +9167,7 @@ function AppMain() {
         if (patch.name) setActiveWorkspace((prev: any) => prev ? { ...prev, name: patch.name } : prev);
       }
     }
-  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks]);
+  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products]);
 
   // sync keys into global + localStorage
   useEffect(() => {
@@ -9227,10 +9506,11 @@ Raw JSON only.`, "", 1400);
           const wsNavItems = currentRole === "client"
             ? [{ id:"icps", label:"ICP Profiles", icon:"◑", sub:`${icpsWithOutputs} ready` }]
             : [
-                { id:"company", label:"Client Profile",  icon:"◉", sub:`${companyPct}% complete` },
-                { id:"icps",    label:"ICP Profiles",     icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
-                { id:"analytics", label:"Analytics",        icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
-                { id:"files",   label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
+                { id:"company",  label:"Client Profile",      icon:"◉", sub:`${companyPct}% complete` },
+                { id:"products", label:"Products & Services", icon:"◆", sub:`${products.length} product${products.length!==1?"s":""}` },
+                { id:"icps",     label:"ICP Profiles",       icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
+                { id:"analytics",label:"Analytics",          icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
+                { id:"files",    label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
               ];
 
           /* ═══════════ V2 SIDEBAR ═══════════ */
@@ -9341,6 +9621,20 @@ Raw JSON only.`, "", 1400);
                       onMouseLeave={e=>{ if(view!=="company")(e.currentTarget as HTMLButtonElement).style.background=view==="company"?`${C2.accent}14`:"transparent"; }}>
                       <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="company"?C2.accent:C2.muted }}>◉</span>
                       <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="company"?700:500, color:view==="company"?C2.text:C2.textSoft }}>Client Profile</span>
+                    </button>
+                  )}
+
+                  {/* Products & Services */}
+                  {currentRole !== "client" && (
+                    <button onClick={()=>guardedNav(()=>setView("products"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="products" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="products")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="products")(e.currentTarget as HTMLButtonElement).style.background=view==="products"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="products"?C2.accent:C2.muted }}>◆</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="products"?700:500, color:view==="products"?C2.text:C2.textSoft }}>Products & Services</span>
                     </button>
                   )}
 
@@ -10037,6 +10331,22 @@ Raw JSON only.`, "", 1400);
                 </div>
               </div>
             ))}
+
+            {view==="products" && (
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                <div style={{ padding: useV2?"20px clamp(20px, 3vw, 48px) 14px":"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${useV2?C2.border:C.border}` }}>
+                  <h2 style={{ fontSize: useV2?22:20, fontWeight: useV2?800:700, color: useV2?C2.text:C.text, fontFamily:head, margin:"0 0 5px" }}>Products & Services</h2>
+                  <p style={{ fontSize: useV2?13:12, color: useV2?C2.muted:C.textSoft, fontFamily:body, margin:0 }}>
+                    Define each product or service — this feeds into persona targeting, offers, and campaign copy.
+                  </p>
+                </div>
+                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
+                  <ProductsPage products={products} onProductsChange={setProducts} companyData={companyData}
+                    fileContext={buildFileContext(wsFiles)} v2={useV2} />
+                </div>
+              </div>
+            )}
 
             {view==="icps" && (useV2 ? (
               /* ═══════════ V2 ICP Layout — full width, no nested sidebars ═══════════ */
