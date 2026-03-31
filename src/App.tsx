@@ -1494,58 +1494,12 @@ Raw JSON only.`, "", 1500);
       }
     } catch {}
 
-    updateToast(toastId, { message:"Drafting personas…", step:3, totalSteps:7 });
-    const count = 1;
-    const icps: any[] = [];
-    for (let i = 0; i < count; i++) {
-      updateToast(toastId, { message:`Drafting persona…`, step:3, totalSteps:7 });
-      const existingNames = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
-      const existingSummary = icps.map((x,j) => `ICP ${j+1} "${x.name}": industries=${x.data?.industries||""}, buyer=${x.data?.buyer||""}, pain1=${x.data?.pain1||""}, tone=${x.data?.tone||""}`).join("\n") || "none";
-      const raw = await callAI(`
-Draft ICP #${i+1} for this company. Company: ${JSON.stringify(coFields)} Context: ${context.slice(0,600)}
-Already drafted segments: ${existingNames}
-Full details of existing ICPs (DO NOT overlap with these):
-${existingSummary}
-
-Choose a DISTINCT, non-overlapping segment — different industries, different buyer personas, different pains, and different messaging angles than the segments above.
-
-CRITICAL RULES:
-- Every single field MUST be filled. Never leave any field as an empty string or empty array.
-- Use confident best guesses for anything not explicitly known — realistic, specific, and actionable.
-- Set confidence 85–100 for facts clearly inferred, 55–79 for reasonable assumptions, 30–54 for educated guesses.
-- Write fields as a real CSM would — specific, not generic. E.g. pain1 should name a real pain, not say "various challenges".
-
-Return ONLY JSON:
-{"name":"Short descriptive segment label","fields":{"industries":"comma-separated industry list","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","ref_emails":"","seq_strategy":"","seq_cta_style":""},
-"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"keywords":0,"dream_accts":0,"neg":0,"intent_topics":0,"real_filters":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0,"ref_emails":0,"seq_strategy":0,"seq_cta_style":0}}
-co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
-tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
-cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
-keywords: search terms or keywords that indicate a company is a fit
-dream_accts: specific dream companies for this segment
-gains: what the buyer wants instead — the ideal outcomes (mirror image of pains)
-buying_signals_direct: observable behavior showing active purchase intent
-buying_signals_indirect: signals suggesting emerging need but not yet shopping
-friction_points: structural barriers to buying (separate from objections)
-sub_personas: define 2-3 sub-personas with different focus areas (e.g. "Owner/Operator: jobs, crews, timelines\nFinance: cash flow, structure, payments")
-why_client_wins: why the client specifically beats alternatives for this ICP
-ref_emails: leave empty unless example emails were provided
-Raw JSON only.`, "", 1400);
-      try {
-        const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
-        const fields = p.fields ?? {};
-        for (const [k, v] of Object.entries(fields)) { if (typeof v === "string") fields[k] = normalizeIntake(v); }
-        icps.push(newICP(i, fields, p.name||`ICP ${i+1}`, p.confidence??{}));
-      } catch {}
-      if (i < count - 1) await new Promise(ok => setTimeout(ok, 1000));
-    }
-
-    // ── Step 4: Extract Products & Services ──
-    updateToast(toastId, { message:"Extracting products & services…", step:4, totalSteps:7 });
+    // ── Step 3: Extract Products & Services (BEFORE personas — personas need product context) ──
+    updateToast(toastId, { message:"Extracting products & services…", step:3, totalSteps:7 });
     let products: any[] = [];
     try {
       const prodRaw = await callAI(
-        `Analyze this company and identify ALL distinct products/services.\n\nCompany: ${JSON.stringify(coFields)}\nContext: ${context.slice(0,800)}\n\nFor each, provide: name, description, category (Software|Platform|Service|Hardware|Consulting|Other), problemsSolved, valueProposition, idealCustomer, pricingRange, competitors, proofPoints, switchTriggers.\n\nReturn ONLY valid JSON array.`, "", 2000);
+        `Analyze this company and identify ALL distinct products/services they offer.\n\nCompany: ${JSON.stringify(coFields)}\nRaw sources: ${context.slice(0,1000)}\n\nFor each product/service, provide ALL of these fields (never leave empty):\n- name: product/service name\n- description: what it is, how it works\n- category: Software|Platform|Service|Hardware|Consulting|Other\n- problemsSolved: specific problems it solves (be concrete)\n- valueProposition: why buy this vs alternatives\n- idealCustomer: who is the perfect buyer (industry, role, company size)\n- pricingRange: approximate deal size\n- competitors: who they compete with for this specific product\n- proofPoints: best evidence it works\n- switchTriggers: what makes someone switch to this from their current solution\n\nReturn ONLY valid JSON array.`, "", 2000);
       const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
       if (Array.isArray(parsed)) {
         products = parsed.map((p: any) => ({
@@ -1559,13 +1513,13 @@ Raw JSON only.`, "", 1400);
       }
     } catch {}
 
-    // ── Step 5: Generate Offers for each product ──
-    updateToast(toastId, { message:"Generating offer CTAs…", step:5, totalSteps:7 });
+    // ── Step 4: Generate Offers per product (needs products) ──
+    updateToast(toastId, { message:"Generating offer CTAs…", step:4, totalSteps:7 });
     let offers: any[] = [];
     if (products.length > 0) {
       try {
         const offerRaw = await callAI(
-          `For each product, generate 3 offer tiers (soft, medium, hard) for cold B2B outreach.\n\nProducts:\n${products.map((p:any)=>`- ${p.name}: ${p.problemsSolved}`).join("\n")}\n\nCompany: ${coFields.co_name||""}\n\nFor each product+tier: name, ctaText (exact CTA words), whatTheyGet, frictionReduction.\n\nReturn ONLY valid JSON array: [{productName:"...",tier:"soft",name,ctaText,whatTheyGet,frictionReduction},...]`, "", 2000);
+          `For each product below, generate 3 offer tiers (soft, medium, hard) optimized for cold B2B outreach.\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue prop: ${coFields.co_pitch||""}\n\nProducts:\n${products.map((p:any)=>`- ${p.name}: ${p.problemsSolved}. Ideal customer: ${p.idealCustomer}. Competitors: ${p.competitors}`).join("\n")}\n\nFor EACH product + tier combination, provide:\n- productName: exact product name from list above\n- tier: "soft"|"medium"|"hard"\n- name: short offer name (e.g., "Free ROI Calculator")\n- ctaText: the EXACT words to use in the email CTA\n- whatTheyGet: what the prospect receives\n- frictionReduction: why this is easy to say yes to\n\nSoft = zero commitment (free resource, educational). Medium = small commitment (personalized audit, custom report). Hard = direct ask (demo, pricing call).\n\nReturn ONLY valid JSON array.`, "", 2500);
         const parsed = JSON.parse(offerRaw.replace(/```json|```/g,"").trim());
         if (Array.isArray(parsed)) {
           offers = parsed.map((o: any) => {
@@ -1576,32 +1530,86 @@ Raw JSON only.`, "", 1400);
       } catch {}
     }
 
-    // ── Step 6: Enhance personas with new fields ──
-    updateToast(toastId, { message:"Enriching persona intelligence…", step:6, totalSteps:7 });
-    for (let i = 0; i < icps.length; i++) {
+    // ── Step 5: Draft Personas (with product + offer context for max personalization) ──
+    updateToast(toastId, { message:"Drafting personas…", step:5, totalSteps:7 });
+    const productContext = products.map((p:any) => `${p.name}: ${p.problemsSolved}. Ideal: ${p.idealCustomer}`).join("\n") || "No specific products";
+    const offerContext = offers.map((o:any) => { const p=products.find((x:any)=>x.id===o.productId); return `${p?.name||"?"} (${o.tier}): "${o.ctaText||o.name}"`; }).join("\n") || "No offers";
+    const count = 1;
+    const icps: any[] = [];
+    for (let i = 0; i < count; i++) {
+      updateToast(toastId, { message:`Drafting persona ${i+1}…`, step:5, totalSteps:7 });
+      const existingNames = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
+      const existingSummary = icps.map((x,j) => `Persona ${j+1} "${x.name}": industries=${x.data?.industries||""}, buyer=${x.data?.buyer||""}`).join("\n") || "none";
+      const raw = await callAI(`
+Draft persona #${i+1} for this company's cold outreach campaigns.
+
+COMPANY: ${coFields.co_name||""} — ${coFields.co_industry||""}
+Value Prop: ${coFields.co_pitch||""}
+Competitors: ${coFields.co_competitors||"unknown"}
+
+PRODUCTS THEY SELL:
+${productContext}
+
+AVAILABLE OFFER CTAs:
+${offerContext}
+
+ALREADY DRAFTED (do NOT duplicate): ${existingNames}
+${existingSummary}
+
+Create a DISTINCT persona — different industries, buyer titles, pains, and messaging than existing personas.
+
+CRITICAL: Every field MUST be filled. Be specific and actionable, not generic.
+- pain1: the SPECIFIC pain this persona feels related to one of the products above
+- hook: the opening angle that references their specific situation
+- why_client_wins: why THIS company beats what this persona currently uses
+- cta: pick the offer CTA style that best matches this persona's buying behavior
+- All competitor intel fields: what this persona currently uses, why they stay, displacement messaging
+- All channel fields: best channel for this persona type, best time, LinkedIn activity, phone access
+- All lead scoring: what counts as interested/warm/meeting-ready/not-now/dead for this persona
+
+Return ONLY JSON:
+{"name":"Short label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","ref_emails":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},
+"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"keywords":0,"dream_accts":0,"neg":0,"intent_topics":0,"real_filters":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0}}
+co_sizes: array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
+tone: one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
+cta: one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
+best_channel: one of "Email"|"LinkedIn"|"Phone"|"Multi-channel (Email + LinkedIn)"|"Multi-channel (All)"
+linkedin_activity: one of "Very Active (posts/comments weekly)"|"Moderate (engages occasionally)"|"Low (profile exists, rarely active)"
+phone_accessibility: one of "Direct dial available"|"Gatekeeper (assistant)"|"Voicemail only"
+email_preference: one of "Responds to short punchy emails"|"Prefers detailed/professional"|"Responds to personalization"|"Responds to data/stats"
+Raw JSON only.`, "", 2000);
       try {
-        const enrichRaw = await callAI(
-          `Enrich this B2B persona with competitor intelligence, channel behavior, and lead scoring criteria.\n\nPersona: ${icps[i].name}\nBuyer: ${icps[i].data?.buyer||"?"}\nIndustry: ${icps[i].data?.industries||"?"}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nCompetitors: ${coFields.co_competitors||"unknown"}\n\nReturn ONLY valid JSON:\n{"current_solutions":"what they currently use","incumbent_strengths":"why they stay","switching_triggers":"what makes them switch","displacement_messaging":"how to position against incumbent","win_loss_patterns":"win/loss patterns","best_channel":"Email|LinkedIn|Phone|Multi-channel (Email + LinkedIn)","best_time":"e.g. Tuesday-Thursday 9-11am","linkedin_activity":"Very Active (posts/comments weekly)|Moderate (engages occasionally)|Low (profile exists, rarely active)","phone_accessibility":"Direct dial available|Gatekeeper (assistant)|Voicemail only","email_preference":"Responds to short punchy emails|Prefers detailed/professional|Responds to personalization","interested_criteria":"what counts as interested","warm_criteria":"what counts as warm lead","meeting_ready_criteria":"what counts as meeting-ready","not_now_criteria":"what counts as not now","dead_criteria":"what counts as dead/disqualified"}`, "", 1200);
-        const parsed = JSON.parse(enrichRaw.replace(/```json|```/g,"").trim());
-        // Merge into persona data
-        for (const [k, v] of Object.entries(parsed)) {
-          if (v && String(v).trim()) icps[i].data[k] = v;
-        }
-        // Link to products
-        icps[i].linkedProductIds = products.map((p:any) => p.id);
+        const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
+        const fields = p.fields ?? {};
+        for (const [k, v] of Object.entries(fields)) { if (typeof v === "string") fields[k] = normalizeIntake(v); }
+        const persona = newICP(i, fields, p.name||`Persona ${i+1}`, p.confidence??{});
+        persona.linkedProductIds = products.map((pp:any) => pp.id);
+        persona.linkedOfferIds = offers.filter((o:any) => o.tier === "soft").map((o:any) => o.id); // default link soft offers
+        icps.push(persona);
       } catch {}
+      if (i < count - 1) await new Promise(ok => setTimeout(ok, 1000));
     }
 
-    // ── Step 7: Fill Sales & Messaging fields ──
-    updateToast(toastId, { message:"Finalizing sales & messaging…", step:7, totalSteps:7 });
+    // ── Step 6: Fill Sales & Messaging guardrails (with full knowledge) ──
+    updateToast(toastId, { message:"Setting guardrails…", step:6, totalSteps:7 });
     try {
       const salesRaw = await callAI(
-        `Fill in sales and messaging fields for this company.\n\nCompany: ${JSON.stringify(coFields)}\n\nReturn ONLY valid JSON:\n{"co_past_emails":"","co_exclude":"companies to never contact — current customers, investors, partners","co_avoid":"messaging topics to always avoid in outreach copy"}`, "", 400);
+        `Set sales and messaging guardrails for this company's outreach campaigns.\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nProducts: ${products.map((p:any)=>p.name).join(", ")||"general"}\nPersonas: ${icps.map((p:any)=>p.name).join(", ")||"general"}\nCompetitors: ${coFields.co_competitors||"unknown"}\nCurrent customers: ${coFields.co_customers||"unknown"}\n\nReturn ONLY valid JSON:\n{"co_exclude":"specific companies/domains to NEVER contact (current customers, investors, partners, competitors) — be specific based on the company context","co_avoid":"specific messaging topics, phrases, and angles to ALWAYS avoid in outreach copy — based on the industry, competitors, and company positioning"}`, "", 600);
       const parsed = JSON.parse(salesRaw.replace(/```json|```/g,"").trim());
       for (const [k, v] of Object.entries(parsed)) {
         if (v && String(v).trim()) coFields[k] = v;
       }
     } catch {}
+
+    // ── Step 7: Final validation pass ──
+    updateToast(toastId, { message:"Validating & finalizing…", step:7, totalSteps:7 });
+    // Ensure all product IDs are valid in offers
+    offers = offers.filter(o => products.some((p:any) => p.id === o.productId));
+    // Ensure persona links are valid
+    for (const icp of icps) {
+      icp.linkedProductIds = (icp.linkedProductIds||[]).filter((id:string) => products.some((p:any) => p.id === id));
+      icp.linkedOfferIds = (icp.linkedOfferIds||[]).filter((id:string) => offers.some((o:any) => o.id === id));
+    }
 
     const result = { coFields, coConf, icps, products, offers };
     onComplete(result);
