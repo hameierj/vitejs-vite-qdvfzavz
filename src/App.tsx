@@ -5489,6 +5489,448 @@ Return ONLY valid JSON:
   );
 }
 
+// ─── CAMPAIGNS PAGE ──────────────────────────────────────────────────────────
+const STEP_ROLES = [
+  { id:"hook",      label:"Hook + Pain",       desc:"Lead with primary pain, use offer CTA" },
+  { id:"proof",     label:"Social Proof",      desc:"Case study, testimonial, or stat" },
+  { id:"value",     label:"Value Angle",       desc:"Different angle, address secondary pain" },
+  { id:"urgency",   label:"Urgency / Trigger", desc:"Time-sensitive, trigger-based" },
+  { id:"breakup",   label:"Breakup",           desc:"Last chance, human, low-friction" },
+  { id:"follow_up", label:"Follow-Up",         desc:"Re-engage after silence" },
+];
+const DEFAULT_SEQUENCE_TIMING = [0, 3, 7, 14, 21]; // day offsets for 5-step
+const EMPTY_CAMPAIGN = () => ({
+  id: uid(), name: "", status: "planning" as string,
+  type: "cold_email" as string,
+  personaIds: [] as string[], productId: "", offerId: "",
+  strategyPhaseId: null as string|null,
+  sequence: [] as any[],
+  abTests: [] as any[],
+  benchmarks: { openRate:{good:40,warning:25,action:15,critical:5}, replyRate:{good:3,warning:1.5,action:0.5,critical:0}, bounceRate:{good:3,warning:5,action:8,critical:12}, meetingRate:{good:0.5,warning:0.2,action:0,critical:0} },
+  dailySendVolume: 100,
+  handoffCriteria: "",
+  performance: null as any,
+  createdAt: new Date().toISOString(), startDate: null as string|null, endDate: null as string|null,
+});
+const EMPTY_STEP = (stepNum: number) => ({
+  id: uid(), stepNumber: stepNum,
+  role: STEP_ROLES[Math.min(stepNum - 1, STEP_ROLES.length - 1)].id,
+  dayOffset: DEFAULT_SEQUENCE_TIMING[Math.min(stepNum - 1, DEFAULT_SEQUENCE_TIMING.length - 1)] ?? (stepNum * 7),
+  channel: "email" as string, subject: "", body: "",
+  variants: [] as any[],
+});
+
+function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, companyData, strategy, v2 = false }: {
+  campaigns: any[]; onCampaignsChange: (c: any[]) => void; personas: any[]; products: any[]; offers: any[];
+  companyData: any; strategy: any; v2?: boolean;
+}) {
+  const _C = v2 ? C2 : C;
+  const [selectedId, setSelectedId] = useState<string|null>(campaigns[0]?.id ?? null);
+  const [tab, setTab] = useState<"config"|"sequence"|"benchmarks">("config");
+  const [generating, setGenerating] = useState(false);
+
+  const selected = campaigns.find(c => c.id === selectedId) || null;
+
+  const updCampaign = (id: string, patch: any) => onCampaignsChange(campaigns.map(c => c.id === id ? { ...c, ...patch } : c));
+  const addCampaign = () => {
+    const c = EMPTY_CAMPAIGN();
+    onCampaignsChange([...campaigns, c]);
+    setSelectedId(c.id);
+    setTab("config");
+  };
+  const deleteCampaign = (id: string) => {
+    if (!confirm("Delete this campaign?")) return;
+    onCampaignsChange(campaigns.filter(c => c.id !== id));
+    if (selectedId === id) setSelectedId(campaigns.filter(c => c.id !== id)[0]?.id ?? null);
+  };
+
+  const generateSequence = async () => {
+    if (!selected) return;
+    setGenerating(true);
+    try {
+      const persona = personas.find((p:any) => selected.personaIds?.includes(p.id));
+      const product = products.find((p:any) => p.id === selected.productId);
+      const offer = offers.find((o:any) => o.id === selected.offerId);
+      const cd = companyData as Record<string,string>;
+      const typeObj = CAMPAIGN_TYPES.find(t => t.id === selected.type);
+
+      const prompt = `Generate a ${typeObj?.label || selected.type} outreach sequence.
+
+COMPANY: ${cd.co_name || "?"} — ${cd.co_industry || "?"}
+PRODUCT: ${product?.name || "General"} — ${product?.valueProposition || product?.description || ""}
+OFFER (${offer?.tier || "soft"} CTA): "${offer?.ctaText || offer?.name || "Worth a quick chat?"}"
+PERSONA: ${persona?.name || "General"} — Titles: ${persona?.data?.buyer || "?"}, Pain: ${persona?.data?.pain1 || "?"}
+COMPETITOR INTEL: Currently using: ${persona?.data?.current_solutions || "unknown"}. Displacement: ${persona?.data?.displacement_messaging || "N/A"}
+TONE: ${persona?.data?.tone || "Consultative"}
+
+SEQUENCE STRUCTURE (5 steps):
+- Step 1 (Day 0): HOOK — lead with primary pain, use the offer CTA
+- Step 2 (Day 3): PROOF — social proof, case study, different angle
+- Step 3 (Day 7): VALUE — address secondary pain, show specific value
+- Step 4 (Day 14): URGENCY — trigger-based, time-sensitive angle
+- Step 5 (Day 21): BREAKUP — last chance, human, very short
+
+For Step 1, generate 2 A/B variants with different subject lines.
+
+Rules:
+- Use the EXACT offer CTA text, not generic asks
+- Reference competitor displacement if available
+- Max 80 words per email body, 6 words max for subject lines
+- No "I hope this finds you well" or AI-sounding phrases
+- Sound like a real human wrote it quickly
+
+Return ONLY valid JSON:
+{"steps":[{"stepNumber":1,"role":"hook","dayOffset":0,"subject":"...","body":"...","variants":[{"label":"Variant B","subject":"...","body":"...","testVariable":"subject_line"}]},{"stepNumber":2,"role":"proof","dayOffset":3,"subject":"...","body":"...","variants":[]},...],"abTest":{"stepId":"step_1","variable":"subject_line"}}`;
+
+      const result = await callAI(prompt, "You are a B2B cold email copywriter. Return only valid JSON.", 3000);
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+
+      if (parsed.steps && Array.isArray(parsed.steps)) {
+        const steps = parsed.steps.map((s: any, i: number) => ({
+          id: uid(), stepNumber: s.stepNumber || i + 1,
+          role: s.role || STEP_ROLES[i]?.id || "hook",
+          dayOffset: s.dayOffset ?? DEFAULT_SEQUENCE_TIMING[i] ?? i * 7,
+          channel: "email", subject: s.subject || "", body: s.body || "",
+          variants: (s.variants || []).map((v: any) => ({ id: uid(), label: v.label || "Variant B", subject: v.subject || "", body: v.body || "", testVariable: v.testVariable || "subject_line" })),
+        }));
+        updCampaign(selected.id, { sequence: steps });
+        setTab("sequence");
+      }
+    } catch (e) { console.error("Sequence generation failed:", e); }
+    setGenerating(false);
+  };
+
+  const updStep = (stepId: string, patch: any) => {
+    if (!selected) return;
+    updCampaign(selected.id, { sequence: selected.sequence.map((s:any) => s.id === stepId ? { ...s, ...patch } : s) });
+  };
+  const addStep = () => {
+    if (!selected) return;
+    const num = (selected.sequence?.length || 0) + 1;
+    updCampaign(selected.id, { sequence: [...(selected.sequence || []), EMPTY_STEP(num)] });
+  };
+  const deleteStep = (stepId: string) => {
+    if (!selected) return;
+    updCampaign(selected.id, { sequence: selected.sequence.filter((s:any) => s.id !== stepId) });
+  };
+
+  const inputSt: any = { padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+    background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none",
+    width:"100%", transition:"border-color .15s", resize:"vertical" as const };
+
+  return (
+    <div style={{ display:"flex", height:"100%", overflow:"hidden" }}>
+      {/* Campaign list */}
+      <div style={{ width:240, flexShrink:0, display:"flex", flexDirection:"column",
+        borderRight:`1px solid ${_C.border}`, background:v2?_C.faint:_C.surface, overflow:"hidden" }}>
+        <div style={{ padding:"12px", flexShrink:0 }}>
+          <button onClick={addCampaign}
+            style={{ width:"100%", padding:"9px 14px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+              fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
+            + New Campaign
+          </button>
+        </div>
+        <div style={{ flex:1, overflowY:"auto", padding:"0 8px 8px" }}>
+          {campaigns.length === 0 && (
+            <div style={{ padding:"32px 12px", textAlign:"center" }}>
+              <div style={{ fontSize:22, marginBottom:8, opacity:.3 }}>⊕</div>
+              <div style={{ fontSize:12, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:4 }}>No campaigns yet</div>
+              <div style={{ fontSize:11, color:_C.muted, fontFamily:body, lineHeight:1.5 }}>Create your first campaign or generate from the Strategy page.</div>
+            </div>
+          )}
+          {campaigns.map((c: any) => {
+            const isOn = selectedId === c.id;
+            const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
+            const statusObj = CAMPAIGN_STATUSES.find(s => s.id === c.status) || CAMPAIGN_STATUSES[0];
+            return (
+              <div key={c.id} onClick={()=>setSelectedId(c.id)}
+                style={{ padding:"10px 12px", borderRadius:10, marginBottom:4, cursor:"pointer",
+                  border:`2px solid ${isOn?_C.accent+"44":_C.border}`,
+                  background: isOn ? `${_C.accent}08` : _C.canvas,
+                  transition:"all .2s" }}
+                onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=_C.canvas; }}
+                onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=isOn?`${_C.accent}08`:"transparent"; }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                  <span style={{ fontSize:13 }}>{typeObj.icon}</span>
+                  <span style={{ flex:1, fontSize:12, fontWeight:isOn?700:500, fontFamily:head, color:isOn?_C.text:_C.textSoft,
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {c.name || "Untitled Campaign"}
+                  </span>
+                  <button onClick={e=>{e.stopPropagation(); deleteCampaign(c.id);}}
+                    style={{ width:18, height:18, borderRadius:4, border:`1px solid ${_C.border}`, background:"transparent",
+                      color:_C.muted, fontSize:9, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                      opacity:isOn?1:0, transition:"opacity .15s" }}>×</button>
+                </div>
+                <div style={{ display:"flex", gap:6 }}>
+                  <span style={{ fontSize:9, fontFamily:mono, padding:"2px 6px", borderRadius:4,
+                    background:`${statusObj.color}15`, color:statusObj.color, fontWeight:600 }}>{statusObj.label}</span>
+                  <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{c.sequence?.length||0} steps</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Campaign editor */}
+      {selected ? (
+        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+          {/* Tab bar */}
+          <div style={{ display:"flex", alignItems:"center", gap:4, padding:"12px 24px", borderBottom:`1px solid ${_C.border}`, flexShrink:0 }}>
+            {(["config","sequence","benchmarks"] as const).map(t => {
+              const on = tab === t;
+              const labels = { config:"Setup", sequence:`Sequence (${selected.sequence?.length||0})`, benchmarks:"Benchmarks" };
+              return (
+                <button key={t} onClick={()=>setTab(t)}
+                  style={{ padding:"7px 16px", borderRadius:8, border:"none",
+                    background:on?`${_C.accent}14`:"transparent", color:on?_C.accent:_C.muted,
+                    fontSize:12, fontFamily:head, fontWeight:on?700:500, cursor:"pointer", transition:"all .15s" }}
+                  onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=_C.faint; }}
+                  onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=on?`${_C.accent}14`:"transparent"; }}>
+                  {labels[t]}
+                </button>
+              );
+            })}
+            <div style={{ marginLeft:"auto" }}>
+              <button onClick={generateSequence} disabled={generating}
+                style={{ padding:"7px 16px", borderRadius:8, border:`1px solid ${_C.greenBorder}`,
+                  background:_C.greenLo, color:_C.green, fontSize:11, fontFamily:head, fontWeight:700,
+                  cursor:generating?"wait":"pointer", opacity:generating?0.6:1 }}>
+                {generating ? "◌ Generating..." : "◎ AI Generate Sequence"}
+              </button>
+            </div>
+          </div>
+
+          {/* Tab content */}
+          <div style={{ flex:1, overflowY:"auto", padding:"24px 28px" }}>
+
+            {/* CONFIG TAB */}
+            {tab === "config" && (
+              <div style={{ display:"flex", flexDirection:"column", gap:16, maxWidth:700, animation:"contentFade .3s ease" }}>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Campaign Name</label>
+                  <input value={selected.name} onChange={e=>updCampaign(selected.id, {name:e.target.value})}
+                    placeholder="e.g., Cold Email — Manufacturing CEOs — Equipment Financing" style={inputSt} />
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Type</label>
+                    <select value={selected.type} onChange={e=>updCampaign(selected.id, {type:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
+                      {CAMPAIGN_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Status</label>
+                    <select value={selected.status} onChange={e=>updCampaign(selected.id, {status:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
+                      {CAMPAIGN_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Linked Persona(s)</label>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                    {personas.map((p: any) => {
+                      const linked = (selected.personaIds || []).includes(p.id);
+                      return (
+                        <button key={p.id} onClick={()=>{
+                          const ids = selected.personaIds || [];
+                          updCampaign(selected.id, { personaIds: linked ? ids.filter((x:string)=>x!==p.id) : [...ids, p.id] });
+                        }}
+                          style={{ padding:"5px 12px", borderRadius:8, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer",
+                            border:`1.5px solid ${linked?_C.accent+"55":_C.border}`,
+                            background:linked?`${_C.accent}12`:"transparent", color:linked?_C.accent:_C.muted }}>
+                          {linked?"✓ ":""}{p.name || "Unnamed"}
+                        </button>
+                      );
+                    })}
+                    {personas.length === 0 && <span style={{ fontSize:11, color:_C.muted, fontFamily:body }}>Add personas first</span>}
+                  </div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Product</label>
+                    <select value={selected.productId} onChange={e=>updCampaign(selected.id, {productId:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
+                      <option value="">Select product...</option>
+                      {products.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Offer</label>
+                    <select value={selected.offerId} onChange={e=>updCampaign(selected.id, {offerId:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
+                      <option value="">Select offer...</option>
+                      {offers.filter((o:any) => !selected.productId || o.productId === selected.productId).map((o:any) => {
+                        const tier = OFFER_TIERS.find(t=>t.id===o.tier);
+                        return <option key={o.id} value={o.id}>{tier?.label}: {o.name || o.ctaText || "Unnamed"}</option>;
+                      })}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Daily Send Volume</label>
+                    <input type="number" value={selected.dailySendVolume||""} onChange={e=>updCampaign(selected.id, {dailySendVolume:parseInt(e.target.value)||0})}
+                      placeholder="100" style={inputSt} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Start Date</label>
+                    <input type="date" value={selected.startDate||""} onChange={e=>updCampaign(selected.id, {startDate:e.target.value})} style={inputSt} />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Lead Handoff Criteria</label>
+                  <textarea value={selected.handoffCriteria||""} onChange={e=>updCampaign(selected.id, {handoffCriteria:e.target.value})}
+                    rows={2} placeholder="When should a lead be handed to sales? e.g., 'Replied positively + asked about pricing'" style={inputSt} />
+                </div>
+              </div>
+            )}
+
+            {/* SEQUENCE TAB */}
+            {tab === "sequence" && (
+              <div style={{ animation:"contentFade .3s ease" }}>
+                {(selected.sequence || []).length === 0 ? (
+                  <div style={{ textAlign:"center", padding:"48px 20px" }}>
+                    <div style={{ fontSize:36, marginBottom:16, opacity:.15 }}>✉</div>
+                    <div style={{ fontSize:16, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>No sequence yet</div>
+                    <div style={{ fontSize:13, color:_C.muted, fontFamily:body, marginBottom:20 }}>Generate a sequence with AI or add steps manually.</div>
+                    <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
+                      <button onClick={generateSequence} disabled={generating}
+                        style={{ padding:"10px 20px", borderRadius:10, border:"none", background:_C.green, color:"#fff",
+                          fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                        {generating ? "Generating..." : "◎ AI Generate"}
+                      </button>
+                      <button onClick={addStep}
+                        style={{ padding:"10px 20px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
+                          color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                        + Add Step Manually
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                    {(selected.sequence || []).map((step: any, si: number) => {
+                      const roleObj = STEP_ROLES.find(r => r.id === step.role) || STEP_ROLES[0];
+                      return (
+                        <div key={step.id} style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
+                          overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
+                          {/* Step header */}
+                          <div style={{ padding:"14px 20px", borderBottom:`1px solid ${_C.faint}`, display:"flex", alignItems:"center", gap:12 }}>
+                            <div style={{ width:28, height:28, borderRadius:8, background:`${_C.accent}15`,
+                              display:"flex", alignItems:"center", justifyContent:"center",
+                              fontSize:12, fontWeight:700, fontFamily:mono, color:_C.accent }}>{si+1}</div>
+                            <div style={{ flex:1 }}>
+                              <select value={step.role} onChange={e=>updStep(step.id, {role:e.target.value})}
+                                style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text, border:"none", background:"transparent", cursor:"pointer", outline:"none" }}>
+                                {STEP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                              </select>
+                              <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>{roleObj.desc} · Day {step.dayOffset}</div>
+                            </div>
+                            <input type="number" value={step.dayOffset} onChange={e=>updStep(step.id, {dayOffset:parseInt(e.target.value)||0})}
+                              style={{ width:50, padding:"4px 8px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint,
+                                fontSize:11, fontFamily:mono, color:_C.text, textAlign:"center" }} title="Day offset" />
+                            <button onClick={()=>deleteStep(step.id)}
+                              style={{ width:24, height:24, borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent",
+                                color:_C.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+                              onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;}}
+                              onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;}}>×</button>
+                          </div>
+                          {/* Step content */}
+                          <div style={{ padding:"16px 20px", display:"flex", flexDirection:"column", gap:10 }}>
+                            <div>
+                              <label style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>SUBJECT LINE</label>
+                              <input value={step.subject} onChange={e=>updStep(step.id, {subject:e.target.value})}
+                                placeholder="Short, punchy subject line" style={inputSt} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>BODY</label>
+                              <textarea value={step.body} onChange={e=>updStep(step.id, {body:e.target.value})}
+                                rows={4} placeholder="Email body — max 80 words, sound human" style={inputSt} />
+                            </div>
+                            {/* A/B Variants */}
+                            {step.variants && step.variants.length > 0 && (
+                              <div style={{ padding:"12px 14px", borderRadius:10, background:`${_C.blue}08`, border:`1px solid ${_C.blue}22` }}>
+                                <div style={{ fontSize:10, fontFamily:mono, color:_C.blue, fontWeight:700, marginBottom:8 }}>A/B VARIANT</div>
+                                {step.variants.map((v: any) => (
+                                  <div key={v.id} style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                                    <input value={v.subject} onChange={e=>{
+                                      const variants = step.variants.map((x:any) => x.id === v.id ? { ...x, subject: e.target.value } : x);
+                                      updStep(step.id, { variants });
+                                    }} placeholder="Variant subject line" style={{...inputSt, borderColor:`${_C.blue}33`}} />
+                                    <textarea value={v.body} onChange={e=>{
+                                      const variants = step.variants.map((x:any) => x.id === v.id ? { ...x, body: e.target.value } : x);
+                                      updStep(step.id, { variants });
+                                    }} rows={3} placeholder="Variant body" style={{...inputSt, borderColor:`${_C.blue}33`}} />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <button onClick={addStep}
+                      style={{ padding:"12px", borderRadius:10, border:`2px dashed ${_C.border}`, background:"transparent",
+                        color:_C.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer", textAlign:"center" }}
+                      onMouseEnter={e=>{(e.target as HTMLElement).style.borderColor=_C.accent;(e.target as HTMLElement).style.color=_C.accent;}}
+                      onMouseLeave={e=>{(e.target as HTMLElement).style.borderColor=_C.border;(e.target as HTMLElement).style.color=_C.muted;}}>
+                      + Add Step
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* BENCHMARKS TAB */}
+            {tab === "benchmarks" && (
+              <div style={{ maxWidth:600, animation:"contentFade .3s ease" }}>
+                <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>Campaign Benchmarks</div>
+                <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginBottom:20 }}>Thresholds for monitoring campaign health. Green = good, amber = warning, red = action needed.</div>
+                {[
+                  { key:"openRate", label:"Open Rate (%)", colors:[_C.green, _C.amber, _C.red, _C.red] },
+                  { key:"replyRate", label:"Reply Rate (%)", colors:[_C.green, _C.amber, _C.red, _C.red] },
+                  { key:"bounceRate", label:"Max Bounce Rate (%)", colors:[_C.green, _C.amber, _C.red, _C.red] },
+                  { key:"meetingRate", label:"Meeting Rate (%)", colors:[_C.green, _C.amber, _C.red, _C.red] },
+                ].map(row => (
+                  <div key={row.key} style={{ marginBottom:16 }}>
+                    <label style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:8 }}>{row.label}</label>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:8 }}>
+                      {(["good","warning","action","critical"] as const).map((level, li) => (
+                        <div key={level}>
+                          <div style={{ fontSize:9, fontFamily:mono, color:row.colors[li], fontWeight:700, marginBottom:3, textTransform:"uppercase" as const }}>{level}</div>
+                          <input type="number" step="0.1"
+                            value={(selected.benchmarks as any)?.[row.key]?.[level] ?? ""}
+                            onChange={e=>{
+                              const bm = { ...(selected.benchmarks || {}), [row.key]: { ...((selected.benchmarks||{}) as any)[row.key], [level]: parseFloat(e.target.value)||0 }};
+                              updCampaign(selected.id, { benchmarks: bm });
+                            }}
+                            style={{...inputSt, textAlign:"center", borderColor:`${row.colors[li]}33`}} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ textAlign:"center", maxWidth:400 }}>
+            <div style={{ fontSize:36, marginBottom:16, opacity:.2 }}>⊕</div>
+            <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>Campaigns</div>
+            <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, marginBottom:20 }}>
+              Create individual campaigns with sequences, A/B tests, and benchmarks. Each campaign links to a persona, product, and offer.
+            </div>
+            <button onClick={addCampaign}
+              style={{ padding:"10px 24px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+                fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>+ New Campaign</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── COMPANY PANEL ────────────────────────────────────────────────────────────
 // ═══════════ V2 COMPANY PANEL ═══════════
 function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, onConfLock, fileContext = "" }) {
@@ -9597,6 +10039,7 @@ function AppMain() {
   const [products,       setProducts]       = useState<any[]>([]);
   const [offers,         setOffers]         = useState<any[]>([]);
   const [strategy,       setStrategy]       = useState<any>(null);
+  const [campaigns,      setCampaigns]      = useState<any[]>([]);
 
   const addToast  = useCallback((t: Omit<Toast,"id">) => {
     const id = uid();
@@ -9708,6 +10151,7 @@ function AppMain() {
     setProducts(saved?.products ?? []);
     setOffers(saved?.offers ?? []);
     setStrategy(saved?.strategy ?? null);
+    setCampaigns(saved?.campaigns ?? []);
     // Load file blobs from IndexedDB async
     if (rawFiles.length && activeWorkspace) {
       loadWorkspaceFiles(activeWorkspace.id, rawFiles).then(loaded => setWsFiles(loaded.map((f:any) => ({ ...f, _loading: false }))));
@@ -9723,7 +10167,7 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns });
     // Sync co_name and co_industry back to ClientRecord so admin panel + sidebar stay current
     const cd = companyData as Record<string,string>;
     const cls = loadClients();
@@ -9739,7 +10183,7 @@ function AppMain() {
         if (patch.name) setActiveWorkspace((prev: any) => prev ? { ...prev, name: patch.name } : prev);
       }
     }
-  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy]);
+  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns]);
 
   // sync keys into global + localStorage
   useEffect(() => {
@@ -10082,7 +10526,8 @@ Raw JSON only.`, "", 1400);
                 { id:"products", label:"Products & Services", icon:"◆", sub:`${products.length} product${products.length!==1?"s":""}` },
                 { id:"offers",   label:"Offers",             icon:"◇", sub:`${offers.length} offer${offers.length!==1?"s":""}` },
                 { id:"icps",     label:"Personas",       icon:"◑", sub:`${icps.length} persona${icps.length!==1?"s":""}` },
-                { id:"strategy", label:"Strategy",          icon:"◎", sub:strategy?.phases?.length?`${strategy.phases.length} phases`:"not started" },
+                { id:"strategy",  label:"Strategy",          icon:"◎", sub:strategy?.phases?.length?`${strategy.phases.length} phases`:"not started" },
+                { id:"campaigns", label:"Campaigns",         icon:"⊕", sub:`${campaigns.length} campaign${campaigns.length!==1?"s":""}` },
                 { id:"analytics",label:"Analytics",          icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
                 { id:"files",    label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
               ];
@@ -10274,6 +10719,20 @@ Raw JSON only.`, "", 1400);
                       onMouseLeave={e=>{ if(view!=="strategy")(e.currentTarget as HTMLButtonElement).style.background=view==="strategy"?`${C2.accent}14`:"transparent"; }}>
                       <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="strategy"?C2.accent:C2.muted }}>◎</span>
                       <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="strategy"?700:500, color:view==="strategy"?C2.text:C2.textSoft }}>Strategy</span>
+                    </button>
+                  )}
+
+                  {/* Campaigns */}
+                  {currentRole !== "client" && (
+                    <button onClick={()=>guardedNav(()=>setView("campaigns"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="campaigns" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="campaigns")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="campaigns")(e.currentTarget as HTMLButtonElement).style.background=view==="campaigns"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="campaigns"?C2.accent:C2.muted }}>⊕</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="campaigns"?700:500, color:view==="campaigns"?C2.text:C2.textSoft }}>Campaigns</span>
                     </button>
                   )}
 
@@ -10972,6 +11431,22 @@ Raw JSON only.`, "", 1400);
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
                     companyData={companyData} products={products} offers={offers} personas={icps} v2={useV2} />
+                </div>
+              </div>
+            )}
+
+            {view==="campaigns" && (
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                <div style={{ padding: useV2?"20px clamp(20px, 3vw, 48px) 14px":"16px clamp(20px, 3vw, 48px) 12px", flexShrink:0, borderBottom:`1px solid ${useV2?C2.border:C.border}` }}>
+                  <h2 style={{ fontSize: useV2?22:20, fontWeight: useV2?800:700, color: useV2?C2.text:C.text, fontFamily:head, margin:"0 0 5px" }}>Campaigns</h2>
+                  <p style={{ fontSize: useV2?13:12, color: useV2?C2.muted:C.textSoft, fontFamily:body, margin:0 }}>
+                    Build and manage outreach campaigns with sequences, A/B tests, and benchmarks.
+                  </p>
+                </div>
+                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
+                  <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
+                    personas={icps} products={products} offers={offers} companyData={companyData} strategy={strategy} v2={useV2} />
                 </div>
               </div>
             )}
