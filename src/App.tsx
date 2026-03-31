@@ -260,6 +260,23 @@ const EMPTY_OFFER = (productId: string, tier: string) => ({
   id:uid(), productId, tier, name:"", ctaText:"", whatTheyGet:"", frictionReduction:"", createdAt:new Date().toISOString(),
 });
 
+// ─── STRATEGY ────────────────────────────────────────────────────────────────
+const CAMPAIGN_TYPES = [
+  { id:"cold_email",          label:"Cold Email",             icon:"✉", color:"#6C5CE7" },
+  { id:"retargeting",         label:"Retargeting / Warm",     icon:"↻", color:"#00D68F" },
+  { id:"linkedin_connection", label:"LinkedIn Connection",    icon:"◈", color:"#0A66C2" },
+  { id:"linkedin_message",    label:"LinkedIn Message",       icon:"◆", color:"#0A66C2" },
+  { id:"rts_calling",         label:"RTS Cold Calling",       icon:"◉", color:"#FFC048" },
+];
+const CAMPAIGN_STATUSES = [
+  { id:"planned",   label:"Planned",   color:"#8E94A7" },
+  { id:"ready",     label:"Ready",     color:"#54A0FF" },
+  { id:"active",    label:"Active",    color:"#00D68F" },
+  { id:"reviewing", label:"Reviewing", color:"#FFC048" },
+  { id:"completed", label:"Completed", color:"#6C5CE7" },
+  { id:"paused",    label:"Paused",    color:"#FF6B6B" },
+];
+
 const ICP_SECTIONS = {
   targeting: { label:"Targeting", icon:"◎",
     fields:[
@@ -5190,6 +5207,288 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
   );
 }
 
+// ─── STRATEGY PAGE ───────────────────────────────────────────────────────────
+function StrategyPage({ strategy, onStrategyChange, companyData, products, offers, personas, v2 = false }: {
+  strategy: any; onStrategyChange: (s: any) => void; companyData: any; products: any[]; offers: any[]; personas: any[]; v2?: boolean;
+}) {
+  const _C = v2 ? C2 : C;
+  const [generating, setGenerating] = useState(false);
+  const [expandedPhase, setExpandedPhase] = useState<string|null>(null);
+
+  const phases = strategy?.phases ?? [];
+  const infra = strategy?.infrastructure ?? {};
+  const benchmarks = strategy?.benchmarks ?? {};
+
+  // Calculate infrastructure readiness
+  const warmupStart = infra.warmupStartDate ? new Date(infra.warmupStartDate) : null;
+  const now = new Date();
+  const warmupDaysLeft = warmupStart ? Math.max(0, 14 - Math.floor((now.getTime() - warmupStart.getTime()) / 86400000)) : 14;
+  const emailReady = warmupDaysLeft === 0;
+
+  const generateRoadmap = async () => {
+    setGenerating(true);
+    try {
+      const cd = companyData as Record<string,string>;
+      const hasLists = cd.co_existing_lists && cd.co_existing_lists !== "No lists available";
+      const prompt = `You are a senior B2B cold outreach strategist. Generate a 12-month phased campaign roadmap.
+
+COMPANY: ${cd.co_name || "Unknown"} — ${cd.co_industry || "Unknown industry"}
+Website: ${cd.co_website || "N/A"}
+Value Prop: ${cd.co_pitch || "N/A"}
+Deal Size: ${cd.co_deal || "Unknown"}
+Sales Cycle: ${cd.co_cycle || "Unknown"}
+Monthly Meeting Goal: ${cd.co_goal || "5-10"}
+
+PRODUCTS (${products.length}):
+${products.map((p:any) => `- ${p.name}: ${p.description || ""}. Problems: ${p.problemsSolved || ""}. Price: ${p.pricingRange || "?"}`).join("\n") || "None defined"}
+
+OFFERS (${offers.length}):
+${offers.map((o:any) => {const p=products.find((x:any)=>x.id===o.productId); return `- ${p?.name||"?"} (${o.tier}): "${o.ctaText||o.name||"?"}"`}).join("\n") || "None defined"}
+
+PERSONAS (${personas.length}):
+${personas.map((p:any) => `- ${p.name}: Titles: ${p.data?.buyer||"?"}, Industries: ${p.data?.industries||"?"}, Pain: ${p.data?.pain1||"?"}, Channel: ${p.data?.best_channel||"Multi"}`).join("\n") || "None defined"}
+
+INFRASTRUCTURE:
+- Mailboxes: ${cd.co_mailbox_count || "200"} (${warmupDaysLeft > 0 ? `warming up, ${warmupDaysLeft} days left` : "ready"})
+- LinkedIn: available immediately
+- RTS calling: available immediately
+- Existing retargeting lists: ${hasLists ? "Yes" : "No"}
+
+PAST HISTORY: ${cd.co_what_tried || "None"} | Worked: ${cd.co_what_worked || "N/A"} | Didn't: ${cd.co_what_didnt || "N/A"}
+
+RULES:
+1. Phase 1 (Weeks 1-2): LinkedIn campaigns + RTS lists immediately. ${hasLists ? "Include retargeting campaign." : "No retargeting (no lists)."}
+2. Email campaigns start ONLY after warmup (Week 3+)
+3. Start with soft offers, escalate to medium by month 2, hard by month 3+
+4. Each campaign slot needs: type, persona, product, offerTier, duration, dailyVolume
+5. Include benchmarks per campaign: openRate, replyRate, bounceRate, meetingRate (as percentages)
+6. Include decision trees: whatIfMet (next step), whatIfNotMet (adjustments), whatIfFailed (pivot after 2 iterations)
+7. 4-6 phases total covering 12 months
+8. Be specific — name actual personas and products from the data above
+
+Return ONLY valid JSON:
+{
+  "infrastructure": { "warmupStartDate":"${infra.warmupStartDate||new Date().toISOString().split("T")[0]}", "estimatedReadyDate":"...", "mailboxCount":${cd.co_mailbox_count||200}, "dailyCapacity":${(parseInt(cd.co_mailbox_count||"200")*30)} },
+  "benchmarks": { "baseOpenRate":40, "baseReplyRate":3, "baseBounceMax":3, "baseMeetingRate":0.5 },
+  "phases": [
+    {
+      "id":"phase_1", "name":"Phase 1: Foundation", "startWeek":1, "endWeek":2, "status":"pending",
+      "campaigns": [
+        { "id":"c1", "type":"linkedin_connection", "personaName":"...", "productName":"...", "offerTier":"soft", "duration":"2 weeks", "dailyVolume":50, "goal":"...",
+          "benchmarks":{"openRate":null,"replyRate":15,"bounceRate":null,"meetingRate":null},
+          "decisionTree":{"ifMet":"...","ifNotMet":"...","ifFailed":"..."} }
+      ]
+    }
+  ]
+}`;
+
+      const result = await callAI(prompt, "You are a B2B outreach strategist. Return only valid JSON.", 4000);
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      onStrategyChange({ ...parsed, generatedAt: new Date().toISOString(), status: "draft" });
+      if (parsed.phases?.length > 0) setExpandedPhase(parsed.phases[0].id);
+    } catch (e) { console.error("Strategy generation failed:", e); }
+    setGenerating(false);
+  };
+
+  const updatePhaseStatus = (phaseId: string, status: string) => {
+    const updated = { ...strategy, phases: phases.map((p:any) => p.id === phaseId ? { ...p, status } : p) };
+    onStrategyChange(updated);
+  };
+
+  const inputSt: any = { padding:"7px 10px", borderRadius:8, border:`1px solid ${_C.border}`,
+    background:_C.faint, color:_C.text, fontSize:12, fontFamily:body, outline:"none", width:"100%" };
+
+  return (
+    <div style={{ padding:"28px 32px", overflowY:"auto", height:"100%" }}>
+
+      {/* Header + Generate */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:28 }}>
+        <div>
+          <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>12-Month Outreach Strategy</h2>
+          <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
+            AI-generated phased campaign roadmap based on your products, personas, and offers.
+          </p>
+        </div>
+        <button onClick={generateRoadmap} disabled={generating}
+          style={{ padding:"10px 24px", borderRadius:12, border:"none",
+            background:generating?_C.muted:_C.accent, color:"#fff",
+            fontSize:13, fontFamily:head, fontWeight:700, cursor:generating?"wait":"pointer",
+            boxShadow:`0 4px 14px ${_C.accent}44`, opacity:generating?0.7:1 }}>
+          {generating ? "◌ Generating roadmap..." : "◎ Generate Roadmap"}
+        </button>
+      </div>
+
+      {/* Infrastructure banner */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:16, marginBottom:28 }}>
+        {[
+          { label:"Email Status", value:emailReady?"Ready":"Warming Up", color:emailReady?_C.green:_C.amber,
+            sub:emailReady?"All mailboxes active":`${warmupDaysLeft} days remaining` },
+          { label:"LinkedIn", value:"Ready", color:_C.green, sub:"Available immediately" },
+          { label:"RTS Calling", value:"Ready", color:_C.green, sub:"Available immediately" },
+          { label:"Phases", value:phases.length>0?String(phases.length):"—", color:_C.accent,
+            sub:phases.length>0?`${phases.filter((p:any)=>p.status==="completed").length} completed`:"Generate to start" },
+        ].map(c => (
+          <div key={c.label} style={{ padding:"16px 20px", borderRadius:14, background:_C.canvas,
+            border:`1px solid ${_C.border}`, boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
+            <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, letterSpacing:.4, marginBottom:6 }}>{c.label.toUpperCase()}</div>
+            <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:c.color, marginBottom:2 }}>{c.value}</div>
+            <div style={{ fontSize:11, fontFamily:body, color:_C.muted }}>{c.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Phases */}
+      {phases.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"60px 20px" }}>
+          <div style={{ fontSize:48, marginBottom:16, opacity:.15 }}>◎</div>
+          <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>No strategy generated yet</div>
+          <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, maxWidth:420, margin:"0 auto", marginBottom:20 }}>
+            Fill in your company profile, products, offers, and personas first. Then click "Generate Roadmap" to create a phased 12-month campaign plan.
+          </div>
+          <div style={{ fontSize:12, fontFamily:body, color:_C.muted }}>
+            {products.length} product{products.length!==1?"s":""} · {offers.length} offer{offers.length!==1?"s":""} · {personas.length} persona{personas.length!==1?"s":""}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {phases.map((phase: any, pi: number) => {
+            const isExpanded = expandedPhase === phase.id;
+            const campaigns = phase.campaigns || [];
+            const statusObj = CAMPAIGN_STATUSES.find(s => s.id === phase.status) || CAMPAIGN_STATUSES[0];
+            return (
+              <div key={phase.id} style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`,
+                overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)", transition:"box-shadow .2s" }}>
+                {/* Phase header */}
+                <div onClick={()=>setExpandedPhase(isExpanded?null:phase.id)}
+                  style={{ padding:"18px 24px", cursor:"pointer", display:"flex", alignItems:"center", gap:16,
+                    borderBottom: isExpanded ? `1px solid ${_C.border}` : "none" }}
+                  onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=_C.faint}
+                  onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="transparent"}>
+                  <div style={{ width:36, height:36, borderRadius:10, background:`${statusObj.color}15`,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:14, fontWeight:700, fontFamily:mono, color:statusObj.color }}>{pi+1}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:_C.text }}>{phase.name}</div>
+                    <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
+                      Weeks {phase.startWeek}–{phase.endWeek} · {campaigns.length} campaign{campaigns.length!==1?"s":""}
+                    </div>
+                  </div>
+                  <select value={phase.status} onClick={e=>e.stopPropagation()}
+                    onChange={e=>updatePhaseStatus(phase.id, e.target.value)}
+                    style={{ padding:"5px 10px", borderRadius:8, border:`1px solid ${statusObj.color}44`,
+                      background:`${statusObj.color}11`, color:statusObj.color,
+                      fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", outline:"none" }}>
+                    {CAMPAIGN_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                  <span style={{ fontSize:16, color:_C.muted, transition:"transform .2s",
+                    transform:isExpanded?"rotate(180deg)":"rotate(0)" }}>▾</span>
+                </div>
+
+                {/* Phase detail */}
+                {isExpanded && (
+                  <div style={{ padding:"20px 24px", animation:"contentFade .3s ease" }}>
+                    {/* Campaign slots */}
+                    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                      {campaigns.map((c: any, ci: number) => {
+                        const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
+                        return (
+                          <div key={c.id||ci} style={{ padding:"16px 20px", borderRadius:12,
+                            border:`1px solid ${_C.border}`, borderLeft:`4px solid ${typeObj.color}`,
+                            background:_C.faint }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+                              <span style={{ fontSize:16 }}>{typeObj.icon}</span>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{typeObj.label}</div>
+                                <div style={{ fontSize:11, color:_C.muted, fontFamily:body }}>
+                                  {c.personaName || "All personas"} · {c.productName || "All products"} · {c.offerTier || "soft"} CTA
+                                </div>
+                              </div>
+                              <div style={{ textAlign:"right" }}>
+                                <div style={{ fontSize:12, fontFamily:mono, color:_C.text, fontWeight:600 }}>{c.duration}</div>
+                                <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{c.dailyVolume}/day</div>
+                              </div>
+                            </div>
+
+                            {/* Goal */}
+                            {c.goal && (
+                              <div style={{ fontSize:12, fontFamily:body, color:_C.textSoft, marginBottom:10,
+                                padding:"8px 12px", background:_C.canvas, borderRadius:8 }}>
+                                <span style={{ fontWeight:600, color:_C.text }}>Goal: </span>{c.goal}
+                              </div>
+                            )}
+
+                            {/* Benchmarks */}
+                            {c.benchmarks && (
+                              <div style={{ display:"flex", gap:12, marginBottom:10, flexWrap:"wrap" }}>
+                                {[
+                                  c.benchmarks.openRate!=null && { label:"Open", value:`${c.benchmarks.openRate}%`, color:_C.accent },
+                                  c.benchmarks.replyRate!=null && { label:"Reply", value:`${c.benchmarks.replyRate}%`, color:_C.green },
+                                  c.benchmarks.bounceRate!=null && { label:"Bounce <", value:`${c.benchmarks.bounceRate}%`, color:_C.red },
+                                  c.benchmarks.meetingRate!=null && { label:"Meeting", value:`${c.benchmarks.meetingRate}%`, color:_C.amber },
+                                ].filter(Boolean).map((b: any) => (
+                                  <div key={b.label} style={{ padding:"4px 10px", borderRadius:6, background:`${b.color}11`,
+                                    border:`1px solid ${b.color}22`, fontSize:10, fontFamily:mono, color:b.color, fontWeight:600 }}>
+                                    {b.label}: {b.value}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Decision tree */}
+                            {c.decisionTree && (
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, fontSize:11, fontFamily:body }}>
+                                <div style={{ padding:"8px 10px", borderRadius:8, background:`${_C.green}08`, border:`1px solid ${_C.green}22` }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, color:_C.green, fontWeight:700, marginBottom:4 }}>IF BENCHMARKS MET</div>
+                                  <div style={{ color:_C.textSoft, lineHeight:1.4 }}>{c.decisionTree.ifMet}</div>
+                                </div>
+                                <div style={{ padding:"8px 10px", borderRadius:8, background:`${_C.amber}08`, border:`1px solid ${_C.amber}22` }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, color:_C.amber, fontWeight:700, marginBottom:4 }}>IF NOT MET</div>
+                                  <div style={{ color:_C.textSoft, lineHeight:1.4 }}>{c.decisionTree.ifNotMet}</div>
+                                </div>
+                                <div style={{ padding:"8px 10px", borderRadius:8, background:`${_C.red}08`, border:`1px solid ${_C.red}22` }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, color:_C.red, fontWeight:700, marginBottom:4 }}>IF FAILED (2+ ITERATIONS)</div>
+                                  <div style={{ color:_C.textSoft, lineHeight:1.4 }}>{c.decisionTree.ifFailed}</div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Benchmarks summary */}
+          {benchmarks.baseOpenRate && (
+            <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, padding:"18px 24px",
+              boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
+              <div style={{ fontSize:12, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:12 }}>DEFAULT BENCHMARKS (ADJUSTED FOR THIS CLIENT)</div>
+              <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
+                {[
+                  { label:"Open Rate", value:`${benchmarks.baseOpenRate}%+`, color:_C.accent },
+                  { label:"Reply Rate", value:`${benchmarks.baseReplyRate}%+`, color:_C.green },
+                  { label:"Max Bounce", value:`${benchmarks.baseBounceMax}%`, color:_C.red },
+                  { label:"Meeting Rate", value:`${benchmarks.baseMeetingRate}%+`, color:_C.amber },
+                ].map(b => (
+                  <div key={b.label} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:8, height:8, borderRadius:4, background:b.color }} />
+                    <span style={{ fontSize:12, fontFamily:body, color:_C.textSoft }}>{b.label}:</span>
+                    <span style={{ fontSize:13, fontFamily:head, fontWeight:700, color:b.color }}>{b.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── COMPANY PANEL ────────────────────────────────────────────────────────────
 // ═══════════ V2 COMPANY PANEL ═══════════
 function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, onConfLock, fileContext = "" }) {
@@ -9297,6 +9596,7 @@ function AppMain() {
   const [wsLinks,        setWsLinks]        = useState<{id:string;name:string;url:string;description:string;addedAt:string}[]>([]);
   const [products,       setProducts]       = useState<any[]>([]);
   const [offers,         setOffers]         = useState<any[]>([]);
+  const [strategy,       setStrategy]       = useState<any>(null);
 
   const addToast  = useCallback((t: Omit<Toast,"id">) => {
     const id = uid();
@@ -9407,6 +9707,7 @@ function AppMain() {
     setWsLinks(saved?.wsLinks ?? []);
     setProducts(saved?.products ?? []);
     setOffers(saved?.offers ?? []);
+    setStrategy(saved?.strategy ?? null);
     // Load file blobs from IndexedDB async
     if (rawFiles.length && activeWorkspace) {
       loadWorkspaceFiles(activeWorkspace.id, rawFiles).then(loaded => setWsFiles(loaded.map((f:any) => ({ ...f, _loading: false }))));
@@ -9422,7 +9723,7 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy });
     // Sync co_name and co_industry back to ClientRecord so admin panel + sidebar stay current
     const cd = companyData as Record<string,string>;
     const cls = loadClients();
@@ -9438,7 +9739,7 @@ function AppMain() {
         if (patch.name) setActiveWorkspace((prev: any) => prev ? { ...prev, name: patch.name } : prev);
       }
     }
-  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers]);
+  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy]);
 
   // sync keys into global + localStorage
   useEffect(() => {
@@ -9780,7 +10081,8 @@ Raw JSON only.`, "", 1400);
                 { id:"company",  label:"Client Profile",      icon:"◉", sub:`${companyPct}% complete` },
                 { id:"products", label:"Products & Services", icon:"◆", sub:`${products.length} product${products.length!==1?"s":""}` },
                 { id:"offers",   label:"Offers",             icon:"◇", sub:`${offers.length} offer${offers.length!==1?"s":""}` },
-                { id:"icps",     label:"Personas",       icon:"◑", sub:`${icps.length} ICP${icps.length!==1?"s":""}` },
+                { id:"icps",     label:"Personas",       icon:"◑", sub:`${icps.length} persona${icps.length!==1?"s":""}` },
+                { id:"strategy", label:"Strategy",          icon:"◎", sub:strategy?.phases?.length?`${strategy.phases.length} phases`:"not started" },
                 { id:"analytics",label:"Analytics",          icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
                 { id:"files",    label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
               ];
@@ -9959,6 +10261,20 @@ Raw JSON only.`, "", 1400);
                         );
                       })}
                     </div>
+                  )}
+
+                  {/* Strategy */}
+                  {currentRole !== "client" && (
+                    <button onClick={()=>guardedNav(()=>setView("strategy"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="strategy" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="strategy")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="strategy")(e.currentTarget as HTMLButtonElement).style.background=view==="strategy"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="strategy"?C2.accent:C2.muted }}>◎</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="strategy"?700:500, color:view==="strategy"?C2.text:C2.textSoft }}>Strategy</span>
+                    </button>
                   )}
 
                   {/* Analytics */}
@@ -10646,6 +10962,16 @@ Raw JSON only.`, "", 1400);
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <OffersPage offers={offers} onOffersChange={setOffers} products={products}
                     companyData={companyData} v2={useV2} />
+                </div>
+              </div>
+            )}
+
+            {view==="strategy" && (
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
+                  <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
+                    companyData={companyData} products={products} offers={offers} personas={icps} v2={useV2} />
                 </div>
               </div>
             )}
