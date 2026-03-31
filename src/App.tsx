@@ -1434,7 +1434,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
   const run = async () => {
     // Close modal immediately — run in background
     onClose();
-    const toastId = addToast({ title:"Quick Start running…", status:"loading", message:"Analyzing sources", step:0, totalSteps:4, startTime:Date.now() });
+    const toastId = addToast({ title:"Quick Start running…", status:"loading", message:"Analyzing sources", step:0, totalSteps:7, startTime:Date.now() });
 
     let context = "";
     const sources = [];
@@ -1457,10 +1457,10 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     }
 
     // Normalize intake data
-    updateToast(toastId, { message:"Normalizing intake data…", step:1, totalSteps:4 });
+    updateToast(toastId, { message:"Normalizing intake data…", step:1, totalSteps:7 });
     context = normalizeIntake(context);
 
-    updateToast(toastId, { message:"Building company profile…", step:2, totalSteps:4 });
+    updateToast(toastId, { message:"Building company profile…", step:2, totalSteps:7 });
     const coRaw = await callAI(`
 Analyze this company for B2B cold outreach. Sources: ${context||"(limited — use your best judgment based on any signals available)"}
 
@@ -1494,11 +1494,11 @@ Raw JSON only.`, "", 1500);
       }
     } catch {}
 
-    updateToast(toastId, { message:"Identifying segments…", step:3, totalSteps:4 });
+    updateToast(toastId, { message:"Drafting personas…", step:3, totalSteps:7 });
     const count = 1;
     const icps: any[] = [];
     for (let i = 0; i < count; i++) {
-      updateToast(toastId, { message:`Drafting ICP…`, step:3, totalSteps:4 });
+      updateToast(toastId, { message:`Drafting persona…`, step:3, totalSteps:7 });
       const existingNames = icps.map(x=>x.name).filter(Boolean).join(", ") || "none";
       const existingSummary = icps.map((x,j) => `ICP ${j+1} "${x.name}": industries=${x.data?.industries||""}, buyer=${x.data?.buyer||""}, pain1=${x.data?.pain1||""}, tone=${x.data?.tone||""}`).join("\n") || "none";
       const raw = await callAI(`
@@ -1540,11 +1540,74 @@ Raw JSON only.`, "", 1400);
       if (i < count - 1) await new Promise(ok => setTimeout(ok, 1000));
     }
 
-    const result = { coFields, coConf, icps };
+    // ── Step 4: Extract Products & Services ──
+    updateToast(toastId, { message:"Extracting products & services…", step:4, totalSteps:7 });
+    let products: any[] = [];
+    try {
+      const prodRaw = await callAI(
+        `Analyze this company and identify ALL distinct products/services.\n\nCompany: ${JSON.stringify(coFields)}\nContext: ${context.slice(0,800)}\n\nFor each, provide: name, description, category (Software|Platform|Service|Hardware|Consulting|Other), problemsSolved, valueProposition, idealCustomer, pricingRange, competitors, proofPoints, switchTriggers.\n\nReturn ONLY valid JSON array.`, "", 2000);
+      const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
+      if (Array.isArray(parsed)) {
+        products = parsed.map((p: any) => ({
+          id: uid(), name:p.name||"", description:p.description||"", category:p.category||"Other",
+          problemsSolved:p.problemsSolved||"", valueProposition:p.valueProposition||"",
+          idealCustomer:p.idealCustomer||"", pricingRange:p.pricingRange||"",
+          competitors:p.competitors||"", proofPoints:p.proofPoints||"",
+          caseStudies:"", socialProof:"", dealCycle:"", switchTriggers:p.switchTriggers||"",
+          createdAt:new Date().toISOString(),
+        }));
+      }
+    } catch {}
+
+    // ── Step 5: Generate Offers for each product ──
+    updateToast(toastId, { message:"Generating offer CTAs…", step:5, totalSteps:7 });
+    let offers: any[] = [];
+    if (products.length > 0) {
+      try {
+        const offerRaw = await callAI(
+          `For each product, generate 3 offer tiers (soft, medium, hard) for cold B2B outreach.\n\nProducts:\n${products.map((p:any)=>`- ${p.name}: ${p.problemsSolved}`).join("\n")}\n\nCompany: ${coFields.co_name||""}\n\nFor each product+tier: name, ctaText (exact CTA words), whatTheyGet, frictionReduction.\n\nReturn ONLY valid JSON array: [{productName:"...",tier:"soft",name,ctaText,whatTheyGet,frictionReduction},...]`, "", 2000);
+        const parsed = JSON.parse(offerRaw.replace(/```json|```/g,"").trim());
+        if (Array.isArray(parsed)) {
+          offers = parsed.map((o: any) => {
+            const prod = products.find((p:any) => p.name === o.productName) || products[0];
+            return { id:uid(), productId:prod?.id||"", tier:o.tier||"soft", name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"", createdAt:new Date().toISOString() };
+          });
+        }
+      } catch {}
+    }
+
+    // ── Step 6: Enhance personas with new fields ──
+    updateToast(toastId, { message:"Enriching persona intelligence…", step:6, totalSteps:7 });
+    for (let i = 0; i < icps.length; i++) {
+      try {
+        const enrichRaw = await callAI(
+          `Enrich this B2B persona with competitor intelligence, channel behavior, and lead scoring criteria.\n\nPersona: ${icps[i].name}\nBuyer: ${icps[i].data?.buyer||"?"}\nIndustry: ${icps[i].data?.industries||"?"}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nCompetitors: ${coFields.co_competitors||"unknown"}\n\nReturn ONLY valid JSON:\n{"current_solutions":"what they currently use","incumbent_strengths":"why they stay","switching_triggers":"what makes them switch","displacement_messaging":"how to position against incumbent","win_loss_patterns":"win/loss patterns","best_channel":"Email|LinkedIn|Phone|Multi-channel (Email + LinkedIn)","best_time":"e.g. Tuesday-Thursday 9-11am","linkedin_activity":"Very Active (posts/comments weekly)|Moderate (engages occasionally)|Low (profile exists, rarely active)","phone_accessibility":"Direct dial available|Gatekeeper (assistant)|Voicemail only","email_preference":"Responds to short punchy emails|Prefers detailed/professional|Responds to personalization","interested_criteria":"what counts as interested","warm_criteria":"what counts as warm lead","meeting_ready_criteria":"what counts as meeting-ready","not_now_criteria":"what counts as not now","dead_criteria":"what counts as dead/disqualified"}`, "", 1200);
+        const parsed = JSON.parse(enrichRaw.replace(/```json|```/g,"").trim());
+        // Merge into persona data
+        for (const [k, v] of Object.entries(parsed)) {
+          if (v && String(v).trim()) icps[i].data[k] = v;
+        }
+        // Link to products
+        icps[i].linkedProductIds = products.map((p:any) => p.id);
+      } catch {}
+    }
+
+    // ── Step 7: Fill Sales & Messaging fields ──
+    updateToast(toastId, { message:"Finalizing sales & messaging…", step:7, totalSteps:7 });
+    try {
+      const salesRaw = await callAI(
+        `Fill in sales and messaging fields for this company.\n\nCompany: ${JSON.stringify(coFields)}\n\nReturn ONLY valid JSON:\n{"co_past_emails":"","co_exclude":"companies to never contact — current customers, investors, partners","co_avoid":"messaging topics to always avoid in outreach copy"}`, "", 400);
+      const parsed = JSON.parse(salesRaw.replace(/```json|```/g,"").trim());
+      for (const [k, v] of Object.entries(parsed)) {
+        if (v && String(v).trim()) coFields[k] = v;
+      }
+    } catch {}
+
+    const result = { coFields, coConf, icps, products, offers };
     onComplete(result);
     updateToast(toastId, { status:"success", title:"Quick Start complete",
-      message:`${icps.length} ICP${icps.length!==1?"s":""} drafted`,
-      action:{ label:"View ICPs", onClick:()=>{} } });
+      message:`${products.length} products · ${offers.length} offers · ${icps.length} persona${icps.length!==1?"s":""}`,
+      action:{ label:"View", onClick:()=>{} } });
   };
 
   return (
@@ -10229,8 +10292,10 @@ Raw JSON only.`, "", 1400);
     });
     setCompanyConf(prev => ({ ...prev, ...result.coConf }));
     setIcps(result.icps);
+    if (result.products?.length) setProducts(prev => [...prev, ...result.products]);
+    if (result.offers?.length) setOffers(prev => [...prev, ...result.offers]);
     setShowQS(false);
-    setView("icps");
+    setView("products");
   }, []);
 
   const handleAnalyzerComplete = useCallback(result => {
