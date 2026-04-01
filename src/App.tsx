@@ -4777,8 +4777,8 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
 }
 
 // ─── PRODUCTS & SERVICES PAGE ─────────────────────────────────────────────────
-function ProductsPage({ products, onProductsChange, companyData, fileContext = "", v2 = false }: {
-  products: any[]; onProductsChange: (p: any[]) => void; companyData: any; fileContext?: string; v2?: boolean;
+function ProductsPage({ products, onProductsChange, companyData, fileContext = "", v2 = false, addToast = (_t:any)=>"" }: {
+  products: any[]; onProductsChange: (p: any[]) => void; companyData: any; fileContext?: string; v2?: boolean; addToast?: (t:any)=>string;
 }) {
   const _C = v2 ? C2 : C;
   const [selectedId, setSelectedId] = useState<string|null>(products[0]?.id ?? null);
@@ -4806,6 +4806,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   const addProductWithAI = async () => {
     if (!addDesc.trim() && !addUrl.trim()) return;
     setAddCreating(true);
+    addToast({ title:"Creating product…", status:"loading", message:"AI is building the product profile" });
     try {
       const result = await callAI(
         `Create a detailed B2B product/service profile based on this description.\n\nDescription: ${addDesc||"(not provided)"}\nURL: ${addUrl||"(not provided)"}\nCompany: ${(companyData as any)?.co_name||""} (${(companyData as any)?.co_industry||""})\nCompany context: ${JSON.stringify(companyData)}\n${fileContext ? `Files:\n${fileContext}` : ""}\n\nFill ALL fields — never leave empty. Make confident inferences where needed.\n\nReturn ONLY valid JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","problemsSolved":"","valueProposition":"","idealCustomer":"","pricingRange":"","competitors":"","proofPoints":"","switchTriggers":"","dealCycle":"","caseStudies":"","socialProof":""}`,
@@ -4819,7 +4820,8 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
       setSecTab("core");
       setShowAddModal(false);
       setAddDesc(""); setAddUrl("");
-    } catch (e) { console.error("AI product creation failed:", e); }
+      addToast({ title:"Product created", status:"success", message:`${newProd.name || "New product"} added` });
+    } catch (e) { console.error("AI product creation failed:", e); addToast({ title:"Failed to create product", status:"error", message:"AI generation failed — try again" }); }
     setAddCreating(false);
   };
   const deleteProduct = (id: string) => {
@@ -4830,6 +4832,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
 
   const aiExtractAll = async () => {
     setAiExtracting(true);
+    addToast({ title:"Scanning profile…", status:"loading", message:"Looking for products & services" });
     try {
       const existingNames = products.map(p => p.name?.toLowerCase().trim()).filter(Boolean);
       const ctx = JSON.stringify(companyData);
@@ -4854,9 +4857,12 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
         if (newProducts.length > 0) {
           onProductsChange([...products, ...newProducts]);
           setSelectedId(newProducts[0].id);
+          addToast({ title:"Products found", status:"success", message:`${newProducts.length} new product${newProducts.length!==1?"s":""} added` });
+        } else {
+          addToast({ title:"No new products", status:"success", message:"All products already captured" });
         }
       }
-    } catch (e) { console.error("AI extract failed:", e); }
+    } catch (e) { console.error("AI extract failed:", e); addToast({ title:"Scan failed", status:"error", message:"Could not extract products" }); }
     setAiExtracting(false);
   };
 
@@ -5106,8 +5112,8 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
 }
 
 // ─── OFFERS PAGE ─────────────────────────────────────────────────────────────
-function OffersPage({ offers, onOffersChange, products, companyData, v2 = false }: {
-  offers: any[]; onOffersChange: (o: any[]) => void; products: any[]; companyData: any; v2?: boolean;
+function OffersPage({ offers, onOffersChange, products, companyData, v2 = false, addToast = (_t:any)=>"" }: {
+  offers: any[]; onOffersChange: (o: any[]) => void; products: any[]; companyData: any; v2?: boolean; addToast?: (t:any)=>string;
 }) {
   const _C = v2 ? C2 : C;
   const [selectedProductId, setSelectedProductId] = useState<string|null>(products[0]?.id ?? null);
@@ -5136,8 +5142,9 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
   const aiGenerateSingle = async (tier: string) => {
     if (!selectedProduct) return;
     setAiSingleTier(tier);
+    const tierObj = OFFER_TIERS.find(t => t.id === tier);
+    addToast({ title:`Generating ${tierObj?.label||tier}…`, status:"loading", message:selectedProduct.name });
     try {
-      const tierObj = OFFER_TIERS.find(t => t.id === tier);
       const result = await callAI(
         `Generate a ${tierObj?.label || tier} offer for cold B2B outreach.\n\nProduct: ${selectedProduct.name}\nDescription: ${selectedProduct.description || ""}\nProblems: ${selectedProduct.problemsSolved || ""}\nCompany: ${(companyData as any)?.co_name || ""}\nTier: ${tier} — ${tierObj?.desc || ""}\n\nProvide:\n- name: short offer name\n- ctaText: exact CTA for emails\n- whatTheyGet: what prospect receives\n- frictionReduction: why it's easy to say yes\n\nReturn ONLY valid JSON: {name,ctaText,whatTheyGet,frictionReduction}`,
         "Return only valid JSON.", 400
@@ -5151,7 +5158,7 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
         const newOffer = { ...EMPTY_OFFER(selectedProductId!, tier), name: parsed.name||"", ctaText: parsed.ctaText||"", whatTheyGet: parsed.whatTheyGet||"", frictionReduction: parsed.frictionReduction||"" };
         onOffersChange([...offers, newOffer]);
       }
-    } catch (e) { console.error("AI single offer failed:", e); }
+    } catch (e) { console.error("AI single offer failed:", e); addToast({ title:"Offer generation failed", status:"error", message:"Try again" }); }
     setAiSingleTier(null);
   };
 
@@ -5159,6 +5166,7 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
     const product = products.find(p => p.id === productId);
     if (!product) return;
     setAiGenerating(productId);
+    addToast({ title:"Generating all offers…", status:"loading", message:product.name });
     try {
       const result = await callAI(
         `Generate 3 offer tiers for cold B2B outreach for this product.\n\nProduct: ${product.name}\nDescription: ${product.description}\nProblems solved: ${product.problemsSolved}\nValue prop: ${product.valueProposition}\nCompany: ${(companyData as any)?.co_name || ""}\nIndustry: ${(companyData as any)?.co_industry || ""}\n\nFor each tier (soft, medium, hard), provide:\n- name: short name for the offer (e.g., "Free ROI Calculator")\n- ctaText: the exact CTA to use in emails (e.g., "Want me to send you our ROI calculator?")\n- whatTheyGet: what the prospect receives\n- frictionReduction: why this reduces buying friction\n\nReturn ONLY valid JSON array: [{tier:"soft",name,ctaText,whatTheyGet,frictionReduction},{tier:"medium",...},{tier:"hard",...}]`,
@@ -5175,7 +5183,8 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
         }));
         onOffersChange([...otherOffers, ...newOffers]);
       }
-    } catch (e) { console.error("AI offer generation failed:", e); }
+      addToast({ title:"Offers generated", status:"success", message:`3 tiers for ${product.name}` });
+    } catch (e) { console.error("AI offer generation failed:", e); addToast({ title:"Offer generation failed", status:"error", message:"Try again" }); }
     setAiGenerating(null);
   };
 
@@ -5365,8 +5374,8 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false 
 }
 
 // ─── STRATEGY PAGE ───────────────────────────────────────────────────────────
-function StrategyPage({ strategy, onStrategyChange, companyData, products, offers, personas, v2 = false }: {
-  strategy: any; onStrategyChange: (s: any) => void; companyData: any; products: any[]; offers: any[]; personas: any[]; v2?: boolean;
+function StrategyPage({ strategy, onStrategyChange, companyData, products, offers, personas, v2 = false, addToast = (_t:any)=>"" }: {
+  strategy: any; onStrategyChange: (s: any) => void; companyData: any; products: any[]; offers: any[]; personas: any[]; v2?: boolean; addToast?: (t:any)=>string;
 }) {
   const _C = v2 ? C2 : C;
   const [generating, setGenerating] = useState(false);
@@ -5384,6 +5393,7 @@ function StrategyPage({ strategy, onStrategyChange, companyData, products, offer
 
   const generateRoadmap = async () => {
     setGenerating(true);
+    addToast({ title:"Generating roadmap…", status:"loading", message:"Building 12-month strategy" });
     try {
       const cd = companyData as Record<string,string>;
       const hasLists = cd.co_existing_lists && cd.co_existing_lists !== "No lists available";
@@ -5444,7 +5454,8 @@ Return ONLY valid JSON:
       const parsed = JSON.parse(cleaned);
       onStrategyChange({ ...parsed, generatedAt: new Date().toISOString(), status: "draft" });
       if (parsed.phases?.length > 0) setExpandedPhase(parsed.phases[0].id);
-    } catch (e) { console.error("Strategy generation failed:", e); }
+      addToast({ title:"Roadmap generated", status:"success", message:`${parsed.phases?.length||0} phases created` });
+    } catch (e) { console.error("Strategy generation failed:", e); addToast({ title:"Roadmap generation failed", status:"error", message:"Try again" }); }
     setGenerating(false);
   };
 
@@ -5677,9 +5688,9 @@ const EMPTY_STEP = (stepNum: number) => ({
   variants: [] as any[],
 });
 
-function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, companyData, strategy, v2 = false }: {
+function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, companyData, strategy, v2 = false, addToast = (_t:any)=>"" }: {
   campaigns: any[]; onCampaignsChange: (c: any[]) => void; personas: any[]; products: any[]; offers: any[];
-  companyData: any; strategy: any; v2?: boolean;
+  companyData: any; strategy: any; v2?: boolean; addToast?: (t:any)=>string;
 }) {
   const _C = v2 ? C2 : C;
   const [selectedId, setSelectedId] = useState<string|null>(campaigns[0]?.id ?? null);
@@ -5704,6 +5715,7 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
   const generateSequence = async () => {
     if (!selected) return;
     setGenerating(true);
+    addToast({ title:"Generating sequence…", status:"loading", message:"Building outreach steps" });
     try {
       const persona = personas.find((p:any) => selected.personaIds?.includes(p.id));
       const product = products.find((p:any) => p.id === selected.productId);
@@ -5753,8 +5765,9 @@ Return ONLY valid JSON:
         }));
         updCampaign(selected.id, { sequence: steps });
         setTab("sequence");
+        addToast({ title:"Sequence generated", status:"success", message:`${steps.length} steps with A/B variant` });
       }
-    } catch (e) { console.error("Sequence generation failed:", e); }
+    } catch (e) { console.error("Sequence generation failed:", e); addToast({ title:"Sequence generation failed", status:"error", message:"Try again" }); }
     setGenerating(false);
   };
 
@@ -11225,7 +11238,7 @@ Raw JSON only.`, "", 1400);
                 </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <ProductsPage products={products} onProductsChange={setProducts} companyData={companyData}
-                    fileContext={buildFileContext(wsFiles)} v2={true} />
+                    fileContext={buildFileContext(wsFiles)} v2={true} addToast={addToast} />
                 </div>
               </div>
             )}
@@ -11241,7 +11254,7 @@ Raw JSON only.`, "", 1400);
                 </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <OffersPage offers={offers} onOffersChange={setOffers} products={products}
-                    companyData={companyData} v2={true} />
+                    companyData={companyData} v2={true} addToast={addToast} />
                 </div>
               </div>
             )}
@@ -11251,7 +11264,7 @@ Raw JSON only.`, "", 1400);
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
-                    companyData={companyData} products={products} offers={offers} personas={icps} v2={true} />
+                    companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast} />
                 </div>
               </div>
             )}
@@ -11267,7 +11280,7 @@ Raw JSON only.`, "", 1400);
                 </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
-                    personas={icps} products={products} offers={offers} companyData={companyData} strategy={strategy} v2={true} />
+                    personas={icps} products={products} offers={offers} companyData={companyData} strategy={strategy} v2={true} addToast={addToast} />
                 </div>
               </div>
             )}
