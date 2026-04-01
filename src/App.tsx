@@ -1439,6 +1439,12 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
   const done = currentStep >= total;
   const activeStep = QS_STEPS[Math.min(currentStep, total-1)];
   const activeColor = activeStep?.color || C2.accent;
+  const totalFieldsFilled = parseInt(stepResults._totalFields || "0");
+  // Time saved estimate: ~3 min per field for manual research + writing
+  const minutesSaved = totalFieldsFilled * 3;
+  const hoursSaved = Math.floor(minutesSaved / 60);
+  const remainingMins = minutesSaved % 60;
+  const timeSavedStr = hoursSaved > 0 ? `${hoursSaved}h ${remainingMins}m` : `${remainingMins} min`;
 
   // Confetti particles for completion
   const confetti = done ? Array.from({length:40}, (_,i) => ({
@@ -1511,17 +1517,38 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
             <div style={{ fontSize:36, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:10 }}>
               You're all set!
             </div>
-            <div style={{ fontSize:16, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:16 }}>
+            <div style={{ fontSize:16, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:24 }}>
               Quick Start has built your entire outreach foundation.
             </div>
-            {/* Results summary */}
-            <div style={{ display:"flex", justifyContent:"center", gap:16, marginBottom:32, flexWrap:"wrap" }}>
-              {Object.entries(stepResults).filter(([,v])=>v).map(([k,v]) => (
-                <div key={k} style={{ padding:"8px 16px", borderRadius:10, background:C2.canvas,
-                  border:`1px solid ${C2.border}`, boxShadow:"0 2px 8px rgba(0,0,0,.04)" }}>
-                  <div style={{ fontSize:12, fontFamily:mono, color:C2.accent, fontWeight:600 }}>{v}</div>
+
+            {/* Time saved highlight */}
+            {totalFieldsFilled > 0 && (
+              <div style={{ display:"flex", justifyContent:"center", gap:24, marginBottom:24 }}>
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:36, fontWeight:800, fontFamily:head, color:C2.accent }}>{totalFieldsFilled}</div>
+                  <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>fields filled</div>
                 </div>
-              ))}
+                <div style={{ width:1, background:C2.border }} />
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:36, fontWeight:800, fontFamily:head, color:C2.green }}>{timeSavedStr}</div>
+                  <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>of research saved</div>
+                </div>
+              </div>
+            )}
+
+            {/* Results breakdown */}
+            <div style={{ display:"flex", justifyContent:"center", gap:12, marginBottom:32, flexWrap:"wrap" }}>
+              {Object.entries(stepResults).filter(([k,v])=>v && k !== "_totalFields").map(([k,v]) => {
+                const step = QS_STEPS.find(s=>s.id===k);
+                return (
+                  <div key={k} style={{ padding:"8px 16px", borderRadius:10, background:C2.canvas,
+                    border:`1px solid ${C2.border}`, boxShadow:"0 2px 8px rgba(0,0,0,.04)",
+                    display:"flex", alignItems:"center", gap:8 }}>
+                    {step && <div style={{ width:8, height:8, borderRadius:4, background:step.color, flexShrink:0 }} />}
+                    <div style={{ fontSize:12, fontFamily:mono, color:C2.text, fontWeight:600 }}>{v}</div>
+                  </div>
+                );
+              })}
             </div>
             <button onClick={onBack}
               style={{ padding:"14px 40px", borderRadius:14, border:"none",
@@ -1645,8 +1672,10 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     const toastId = addToast({ title:"Quick Start running…", status:"loading", message:"Analyzing sources", step:0, totalSteps:7, startTime:Date.now(),
       action:{ label:"View Progress", onClick:()=>{ (window as any).__showQSProgress?.(); } } });
     const _results: Record<string,string> = {};
+    let _totalFields = 0;
     const _progress = (step: number, key?: string, val?: string) => {
       if (key && val) _results[key] = val;
+      _results._totalFields = String(_totalFields);
       onProgress?.(step, { ..._results });
     };
     _progress(0);
@@ -1712,7 +1741,9 @@ Raw JSON only.`, "", 1500);
     } catch {}
 
     // ── Step 3: Extract Products & Services (BEFORE personas — personas need product context) ──
-    _progress(2, "company", `${Object.values(coFields).filter(v=>v&&String(v).trim()).length} fields filled`);
+    const coFieldCount = Object.values(coFields).filter(v=>v&&String(v).trim()).length;
+    _totalFields += coFieldCount;
+    _progress(2, "company", `${coFieldCount} fields filled`);
     updateToast(toastId, { message:"Extracting products & services…", step:3, totalSteps:7 });
     let products: any[] = [];
     try {
@@ -1732,7 +1763,9 @@ Raw JSON only.`, "", 1500);
     } catch {}
 
     // ── Step 4: Generate Offers per product (needs products) ──
-    _progress(3, "products", `${products.length} product${products.length!==1?"s":""} found`);
+    const prodFieldCount = products.reduce((s:number, p:any) => s + Object.values(p).filter(v=>v&&String(v).trim()&&typeof v==="string").length, 0);
+    _totalFields += prodFieldCount;
+    _progress(3, "products", `${products.length} product${products.length!==1?"s":""} · ${prodFieldCount} fields`);
     updateToast(toastId, { message:"Generating offer CTAs…", step:4, totalSteps:7 });
     let offers: any[] = [];
     if (products.length > 0) {
@@ -1750,7 +1783,9 @@ Raw JSON only.`, "", 1500);
     }
 
     // ── Step 5: Draft Personas (with product + offer context for max personalization) ──
-    _progress(4, "offers", `${offers.length} offer${offers.length!==1?"s":""} created`);
+    const offerFieldCount = offers.reduce((s:number, o:any) => s + Object.values(o).filter(v=>v&&String(v).trim()&&typeof v==="string"&&v.length>2).length, 0);
+    _totalFields += offerFieldCount;
+    _progress(4, "offers", `${offers.length} offer${offers.length!==1?"s":""} · ${offerFieldCount} fields`);
     updateToast(toastId, { message:"Drafting personas…", step:5, totalSteps:7 });
     const productContext = products.map((p:any) => `${p.name}: ${p.problemsSolved}. Ideal: ${p.idealCustomer}`).join("\n") || "No specific products";
     const offerContext = offers.map((o:any) => { const p=products.find((x:any)=>x.id===o.productId); return `${p?.name||"?"} (${o.tier}): "${o.ctaText||o.name}"`; }).join("\n") || "No offers";
@@ -1811,7 +1846,9 @@ Raw JSON only.`, "", 2000);
     }
 
     // ── Step 6: Fill Sales & Messaging guardrails (with full knowledge) ──
-    _progress(5, "personas", `${icps.length} persona${icps.length!==1?"s":""} drafted`);
+    const personaFieldCount = icps.reduce((s:number, p:any) => s + Object.values(p.data||{}).filter(v=>v&&String(v).trim()).length, 0);
+    _totalFields += personaFieldCount;
+    _progress(5, "personas", `${icps.length} persona${icps.length!==1?"s":""} · ${personaFieldCount} fields`);
     updateToast(toastId, { message:"Setting guardrails…", step:6, totalSteps:7 });
     try {
       const salesRaw = await callAI(
@@ -1823,7 +1860,9 @@ Raw JSON only.`, "", 2000);
     } catch {}
 
     // ── Step 7: Final validation pass ──
-    _progress(6, "guardrails", "Boundaries set");
+    const guardFieldCount = ["co_exclude","co_avoid"].filter(k => coFields[k] && String(coFields[k]).trim()).length;
+    _totalFields += guardFieldCount;
+    _progress(6, "guardrails", `${guardFieldCount} guardrails set`);
     updateToast(toastId, { message:"Validating & finalizing…", step:7, totalSteps:7 });
     // Ensure all product IDs are valid in offers
     offers = offers.filter(o => products.some((p:any) => p.id === o.productId));
@@ -1833,7 +1872,7 @@ Raw JSON only.`, "", 2000);
       icp.linkedOfferIds = (icp.linkedOfferIds||[]).filter((id:string) => offers.some((o:any) => o.id === id));
     }
 
-    _progress(7, "validate", "All linked & verified");
+    _progress(7, "validate", `${_totalFields} total fields filled`);
 
     const result = { coFields, coConf, icps, products, offers };
     onComplete(result);
