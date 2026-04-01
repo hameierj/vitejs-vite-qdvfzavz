@@ -1535,7 +1535,7 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
           </div>
         ) : (
           /* ═══ In-progress state ═══ */
-          <div style={{ display:"flex", alignItems:"center", gap:80, maxWidth:1100, width:"100%" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:80, maxWidth:900, width:"100%", margin:"0 auto" }}>
 
             {/* Left: animated orb */}
             <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"center", gap:28 }}>
