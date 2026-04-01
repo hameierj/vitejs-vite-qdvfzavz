@@ -1420,7 +1420,169 @@ function normalizeIntake(raw: string): string {
 }
 
 // ─── QUICK START MODAL ────────────────────────────────────────────────────────
-function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingFiles = [] }) {
+// ─── QUICK START PROGRESS PAGE ────────────────────────────────────────────────
+const QS_STEPS = [
+  { id:"sources",   label:"Analyzing Sources",         icon:"🔍", desc:"Processing website, docs, and uploaded files", color:"#6C5CE7" },
+  { id:"company",   label:"Building Company Profile",  icon:"🏢", desc:"Extracting industry, value prop, competitors, proof points", color:"#54A0FF" },
+  { id:"products",  label:"Extracting Products",       icon:"◆",  desc:"Identifying distinct products & services", color:"#00D68F" },
+  { id:"offers",    label:"Generating Offer CTAs",     icon:"◇",  desc:"Creating soft, medium, and hard CTAs per product", color:"#FFC048" },
+  { id:"personas",  label:"Drafting Personas",         icon:"◑",  desc:"Building target personas with pains, messaging, competitor intel", color:"#FF6B6B" },
+  { id:"guardrails",label:"Setting Guardrails",        icon:"◈",  desc:"Defining messaging boundaries and exclusions", color:"#8B5CF6" },
+  { id:"validate",  label:"Validating & Finalizing",   icon:"✓",  desc:"Cross-linking products, offers, and personas", color:"#00D68F" },
+];
+
+function QuickStartProgress({ currentStep, stepResults, onBack }: {
+  currentStep: number; stepResults: Record<string, string>; onBack: () => void;
+}) {
+  const total = QS_STEPS.length;
+  const pct = Math.round((currentStep / total) * 100);
+  const done = currentStep >= total;
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:400, background:C2.bg,
+      display:"flex", flexDirection:"column", overflow:"hidden" }}>
+      <style>{`
+        @keyframes qsPulse { 0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:1;transform:scale(1.05)} }
+        @keyframes qsOrbit { 0%{transform:rotate(0deg) translateX(60px) rotate(0deg)} 100%{transform:rotate(360deg) translateX(60px) rotate(-360deg)} }
+        @keyframes qsFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+        @keyframes qsGlow { 0%,100%{box-shadow:0 0 20px rgba(108,92,231,.2)} 50%{box-shadow:0 0 40px rgba(108,92,231,.5)} }
+        @keyframes qsParticle { 0%{opacity:0;transform:translateY(20px) scale(0)} 50%{opacity:1;transform:translateY(0) scale(1)} 100%{opacity:0;transform:translateY(-20px) scale(0)} }
+        @keyframes qsCheck { 0%{transform:scale(0) rotate(-45deg)} 50%{transform:scale(1.2) rotate(0deg)} 100%{transform:scale(1) rotate(0deg)} }
+        @keyframes qsSlideUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes qsProgress { from{width:0%} to{width:${pct}%} }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ padding:"16px 24px", display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+        <button onClick={onBack}
+          style={{ padding:"8px 16px", borderRadius:10, border:`1px solid ${C2.border}`, background:C2.canvas,
+            color:C2.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer",
+            display:"flex", alignItems:"center", gap:6 }}>
+          ← Back
+        </button>
+        <div style={{ flex:1 }} />
+        <div style={{ fontSize:13, fontFamily:mono, color:done?C2.green:C2.accent, fontWeight:700 }}>
+          {done ? "Complete!" : `Step ${currentStep + 1} of ${total}`}
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 40px", overflow:"auto" }}>
+        <div style={{ maxWidth:900, width:"100%" }}>
+
+          {/* Central animation area */}
+          <div style={{ textAlign:"center", marginBottom:48 }}>
+            <div style={{ position:"relative", width:140, height:140, margin:"0 auto 24px" }}>
+              {/* Orbiting particles */}
+              {[0,1,2,3,4].map(i => (
+                <div key={i} style={{ position:"absolute", inset:0,
+                  animation:`qsOrbit ${3+i*0.5}s linear infinite`,
+                  animationDelay:`${i*0.4}s` }}>
+                  <div style={{ width:8+i*2, height:8+i*2, borderRadius:"50%",
+                    background:QS_STEPS[Math.min(currentStep, total-1)]?.color || C2.accent,
+                    opacity: 0.3 + i*0.15 }} />
+                </div>
+              ))}
+              {/* Center icon */}
+              <div style={{ position:"absolute", inset:20, borderRadius:"50%",
+                background:`linear-gradient(135deg, ${C2.accent}, ${C2.accent}88)`,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                animation: done ? "qsCheck .5s ease forwards" : "qsGlow 2s ease-in-out infinite",
+                boxShadow:`0 8px 32px ${C2.accent}44` }}>
+                <span style={{ fontSize:40, filter:"grayscale(0)" }}>
+                  {done ? "✓" : QS_STEPS[Math.min(currentStep, total-1)]?.icon || "⚡"}
+                </span>
+              </div>
+            </div>
+            <div style={{ fontSize:24, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:6 }}>
+              {done ? "Quick Start Complete" : QS_STEPS[Math.min(currentStep, total-1)]?.label || "Processing…"}
+            </div>
+            <div style={{ fontSize:14, color:C2.muted, fontFamily:body }}>
+              {done ? "All data has been generated and connected" : QS_STEPS[Math.min(currentStep, total-1)]?.desc || ""}
+            </div>
+          </div>
+
+          {/* Overall progress bar */}
+          <div style={{ marginBottom:40 }}>
+            <div style={{ height:6, borderRadius:3, background:C2.faint, overflow:"hidden" }}>
+              <div style={{ height:"100%", borderRadius:3,
+                background:`linear-gradient(90deg, ${C2.accent}, ${done?C2.green:C2.accent}88)`,
+                width:`${pct}%`, transition:"width 1s ease-in-out" }} />
+            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", marginTop:8 }}>
+              <span style={{ fontSize:11, fontFamily:mono, color:C2.muted }}>{pct}%</span>
+              <span style={{ fontSize:11, fontFamily:mono, color:C2.muted }}>
+                {stepResults.products ? `${stepResults.products}` : ""}
+                {stepResults.offers ? ` · ${stepResults.offers}` : ""}
+                {stepResults.personas ? ` · ${stepResults.personas}` : ""}
+              </span>
+            </div>
+          </div>
+
+          {/* Step timeline */}
+          <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
+            {QS_STEPS.map((step, i) => {
+              const isActive = i === currentStep;
+              const isDone = i < currentStep;
+              const isPending = i > currentStep;
+              const result = stepResults[step.id] || "";
+              return (
+                <div key={step.id} style={{ display:"flex", gap:16, alignItems:"flex-start",
+                  animation: isActive ? "qsSlideUp .5s ease" : undefined,
+                  opacity: isPending ? 0.4 : 1, transition:"opacity .5s ease" }}>
+                  {/* Timeline line + dot */}
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:40, flexShrink:0 }}>
+                    <div style={{ width:32, height:32, borderRadius:10,
+                      background: isDone ? step.color : isActive ? `${step.color}22` : C2.faint,
+                      border: isActive ? `2px solid ${step.color}` : isDone ? "none" : `1px solid ${C2.border}`,
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      animation: isActive ? "qsPulse 1.5s ease-in-out infinite" : isDone ? "qsCheck .4s ease" : undefined,
+                      transition:"all .3s ease" }}>
+                      {isDone ? (
+                        <span style={{ color:"#fff", fontSize:14, fontWeight:700 }}>✓</span>
+                      ) : (
+                        <span style={{ fontSize:14, color: isActive ? step.color : C2.muted }}>{step.icon}</span>
+                      )}
+                    </div>
+                    {i < total - 1 && (
+                      <div style={{ width:2, height:32, background: isDone ? step.color : C2.border,
+                        transition:"background .5s ease" }} />
+                    )}
+                  </div>
+                  {/* Step content */}
+                  <div style={{ paddingBottom:i < total - 1 ? 12 : 0, flex:1, minHeight:44 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
+                      <span style={{ fontSize:14, fontWeight:isActive?700:isDone?600:400, fontFamily:head,
+                        color: isActive ? step.color : isDone ? C2.text : C2.muted }}>
+                        {step.label}
+                      </span>
+                      {isActive && (
+                        <div style={{ width:6, height:6, borderRadius:3, background:step.color,
+                          animation:"qsPulse 1s ease-in-out infinite" }} />
+                      )}
+                    </div>
+                    <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>{step.desc}</div>
+                    {isDone && result && (
+                      <div style={{ fontSize:11, fontFamily:mono, color:step.color, marginTop:4, fontWeight:600,
+                        animation:"qsSlideUp .3s ease" }}>
+                        {result}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingFiles = [], onProgress }: {
+  onComplete: (r:any)=>void; onClose:()=>void; addToast:(t:any)=>string; updateToast:(id:string,p:any)=>void;
+  existingFiles?: any[]; onProgress?: (step:number, results:Record<string,string>)=>void;
+}) {
   const [url,      setUrl]     = useState("");
   const [linkedin, setLinkedin]= useState("");
   const [text,     setText]    = useState("");
@@ -1434,7 +1596,14 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
   const run = async () => {
     // Close modal immediately — run in background
     onClose();
-    const toastId = addToast({ title:"Quick Start running…", status:"loading", message:"Analyzing sources", step:0, totalSteps:7, startTime:Date.now() });
+    const toastId = addToast({ title:"Quick Start running…", status:"loading", message:"Analyzing sources", step:0, totalSteps:7, startTime:Date.now(),
+      action:{ label:"View Progress", onClick:()=>{ (window as any).__showQSProgress?.(); } } });
+    const _results: Record<string,string> = {};
+    const _progress = (step: number, key?: string, val?: string) => {
+      if (key && val) _results[key] = val;
+      onProgress?.(step, { ..._results });
+    };
+    _progress(0);
 
     let context = "";
     const sources = [];
@@ -1458,8 +1627,10 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
 
     // Normalize intake data
     updateToast(toastId, { message:"Normalizing intake data…", step:1, totalSteps:7 });
+    _progress(0, "sources", `${sources.length} source${sources.length!==1?"s":""} loaded`);
     context = normalizeIntake(context);
 
+    _progress(1);
     updateToast(toastId, { message:"Building company profile…", step:2, totalSteps:7 });
     const coRaw = await callAI(`
 Analyze this company for B2B cold outreach. Sources: ${context||"(limited — use your best judgment based on any signals available)"}
@@ -1495,6 +1666,7 @@ Raw JSON only.`, "", 1500);
     } catch {}
 
     // ── Step 3: Extract Products & Services (BEFORE personas — personas need product context) ──
+    _progress(2, "company", `${Object.values(coFields).filter(v=>v&&String(v).trim()).length} fields filled`);
     updateToast(toastId, { message:"Extracting products & services…", step:3, totalSteps:7 });
     let products: any[] = [];
     try {
@@ -1514,6 +1686,7 @@ Raw JSON only.`, "", 1500);
     } catch {}
 
     // ── Step 4: Generate Offers per product (needs products) ──
+    _progress(3, "products", `${products.length} product${products.length!==1?"s":""} found`);
     updateToast(toastId, { message:"Generating offer CTAs…", step:4, totalSteps:7 });
     let offers: any[] = [];
     if (products.length > 0) {
@@ -1531,6 +1704,7 @@ Raw JSON only.`, "", 1500);
     }
 
     // ── Step 5: Draft Personas (with product + offer context for max personalization) ──
+    _progress(4, "offers", `${offers.length} offer${offers.length!==1?"s":""} created`);
     updateToast(toastId, { message:"Drafting personas…", step:5, totalSteps:7 });
     const productContext = products.map((p:any) => `${p.name}: ${p.problemsSolved}. Ideal: ${p.idealCustomer}`).join("\n") || "No specific products";
     const offerContext = offers.map((o:any) => { const p=products.find((x:any)=>x.id===o.productId); return `${p?.name||"?"} (${o.tier}): "${o.ctaText||o.name}"`; }).join("\n") || "No offers";
@@ -1591,6 +1765,7 @@ Raw JSON only.`, "", 2000);
     }
 
     // ── Step 6: Fill Sales & Messaging guardrails (with full knowledge) ──
+    _progress(5, "personas", `${icps.length} persona${icps.length!==1?"s":""} drafted`);
     updateToast(toastId, { message:"Setting guardrails…", step:6, totalSteps:7 });
     try {
       const salesRaw = await callAI(
@@ -1602,6 +1777,7 @@ Raw JSON only.`, "", 2000);
     } catch {}
 
     // ── Step 7: Final validation pass ──
+    _progress(6, "guardrails", "Boundaries set");
     updateToast(toastId, { message:"Validating & finalizing…", step:7, totalSteps:7 });
     // Ensure all product IDs are valid in offers
     offers = offers.filter(o => products.some((p:any) => p.id === o.productId));
@@ -1610,6 +1786,8 @@ Raw JSON only.`, "", 2000);
       icp.linkedProductIds = (icp.linkedProductIds||[]).filter((id:string) => products.some((p:any) => p.id === id));
       icp.linkedOfferIds = (icp.linkedOfferIds||[]).filter((id:string) => offers.some((o:any) => o.id === id));
     }
+
+    _progress(7, "validate", "All linked & verified");
 
     const result = { coFields, coConf, icps, products, offers };
     onComplete(result);
@@ -10081,6 +10259,9 @@ function AppMain() {
   const [addPopPos,      setAddPopPos]      = useState<{top:number;left:number}|null>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [showQS,         setShowQS]         = useState(false);
+  const [qsProgress,     setQsProgress]     = useState<{step:number;results:Record<string,string>}|null>(null);
+  // Register global so toast action button can open progress page
+  (window as any).__showQSProgress = () => { if (qsProgress) setQsProgress({...qsProgress}); else setQsProgress({step:0,results:{}}); };
   const [showAnalyzer,   setShowAnalyzer]   = useState(false);
   const [pendingReview,  setPendingReview]  = useState<any>(null);
   const [showReview,     setShowReview]     = useState(false);
@@ -10426,6 +10607,8 @@ Raw JSON only.`, "", 1400);
     if (result.products?.length) setProducts(prev => [...prev, ...result.products]);
     if (result.offers?.length) setOffers(prev => [...prev, ...result.offers]);
     setShowQS(false);
+    // Don't clear qsProgress immediately — let user see the completed state
+    setTimeout(() => setQsProgress(null), 5000);
     setView("products");
   }, []);
 
@@ -11555,7 +11738,16 @@ Raw JSON only.`, "", 1400);
           addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={true}
           products={products} offers={offers} />
       )}
-      {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles} />}
+      {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
+        onProgress={(step, results) => setQsProgress({ step, results })} />}
+
+      {/* Quick Start Progress Page */}
+      {qsProgress && (
+        <QuickStartProgress
+          currentStep={qsProgress.step}
+          stepResults={qsProgress.results}
+          onBack={()=>setQsProgress(null)} />
+      )}
 
       {/* ICP Preview Modal */}
       {icpPreviews && createPortal(
