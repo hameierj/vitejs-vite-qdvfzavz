@@ -1449,8 +1449,15 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:2147483645,
-      background:`linear-gradient(135deg, ${C2.bg} 0%, ${C2.bg} 60%, ${activeColor}12 100%)`,
+      background:C2.bg,
       display:"flex", flexDirection:"column", overflow:"hidden" }}>
+      {/* Background decoration */}
+      <div style={{ position:"absolute", inset:0, pointerEvents:"none", overflow:"hidden" }}>
+        <div style={{ position:"absolute", top:"-20%", right:"-10%", width:"50vw", height:"50vw", borderRadius:"50%",
+          background:`radial-gradient(circle, ${activeColor}08 0%, transparent 70%)` }} />
+        <div style={{ position:"absolute", bottom:"-20%", left:"-10%", width:"40vw", height:"40vw", borderRadius:"50%",
+          background:`radial-gradient(circle, ${C2.accent}06 0%, transparent 70%)` }} />
+      </div>
       <style>{`
         @keyframes qsPulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
         @keyframes qsOrbit{0%{transform:rotate(0deg) translateX(var(--r,50px)) rotate(0deg)}100%{transform:rotate(360deg) translateX(var(--r,50px)) rotate(-360deg)}}
@@ -1487,24 +1494,24 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
       </div>
 
       {/* Main — vertically centered, no scroll */}
-      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"60px 40px 20px" }}>
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"60px 60px 40px", position:"relative" }}>
 
         {done ? (
           /* ═══ Completion state ═══ */
-          <div style={{ textAlign:"center", animation:"qsCelebrate .6s ease forwards", maxWidth:500 }}>
-            <div style={{ position:"relative", width:120, height:120, margin:"0 auto 28px" }}>
-              <div style={{ width:120, height:120, borderRadius:"50%",
+          <div style={{ textAlign:"center", animation:"qsCelebrate .6s ease forwards", maxWidth:560 }}>
+            <div style={{ position:"relative", width:160, height:160, margin:"0 auto 32px" }}>
+              <div style={{ width:160, height:160, borderRadius:"50%",
                 background:`linear-gradient(135deg, ${C2.green}, #00B894)`,
                 display:"flex", alignItems:"center", justifyContent:"center",
-                boxShadow:`0 12px 40px ${C2.green}44`,
+                boxShadow:`0 16px 60px ${C2.green}44`,
                 animation:"qsCheck .5s ease" }}>
-                <span style={{ fontSize:48, color:"#fff" }}>✓</span>
+                <span style={{ fontSize:60, color:"#fff" }}>✓</span>
               </div>
             </div>
-            <div style={{ fontSize:28, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:8 }}>
+            <div style={{ fontSize:36, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:10 }}>
               You're all set!
             </div>
-            <div style={{ fontSize:15, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:12 }}>
+            <div style={{ fontSize:16, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:16 }}>
               Quick Start has built your entire outreach foundation.
             </div>
             {/* Results summary */}
@@ -1528,46 +1535,46 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
           </div>
         ) : (
           /* ═══ In-progress state ═══ */
-          <div style={{ display:"flex", alignItems:"center", gap:60, maxWidth:1000, width:"100%" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:80, maxWidth:1100, width:"100%" }}>
 
             {/* Left: animated orb */}
-            <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"center", gap:20 }}>
-              <div style={{ position:"relative", width:160, height:160 }}>
-                {[0,1,2,3,4].map(i => (
-                  <div key={i} style={{ position:"absolute", top:"50%", left:"50%", marginTop:-(4+i), marginLeft:-(4+i),
-                    width:8+i*2, height:8+i*2, borderRadius:"50%",
-                    background:activeColor, opacity: 0.2 + i*0.12,
+            <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"center", gap:28 }}>
+              <div style={{ position:"relative", width:220, height:220 }}>
+                {[0,1,2,3,4,5].map(i => (
+                  <div key={i} style={{ position:"absolute", top:"50%", left:"50%", marginTop:-(5+i), marginLeft:-(5+i),
+                    width:10+i*3, height:10+i*3, borderRadius:"50%",
+                    background:activeColor, opacity: 0.15 + i*0.1,
                     // @ts-ignore
-                    "--r": `${40+i*10}px`,
-                    animation:`qsOrbit ${4+i*0.7}s linear infinite`,
-                    animationDelay:`${i*0.3}s` } as any} />
+                    "--r": `${55+i*14}px`,
+                    animation:`qsOrbit ${5+i*0.8}s linear infinite`,
+                    animationDelay:`${i*0.35}s` } as any} />
                 ))}
                 <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
-                  width:80, height:80, borderRadius:"50%",
+                  width:100, height:100, borderRadius:"50%",
                   background:`linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
                   display:"flex", alignItems:"center", justifyContent:"center",
                   animation:"qsGlow 2s ease-in-out infinite",
-                  boxShadow:`0 8px 32px ${activeColor}44` }}>
-                  <span style={{ fontSize:32 }}>{activeStep?.icon || "⚡"}</span>
+                  boxShadow:`0 12px 48px ${activeColor}44` }}>
+                  <span style={{ fontSize:40 }}>{activeStep?.icon || "⚡"}</span>
                 </div>
               </div>
               {/* Progress bar */}
-              <div style={{ width:160 }}>
-                <div style={{ height:4, borderRadius:2, background:`${C2.border}88`, overflow:"hidden" }}>
-                  <div style={{ height:"100%", borderRadius:2,
+              <div style={{ width:200 }}>
+                <div style={{ height:6, borderRadius:3, background:`${C2.border}66`, overflow:"hidden" }}>
+                  <div style={{ height:"100%", borderRadius:3,
                     background:`linear-gradient(90deg, ${activeColor}, ${activeColor}88)`,
                     width:`${pct}%`, transition:"width 1s ease-in-out" }} />
                 </div>
-                <div style={{ fontSize:10, fontFamily:mono, color:C2.muted, textAlign:"center", marginTop:6 }}>{pct}%</div>
+                <div style={{ fontSize:12, fontFamily:mono, color:C2.muted, textAlign:"center", marginTop:8, fontWeight:600 }}>{pct}%</div>
               </div>
             </div>
 
             {/* Right: step timeline */}
             <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:4 }}>
+              <div style={{ fontSize:28, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:6 }}>
                 {activeStep?.label || "Processing…"}
               </div>
-              <div style={{ fontSize:13, color:C2.muted, fontFamily:body, marginBottom:24 }}>
+              <div style={{ fontSize:15, color:C2.muted, fontFamily:body, marginBottom:32 }}>
                 {activeStep?.desc || ""}
               </div>
 
@@ -1578,32 +1585,32 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
                   const isPending = i > currentStep;
                   const result = stepResults[step.id] || "";
                   return (
-                    <div key={step.id} style={{ display:"flex", gap:12, alignItems:"flex-start",
-                      opacity: isPending ? 0.35 : 1, transition:"opacity .5s ease" }}>
-                      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:28, flexShrink:0 }}>
-                        <div style={{ width:24, height:24, borderRadius:7,
+                    <div key={step.id} style={{ display:"flex", gap:16, alignItems:"flex-start",
+                      opacity: isPending ? 0.3 : 1, transition:"opacity .5s ease" }}>
+                      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:36, flexShrink:0 }}>
+                        <div style={{ width:32, height:32, borderRadius:10,
                           background: isDone ? step.color : isActive ? `${step.color}22` : C2.faint,
                           border: isActive ? `2px solid ${step.color}` : isDone ? "none" : `1px solid ${C2.border}`,
                           display:"flex", alignItems:"center", justifyContent:"center",
                           animation: isActive ? "qsPulse 1.5s ease-in-out infinite" : undefined,
                           transition:"all .3s ease" }}>
                           {isDone
-                            ? <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>
-                            : <span style={{ fontSize:10, color: isActive ? step.color : C2.muted }}>{i+1}</span>}
+                            ? <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>✓</span>
+                            : <span style={{ fontSize:12, fontWeight:600, color: isActive ? step.color : C2.muted }}>{i+1}</span>}
                         </div>
                         {i < total - 1 && (
-                          <div style={{ width:2, height:20, background: isDone ? step.color : C2.border,
+                          <div style={{ width:2, height:28, background: isDone ? step.color : C2.border,
                             transition:"background .5s ease" }} />
                         )}
                       </div>
-                      <div style={{ paddingBottom:i < total - 1 ? 4 : 0, flex:1, minHeight:36 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                          <span style={{ fontSize:12, fontWeight:isActive?700:isDone?600:400, fontFamily:head,
+                      <div style={{ paddingBottom:i < total - 1 ? 8 : 0, flex:1, minHeight:48 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <span style={{ fontSize:15, fontWeight:isActive?700:isDone?600:400, fontFamily:head,
                             color: isActive ? step.color : isDone ? C2.text : C2.muted }}>{step.label}</span>
-                          {isActive && <div style={{ width:5, height:5, borderRadius:3, background:step.color, animation:"qsPulse 1s ease-in-out infinite" }} />}
+                          {isActive && <div style={{ width:6, height:6, borderRadius:3, background:step.color, animation:"qsPulse 1s ease-in-out infinite" }} />}
                         </div>
                         {isDone && result && (
-                          <div style={{ fontSize:10, fontFamily:mono, color:step.color, marginTop:2, fontWeight:600 }}>{result}</div>
+                          <div style={{ fontSize:12, fontFamily:mono, color:step.color, marginTop:3, fontWeight:600 }}>{result}</div>
                         )}
                       </div>
                     </div>
