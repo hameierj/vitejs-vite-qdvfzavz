@@ -4784,6 +4784,10 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   const [selectedId, setSelectedId] = useState<string|null>(products[0]?.id ?? null);
   const [secTab, setSecTab] = useState("core");
   const [aiOn, setAiOn] = useState<string|null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addDesc, setAddDesc] = useState("");
+  const [addUrl, setAddUrl] = useState("");
+  const [addCreating, setAddCreating] = useState(false);
   const [aiExtracting, setAiExtracting] = useState(false);
 
   const selected = products.find(p => p.id === selectedId) || null;
@@ -4792,11 +4796,31 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   const updProduct = (id: string, patch: any) => {
     onProductsChange(products.map(p => p.id === id ? { ...p, ...patch } : p));
   };
-  const addProduct = () => {
+  const addProductManual = () => {
     const p = EMPTY_PRODUCT();
     onProductsChange([...products, p]);
     setSelectedId(p.id);
     setSecTab("core");
+    setShowAddModal(false);
+  };
+  const addProductWithAI = async () => {
+    if (!addDesc.trim() && !addUrl.trim()) return;
+    setAddCreating(true);
+    try {
+      const result = await callAI(
+        `Create a detailed B2B product/service profile based on this description.\n\nDescription: ${addDesc||"(not provided)"}\nURL: ${addUrl||"(not provided)"}\nCompany: ${(companyData as any)?.co_name||""} (${(companyData as any)?.co_industry||""})\nCompany context: ${JSON.stringify(companyData)}\n${fileContext ? `Files:\n${fileContext}` : ""}\n\nFill ALL fields — never leave empty. Make confident inferences where needed.\n\nReturn ONLY valid JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","problemsSolved":"","valueProposition":"","idealCustomer":"","pricingRange":"","competitors":"","proofPoints":"","switchTriggers":"","dealCycle":"","caseStudies":"","socialProof":""}`,
+        "Return only valid JSON.", 1200
+      );
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      const newProd = { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
+      onProductsChange([...products, newProd]);
+      setSelectedId(newProd.id);
+      setSecTab("core");
+      setShowAddModal(false);
+      setAddDesc(""); setAddUrl("");
+    } catch (e) { console.error("AI product creation failed:", e); }
+    setAddCreating(false);
   };
   const deleteProduct = (id: string) => {
     if (!confirm("Delete this product?")) return;
@@ -4807,31 +4831,30 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   const aiExtractAll = async () => {
     setAiExtracting(true);
     try {
+      const existingNames = products.map(p => p.name?.toLowerCase().trim()).filter(Boolean);
       const ctx = JSON.stringify(companyData);
       const result = await callAI(
-        `Analyze this company's profile and identify ALL distinct products and services they offer. For EACH product, provide:\n- name: product/service name\n- description: what it is and how it works\n- category: Software|Platform|Service|Hardware|Consulting|Other\n- problemsSolved: specific problems it addresses\n- valueProposition: why buy this vs alternatives\n- idealCustomer: who is the perfect buyer\n- pricingRange: approximate deal size\n- competitors: competitive alternatives\n- proofPoints: best evidence it works\n\nCompany context:\n${ctx}${fileContext ? `\n\nFiles:\n${fileContext}` : ""}\n\nReturn ONLY a valid JSON array of objects. No markdown.`,
-        "You are a B2B product analyst. Return only valid JSON.", 2000
+        `Analyze this company's profile and identify ALL distinct products and services they offer.\n\nCompany context:\n${ctx}${fileContext ? `\n\nFiles:\n${fileContext}` : ""}\n\nALREADY EXISTING products (DO NOT create duplicates or similar variants of these):\n${existingNames.length ? existingNames.join(", ") : "none"}\n\nOnly return products that are GENUINELY DIFFERENT from the existing list. If all products are already captured, return an empty array [].\n\nFor each NEW product, provide: name, description, category (Software|Platform|Service|Hardware|Consulting|Other), problemsSolved, valueProposition, idealCustomer, pricingRange, competitors, proofPoints, switchTriggers.\n\nReturn ONLY valid JSON array. Return [] if no new products found.`,
+        "Return only valid JSON.", 2000
       );
       const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(cleaned);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const newProducts = parsed.map((p: any) => ({
-          ...EMPTY_PRODUCT(),
-          name: p.name || "",
-          description: p.description || "",
-          category: p.category || "Other",
-          problemsSolved: p.problemsSolved || "",
-          valueProposition: p.valueProposition || "",
-          idealCustomer: p.idealCustomer || "",
-          pricingRange: p.pricingRange || "",
-          competitors: p.competitors || "",
-          proofPoints: p.proofPoints || "",
-          caseStudies: p.caseStudies || "",
-          socialProof: p.socialProof || "",
-          switchTriggers: p.switchTriggers || "",
-        }));
-        onProductsChange([...products, ...newProducts]);
-        setSelectedId(newProducts[0].id);
+        // Extra dedup check — filter out any that match existing names closely
+        const newProducts = parsed
+          .filter((p: any) => !existingNames.some(n => n === (p.name||"").toLowerCase().trim() || n.includes((p.name||"").toLowerCase().trim()) || (p.name||"").toLowerCase().trim().includes(n)))
+          .map((p: any) => ({
+            ...EMPTY_PRODUCT(),
+            name: p.name || "", description: p.description || "", category: p.category || "Other",
+            problemsSolved: p.problemsSolved || "", valueProposition: p.valueProposition || "",
+            idealCustomer: p.idealCustomer || "", pricingRange: p.pricingRange || "",
+            competitors: p.competitors || "", proofPoints: p.proofPoints || "",
+            switchTriggers: p.switchTriggers || "",
+          }));
+        if (newProducts.length > 0) {
+          onProductsChange([...products, ...newProducts]);
+          setSelectedId(newProducts[0].id);
+        }
       }
     } catch (e) { console.error("AI extract failed:", e); }
     setAiExtracting(false);
@@ -4863,19 +4886,73 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
       {/* Product list sidebar */}
       <div style={{ width:240, flexShrink:0, display:"flex", flexDirection:"column",
         borderRight:`1px solid ${_C.border}`, background:v2?_C.faint:_C.surface, overflow:"hidden" }}>
-        <div style={{ padding:"12px", flexShrink:0, display:"flex", gap:6 }}>
-          <button onClick={addProduct}
-            style={{ flex:1, padding:"9px 14px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+        <div style={{ padding:"12px", flexShrink:0, display:"flex", flexDirection:"column", gap:6 }}>
+          <button onClick={()=>setShowAddModal(true)}
+            style={{ width:"100%", padding:"9px 14px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
               fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
             + Add Product
           </button>
           <button onClick={aiExtractAll} disabled={aiExtracting}
-            style={{ padding:"9px 12px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
-              color:_C.green, fontSize:11, fontFamily:head, fontWeight:700, cursor:aiExtracting?"wait":"pointer",
-              opacity:aiExtracting?0.6:1 }}>
-            {aiExtracting ? "◌" : "◎"} AI
+            style={{ width:"100%", padding:"7px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+              background:_C.canvas, color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600,
+              cursor:aiExtracting?"wait":"pointer", opacity:aiExtracting?0.6:1 }}>
+            {aiExtracting ? "◌ Scanning..." : "◎ Auto-detect from profile"}
           </button>
         </div>
+        {/* Add Product Modal */}
+        {showAddModal && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:300,
+            display:"flex", alignItems:"center", justifyContent:"center", padding:24, backdropFilter:"blur(4px)" }}
+            onClick={()=>{ if(!addCreating) setShowAddModal(false); }}>
+            <div style={{ width:"100%", maxWidth:520, background:_C.canvas, borderRadius:16,
+              border:`1px solid ${_C.border}`, boxShadow:"0 24px 60px rgba(13,15,26,0.2)",
+              animation:"slideUp .3s cubic-bezier(.2,0,.1,1)" }} onClick={e=>e.stopPropagation()}>
+              <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${_C.border}` }}>
+                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Add Product or Service</div>
+                <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:4 }}>
+                  Describe it, provide a link, or add it manually and fill in the fields yourself.
+                </div>
+              </div>
+              <div style={{ padding:"20px 24px", display:"flex", flexDirection:"column", gap:14 }}>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                    Describe the product/service
+                  </label>
+                  <textarea value={addDesc} onChange={e=>setAddDesc(e.target.value)}
+                    rows={4} placeholder="Tell us about this product — what it is, who it's for, what problems it solves, how it works..."
+                    style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${_C.border}`,
+                      background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none", resize:"vertical" }}
+                    onFocus={e=>e.target.style.borderColor=_C.accent+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                    Product page URL <span style={{ fontWeight:400, color:_C.muted }}>(optional)</span>
+                  </label>
+                  <input value={addUrl} onChange={e=>setAddUrl(e.target.value)}
+                    placeholder="https://example.com/product-page"
+                    style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                      background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }}
+                    onFocus={e=>e.target.style.borderColor=_C.accent+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+                </div>
+              </div>
+              <div style={{ padding:"16px 24px", borderTop:`1px solid ${_C.border}`, display:"flex", gap:10, justifyContent:"flex-end" }}>
+                <button onClick={()=>{ setShowAddModal(false); setAddDesc(""); setAddUrl(""); }}
+                  style={{ padding:"9px 18px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
+                    color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+                <button onClick={addProductManual}
+                  style={{ padding:"9px 18px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
+                    color:_C.text, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Add Blank</button>
+                <button onClick={addProductWithAI} disabled={addCreating || (!addDesc.trim() && !addUrl.trim())}
+                  style={{ padding:"9px 18px", borderRadius:10, border:"none",
+                    background: (addDesc.trim() || addUrl.trim()) ? _C.accent : _C.muted, color:"#fff",
+                    fontSize:12, fontFamily:head, fontWeight:700, cursor:addCreating?"wait":"pointer",
+                    opacity:addCreating?0.7:1, boxShadow:`0 2px 8px ${_C.accent}44` }}>
+                  {addCreating ? "◌ Creating..." : "◎ Create with AI"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div style={{ flex:1, overflowY:"auto", padding:"0 8px 8px" }}>
           {products.length === 0 && (
             <div style={{ padding:"32px 12px", textAlign:"center" }}>
@@ -5012,13 +5089,13 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
               Define each product or service your client sells. This feeds into persona targeting, offer creation, and campaign planning.
             </div>
             <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
-              <button onClick={addProduct}
+              <button onClick={()=>setShowAddModal(true)}
                 style={{ padding:"10px 24px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
                   fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>+ Add Product</button>
               <button onClick={aiExtractAll} disabled={aiExtracting}
-                style={{ padding:"10px 24px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
-                  color:_C.green, fontSize:13, fontFamily:head, fontWeight:700, cursor:aiExtracting?"wait":"pointer" }}>
-                {aiExtracting ? "Extracting..." : "AI Extract from Profile"}
+                style={{ padding:"10px 24px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
+                  color:_C.textSoft, fontSize:13, fontFamily:head, fontWeight:600, cursor:aiExtracting?"wait":"pointer" }}>
+                {aiExtracting ? "Scanning..." : "Auto-detect from profile"}
               </button>
             </div>
           </div>
