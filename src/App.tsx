@@ -4804,7 +4804,10 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
     setShowAddModal(false);
   };
   const addProductWithAI = async () => {
-    if (!addDesc.trim() && !addUrl.trim()) return;
+    if (!addDesc.trim() && !addUrl.trim()) {
+      addToast({ title:"Describe the product", status:"error", message:"Enter a description or URL so AI knows what to create" });
+      return;
+    }
     setAddCreating(true);
     addToast({ title:"Creating product…", status:"loading", message:"AI is building the product profile" });
     try {
@@ -4831,6 +4834,11 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   };
 
   const aiExtractAll = async () => {
+    const cd = companyData as Record<string,string>;
+    if (!cd.co_name && !cd.co_product && !cd.co_pitch && !fileContext) {
+      addToast({ title:"Not enough info", status:"error", message:"Fill in the company profile first, or upload docs — AI needs context to find products" });
+      return;
+    }
     setAiExtracting(true);
     addToast({ title:"Scanning profile…", status:"loading", message:"Looking for products & services" });
     try {
@@ -4859,8 +4867,10 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
           setSelectedId(newProducts[0].id);
           addToast({ title:"Products found", status:"success", message:`${newProducts.length} new product${newProducts.length!==1?"s":""} added` });
         } else {
-          addToast({ title:"No new products", status:"success", message:"All products already captured" });
+          addToast({ title:"No new products found", status:"success", message:`AI found ${parsed.length} product${parsed.length!==1?"s":""} but ${parsed.length===1?"it's":"they're"} already in your list` });
         }
+      } else {
+        addToast({ title:"No products detected", status:"success", message:"Add more detail to the company profile or add products manually" });
       }
     } catch (e) { console.error("AI extract failed:", e); addToast({ title:"Scan failed", status:"error", message:"Could not extract products" }); }
     setAiExtracting(false);
@@ -4874,8 +4884,14 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
         `Fill this product field.\nProduct: ${selected.name || "unnamed"}\nAll product data: ${JSON.stringify(selected)}\nCompany context: ${JSON.stringify(companyData)}\nField: "${f.label}"\nHint: ${f.ph || ""}\n${fileContext ? `Files:\n${fileContext}` : ""}\nReturn ONLY the field value, no explanation.`,
         "", 400
       );
-      updProduct(selected.id, { [f.id]: result.trim() });
-    } catch {}
+      const val = result.trim();
+      if (val && !val.startsWith("Error")) {
+        updProduct(selected.id, { [f.id]: val });
+        addToast({ title:"Field updated", status:"success", message:f.label });
+      } else {
+        addToast({ title:"Could not fill field", status:"error", message:`AI returned no result for "${f.label}"` });
+      }
+    } catch { addToast({ title:"AI fill failed", status:"error", message:`Could not generate "${f.label}"` }); }
     setAiOn(null);
   };
 
@@ -5392,6 +5408,19 @@ function StrategyPage({ strategy, onStrategyChange, companyData, products, offer
   const emailReady = warmupDaysLeft === 0;
 
   const generateRoadmap = async () => {
+    const cd = companyData as Record<string,string>;
+    if (!cd.co_name && products.length === 0 && personas.length === 0) {
+      addToast({ title:"Not enough data", status:"error", message:"Fill in the company profile, add products, and create at least one persona before generating a strategy" });
+      return;
+    }
+    if (products.length === 0) {
+      addToast({ title:"No products defined", status:"error", message:"Add at least one product on the Products & Services page first" });
+      return;
+    }
+    if (personas.length === 0) {
+      addToast({ title:"No personas defined", status:"error", message:"Create at least one persona first — the strategy needs target audiences" });
+      return;
+    }
     setGenerating(true);
     addToast({ title:"Generating roadmap…", status:"loading", message:"Building 12-month strategy" });
     try {
@@ -5714,6 +5743,10 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
 
   const generateSequence = async () => {
     if (!selected) return;
+    if (!selected.personaIds?.length && !selected.productId) {
+      addToast({ title:"Setup incomplete", status:"error", message:"Link at least one persona and select a product before generating a sequence" });
+      return;
+    }
     setGenerating(true);
     addToast({ title:"Generating sequence…", status:"loading", message:"Building outreach steps" });
     try {
