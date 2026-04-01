@@ -1448,8 +1448,8 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
   })) : [];
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:400,
-      background:`linear-gradient(135deg, ${C2.bg}, ${activeColor}08)`,
+    <div style={{ position:"fixed", inset:0, zIndex:2147483645,
+      background:`linear-gradient(135deg, ${C2.bg} 0%, ${C2.bg} 60%, ${activeColor}12 100%)`,
       display:"flex", flexDirection:"column", overflow:"hidden" }}>
       <style>{`
         @keyframes qsPulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
@@ -11781,11 +11781,12 @@ Raw JSON only.`, "", 1400);
         onProgress={(step, results) => setQsProgress({ step, results })} />}
 
       {/* Quick Start Progress Page */}
-      {qsProgress && (
+      {qsProgress && createPortal(
         <QuickStartProgress
           currentStep={qsProgress.step}
           stepResults={qsProgress.results}
-          onBack={()=>setQsProgress(null)} />
+          onBack={()=>setQsProgress(null)} />,
+        document.body
       )}
 
       {/* ICP Preview Modal */}
