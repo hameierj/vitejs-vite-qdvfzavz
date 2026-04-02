@@ -1421,6 +1421,53 @@ function normalizeIntake(raw: string): string {
 
 // ─── QUICK START MODAL ────────────────────────────────────────────────────────
 // ─── QUICK START PROGRESS PAGE ────────────────────────────────────────────────
+// Time estimates per field (in seconds) for "time saved" calculation
+// Based on how long a human CSM/strategist would take to research and fill each field
+const FIELD_TIME_SECONDS: Record<string, number> = {
+  // Company profile — simple lookups (5-15s)
+  co_name:10, co_contact_first:5, co_contact_last:5, co_contact_title:10, co_contact_phone:10,
+  co_contact_email:10, co_login_email:5, co_channels:10, co_num_campaigns:15, co_timezone:5,
+  co_days:5, co_start_time:5, co_end_time:5,
+  // Company profile — moderate research (1-3 min)
+  co_industry:60, co_website:30, co_deal:90, co_cycle:90, co_goal:60,
+  co_campaign_purpose:180, co_outcomes:60,
+  // Company profile — deep research (5-10 min)
+  co_pitch:420, co_product:480, co_prod_breakdown:600, co_category:300, co_competitors:480,
+  co_buying_motion:300, co_trust_risks:360, co_ksp:420, co_diff:480, co_proof:360,
+  co_customers:240, co_dream:300,
+  // Company profile — guardrails (3-5 min)
+  co_past_emails:300, co_exclude:180, co_avoid:180,
+  // Product fields — moderate to deep (2-8 min each)
+  name:30, description:240, category:15, problemsSolved:420, valueProposition:480,
+  idealCustomer:300, pricingRange:60, dealCycle:60, competitors:360, switchTriggers:300,
+  proofPoints:420, caseStudies:600, socialProof:240,
+  // Offer fields (2-5 min each)
+  ctaText:300, whatTheyGet:180, frictionReduction:240,
+  // Persona — targeting (1-5 min each)
+  industries:120, co_sizes:30, geo:60, revenue:30, tech:300, keywords:360,
+  dream_accts:420, neg:180, intent_topics:360, real_filters:600,
+  // Persona — persona details (3-8 min each)
+  buyer:180, champ:120, goals:300, fears:300, metrics:180, objections:360, sub_personas:600,
+  // Persona — pains & triggers (5-10 min each)
+  pain1:480, pain2:300, gains:240, triggers:420, buying_signals_direct:360,
+  buying_signals_indirect:360, sq_cost:300, friction_points:300,
+  // Persona — messaging (3-8 min each)
+  tone:60, hook:420, cta:60, why_client_wins:480, icp_proof:300,
+  ref_emails:600, seq_strategy:120, seq_cta_style:60,
+  // Persona — competitor intel (5-10 min each)
+  current_solutions:420, incumbent_strengths:360, switching_triggers:360,
+  displacement_messaging:600, win_loss_patterns:480,
+  // Persona — channel behavior (1-3 min each)
+  best_channel:60, best_time:120, linkedin_activity:120, phone_accessibility:60, email_preference:60,
+  // Persona — lead scoring (3-5 min each)
+  interested_criteria:240, warm_criteria:240, meeting_ready_criteria:240,
+  not_now_criteria:180, dead_criteria:180,
+};
+
+function calcTimeSaved(filledFieldIds: string[]): number {
+  return filledFieldIds.reduce((total, id) => total + (FIELD_TIME_SECONDS[id] || 120), 0);
+}
+
 const QS_STEPS = [
   { id:"sources",   label:"Analyzing Sources",         icon:"🔍", desc:"Processing website, docs, and uploaded files", color:"#6C5CE7" },
   { id:"company",   label:"Building Company Profile",  icon:"🏢", desc:"Extracting industry, value prop, competitors, proof points", color:"#54A0FF" },
@@ -1440,10 +1487,9 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
   const activeStep = QS_STEPS[Math.min(currentStep, total-1)];
   const activeColor = activeStep?.color || C2.accent;
   const totalFieldsFilled = parseInt(stepResults._totalFields || "0");
-  // Time saved estimate: ~3 min per field for manual research + writing
-  const minutesSaved = totalFieldsFilled * 3;
-  const hoursSaved = Math.floor(minutesSaved / 60);
-  const remainingMins = minutesSaved % 60;
+  const totalSecondsSaved = parseInt(stepResults._totalSeconds || "0");
+  const hoursSaved = Math.floor(totalSecondsSaved / 3600);
+  const remainingMins = Math.round((totalSecondsSaved % 3600) / 60);
   const timeSavedStr = hoursSaved > 0 ? `${hoursSaved}h ${remainingMins}m` : `${remainingMins} min`;
 
   // Confetti particles for completion
@@ -1673,9 +1719,11 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
       action:{ label:"View Progress", onClick:()=>{ (window as any).__showQSProgress?.(); } } });
     const _results: Record<string,string> = {};
     let _totalFields = 0;
+    let _totalSeconds = 0;
     const _progress = (step: number, key?: string, val?: string) => {
       if (key && val) _results[key] = val;
       _results._totalFields = String(_totalFields);
+      _results._totalSeconds = String(_totalSeconds);
       onProgress?.(step, { ..._results });
     };
     _progress(0);
@@ -1741,9 +1789,11 @@ Raw JSON only.`, "", 1500);
     } catch {}
 
     // ── Step 3: Extract Products & Services (BEFORE personas — personas need product context) ──
-    const coFieldCount = Object.values(coFields).filter(v=>v&&String(v).trim()).length;
-    _totalFields += coFieldCount;
-    _progress(2, "company", `${coFieldCount} fields filled`);
+    const coFilledKeys = Object.keys(coFields).filter(k=>coFields[k]&&String(coFields[k]).trim());
+    const coFieldCount = coFilledKeys.length;
+    const coTimeSaved = calcTimeSaved(coFilledKeys);
+    _totalFields += coFieldCount; _totalSeconds += coTimeSaved;
+    _progress(2, "company", `${coFieldCount} fields · ${Math.round(coTimeSaved/60)} min saved`);
     updateToast(toastId, { message:"Extracting products & services…", step:3, totalSteps:7 });
     let products: any[] = [];
     try {
@@ -1763,9 +1813,11 @@ Raw JSON only.`, "", 1500);
     } catch {}
 
     // ── Step 4: Generate Offers per product (needs products) ──
-    const prodFieldCount = products.reduce((s:number, p:any) => s + Object.values(p).filter(v=>v&&String(v).trim()&&typeof v==="string").length, 0);
-    _totalFields += prodFieldCount;
-    _progress(3, "products", `${products.length} product${products.length!==1?"s":""} · ${prodFieldCount} fields`);
+    const prodFilledKeys = products.flatMap((p:any) => Object.keys(p).filter(k=>p[k]&&String(p[k]).trim()&&typeof p[k]==="string"&&k!=="id"&&k!=="createdAt"));
+    const prodFieldCount = prodFilledKeys.length;
+    const prodTimeSaved = calcTimeSaved(prodFilledKeys);
+    _totalFields += prodFieldCount; _totalSeconds += prodTimeSaved;
+    _progress(3, "products", `${products.length} product${products.length!==1?"s":""} · ${prodFieldCount} fields · ${Math.round(prodTimeSaved/60)} min saved`);
     updateToast(toastId, { message:"Generating offer CTAs…", step:4, totalSteps:7 });
     let offers: any[] = [];
     if (products.length > 0) {
@@ -1783,9 +1835,11 @@ Raw JSON only.`, "", 1500);
     }
 
     // ── Step 5: Draft Personas (with product + offer context for max personalization) ──
-    const offerFieldCount = offers.reduce((s:number, o:any) => s + Object.values(o).filter(v=>v&&String(v).trim()&&typeof v==="string"&&v.length>2).length, 0);
-    _totalFields += offerFieldCount;
-    _progress(4, "offers", `${offers.length} offer${offers.length!==1?"s":""} · ${offerFieldCount} fields`);
+    const offerFilledKeys = offers.flatMap((o:any) => ["ctaText","whatTheyGet","frictionReduction","name"].filter(k=>o[k]&&String(o[k]).trim().length>2));
+    const offerFieldCount = offerFilledKeys.length;
+    const offerTimeSaved = calcTimeSaved(offerFilledKeys);
+    _totalFields += offerFieldCount; _totalSeconds += offerTimeSaved;
+    _progress(4, "offers", `${offers.length} offer${offers.length!==1?"s":""} · ${offerFieldCount} fields · ${Math.round(offerTimeSaved/60)} min saved`);
     updateToast(toastId, { message:"Drafting personas…", step:5, totalSteps:7 });
     const productContext = products.map((p:any) => `${p.name}: ${p.problemsSolved}. Ideal: ${p.idealCustomer}`).join("\n") || "No specific products";
     const offerContext = offers.map((o:any) => { const p=products.find((x:any)=>x.id===o.productId); return `${p?.name||"?"} (${o.tier}): "${o.ctaText||o.name}"`; }).join("\n") || "No offers";
@@ -1846,9 +1900,11 @@ Raw JSON only.`, "", 2000);
     }
 
     // ── Step 6: Fill Sales & Messaging guardrails (with full knowledge) ──
-    const personaFieldCount = icps.reduce((s:number, p:any) => s + Object.values(p.data||{}).filter(v=>v&&String(v).trim()).length, 0);
-    _totalFields += personaFieldCount;
-    _progress(5, "personas", `${icps.length} persona${icps.length!==1?"s":""} · ${personaFieldCount} fields`);
+    const personaFilledKeys = icps.flatMap((p:any) => Object.keys(p.data||{}).filter(k=>(p.data||{})[k]&&String((p.data||{})[k]).trim()));
+    const personaFieldCount = personaFilledKeys.length;
+    const personaTimeSaved = calcTimeSaved(personaFilledKeys);
+    _totalFields += personaFieldCount; _totalSeconds += personaTimeSaved;
+    _progress(5, "personas", `${icps.length} persona${icps.length!==1?"s":""} · ${personaFieldCount} fields · ${Math.round(personaTimeSaved/60)} min saved`);
     updateToast(toastId, { message:"Setting guardrails…", step:6, totalSteps:7 });
     try {
       const salesRaw = await callAI(
@@ -1860,9 +1916,11 @@ Raw JSON only.`, "", 2000);
     } catch {}
 
     // ── Step 7: Final validation pass ──
-    const guardFieldCount = ["co_exclude","co_avoid"].filter(k => coFields[k] && String(coFields[k]).trim()).length;
-    _totalFields += guardFieldCount;
-    _progress(6, "guardrails", `${guardFieldCount} guardrails set`);
+    const guardFilledKeys = ["co_exclude","co_avoid"].filter(k => coFields[k] && String(coFields[k]).trim());
+    const guardFieldCount = guardFilledKeys.length;
+    const guardTimeSaved = calcTimeSaved(guardFilledKeys);
+    _totalFields += guardFieldCount; _totalSeconds += guardTimeSaved;
+    _progress(6, "guardrails", `${guardFieldCount} guardrails · ${Math.round(guardTimeSaved/60)} min saved`);
     updateToast(toastId, { message:"Validating & finalizing…", step:7, totalSteps:7 });
     // Ensure all product IDs are valid in offers
     offers = offers.filter(o => products.some((p:any) => p.id === o.productId));
@@ -1872,7 +1930,9 @@ Raw JSON only.`, "", 2000);
       icp.linkedOfferIds = (icp.linkedOfferIds||[]).filter((id:string) => offers.some((o:any) => o.id === id));
     }
 
-    _progress(7, "validate", `${_totalFields} total fields filled`);
+    const totalHours = Math.floor(_totalSeconds / 3600);
+    const totalMins = Math.round((_totalSeconds % 3600) / 60);
+    _progress(7, "validate", `${_totalFields} fields · ${totalHours > 0 ? totalHours + "h " : ""}${totalMins}m saved`);
 
     const result = { coFields, coConf, icps, products, offers };
     onComplete(result);
