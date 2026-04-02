@@ -5831,23 +5831,56 @@ function StrategyPage({ strategy, onStrategyChange, companyData, products, offer
       const cd = companyData as Record<string,string>;
       const hasLists = cd.co_existing_lists && cd.co_existing_lists !== "No lists available";
 
-      // Step 1: Generate phases structure (keep it compact — max 4 phases, 2-3 campaigns each)
+      // Step 1: Generate comprehensive phased roadmap
       setGenStep(1);
-      const prodNames = products.slice(0,3).map((p:any)=>p.name).join(", ");
-      const persNames = personas.slice(0,3).map((p:any)=>p.name).join(", ");
+      const prodList = products.slice(0,5).map((p:any)=>`${p.name}: ${(p.problemsSolved||"").slice(0,80)}`).join("; ");
+      const persList = personas.slice(0,5).map((p:any)=>`${p.name} (${p.data?.buyer||"?"})`).join("; ");
       const phasesRaw = await callAI(
-        `Create a 12-month B2B outreach roadmap as 4 phases.
+        `You are a senior B2B outreach strategist. Create a detailed 12-month campaign roadmap.
 
-Company: ${cd.co_name||"?"} (${cd.co_industry||"?"}), deal ${cd.co_deal||"$5K-25K"}, cycle ${cd.co_cycle||"1-3 months"}.
-Products: ${prodNames||"general"}. Personas: ${persNames||"general"}.
-Email warmup: ${warmupDaysLeft>0?warmupDaysLeft+" days left":"ready"}. LinkedIn+RTS: ready now. Lists: ${hasLists?"yes":"no"}.
+COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"$5K-25K"}. Cycle: ${cd.co_cycle||"1-3 months"}. Goal: ${cd.co_goal||"10-20"} meetings/mo.
+PRODUCTS: ${prodList||"general"}.
+PERSONAS: ${persList||"general"}.
+INFRA: ${cd.co_mailbox_count||200} mailboxes (${warmupDaysLeft>0?warmupDaysLeft+" days warmup left":"ready"}). LinkedIn+RTS: ready now. Retargeting lists: ${hasLists?"yes":"no"}.
 
-Rules: Phase 1=LinkedIn+RTS (immediate). Email starts week 3. Soft offers first. Max 3 campaigns per phase. Keep it concise.
+METHODOLOGY — follow this exact playbook:
 
-Return ONLY a JSON array. Each campaign needs: id, type (cold_email/retargeting/linkedin_connection/linkedin_message/rts_calling), personaName, productName, offerTier (soft/medium/hard), duration, dailyVolume, goal (1 sentence).
+MONTHS 1-3 (AGGRESSIVE — most critical, user retention depends on early results):
+- Week 1-2: SETUP. Domain warmup begins. Launch LinkedIn connection campaigns immediately (50-100/day). Start RTS lead lists for cold calling.${hasLists?" Launch retargeting campaign with existing contacts (3-step sequence, 3-5 day test).":""}
+- Week 3: First cold email campaign launches. Start with 1 persona × 1 product × soft CTA. 5-step sequence. 3-day initial test period.
+- TESTING METHODOLOGY per campaign: Day 1-3 = initial test. Check open rate (>40%), reply rate (>1%), bounce (<3%). If benchmarks NOT met: Day 4-6 test new subject lines. Day 7-9 test new opening lines. Day 10-12 test new CTA/offer. If still failing after 3 iterations → pivot persona or product.
+- If benchmarks MET: scale volume, extend duration, launch parallel campaign for next persona.
+- Week 4-6: Add 2nd cold email campaign (different persona OR product). Run simultaneously with campaign 1.
+- Week 7-12: Add LinkedIn message campaigns to warm connections from week 1-2. Launch 3rd email campaign. Escalate from soft to medium offers.
+- Run 3-4 campaigns simultaneously by end of month 3.
 
-Example: [{"id":"p1","name":"Phase 1","startWeek":1,"endWeek":2,"campaigns":[{"id":"c1","type":"linkedin_connection","personaName":"...","productName":"...","offerTier":"soft","duration":"2 weeks","dailyVolume":50,"goal":"..."}]}]`,
-        "Return ONLY valid JSON array. No markdown. No explanation. Keep campaigns brief.", 3000
+MONTHS 4-6 (OPTIMIZATION):
+- Refine top performers based on data. Kill underperformers.
+- Test medium → hard offer escalation on engaged segments.
+- Add new persona/product combinations based on learnings.
+- Continue scaling volume on winners.
+
+MONTHS 7-9 (EXPANSION):
+- Launch campaigns for remaining products/personas.
+- Multi-channel sequences (email + LinkedIn + calling).
+- Seasonal/trigger campaigns based on industry.
+
+MONTHS 10-12 (COMPOUNDING):
+- Slow build — focus on optimization, not new launches.
+- Running campaigns continue to improve with data.
+- Re-engage non-responders from months 1-6 with new angles.
+- Plan next year's strategy based on full year of data.
+
+Return ONLY a JSON array of 6 phases. Each campaign MUST include:
+- id, type (cold_email/retargeting/linkedin_connection/linkedin_message/rts_calling)
+- personaName (exact name from list), productName (exact name from list)
+- offerTier (soft/medium/hard), duration (e.g. "2 weeks"), dailyVolume
+- goal (specific, measurable)
+- testPeriod (e.g. "3 days"), testMetrics (what to watch)
+- ifBenchmarksMet (next action), ifBenchmarksNotMet (specific test sequence)
+
+Keep each campaign object compact. No nested objects except as specified.`,
+        "Return ONLY valid JSON array. No markdown.", 4000
       );
       let phases: any[];
       try {
@@ -5879,30 +5912,33 @@ Example: [{"id":"p1","name":"Phase 1","startWeek":1,"endWeek":2,"campaigns":[{"i
         }
       }
 
-      // Step 3: Generate decision trees (non-blocking — strategy works without them)
+      // Step 3: Enrich with decision trees and testing methodology
       setGenStep(3);
-      try {
-        const allCampaigns = phases.flatMap((p:any) => (p.campaigns||[]).map((c:any) => `${c.type} targeting ${c.personaName} for ${c.productName}`));
-        const treesRaw = await callAI(
-          `Write decision trees for ${allCampaigns.length} campaigns. For each: ifMet (1 sentence), ifNotMet (1 sentence), ifFailed (1 sentence).\n\nCampaigns:\n${allCampaigns.map((c,i)=>`${i+1}. ${c}`).join("\n")}\n\nReturn ONLY JSON array: [{"ifMet":"...","ifNotMet":"...","ifFailed":"..."},...]`,
-          "Return only valid JSON array. Keep each sentence under 20 words.", 2000
-        );
-        const trees = JSON.parse(treesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
-        if (Array.isArray(trees)) {
-          let ti = 0;
-          for (const phase of phases) {
-            for (const c of (phase.campaigns||[])) {
-              if (trees[ti]) c.decisionTree = trees[ti];
-              ti++;
-            }
+      for (const phase of phases) {
+        for (const c of (phase.campaigns||[])) {
+          // If AI already provided testing fields, build decision tree from them
+          if (c.ifBenchmarksMet || c.ifBenchmarksNotMet) {
+            c.decisionTree = {
+              ifMet: c.ifBenchmarksMet || "Scale volume and launch next campaign.",
+              ifNotMet: c.ifBenchmarksNotMet || "Test subject lines → opening lines → CTA → offer tier. 3-day cycles.",
+              ifFailed: "Pivot to different persona/product combination or change channel entirely.",
+            };
+          } else {
+            // Generate testing methodology based on campaign type
+            const isEmail = c.type === "cold_email" || c.type === "retargeting";
+            c.decisionTree = {
+              ifMet: isEmail
+                ? "Scale daily volume by 50%. Extend duration. Launch parallel campaign for next persona."
+                : "Increase daily connection/message volume. Begin multi-channel sequence adding email.",
+              ifNotMet: isEmail
+                ? "Day 1-3: Test 2 new subject lines. Day 4-6: Test new opening hook. Day 7-9: Test different CTA/offer tier. Day 10-12: Test new pain angle."
+                : "Test new connection note copy. Try InMail vs connection request. Adjust targeting filters.",
+              ifFailed: "After 3 test iterations with no improvement → pause campaign. Pivot to different persona × product combination or switch to different channel.",
+            };
           }
-        }
-      } catch {
-        // Decision trees are optional — add defaults
-        for (const phase of phases) {
-          for (const c of (phase.campaigns||[])) {
-            if (!c.decisionTree) c.decisionTree = { ifMet:"Scale volume and expand to next persona.", ifNotMet:"Adjust messaging angle and test new subject lines.", ifFailed:"Pivot to different product or channel." };
-          }
+          // Ensure test period exists
+          if (!c.testPeriod) c.testPeriod = isEmail ? "3-5 days" : "5-7 days";
+          if (!c.testMetrics) c.testMetrics = isEmail ? "Open >40%, Reply >1%, Bounce <3%" : "Accept >30%, Reply >10%";
         }
       }
 
@@ -6105,6 +6141,24 @@ Example: [{"id":"p1","name":"Phase 1","startWeek":1,"endWeek":2,"campaigns":[{"i
                                     {b.label}: {b.value}
                                   </div>
                                 ))}
+                              </div>
+                            )}
+
+                            {/* Testing methodology */}
+                            {(c.testPeriod || c.testMetrics) && (
+                              <div style={{ display:"flex", gap:10, marginBottom:10, flexWrap:"wrap" }}>
+                                {c.testPeriod && (
+                                  <div style={{ padding:"4px 10px", borderRadius:6, background:`${_C.blue}11`, border:`1px solid ${_C.blue}22`,
+                                    fontSize:10, fontFamily:mono, color:_C.blue, fontWeight:600 }}>
+                                    Test: {c.testPeriod}
+                                  </div>
+                                )}
+                                {c.testMetrics && (
+                                  <div style={{ padding:"4px 10px", borderRadius:6, background:_C.faint, border:`1px solid ${_C.border}`,
+                                    fontSize:10, fontFamily:mono, color:_C.textSoft }}>
+                                    Watch: {c.testMetrics}
+                                  </div>
+                                )}
                               </div>
                             )}
 
