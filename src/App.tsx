@@ -1600,20 +1600,7 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
               </div>
             )}
 
-            {/* Results breakdown */}
-            <div style={{ display:"flex", justifyContent:"center", gap:12, marginBottom:32, flexWrap:"wrap" }}>
-              {Object.entries(stepResults).filter(([k,v])=>v && k !== "_totalFields").map(([k,v]) => {
-                const step = QS_STEPS.find(s=>s.id===k);
-                return (
-                  <div key={k} style={{ padding:"8px 16px", borderRadius:10, background:C2.canvas,
-                    border:`1px solid ${C2.border}`, boxShadow:"0 2px 8px rgba(0,0,0,.04)",
-                    display:"flex", alignItems:"center", gap:8 }}>
-                    {step && <div style={{ width:8, height:8, borderRadius:4, background:step.color, flexShrink:0 }} />}
-                    <div style={{ fontSize:12, fontFamily:mono, color:C2.text, fontWeight:600 }}>{v}</div>
-                  </div>
-                );
-              })}
-            </div>
+            <div style={{ marginBottom:32 }} />
             <button onClick={onBack}
               style={{ padding:"14px 40px", borderRadius:14, border:"none",
                 background:`linear-gradient(135deg, ${C2.accent}, ${C2.accent}cc)`, color:"#fff",
