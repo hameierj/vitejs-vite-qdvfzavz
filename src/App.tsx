@@ -6109,13 +6109,14 @@ const EMPTY_STEP = (stepNum: number) => ({
   variants: [] as any[],
 });
 
-function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, companyData, strategy, v2 = false, addToast = (_t:any)=>"" }: {
-  campaigns: any[]; onCampaignsChange: (c: any[]) => void; personas: any[]; products: any[]; offers: any[];
+function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, onOffersChange, companyData, strategy, v2 = false, addToast = (_t:any)=>"" }: {
+  campaigns: any[]; onCampaignsChange: (c: any[]) => void; personas: any[]; products: any[]; offers: any[]; onOffersChange?: (o:any[])=>void;
   companyData: any; strategy: any; v2?: boolean; addToast?: (t:any)=>string;
 }) {
   const _C = v2 ? C2 : C;
   const [selectedId, setSelectedId] = useState<string|null>(campaigns[0]?.id ?? null);
-  const [tab, setTab] = useState<"config"|"sequence"|"benchmarks">("config");
+  const [tab, setTab] = useState<"config"|"offers"|"sequence"|"benchmarks">("config");
+  const [genOfferLoading, setGenOfferLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
   const selected = campaigns.find(c => c.id === selectedId) || null;
@@ -6273,9 +6274,10 @@ Return ONLY valid JSON:
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
           {/* Tab bar */}
           <div style={{ display:"flex", alignItems:"center", gap:4, padding:"12px 24px", borderBottom:`1px solid ${_C.border}`, flexShrink:0 }}>
-            {(["config","sequence","benchmarks"] as const).map(t => {
+            {(["config","offers","sequence","benchmarks"] as const).map(t => {
               const on = tab === t;
-              const labels = { config:"Setup", sequence:`Sequence (${selected.sequence?.length||0})`, benchmarks:"Benchmarks" };
+              const campaignOffers = selected ? offers.filter((o:any) => (selected.personaIds||[]).some((pid:string)=>o.personaId===pid) && o.productId===selected.productId) : [];
+              const labels = { config:"Setup", offers:`Offers (${campaignOffers.length})`, sequence:`Sequence (${selected.sequence?.length||0})`, benchmarks:"Benchmarks" };
               return (
                 <button key={t} onClick={()=>setTab(t)}
                   style={{ padding:"7px 16px", borderRadius:8, border:"none",
@@ -6379,6 +6381,108 @@ Return ONLY valid JSON:
                 </div>
               </div>
             )}
+
+            {/* OFFERS TAB */}
+            {tab === "offers" && selected && (() => {
+              const campaignOffers = offers.filter((o:any) =>
+                (selected.personaIds||[]).some((pid:string)=>o.personaId===pid) && o.productId===selected.productId
+              );
+              const persona = personas.find((p:any) => selected.personaIds?.includes(p.id));
+              const product = products.find((p:any) => p.id === selected.productId);
+
+              const genCampaignOffers = async () => {
+                if (!product || !persona) { addToast({ title:"Select product & persona", status:"error", message:"Go to Setup tab first" }); return; }
+                setGenOfferLoading(true);
+                addToast({ title:"Generating offers…", status:"loading", message:`${product.name} × ${persona.name}` });
+                try {
+                  const cd = companyData as Record<string,string>;
+                  const typeObj = CAMPAIGN_TYPES.find(t => t.id === selected.type);
+                  const purpose = selected.type === "retargeting" ? "retargeting" : selected.type === "linkedin_connection" || selected.type === "linkedin_message" ? "cold_outreach" : "cold_outreach";
+                  const result = await callAI(
+                    `Generate 3 offer tiers (soft, medium, hard) for this campaign.\n\nCompany: ${cd.co_name||""} (${cd.co_industry||""})\nProduct: ${product.name} — ${product.problemsSolved||""}\nPersona: ${persona.name} — ${persona.data?.buyer||""}, Pain: ${persona.data?.pain1||""}\nCampaign type: ${typeObj?.label||selected.type}\nCompetitor: ${persona.data?.current_solutions||"unknown"}\n\nReturn ONLY JSON array: [{tier:"soft",name,ctaText,whatTheyGet,frictionReduction},...]`,
+                    "Return only valid JSON.", 1200
+                  );
+                  const parsed = JSON.parse(result.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    const newOffers = parsed.map((o: any) => ({
+                      ...EMPTY_OFFER(selected.productId, o.tier||"soft", persona.id, purpose),
+                      name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"",
+                    }));
+                    onOffersChange?.([...offers, ...newOffers]);
+                    addToast({ title:"Offers created", status:"success", message:`3 tiers for this campaign` });
+                  }
+                } catch { addToast({ title:"Failed", status:"error", message:"Try again" }); }
+                setGenOfferLoading(false);
+              };
+
+              return (
+                <div style={{ maxWidth:700, animation:"contentFade .3s ease" }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+                    <div>
+                      <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Campaign Offers</div>
+                      <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>
+                        {product && persona ? `${product.name} × ${persona.name}` : "Select product and persona in Setup first"}
+                      </div>
+                    </div>
+                    <button onClick={genCampaignOffers} disabled={genOfferLoading || !product || !persona}
+                      style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${_C.greenBorder}`,
+                        background:_C.greenLo, color:_C.green, fontSize:11, fontFamily:head, fontWeight:700,
+                        cursor:genOfferLoading?"wait":"pointer", opacity:genOfferLoading||!product||!persona?0.5:1 }}>
+                      {genOfferLoading ? "◌ Generating..." : "◎ Generate Offers"}
+                    </button>
+                  </div>
+
+                  {campaignOffers.length === 0 ? (
+                    <div style={{ textAlign:"center", padding:"40px 20px", background:_C.faint, borderRadius:14, border:`1px solid ${_C.border}` }}>
+                      <div style={{ fontSize:13, color:_C.muted, fontFamily:body, marginBottom:12 }}>
+                        {product && persona
+                          ? "No offers yet for this product × persona combination."
+                          : "Select a product and persona in the Setup tab first."}
+                      </div>
+                      {product && persona && (
+                        <button onClick={genCampaignOffers} disabled={genOfferLoading}
+                          style={{ padding:"8px 20px", borderRadius:8, border:"none", background:_C.accent, color:"#fff",
+                            fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                          Generate Offers for This Campaign
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                      {OFFER_TIERS.map(tier => {
+                        const tierOffers = campaignOffers.filter((o:any) => o.tier === tier.id);
+                        if (tierOffers.length === 0) return null;
+                        return tierOffers.map((offer:any) => (
+                          <div key={offer.id} style={{ background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`,
+                            borderLeft:`4px solid ${tier.color}`, padding:"14px 18px" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                              <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:5,
+                                background:tier.bg, color:tier.color }}>{tier.label}</span>
+                              <span style={{ flex:1, fontSize:13, fontWeight:600, fontFamily:head, color:_C.text }}>
+                                {offer.name || "Untitled"}
+                              </span>
+                              <button onClick={()=>{ updCampaign(selected.id, {offerId:offer.id}); addToast({title:"Offer selected",status:"success",message:offer.name}); }}
+                                style={{ padding:"4px 10px", borderRadius:6, border:selected.offerId===offer.id?`2px solid ${_C.accent}`:`1px solid ${_C.border}`,
+                                  background:selected.offerId===offer.id?`${_C.accent}14`:_C.canvas,
+                                  color:selected.offerId===offer.id?_C.accent:_C.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                                {selected.offerId===offer.id ? "✓ Selected" : "Use This"}
+                              </button>
+                            </div>
+                            <div style={{ fontSize:12, fontFamily:body, color:_C.textSoft, fontStyle:"italic", marginBottom:6 }}>
+                              "{offer.ctaText}"
+                            </div>
+                            <div style={{ display:"flex", gap:16, fontSize:11, fontFamily:body, color:_C.muted }}>
+                              {offer.whatTheyGet && <span>Get: {offer.whatTheyGet}</span>}
+                              {offer.frictionReduction && <span>Why: {offer.frictionReduction}</span>}
+                            </div>
+                          </div>
+                        ));
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* SEQUENCE TAB */}
             {tab === "sequence" && (
@@ -10993,7 +11097,6 @@ Raw JSON only.`, "", 1400);
             : [
                 { id:"company",  label:"Company Profile",      icon:"◉", sub:`${companyPct}% complete` },
                 { id:"products", label:"Products & Services", icon:"◆", sub:`${products.length} product${products.length!==1?"s":""}` },
-                { id:"offers",   label:"Offers",             icon:"◇", sub:`${offers.length} offer${offers.length!==1?"s":""}` },
                 { id:"icps",     label:"Personas",       icon:"◑", sub:`${icps.length} persona${icps.length!==1?"s":""}` },
                 { id:"strategy",  label:"Strategy",          icon:"◎", sub:strategy?.phases?.length?`${strategy.phases.length} phases`:"not started" },
                 { id:"campaigns", label:"Campaigns",         icon:"⊕", sub:`${campaigns.length} campaign${campaigns.length!==1?"s":""}` },
@@ -11126,19 +11229,7 @@ Raw JSON only.`, "", 1400);
                     </button>
                   )}
 
-                  {/* Offers */}
-                  {currentRole !== "client" && (
-                    <button onClick={()=>guardedNav(()=>setView("offers"))}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
-                        borderRadius:12, border:"none",
-                        background: view==="offers" ? `${C2.accent}14` : "transparent",
-                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(view!=="offers")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(view!=="offers")(e.currentTarget as HTMLButtonElement).style.background=view==="offers"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="offers"?C2.accent:C2.muted }}>◇</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="offers"?700:500, color:view==="offers"?C2.text:C2.textSoft }}>Offers</span>
-                    </button>
-                  )}
+
 
                   {/* ICP Profiles — expandable with sub-items */}
                   <button onClick={()=>guardedNav(()=>{ setView("icps"); })}
@@ -11436,7 +11527,7 @@ Raw JSON only.`, "", 1400);
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
-          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","offers","strategy","campaigns"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","offers","strategy","campaigns"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","offers","strategy","campaigns"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -11706,21 +11797,6 @@ Raw JSON only.`, "", 1400);
               </div>
             )}
 
-            {view==="offers" && (
-              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
-                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                <div style={{ padding: "20px clamp(20px, 3vw, 48px) 14px", flexShrink:0, borderBottom:`1px solid ${C2.border}` }}>
-                  <h2 style={{ fontSize: 22, fontWeight: 800, color: C2.text, fontFamily:head, margin:"0 0 5px" }}>Offers</h2>
-                  <p style={{ fontSize: 13, color: C2.muted, fontFamily:body, margin:0 }}>
-                    Define the actual ask for each product — soft, medium, and hard CTAs that drive replies.
-                  </p>
-                </div>
-                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
-                  <OffersPage offers={offers} onOffersChange={setOffers} products={products}
-                    personas={icps} companyData={companyData} v2={true} addToast={addToast} />
-                </div>
-              </div>
-            )}
 
             {view==="strategy" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
@@ -11743,7 +11819,8 @@ Raw JSON only.`, "", 1400);
                 </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
-                    personas={icps} products={products} offers={offers} companyData={companyData} strategy={strategy} v2={true} addToast={addToast} />
+                    personas={icps} products={products} offers={offers} onOffersChange={setOffers}
+                    companyData={companyData} strategy={strategy} v2={true} addToast={addToast} />
                 </div>
               </div>
             )}
