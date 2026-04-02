@@ -1837,7 +1837,8 @@ Raw JSON only.`, "", 1500);
         if (Array.isArray(parsed)) {
           offers = parsed.map((o: any) => {
             const prod = products.find((p:any) => p.name === o.productName) || products[0];
-            return { id:uid(), productId:prod?.id||"", tier:o.tier||"soft", name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"", createdAt:new Date().toISOString() };
+            return { ...EMPTY_OFFER(prod?.id||"", o.tier||"soft", "", "cold_outreach"),
+              name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"" };
           });
         }
       } catch {}
@@ -1902,7 +1903,9 @@ Raw JSON only.`, "", 2000);
         for (const [k, v] of Object.entries(fields)) { if (typeof v === "string") fields[k] = normalizeIntake(v); }
         const persona = newICP(i, fields, p.name||`Persona ${i+1}`, p.confidence??{});
         persona.linkedProductIds = products.map((pp:any) => pp.id);
-        persona.linkedOfferIds = offers.filter((o:any) => o.tier === "soft").map((o:any) => o.id); // default link soft offers
+        persona.linkedOfferIds = offers.map((o:any) => o.id); // link ALL offers
+        // Backfill personaId on all offers so they're properly linked
+        for (const o of offers) { if (!o.personaId) o.personaId = persona.id; }
         icps.push(persona);
       } catch {}
       if (i < count - 1) await new Promise(ok => setTimeout(ok, 1000));
@@ -10814,7 +10817,7 @@ Raw JSON only.`, "", 1400);
       return merged;
     });
     setCompanyConf(prev => ({ ...prev, ...result.coConf }));
-    setIcps(result.icps);
+    setIcps(prev => [...prev, ...result.icps]); // append, don't replace existing personas
     if (result.products?.length) setProducts(prev => [...prev, ...result.products]);
     if (result.offers?.length) setOffers(prev => [...prev, ...result.offers]);
     setShowQS(false);
