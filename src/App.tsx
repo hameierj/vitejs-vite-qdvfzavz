@@ -10967,8 +10967,7 @@ Raw JSON only.`, "", 1400);
     if (result.products?.length) setProducts(prev => [...prev, ...result.products]);
     if (result.offers?.length) setOffers(prev => [...prev, ...result.offers]);
     setShowQS(false);
-    // Don't clear qsProgress immediately — let user see the completed state
-    setTimeout(() => setQsProgress(null), 5000);
+    // Keep progress screen open until user clicks "Go to Dashboard"
     setView("products");
   }, []);
 
