@@ -11686,14 +11686,14 @@ Raw JSON only.`, "", 1400);
                   <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 40px" }}>
                     <div style={{ textAlign:"center", animation:"fadeIn .3s ease", maxWidth:400 }}>
                       <div style={{ fontSize:36, marginBottom:16, opacity:.2 }}>🎯</div>
-                      <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:8 }}>Select an ICP</div>
+                      <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:8 }}>Select a Persona</div>
                       <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:20 }}>
-                        Choose a profile from the sidebar, or create a new one to get started.
+                        Choose a persona from the sidebar, or create a new one to get started.
                       </div>
-                      <button onClick={()=>{ if(!drafting){ const r=addBtnRef.current?.getBoundingClientRect(); if(r) setAddPopPos({top:r.bottom+8,left:r.right-300}); setShowAddPop(true); } }}
+                      <button onClick={()=>{ const p = newICP(icps.length); setIcps((prev:any) => [...prev, p]); setEditingId(p.id); }}
                         style={{ padding:"10px 24px", borderRadius:10, border:"none", background:C2.accent, color:"#fff",
                           fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 14px ${C2.accent}44` }}>
-                        + Add ICP
+                        + Add Persona
                       </button>
                     </div>
                   </div>
