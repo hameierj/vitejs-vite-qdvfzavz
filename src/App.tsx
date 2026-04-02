@@ -256,8 +256,17 @@ const OFFER_TIERS = [
   { id:"medium", label:"Medium CTA", color:"#FFC048", bg:"#FFC04815", desc:"Some commitment — personalized audit, 'see what this looks like for you'" },
   { id:"hard",   label:"Hard CTA",   color:"#FF6B6B", bg:"#FF6B6B15", desc:"Direct ask — 'book a demo', pricing discussion, direct pitch" },
 ];
-const EMPTY_OFFER = (productId: string, tier: string) => ({
-  id:uid(), productId, tier, name:"", ctaText:"", whatTheyGet:"", frictionReduction:"", createdAt:new Date().toISOString(),
+const CAMPAIGN_PURPOSES = [
+  { id:"cold_outreach",  label:"Cold Outreach" },
+  { id:"retargeting",    label:"Retargeting / Re-engagement" },
+  { id:"upsell",         label:"Upsell / Cross-sell" },
+  { id:"nurture",        label:"Nurture / Education" },
+  { id:"event",          label:"Event / Webinar Invite" },
+  { id:"referral",       label:"Referral Ask" },
+];
+const EMPTY_OFFER = (productId: string, tier: string, personaId = "", purpose = "") => ({
+  id:uid(), productId, tier, personaId, purpose, name:"", ctaText:"", whatTheyGet:"", frictionReduction:"",
+  usedInCampaigns:[] as string[], replyRate:null as number|null, createdAt:new Date().toISOString(),
 });
 
 // ─── STRATEGY ────────────────────────────────────────────────────────────────
@@ -5451,33 +5460,75 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
 }
 
 // ─── OFFERS PAGE ─────────────────────────────────────────────────────────────
-function OffersPage({ offers, onOffersChange, products, companyData, v2 = false, addToast = (_t:any)=>"" }: {
-  offers: any[]; onOffersChange: (o: any[]) => void; products: any[]; companyData: any; v2?: boolean; addToast?: (t:any)=>string;
+function OffersPage({ offers, onOffersChange, products, personas = [], companyData, v2 = false, addToast = (_t:any)=>"" }: {
+  offers: any[]; onOffersChange: (o: any[]) => void; products: any[]; personas?: any[]; companyData: any; v2?: boolean; addToast?: (t:any)=>string;
 }) {
   const _C = v2 ? C2 : C;
-  const [selectedProductId, setSelectedProductId] = useState<string|null>(products[0]?.id ?? null);
+  const [filterProduct, setFilterProduct] = useState<string>("");
+  const [filterPersona, setFilterPersona] = useState<string>("");
+  const [filterPurpose, setFilterPurpose] = useState<string>("");
+  const [expandedId, setExpandedId] = useState<string|null>(null);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [genProduct, setGenProduct] = useState<string>(products[0]?.id || "");
+  const [genPersona, setGenPersona] = useState<string>(personas[0]?.id || "");
+  const [genPurpose, setGenPurpose] = useState<string>("cold_outreach");
+  const [generating, setGenerating] = useState(false);
+  const selectedProductId = filterProduct; // compat
   const [aiGenerating, setAiGenerating] = useState<string|null>(null); // productId being generated
 
-  const selectedProduct = products.find(p => p.id === selectedProductId) || null;
-  const productOffers = offers.filter(o => o.productId === selectedProductId);
+  // Filtered offers
+  const filtered = offers.filter(o => {
+    if (filterProduct && o.productId !== filterProduct) return false;
+    if (filterPersona && o.personaId !== filterPersona) return false;
+    if (filterPurpose && o.purpose !== filterPurpose) return false;
+    return true;
+  });
 
-  const getOffers = (tier: string) => productOffers.filter(o => o.tier === tier);
+  // Group by product × persona
+  const grouped: Record<string, any[]> = {};
+  for (const o of filtered) {
+    const key = `${o.productId||"any"}_${o.personaId||"any"}_${o.purpose||"any"}`;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(o);
+  }
 
   const updOffer = (id: string, patch: any) => {
     onOffersChange(offers.map(o => o.id === id ? { ...o, ...patch } : o));
   };
-  const addOffer = (tier: string) => {
-    if (!selectedProductId) return;
-    const newOffer = EMPTY_OFFER(selectedProductId, tier);
-    onOffersChange([...offers, newOffer]);
-    setExpandedOfferId(newOffer.id);
-  };
   const deleteOffer = (id: string) => {
     onOffersChange(offers.filter(o => o.id !== id));
+    addToast({ title:"Offer deleted", status:"success", message:"" });
   };
 
-  const [aiSingleTier, setAiSingleTier] = useState<string|null>(null);
-  const [expandedOfferId, setExpandedOfferId] = useState<string|null>(null);
+  const generateOffers = async () => {
+    const product = products.find(p => p.id === genProduct);
+    const persona = personas.find(p => p.id === genPersona);
+    const purposeObj = CAMPAIGN_PURPOSES.find(p => p.id === genPurpose);
+    if (!product) { addToast({ title:"Select a product", status:"error", message:"" }); return; }
+    if (!persona) { addToast({ title:"Select a persona", status:"error", message:"" }); return; }
+    setGenerating(true);
+    addToast({ title:"Generating offers…", status:"loading", message:`${product.name} × ${persona.name}` });
+    try {
+      const cd = companyData as Record<string,string>;
+      const result = await callAI(
+        `Generate 3 offer tiers (soft, medium, hard) for this specific outreach context.\n\nCOMPANY: ${cd.co_name||""} (${cd.co_industry||""})\nPRODUCT: ${product.name} — ${product.problemsSolved||product.description||""}\nPERSONA: ${persona.name} — Titles: ${persona.data?.buyer||"?"}, Pain: ${persona.data?.pain1||"?"}\nCAMPAIGN PURPOSE: ${purposeObj?.label||genPurpose}\nCOMPETITOR: ${persona.data?.current_solutions||"unknown"}\n\nFor each tier:\n- name: short offer name\n- ctaText: EXACT words to use in the email (must be specific to this persona + product + purpose)\n- whatTheyGet: what the prospect receives\n- frictionReduction: why this is easy for THIS persona to say yes to\n\nSoft = zero commitment. Medium = small commitment. Hard = direct ask.\nTailor CTAs to the campaign purpose — ${purposeObj?.label} requires ${genPurpose==="retargeting"?"re-engagement language, reference past interaction":genPurpose==="upsell"?"expansion language, reference current usage":genPurpose==="nurture"?"educational angle, no pressure":"cold outreach language, establish relevance fast"}.\n\nReturn ONLY valid JSON array: [{tier:"soft",name,ctaText,whatTheyGet,frictionReduction},{tier:"medium",...},{tier:"hard",...}]`,
+        "Return only valid JSON.", 1200
+      );
+      const parsed = JSON.parse(result.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const newOffers = parsed.map((o: any) => ({
+          ...EMPTY_OFFER(genProduct, o.tier || "soft", genPersona, genPurpose),
+          name: o.name || "", ctaText: o.ctaText || "", whatTheyGet: o.whatTheyGet || "", frictionReduction: o.frictionReduction || "",
+        }));
+        onOffersChange([...offers, ...newOffers]);
+        setShowGenerate(false);
+        addToast({ title:"Offers created", status:"success", message:`3 tiers for ${product.name} × ${persona.name}` });
+      }
+    } catch (e) { console.error(e); addToast({ title:"Generation failed", status:"error", message:"Try again" }); }
+    setGenerating(false);
+  };
+
+  // Legacy compat — old offers without personaId/purpose still show
   const aiGenerateSingle = async (tier: string) => {
     if (!selectedProduct) return;
     setAiSingleTier(tier);
@@ -5532,178 +5583,193 @@ function OffersPage({ offers, onOffersChange, products, companyData, v2 = false,
     width:"100%", transition:"border-color .15s", resize:"vertical" as const };
 
   return (
-    <div style={{ display:"flex", height:"100%", overflow:"hidden" }}>
-      {/* Product selector sidebar */}
-      <div style={{ width:220, flexShrink:0, display:"flex", flexDirection:"column",
-        borderRight:`1px solid ${_C.border}`, background:v2?_C.faint:_C.surface, overflow:"hidden" }}>
-        <div style={{ padding:"14px 12px 10px", borderBottom:`1px solid ${_C.border}`, flexShrink:0 }}>
-          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5 }}>SELECT PRODUCT</div>
-        </div>
-        <div style={{ flex:1, overflowY:"auto", padding:"8px" }}>
-          {products.length === 0 && (
-            <div style={{ padding:"24px 12px", textAlign:"center", color:_C.muted, fontSize:12, fontFamily:body }}>
-              Add products first on the Products & Services page.
-            </div>
-          )}
-          {products.map((p: any) => {
-            const isOn = selectedProductId === p.id;
-            const tierCount = offers.filter(o => o.productId === p.id).length;
-            return (
-              <button key={p.id} onClick={()=>setSelectedProductId(p.id)}
-                style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 12px",
-                  borderRadius:10, border:"none",
-                  background: isOn ? `${_C.accent}14` : "transparent",
-                  cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:3 }}
-                onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=_C.canvas; }}
-                onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=isOn?`${_C.accent}14`:"transparent"; }}>
-                <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight:isOn?700:500, color:isOn?_C.text:_C.textSoft,
-                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name || "Unnamed"}</span>
-                <span style={{ fontSize:10, fontFamily:mono, color:tierCount>0?_C.green:_C.muted,
-                  background:tierCount>0?_C.greenLo:`${_C.accent}11`, padding:"2px 7px", borderRadius:6 }}>
-                  {tierCount}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+      {/* Top bar — filters + generate button */}
+      <div style={{ padding:"16px 24px", borderBottom:`1px solid ${_C.border}`, flexShrink:0,
+        display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+        <select value={filterProduct} onChange={e=>setFilterProduct(e.target.value)}
+          style={{ padding:"7px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas,
+            color:filterProduct?_C.text:_C.muted, fontSize:12, fontFamily:head, fontWeight:500, cursor:"pointer", outline:"none" }}>
+          <option value="">All Products</option>
+          {products.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
+        </select>
+        <select value={filterPersona} onChange={e=>setFilterPersona(e.target.value)}
+          style={{ padding:"7px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas,
+            color:filterPersona?_C.text:_C.muted, fontSize:12, fontFamily:head, fontWeight:500, cursor:"pointer", outline:"none" }}>
+          <option value="">All Personas</option>
+          {personas.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
+        </select>
+        <select value={filterPurpose} onChange={e=>setFilterPurpose(e.target.value)}
+          style={{ padding:"7px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas,
+            color:filterPurpose?_C.text:_C.muted, fontSize:12, fontFamily:head, fontWeight:500, cursor:"pointer", outline:"none" }}>
+          <option value="">All Purposes</option>
+          {CAMPAIGN_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+        <div style={{ flex:1 }} />
+        <span style={{ fontSize:12, fontFamily:mono, color:_C.muted }}>{filtered.length} offer{filtered.length!==1?"s":""}</span>
+        <button onClick={()=>setShowGenerate(true)}
+          style={{ padding:"8px 18px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+            fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
+          + Generate Offers
+        </button>
       </div>
-
-      {/* Offers editor */}
-      {selectedProduct ? (
-        <div style={{ flex:1, padding:"28px 32px", overflowY:"auto" }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 }}>
-            <div>
-              <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head }}>{selectedProduct.name}</div>
-              <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>Define soft, medium, and hard CTAs for outreach</div>
+      {/* Offer library grid */}
+      <div style={{ flex:1, overflowY:"auto", padding:"20px 24px" }}>
+        {filtered.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"60px 20px" }}>
+            <div style={{ fontSize:36, marginBottom:16, opacity:.15 }}>◇</div>
+            <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>
+              {offers.length === 0 ? "No offers yet" : "No offers match filters"}
             </div>
-            <button onClick={()=>aiGenerateOffers(selectedProductId!)} disabled={aiGenerating===selectedProductId}
-              style={{ padding:"8px 18px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
-                color:_C.green, fontSize:12, fontFamily:head, fontWeight:700, cursor:aiGenerating?"wait":"pointer",
-                opacity:aiGenerating===selectedProductId?0.6:1 }}>
-              {aiGenerating===selectedProductId ? "◌ Generating..." : "◎ AI Generate All"}
-            </button>
+            <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, marginBottom:20, maxWidth:400, margin:"0 auto 20px" }}>
+              {offers.length === 0
+                ? "Generate your first set of offers by selecting a product, persona, and campaign purpose."
+                : "Try adjusting the filters above, or generate new offers for a different combination."}
+            </div>
+            <button onClick={()=>setShowGenerate(true)}
+              style={{ padding:"10px 24px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+                fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>+ Generate Offers</button>
           </div>
-
-          {/* Three tier columns */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:20 }}>
-            {OFFER_TIERS.map(tier => {
-              const tierOffers = getOffers(tier.id);
+        ) : (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
+            {filtered.map((offer: any) => {
+              const product = products.find((p:any) => p.id === offer.productId);
+              const persona = personas.find((p:any) => p.id === offer.personaId);
+              const tierObj = OFFER_TIERS.find(t => t.id === offer.tier);
+              const purposeObj = CAMPAIGN_PURPOSES.find(p => p.id === offer.purpose);
+              const isOpen = expandedId === offer.id;
               return (
-                <div key={tier.id} style={{ display:"flex", flexDirection:"column", gap:0 }}>
-                  {/* Tier header */}
-                  <div style={{ padding:"14px 16px", borderRadius:"14px 14px 0 0", background:`${tier.color}11`,
-                    borderTop:`3px solid ${tier.color}`, border:`1px solid ${_C.border}`, borderBottom:"none" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                      <div style={{ width:8, height:8, borderRadius:4, background:tier.color }} />
-                      <span style={{ flex:1, fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>{tier.label}</span>
-                      <span style={{ fontSize:10, fontFamily:mono, color:tier.color, fontWeight:600 }}>{tierOffers.length}</span>
+                <div key={offer.id} style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${isOpen?tierObj?.color+"44":_C.border}`,
+                  overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)", transition:"border-color .2s" }}>
+                  {/* Card header */}
+                  <div onClick={()=>setExpandedId(isOpen?null:offer.id)}
+                    style={{ padding:"14px 16px", cursor:"pointer", borderTop:`3px solid ${tierObj?.color||_C.accent}` }}
+                    onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=_C.faint}
+                    onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="transparent"}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:5,
+                        background:tierObj?.bg||_C.faint, color:tierObj?.color||_C.accent }}>{tierObj?.label||offer.tier}</span>
+                      {purposeObj && <span style={{ fontSize:9, fontFamily:mono, color:_C.muted, padding:"2px 6px", borderRadius:4, background:_C.faint }}>{purposeObj.label}</span>}
+                      <div style={{ flex:1 }} />
+                      <span onClick={e=>{e.stopPropagation(); deleteOffer(offer.id);}}
+                        style={{ fontSize:11, color:_C.muted, cursor:"pointer", padding:"2px 4px" }}
+                        onMouseEnter={e=>(e.target as HTMLElement).style.color=_C.red}
+                        onMouseLeave={e=>(e.target as HTMLElement).style.color=_C.muted}>×</span>
                     </div>
-                    <div style={{ fontSize:10, color:_C.muted, fontFamily:body, lineHeight:1.4 }}>{tier.desc}</div>
+                    <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>
+                      {offer.name || "Untitled offer"}
+                    </div>
+                    {offer.ctaText && !isOpen && (
+                      <div style={{ fontSize:12, color:_C.muted, fontFamily:body, fontStyle:"italic",
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        "{offer.ctaText}"
+                      </div>
+                    )}
+                    <div style={{ display:"flex", gap:6, marginTop:6, flexWrap:"wrap" }}>
+                      {product && <span style={{ fontSize:9, fontFamily:mono, color:_C.accent, background:`${_C.accent}11`, padding:"2px 6px", borderRadius:4 }}>{product.name}</span>}
+                      {persona && <span style={{ fontSize:9, fontFamily:mono, color:_C.green, background:`${_C.green}11`, padding:"2px 6px", borderRadius:4 }}>{persona.name}</span>}
+                    </div>
                   </div>
-
-                  {/* Offer mini cards */}
-                  <div style={{ display:"flex", flexDirection:"column", gap:6, border:`1px solid ${_C.border}`, borderTop:"none",
-                    borderRadius:"0 0 14px 14px", background:_C.canvas, padding:"8px 8px 4px" }}>
-                    {tierOffers.map((offer: any, oi: number) => {
-                      const isOpen = expandedOfferId === offer.id;
-                      const hasContent = offer.name || offer.ctaText;
-                      return (
-                        <div key={offer.id} style={{ borderRadius:10, border:`1px solid ${isOpen?tier.color+"44":_C.border}`,
-                          background: isOpen ? `${tier.color}06` : _C.faint,
-                          overflow:"hidden", transition:"all .2s" }}>
-                          {/* Mini card header — always visible */}
-                          <div onClick={()=>setExpandedOfferId(isOpen?null:offer.id)}
-                            style={{ padding:"10px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8 }}
-                            onMouseEnter={e=>{ if(!isOpen)(e.currentTarget as HTMLElement).style.background=`${tier.color}08`; }}
-                            onMouseLeave={e=>{ if(!isOpen)(e.currentTarget as HTMLElement).style.background="transparent"; }}>
-                            <div style={{ width:22, height:22, borderRadius:6, background:`${tier.color}15`,
-                              display:"flex", alignItems:"center", justifyContent:"center",
-                              fontSize:10, fontWeight:700, fontFamily:mono, color:tier.color, flexShrink:0 }}>{oi+1}</div>
-                            <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text,
-                                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                {offer.name || "Untitled offer"}
-                              </div>
-                              {hasContent && !isOpen && offer.ctaText && (
-                                <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:1,
-                                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                  "{offer.ctaText}"
-                                </div>
-                              )}
-                            </div>
-                            <div style={{ display:"flex", gap:4, flexShrink:0 }} onClick={e=>e.stopPropagation()}>
-                              <button onClick={()=>aiGenerateSingle(tier.id)} disabled={aiSingleTier===tier.id}
-                                style={{ padding:"3px 7px", borderRadius:5, border:`1px solid ${tier.color}33`,
-                                  background:`${tier.color}08`, color:tier.color, fontSize:9, fontFamily:head, fontWeight:700,
-                                  cursor:aiSingleTier===tier.id?"wait":"pointer", opacity:aiSingleTier===tier.id?0.5:1 }}>
-                                {aiSingleTier===tier.id ? "◌" : "◎"}</button>
-                              <button onClick={()=>deleteOffer(offer.id)}
-                                style={{ width:22, height:22, borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent",
-                                  color:_C.muted, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
-                                onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;(e.target as HTMLElement).style.borderColor=_C.red;}}
-                                onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;(e.target as HTMLElement).style.borderColor=_C.border;}}>×</button>
-                            </div>
-                            <span style={{ fontSize:12, color:_C.muted, transition:"transform .2s",
-                              transform:isOpen?"rotate(180deg)":"rotate(0)" }}>▾</span>
-                          </div>
-
-                          {/* Expanded fields */}
-                          {isOpen && (
-                            <div style={{ padding:"0 12px 12px", display:"flex", flexDirection:"column", gap:8,
-                              animation:"contentFade .25s ease" }}>
-                              <div>
-                                <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>OFFER NAME</label>
-                                <input value={offer.name} onChange={e=>updOffer(offer.id, {name:e.target.value})}
-                                  placeholder="Offer name..." style={inputSt}
-                                  onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
-                              </div>
-                              <div>
-                                <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>CTA TEXT</label>
-                                <textarea value={offer.ctaText} onChange={e=>updOffer(offer.id, {ctaText:e.target.value})}
-                                  rows={2} placeholder='e.g., "Want me to send you our ROI calculator?"' style={inputSt}
-                                  onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
-                              </div>
-                              <div>
-                                <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>WHAT THEY GET</label>
-                                <textarea value={offer.whatTheyGet} onChange={e=>updOffer(offer.id, {whatTheyGet:e.target.value})}
-                                  rows={2} placeholder="What the prospect receives" style={inputSt}
-                                  onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
-                              </div>
-                              <div>
-                                <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>FRICTION REDUCTION</label>
-                                <textarea value={offer.frictionReduction} onChange={e=>updOffer(offer.id, {frictionReduction:e.target.value})}
-                                  rows={2} placeholder="Why it's easy to say yes" style={inputSt}
-                                  onFocus={e=>e.target.style.borderColor=tier.color+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
-                              </div>
-                            </div>
-                          )}
+                  {/* Expanded edit */}
+                  {isOpen && (
+                    <div style={{ padding:"0 16px 16px", display:"flex", flexDirection:"column", gap:10, animation:"contentFade .25s ease" }}>
+                      <div>
+                        <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>OFFER NAME</label>
+                        <input value={offer.name} onChange={e=>updOffer(offer.id, {name:e.target.value})} style={inputSt}
+                          placeholder="Short offer name" />
+                      </div>
+                      <div>
+                        <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>CTA TEXT</label>
+                        <textarea value={offer.ctaText} onChange={e=>updOffer(offer.id, {ctaText:e.target.value})}
+                          rows={2} placeholder="Exact words for the email" style={inputSt} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>WHAT THEY GET</label>
+                        <textarea value={offer.whatTheyGet} onChange={e=>updOffer(offer.id, {whatTheyGet:e.target.value})}
+                          rows={2} placeholder="What the prospect receives" style={inputSt} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>FRICTION REDUCTION</label>
+                        <textarea value={offer.frictionReduction} onChange={e=>updOffer(offer.id, {frictionReduction:e.target.value})}
+                          rows={2} placeholder="Why it's easy to say yes" style={inputSt} />
+                      </div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                        <div>
+                          <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>TIER</label>
+                          <select value={offer.tier} onChange={e=>updOffer(offer.id, {tier:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
+                            {OFFER_TIERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                          </select>
                         </div>
-                      );
-                    })}
-                    {/* Add offer button */}
-                    <button onClick={()=>{ addOffer(tier.id); }}
-                      style={{ padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-                        borderRadius:8, background:"transparent", border:`1.5px dashed ${_C.border}`,
-                        color:_C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", transition:"all .15s", marginBottom:4 }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=tier.color;(e.currentTarget as HTMLElement).style.color=tier.color;}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=_C.border;(e.currentTarget as HTMLElement).style.color=_C.muted;}}>
-                      + Add {tier.label}
-                    </button>
-                  </div>
+                        <div>
+                          <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>PURPOSE</label>
+                          <select value={offer.purpose||""} onChange={e=>updOffer(offer.id, {purpose:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
+                            <option value="">General</option>
+                            {CAMPAIGN_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
-        </div>
-      ) : (
-        <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ textAlign:"center", maxWidth:360 }}>
-            <div style={{ fontSize:36, marginBottom:16, opacity:.2 }}>◇</div>
-            <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>Offers</div>
-            <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6 }}>
-              {products.length === 0
-                ? "Add products first on the Products & Services page, then create offers here."
-                : "Select a product from the sidebar to define its outreach offers."}
+        )}
+      </div>
+
+      {/* Generate modal */}
+      {showGenerate && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:300,
+          display:"flex", alignItems:"center", justifyContent:"center", padding:24, backdropFilter:"blur(4px)" }}
+          onClick={()=>{ if(!generating) setShowGenerate(false); }}>
+          <div style={{ width:"100%", maxWidth:480, background:_C.canvas, borderRadius:16,
+            border:`1px solid ${_C.border}`, boxShadow:"0 24px 60px rgba(13,15,26,0.2)",
+            animation:"slideUp .3s cubic-bezier(.2,0,.1,1)" }} onClick={e=>e.stopPropagation()}>
+            <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${_C.border}` }}>
+              <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Generate Offers</div>
+              <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:4 }}>
+                AI creates soft, medium, and hard CTAs tailored to the specific product × persona × purpose combination.
+              </div>
+            </div>
+            <div style={{ padding:"20px 24px", display:"flex", flexDirection:"column", gap:14 }}>
+              <div>
+                <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Product / Service</label>
+                <select value={genProduct} onChange={e=>setGenProduct(e.target.value)}
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, cursor:"pointer", outline:"none" }}>
+                  <option value="">Select product…</option>
+                  {products.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Persona</label>
+                <select value={genPersona} onChange={e=>setGenPersona(e.target.value)}
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, cursor:"pointer", outline:"none" }}>
+                  <option value="">Select persona…</option>
+                  {personas.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Campaign Purpose</label>
+                <select value={genPurpose} onChange={e=>setGenPurpose(e.target.value)}
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, cursor:"pointer", outline:"none" }}>
+                  {CAMPAIGN_PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ padding:"16px 24px", borderTop:`1px solid ${_C.border}`, display:"flex", gap:10, justifyContent:"flex-end" }}>
+              <button onClick={()=>setShowGenerate(false)} disabled={generating}
+                style={{ padding:"9px 18px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
+                  color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+              <button onClick={generateOffers} disabled={generating || !genProduct || !genPersona}
+                style={{ padding:"9px 18px", borderRadius:10, border:"none",
+                  background: genProduct && genPersona ? _C.accent : _C.muted, color:"#fff",
+                  fontSize:12, fontFamily:head, fontWeight:700, cursor:generating?"wait":"pointer",
+                  opacity:generating?0.7:1 }}>
+                {generating ? "◌ Generating..." : "◎ Generate 3 Tiers"}
+              </button>
             </div>
           </div>
         </div>
@@ -11648,7 +11714,7 @@ Raw JSON only.`, "", 1400);
                 </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <OffersPage offers={offers} onOffersChange={setOffers} products={products}
-                    companyData={companyData} v2={true} addToast={addToast} />
+                    personas={icps} companyData={companyData} v2={true} addToast={addToast} />
                 </div>
               </div>
             )}
