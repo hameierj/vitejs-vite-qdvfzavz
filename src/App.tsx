@@ -183,7 +183,7 @@ const body = "'Inter', 'Source Sans 3', system-ui, sans-serif";
 const mono = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 
 // ─── SCHEMA ──────────────────────────────────────────────────────────────────
-const COMPANY_SECTIONS = {
+const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> = {
   client: { label:"Client Info", icon:"◎",
     fields:[
       { id:"co_name",         label:"Company Name",               type:"text",     ph:"",                                                    required:true, hint:"Exactly as you want it to appear in outreach messages", noConf:true },
@@ -235,7 +235,7 @@ const COMPANY_SECTIONS = {
 const COMPANY_FIELDS = Object.values(COMPANY_SECTIONS).flatMap(s => s.fields);
 
 // ─── PRODUCTS & SERVICES ─────────────────────────────────────────────────────
-const PRODUCT_SECTIONS = {
+const PRODUCT_SECTIONS: Record<string, {label:string; fields:any[]}> = {
   core: { label:"Core Details", fields:[
     { id:"name",              label:"Product / Service Name",   type:"text",     ph:"",                                                   required:true, noConf:true },
     { id:"description",       label:"Description",              type:"textarea", ph:"What is it and how does it work?",                    rows:3 },
@@ -256,7 +256,7 @@ const PRODUCT_SECTIONS = {
     { id:"socialProof",       label:"Social Proof",             type:"textarea", ph:"G2 rating, awards, press mentions, number of customers.",  rows:2 },
   ]},
 };
-const PRODUCT_FIELDS = Object.values(PRODUCT_SECTIONS).flatMap(s => s.fields);
+const PRODUCT_FIELDS = Object.values(PRODUCT_SECTIONS).flatMap(s => s.fields) as any[];
 const EMPTY_PRODUCT = () => ({ id:uid(), ...Object.fromEntries(PRODUCT_FIELDS.map(f=>[f.id,""])), createdAt:new Date().toISOString() });
 
 // ─── OFFERS ──────────────────────────────────────────────────────────────────
@@ -295,7 +295,7 @@ const CAMPAIGN_STATUSES = [
   { id:"paused",    label:"Paused",    color:"#FF6B6B" },
 ];
 
-const ICP_SECTIONS = {
+const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> = {
   targeting: { label:"Targeting", icon:"◎",
     fields:[
       { id:"industries", label:"Target Industries",          type:"textarea", ph:"B2B SaaS, Healthcare IT, Manufacturing…", rows:2, hint:"Specific verticals — not just \'tech\' or \'enterprise\'" },
@@ -374,7 +374,7 @@ const ICP_SECTIONS = {
   },
 };
 
-const ALL_ICP_FIELDS = Object.values(ICP_SECTIONS).flatMap(s => s.fields);
+const ALL_ICP_FIELDS = Object.values(ICP_SECTIONS).flatMap(s => s.fields) as any[];
 const TOTAL_FIELDS = ALL_ICP_FIELDS.length;
 
 const OUTPUT_TABS = [
@@ -5540,55 +5540,7 @@ function OffersPage({ offers, onOffersChange, products, personas = [], companyDa
     setGenerating(false);
   };
 
-  // Legacy compat — old offers without personaId/purpose still show
-  const aiGenerateSingle = async (tier: string) => {
-    if (!selectedProduct) return;
-    setAiSingleTier(tier);
-    const tierObj = OFFER_TIERS.find(t => t.id === tier);
-    addToast({ title:`Generating ${tierObj?.label||tier}…`, status:"loading", message:selectedProduct.name });
-    try {
-      const result = await callAI(
-        `Generate a ${tierObj?.label || tier} offer for cold B2B outreach.\n\nProduct: ${selectedProduct.name}\nDescription: ${selectedProduct.description || ""}\nProblems: ${selectedProduct.problemsSolved || ""}\nCompany: ${(companyData as any)?.co_name || ""}\nTier: ${tier} — ${tierObj?.desc || ""}\n\nProvide:\n- name: short offer name\n- ctaText: exact CTA for emails\n- whatTheyGet: what prospect receives\n- frictionReduction: why it's easy to say yes\n\nReturn ONLY valid JSON: {name,ctaText,whatTheyGet,frictionReduction}`,
-        "Return only valid JSON.", 400
-      );
-      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
-      const existing = getOffer(tier);
-      if (existing) {
-        updOffer(existing.id, { name: parsed.name||"", ctaText: parsed.ctaText||"", whatTheyGet: parsed.whatTheyGet||"", frictionReduction: parsed.frictionReduction||"" });
-      } else {
-        const newOffer = { ...EMPTY_OFFER(selectedProductId!, tier), name: parsed.name||"", ctaText: parsed.ctaText||"", whatTheyGet: parsed.whatTheyGet||"", frictionReduction: parsed.frictionReduction||"" };
-        onOffersChange([...offers, newOffer]);
-      }
-    } catch (e) { console.error("AI single offer failed:", e); addToast({ title:"Offer generation failed", status:"error", message:"Try again" }); }
-    setAiSingleTier(null);
-  };
-
-  const aiGenerateOffers = async (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (!product) return;
-    setAiGenerating(productId);
-    addToast({ title:"Generating all offers…", status:"loading", message:product.name });
-    try {
-      const result = await callAI(
-        `Generate 3 offer tiers for cold B2B outreach for this product.\n\nProduct: ${product.name}\nDescription: ${product.description}\nProblems solved: ${product.problemsSolved}\nValue prop: ${product.valueProposition}\nCompany: ${(companyData as any)?.co_name || ""}\nIndustry: ${(companyData as any)?.co_industry || ""}\n\nFor each tier (soft, medium, hard), provide:\n- name: short name for the offer (e.g., "Free ROI Calculator")\n- ctaText: the exact CTA to use in emails (e.g., "Want me to send you our ROI calculator?")\n- whatTheyGet: what the prospect receives\n- frictionReduction: why this reduces buying friction\n\nReturn ONLY valid JSON array: [{tier:"soft",name,ctaText,whatTheyGet,frictionReduction},{tier:"medium",...},{tier:"hard",...}]`,
-        "You are a B2B cold outreach offer strategist. Return only valid JSON.", 800
-      );
-      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
-      if (Array.isArray(parsed)) {
-        // Remove existing offers for this product, add new ones
-        const otherOffers = offers.filter(o => o.productId !== productId);
-        const newOffers = parsed.map((p: any) => ({
-          ...EMPTY_OFFER(productId, p.tier || "soft"),
-          name: p.name || "", ctaText: p.ctaText || "", whatTheyGet: p.whatTheyGet || "", frictionReduction: p.frictionReduction || "",
-        }));
-        onOffersChange([...otherOffers, ...newOffers]);
-      }
-      addToast({ title:"Offers generated", status:"success", message:`3 tiers for ${product.name}` });
-    } catch (e) { console.error("AI offer generation failed:", e); addToast({ title:"Offer generation failed", status:"error", message:"Try again" }); }
-    setAiGenerating(null);
-  };
+  // Legacy offer functions removed — offers are now generated in-context from Campaigns page
 
   const inputSt: any = { padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
     background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none",
