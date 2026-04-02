@@ -5787,6 +5787,7 @@ function StrategyPage({ strategy, onStrategyChange, companyData, products, offer
 }) {
   const _C = v2 ? C2 : C;
   const [generating, setGenerating] = useState(false);
+  const [genStep, setGenStep] = useState(0); // 0=idle, 1=analyzing, 2=building phases, 3=benchmarks, 4=done
   const [expandedPhase, setExpandedPhase] = useState<string|null>(null);
 
   const phases = strategy?.phases ?? [];
@@ -5814,70 +5815,69 @@ function StrategyPage({ strategy, onStrategyChange, companyData, products, offer
       return;
     }
     setGenerating(true);
-    addToast({ title:"Generating roadmap…", status:"loading", message:"Building 12-month strategy" });
+    setGenStep(1);
     try {
       const cd = companyData as Record<string,string>;
       const hasLists = cd.co_existing_lists && cd.co_existing_lists !== "No lists available";
-      const prompt = `You are a senior B2B cold outreach strategist. Generate a 12-month phased campaign roadmap.
 
-COMPANY: ${cd.co_name || "Unknown"} — ${cd.co_industry || "Unknown industry"}
-Website: ${cd.co_website || "N/A"}
-Value Prop: ${cd.co_pitch || "N/A"}
-Deal Size: ${cd.co_deal || "Unknown"}
-Sales Cycle: ${cd.co_cycle || "Unknown"}
-Monthly Meeting Goal: ${cd.co_goal || "5-10"}
+      // Step 1: Generate phases structure
+      setGenStep(1);
+      const phasesRaw = await callAI(
+        `You are a B2B outreach strategist. Create a phased 12-month campaign roadmap.\n\nCompany: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"?"}. Cycle: ${cd.co_cycle||"?"}.\nProducts: ${products.map((p:any)=>p.name).join(", ")||"none"}.\nPersonas: ${personas.map((p:any)=>p.name).join(", ")||"none"}.\nMailboxes: ${cd.co_mailbox_count||200} (${warmupDaysLeft>0?warmupDaysLeft+" days warmup left":"ready"}). LinkedIn: ready. RTS: ready. Lists: ${hasLists?"Yes":"No"}.\n\nRules: Phase 1 = LinkedIn+RTS immediate${hasLists?", retargeting if lists":""}. Email after warmup (week 3+). Soft offers first, escalate. 4-6 phases.\n\nReturn ONLY JSON array of phases:\n[{"id":"phase_1","name":"Phase 1: Foundation","startWeek":1,"endWeek":2,"campaigns":[{"id":"c1","type":"linkedin_connection|cold_email|retargeting|linkedin_message|rts_calling","personaName":"exact name","productName":"exact name","offerTier":"soft|medium|hard","duration":"2 weeks","dailyVolume":50,"goal":"specific goal"}]}]`,
+        "Return only valid JSON array.", 2000
+      );
+      const phases = JSON.parse(phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+      if (!Array.isArray(phases) || phases.length === 0) throw new Error("No phases");
 
-PRODUCTS (${products.length}):
-${products.map((p:any) => `- ${p.name}: ${p.description || ""}. Problems: ${p.problemsSolved || ""}. Price: ${p.pricingRange || "?"}`).join("\n") || "None defined"}
+      // Step 2: Generate benchmarks + decision trees for each phase
+      setGenStep(2);
+      for (const phase of phases) {
+        phase.status = "pending";
+        for (const c of (phase.campaigns||[])) {
+          // Add benchmarks
+          const isEmail = c.type === "cold_email" || c.type === "retargeting";
+          c.benchmarks = {
+            openRate: isEmail ? 40 : null,
+            replyRate: isEmail ? 3 : c.type?.includes("linkedin") ? 15 : 5,
+            bounceRate: isEmail ? 3 : null,
+            meetingRate: isEmail ? 0.5 : 1,
+          };
+        }
+      }
 
-OFFERS (${offers.length}):
-${offers.map((o:any) => {const p=products.find((x:any)=>x.id===o.productId); return `- ${p?.name||"?"} (${o.tier}): "${o.ctaText||o.name||"?"}"`}).join("\n") || "None defined"}
+      // Step 3: Generate decision trees
+      setGenStep(3);
+      const treesRaw = await callAI(
+        `For each campaign in this roadmap, write brief decision trees.\n\nPhases:\n${phases.map((p:any)=>`${p.name}: ${(p.campaigns||[]).map((c:any)=>`${c.type} for ${c.personaName}`).join(", ")}`).join("\n")}\n\nFor EACH campaign, provide: ifMet (1 sentence), ifNotMet (1 sentence), ifFailed (1 sentence).\n\nReturn ONLY JSON array matching the phases/campaigns structure:\n[[{"ifMet":"...","ifNotMet":"...","ifFailed":"..."},...],...]`,
+        "Return only valid JSON.", 1500
+      );
+      try {
+        const trees = JSON.parse(treesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+        if (Array.isArray(trees)) {
+          for (let pi = 0; pi < Math.min(phases.length, trees.length); pi++) {
+            const phaseTrees = Array.isArray(trees[pi]) ? trees[pi] : [trees[pi]];
+            for (let ci = 0; ci < Math.min((phases[pi].campaigns||[]).length, phaseTrees.length); ci++) {
+              phases[pi].campaigns[ci].decisionTree = phaseTrees[ci];
+            }
+          }
+        }
+      } catch {}
 
-PERSONAS (${personas.length}):
-${personas.map((p:any) => `- ${p.name}: Titles: ${p.data?.buyer||"?"}, Industries: ${p.data?.industries||"?"}, Pain: ${p.data?.pain1||"?"}, Channel: ${p.data?.best_channel||"Multi"}`).join("\n") || "None defined"}
-
-INFRASTRUCTURE:
-- Mailboxes: ${cd.co_mailbox_count || "200"} (${warmupDaysLeft > 0 ? `warming up, ${warmupDaysLeft} days left` : "ready"})
-- LinkedIn: available immediately
-- RTS calling: available immediately
-- Existing retargeting lists: ${hasLists ? "Yes" : "No"}
-
-PAST HISTORY: ${cd.co_what_tried || "None"} | Worked: ${cd.co_what_worked || "N/A"} | Didn't: ${cd.co_what_didnt || "N/A"}
-
-RULES:
-1. Phase 1 (Weeks 1-2): LinkedIn campaigns + RTS lists immediately. ${hasLists ? "Include retargeting campaign." : "No retargeting (no lists)."}
-2. Email campaigns start ONLY after warmup (Week 3+)
-3. Start with soft offers, escalate to medium by month 2, hard by month 3+
-4. Each campaign slot needs: type, persona, product, offerTier, duration, dailyVolume
-5. Include benchmarks per campaign: openRate, replyRate, bounceRate, meetingRate (as percentages)
-6. Include decision trees: whatIfMet (next step), whatIfNotMet (adjustments), whatIfFailed (pivot after 2 iterations)
-7. 4-6 phases total covering 12 months
-8. Be specific — name actual personas and products from the data above
-
-Return ONLY valid JSON:
-{
-  "infrastructure": { "warmupStartDate":"${infra.warmupStartDate||new Date().toISOString().split("T")[0]}", "estimatedReadyDate":"...", "mailboxCount":${cd.co_mailbox_count||200}, "dailyCapacity":${(parseInt(cd.co_mailbox_count||"200")*30)} },
-  "benchmarks": { "baseOpenRate":40, "baseReplyRate":3, "baseBounceMax":3, "baseMeetingRate":0.5 },
-  "phases": [
-    {
-      "id":"phase_1", "name":"Phase 1: Foundation", "startWeek":1, "endWeek":2, "status":"pending",
-      "campaigns": [
-        { "id":"c1", "type":"linkedin_connection", "personaName":"...", "productName":"...", "offerTier":"soft", "duration":"2 weeks", "dailyVolume":50, "goal":"...",
-          "benchmarks":{"openRate":null,"replyRate":15,"bounceRate":null,"meetingRate":null},
-          "decisionTree":{"ifMet":"...","ifNotMet":"...","ifFailed":"..."} }
-      ]
-    }
-  ]
-}`;
-
-      const result = await callAI(prompt, "You are a B2B outreach strategist. Return only valid JSON.", 4000);
-      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
-      onStrategyChange({ ...parsed, generatedAt: new Date().toISOString(), status: "draft" });
-      if (parsed.phases?.length > 0) setExpandedPhase(parsed.phases[0].id);
-      addToast({ title:"Roadmap generated", status:"success", message:`${parsed.phases?.length||0} phases created` });
-    } catch (e) { console.error("Strategy generation failed:", e); addToast({ title:"Roadmap generation failed", status:"error", message:"Try again" }); }
+      // Step 4: Assemble final strategy
+      setGenStep(4);
+      const strategy = {
+        phases,
+        infrastructure: { warmupStartDate: infra.warmupStartDate || new Date().toISOString().split("T")[0], estimatedReadyDate: "", mailboxCount: parseInt(cd.co_mailbox_count||"200"), dailyCapacity: parseInt(cd.co_mailbox_count||"200") * 30 },
+        benchmarks: { baseOpenRate: 40, baseReplyRate: 3, baseBounceMax: 3, baseMeetingRate: 0.5 },
+        generatedAt: new Date().toISOString(),
+        status: "draft",
+      };
+      onStrategyChange(strategy);
+      if (phases.length > 0) setExpandedPhase(phases[0].id);
+      addToast({ title:"Roadmap generated", status:"success", message:`${phases.length} phases created` });
+    } catch (e) { console.error("Strategy generation failed:", e); addToast({ title:"Roadmap generation failed", status:"error", message:String(e).slice(0,100) }); }
     setGenerating(false);
+    setGenStep(0);
   };
 
   const updatePhaseStatus = (phaseId: string, status: string) => {
@@ -5927,16 +5927,58 @@ Return ONLY valid JSON:
         ))}
       </div>
 
-      {/* Phases */}
-      {phases.length === 0 ? (
+      {/* Phases or generating state */}
+      {generating ? (
+        /* Inline progress animation */
+        <div style={{ textAlign:"center", padding:"60px 20px" }}>
+          <style>{`@keyframes stratSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}} @keyframes stratPulse{0%,100%{opacity:.5}50%{opacity:1}}`}</style>
+          <div style={{ position:"relative", width:100, height:100, margin:"0 auto 28px" }}>
+            <div style={{ width:100, height:100, borderRadius:"50%", border:`3px solid ${_C.faint}`,
+              borderTopColor:_C.accent, animation:"stratSpin 1.2s linear infinite" }} />
+            <div style={{ position:"absolute", inset:16, borderRadius:"50%", background:_C.canvas,
+              display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <span style={{ fontSize:28 }}>{[" 🔍","🏗️","🎯","✓"][genStep-1] || "◎"}</span>
+            </div>
+          </div>
+          <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:_C.text, marginBottom:8 }}>
+            {["","Analyzing your data…","Building campaign phases…","Adding decision trees…","Finalizing strategy…"][genStep] || "Generating…"}
+          </div>
+          <div style={{ fontSize:13, color:_C.muted, fontFamily:body, marginBottom:24 }}>
+            {["","Reviewing products, personas, and infrastructure","Mapping campaign types, timings, and volumes","Defining success criteria and pivot plans","Assembling your 12-month roadmap"][genStep] || ""}
+          </div>
+          {/* Step indicators */}
+          <div style={{ display:"flex", justifyContent:"center", gap:12 }}>
+            {["Analyze","Phases","Decisions","Finalize"].map((label, i) => {
+              const stepIdx = i + 1;
+              const isDone = genStep > stepIdx;
+              const isActive = genStep === stepIdx;
+              return (
+                <div key={label} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <div style={{ width:24, height:24, borderRadius:8,
+                    background: isDone ? _C.green : isActive ? `${_C.accent}22` : _C.faint,
+                    border: isActive ? `2px solid ${_C.accent}` : isDone ? "none" : `1px solid ${_C.border}`,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    animation: isActive ? "stratPulse 1.5s ease-in-out infinite" : undefined }}>
+                    {isDone ? <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>
+                      : <span style={{ fontSize:10, color:isActive?_C.accent:_C.muted, fontWeight:600 }}>{stepIdx}</span>}
+                  </div>
+                  <span style={{ fontSize:11, fontFamily:head, fontWeight:isActive?700:400,
+                    color:isActive?_C.accent:isDone?_C.text:_C.muted }}>{label}</span>
+                  {i < 3 && <div style={{ width:20, height:2, background:isDone?_C.green:_C.border, borderRadius:1 }} />}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : phases.length === 0 ? (
         <div style={{ textAlign:"center", padding:"60px 20px" }}>
           <div style={{ fontSize:48, marginBottom:16, opacity:.15 }}>◎</div>
           <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>No strategy generated yet</div>
           <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, maxWidth:420, margin:"0 auto", marginBottom:20 }}>
-            Fill in your company profile, products, offers, and personas first. Then click "Generate Roadmap" to create a phased 12-month campaign plan.
+            Fill in your company profile, products, and personas first. Then click "Generate Roadmap" to create a phased 12-month campaign plan.
           </div>
           <div style={{ fontSize:12, fontFamily:body, color:_C.muted }}>
-            {products.length} product{products.length!==1?"s":""} · {offers.length} offer{offers.length!==1?"s":""} · {personas.length} persona{personas.length!==1?"s":""}
+            {products.length} product{products.length!==1?"s":""} · {personas.length} persona{personas.length!==1?"s":""}
           </div>
         </div>
       ) : (
