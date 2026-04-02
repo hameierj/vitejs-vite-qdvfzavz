@@ -45,26 +45,35 @@ const dbGetAll = async (table: string, prefix: string): Promise<{key:string;valu
 async function syncFromCloud() {
   if (!supabase) return;
   console.log("[DB] Syncing from cloud…");
+  // Abort controller for 5s timeout on the entire sync
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
   try {
     // Sync clients
     const clients = await dbGet("app_data", "clients");
+    if (controller.signal.aborted) throw new Error("timeout");
     if (clients) localStorage.setItem("b2br_clients", JSON.stringify(clients));
     // Sync users (admin-created)
     const users = await dbGet("app_data", "users");
+    if (controller.signal.aborted) throw new Error("timeout");
     if (users) localStorage.setItem("b2br_users", JSON.stringify(users));
     // Sync all workspaces
     const workspaces = await dbGetAll("app_data", "ws_");
+    if (controller.signal.aborted) throw new Error("timeout");
     for (const ws of workspaces) {
       const clientId = ws.key.replace("ws_", "");
       localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(ws.value));
     }
-    // Sync file blobs
-    const blobs = await dbGetAll("file_blobs", "");
-    for (const b of blobs) {
-      await idbPut(b.key, b.value);
+    // Sync file blobs (skip if already timed out)
+    if (!controller.signal.aborted) {
+      const blobs = await dbGetAll("file_blobs", "");
+      for (const b of blobs) {
+        await idbPut(b.key, b.value);
+      }
+      console.log("[DB] Cloud sync complete:", workspaces.length, "workspaces,", blobs.length, "files");
     }
-    console.log("[DB] Cloud sync complete:", workspaces.length, "workspaces,", blobs.length, "files");
-  } catch (e) { console.warn("[DB] Cloud sync failed:", e); }
+  } catch (e) { console.warn("[DB] Cloud sync failed or timed out:", e); }
+  clearTimeout(timeout);
 }
 
 // Push local data to cloud
@@ -10468,7 +10477,11 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
   // Sync users from Supabase before first login attempt so admin-created users are available
   useEffect(() => {
     if (DB_ENABLED) {
-      syncFromCloud().then(() => { setCloudReady(true); console.log("[Auth] Cloud sync ready for login"); });
+      // Race: sync from cloud OR timeout after 3s — whichever comes first
+      Promise.race([
+        syncFromCloud(),
+        new Promise(r => setTimeout(r, 3000)),
+      ]).then(() => { setCloudReady(true); console.log("[Auth] Cloud sync ready (or timed out)"); });
     } else {
       setCloudReady(true);
     }
@@ -10478,9 +10491,14 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
     e?.preventDefault();
     if (!email.trim() || !password.trim()) return;
     setLoading(true); setError(false);
-    // If cloud hasn't synced yet, wait for it (max 5s)
+    // If cloud hasn't synced yet, wait max 3s then proceed with local data
     if (!cloudReady && DB_ENABLED) {
-      try { await syncFromCloud(); } catch {}
+      try {
+        await Promise.race([
+          syncFromCloud(),
+          new Promise(r => setTimeout(r, 3000)),
+        ]);
+      } catch {}
     }
     const users = loadUsers();
     console.log("[Auth] Login attempt:", email.trim(), "| Available users:", users.map(u => u.email));
