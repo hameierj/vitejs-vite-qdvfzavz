@@ -11083,26 +11083,59 @@ Raw JSON only.`, "", 1400);
                     <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="icps"?700:500, color:view==="icps"?C2.text:C2.textSoft }}>Personas</span>
                     {icps.length > 0 && <span style={{ fontSize:10, fontFamily:mono, color:C2.muted, marginLeft:"auto" }}>{icps.length}</span>}
                   </button>
-                  {/* ICP sub-items when on ICP page */}
+                  {/* Persona sub-items when on personas page */}
                   {view === "icps" && icps.length > 0 && (
                     <div style={{ padding:"4px 0 4px 20px", marginBottom:4 }}>
                       {(icps as any[]).map((icp: any, i: number) => {
                         const isOn = editingId === icp.id;
                         const dotColor = icp.approval === "approved" || icp.approval === "finalized" ? C2.green : C2.muted;
+                        const isConfirmingDelete = (window as any).__confirmDeletePersona === icp.id;
                         return (
-                          <button key={icp.id} onClick={()=>setEditingId(icp.id)}
-                            style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"7px 12px",
-                              borderRadius:8, border:"none",
-                              background: isOn ? `${C2.accent}14` : "transparent",
-                              cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
-                            onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                            onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLButtonElement).style.background=isOn?`${C2.accent}14`:"transparent"; }}>
-                            <div style={{ width:6, height:6, borderRadius:3, background:dotColor, flexShrink:0 }} />
-                            <span style={{ fontSize:12, fontFamily:head, fontWeight:isOn?600:400, color:isOn?C2.text:C2.textSoft,
-                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                              {icp.name || `ICP ${i+1}`}
-                            </span>
-                          </button>
+                          <div key={icp.id} style={{ position:"relative", marginBottom:1 }}>
+                            <div onClick={()=>setEditingId(icp.id)}
+                              style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"7px 12px",
+                                borderRadius:8, cursor:"pointer", transition:"all .2s",
+                                background: isOn ? `${C2.accent}14` : "transparent" }}
+                              onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=C2.faint;
+                                const x = e.currentTarget.querySelector("[data-del]") as HTMLElement; if(x) x.style.opacity="1"; }}
+                              onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=isOn?`${C2.accent}14`:"transparent";
+                                const x = e.currentTarget.querySelector("[data-del]") as HTMLElement; if(x && !isConfirmingDelete) x.style.opacity="0"; }}>
+                              <div style={{ width:6, height:6, borderRadius:3, background:dotColor, flexShrink:0 }} />
+                              <span style={{ flex:1, fontSize:12, fontFamily:head, fontWeight:isOn?600:400, color:isOn?C2.text:C2.textSoft,
+                                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                {icp.name || `Persona ${i+1}`}
+                              </span>
+                              <span data-del onClick={e=>{
+                                  e.stopPropagation();
+                                  (window as any).__confirmDeletePersona = icp.id;
+                                  // Force re-render
+                                  setEditingId(prev => prev);
+                                }}
+                                style={{ width:18, height:18, borderRadius:5, display:"flex", alignItems:"center", justifyContent:"center",
+                                  fontSize:10, color:C2.muted, cursor:"pointer", opacity:0, transition:"opacity .15s", flexShrink:0 }}
+                                onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.red;}}
+                                onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;}}>×</span>
+                            </div>
+                            {/* Delete confirmation */}
+                            {isConfirmingDelete && (
+                              <div style={{ padding:"8px 12px", margin:"2px 0 4px", borderRadius:8, background:C2.canvas,
+                                border:`1px solid ${C2.red}33`, animation:"contentFade .2s ease",
+                                display:"flex", alignItems:"center", gap:8 }}>
+                                <span style={{ fontSize:11, color:C2.text, fontFamily:head, fontWeight:600, flex:1 }}>Delete?</span>
+                                <button onClick={()=>{
+                                  setIcps((p:any) => p.filter((x:any) => x.id !== icp.id));
+                                  if (editingId === icp.id) setEditingId(null);
+                                  (window as any).__confirmDeletePersona = null;
+                                  addToast({ title:"Persona deleted", status:"success", message:icp.name || `Persona ${i+1}` });
+                                }}
+                                  style={{ padding:"4px 10px", borderRadius:6, border:"none", background:C2.red, color:"#fff",
+                                    fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>Delete</button>
+                                <button onClick={()=>{ (window as any).__confirmDeletePersona = null; setEditingId(prev => prev); }}
+                                  style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${C2.border}`, background:"transparent",
+                                    color:C2.muted, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
