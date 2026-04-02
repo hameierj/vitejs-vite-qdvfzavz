@@ -5782,12 +5782,23 @@ function OffersPage({ offers, onOffersChange, products, personas = [], companyDa
 }
 
 // ─── STRATEGY PAGE ───────────────────────────────────────────────────────────
-function StrategyPage({ strategy, onStrategyChange, companyData, products, offers, personas, v2 = false, addToast = (_t:any)=>"" }: {
+function StrategyPage({ strategy, onStrategyChange, companyData, products, offers, personas, v2 = false, addToast = (_t:any)=>"",
+  genState, onGenStateChange }: {
   strategy: any; onStrategyChange: (s: any) => void; companyData: any; products: any[]; offers: any[]; personas: any[]; v2?: boolean; addToast?: (t:any)=>string;
+  genState?: {running:boolean;step:number}; onGenStateChange?: (s:{running:boolean;step:number})=>void;
 }) {
   const _C = v2 ? C2 : C;
-  const [generating, setGenerating] = useState(false);
-  const [genStep, setGenStep] = useState(0); // 0=idle, 1=analyzing, 2=building phases, 3=benchmarks, 4=done
+  const generating = genState?.running ?? false;
+  const genStep = genState?.step ?? 0;
+  // Use refs so async function can update state even after component unmounts/remounts
+  const genStateRef = useRef(onGenStateChange);
+  genStateRef.current = onGenStateChange;
+  const strategyRef = useRef(onStrategyChange);
+  strategyRef.current = onStrategyChange;
+  const toastRef = useRef(addToast);
+  toastRef.current = addToast;
+  const setGenerating = (v: boolean) => genStateRef.current?.({ running: v, step: v ? (genState?.step||0) : 0 });
+  const setGenStep = (v: number) => genStateRef.current?.({ running: true, step: v });
   const [expandedPhase, setExpandedPhase] = useState<string|null>(null);
 
   const phases = strategy?.phases ?? [];
@@ -5897,19 +5908,18 @@ Example: [{"id":"p1","name":"Phase 1","startWeek":1,"endWeek":2,"campaigns":[{"i
 
       // Step 4: Assemble final strategy
       setGenStep(4);
-      const strategy = {
+      const strategyObj = {
         phases,
         infrastructure: { warmupStartDate: infra.warmupStartDate || new Date().toISOString().split("T")[0], estimatedReadyDate: "", mailboxCount: parseInt(cd.co_mailbox_count||"200"), dailyCapacity: parseInt(cd.co_mailbox_count||"200") * 30 },
         benchmarks: { baseOpenRate: 40, baseReplyRate: 3, baseBounceMax: 3, baseMeetingRate: 0.5 },
         generatedAt: new Date().toISOString(),
         status: "draft",
       };
-      onStrategyChange(strategy);
+      strategyRef.current?.(strategyObj);
       if (phases.length > 0) setExpandedPhase(phases[0].id);
-      addToast({ title:"Roadmap generated", status:"success", message:`${phases.length} phases created` });
-    } catch (e) { console.error("Strategy generation failed:", e); addToast({ title:"Roadmap generation failed", status:"error", message:String(e).slice(0,100) }); }
-    setGenerating(false);
-    setGenStep(0);
+      toastRef.current?.({ title:"Roadmap generated", status:"success", message:`${phases.length} phases created` });
+    } catch (e) { console.error("Strategy generation failed:", e); toastRef.current?.({ title:"Roadmap generation failed", status:"error", message:String(e).slice(0,100) }); }
+    genStateRef.current?.({ running: false, step: 0 });
   };
 
   const updatePhaseStatus = (phaseId: string, status: string) => {
@@ -10682,6 +10692,7 @@ function AppMain() {
   const [products,       setProducts]       = useState<any[]>([]);
   const [offers,         setOffers]         = useState<any[]>([]);
   const [strategy,       setStrategy]       = useState<any>(null);
+  const [strategyGen,    setStrategyGen]    = useState<{running:boolean;step:number}>({running:false,step:0});
   const [campaigns,      setCampaigns]      = useState<any[]>([]);
 
   const addToast  = useCallback((t: Omit<Toast,"id">) => {
@@ -11876,7 +11887,8 @@ Raw JSON only.`, "", 1400);
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
-                    companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast} />
+                    companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast}
+                    genState={strategyGen} onGenStateChange={setStrategyGen} />
                 </div>
               </div>
             )}
