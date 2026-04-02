@@ -5848,7 +5848,7 @@ METHODOLOGY — follow this exact playbook:
 MONTHS 1-3 (AGGRESSIVE — most critical, user retention depends on early results):
 - Week 1-2: SETUP. Domain warmup begins. Launch LinkedIn connection campaigns immediately (50-100/day). Start RTS lead lists for cold calling.${hasLists?" Launch retargeting campaign with existing contacts (3-step sequence, 3-5 day test).":""}
 - Week 3: First cold email campaign launches. Start with 1 persona × 1 product × soft CTA. 5-step sequence. 3-day initial test period.
-- TESTING METHODOLOGY per campaign: Day 1-3 = initial test. Check open rate (>40%), reply rate (>1%), bounce (<3%). If benchmarks NOT met: Day 4-6 test new subject lines. Day 7-9 test new opening lines. Day 10-12 test new CTA/offer. If still failing after 3 iterations → pivot persona or product.
+- TESTING METHODOLOGY per campaign: Day 1-3 = initial test. Check reply rate (>1%), interested reply rate, bounce (<3%), auto-reply rate (<30%). Do NOT track open rates (unreliable with privacy proxies) or click rates (tracked links hurt deliverability). If benchmarks NOT met: Day 4-6 test new subject lines. Day 7-9 test new opening lines. Day 10-12 test new CTA/offer. If still failing after 3 iterations → pivot persona or product.
 - If benchmarks MET: scale volume, extend duration, launch parallel campaign for next persona.
 - Week 4-6: Add 2nd cold email campaign (different persona OR product). Run simultaneously with campaign 1.
 - Week 7-12: Add LinkedIn message campaigns to warm connections from week 1-2. Launch 3rd email campaign. Escalate from soft to medium offers.
@@ -5904,9 +5904,10 @@ Keep each campaign object compact. No nested objects except as specified.`,
           // Add benchmarks
           const isEmail = c.type === "cold_email" || c.type === "retargeting";
           c.benchmarks = {
-            openRate: isEmail ? 40 : null,
             replyRate: isEmail ? 3 : c.type?.includes("linkedin") ? 15 : 5,
+            interestedRate: isEmail ? 1 : c.type?.includes("linkedin") ? 5 : 2,
             bounceRate: isEmail ? 3 : null,
+            autoReplyRate: isEmail ? 30 : null,
             meetingRate: isEmail ? 0.5 : 1,
           };
         }
@@ -5937,8 +5938,9 @@ Keep each campaign object compact. No nested objects except as specified.`,
             };
           }
           // Ensure test period exists
-          if (!c.testPeriod) c.testPeriod = isEmail ? "3-5 days" : "5-7 days";
-          if (!c.testMetrics) c.testMetrics = isEmail ? "Open >40%, Reply >1%, Bounce <3%" : "Accept >30%, Reply >10%";
+          const isEmailType = c.type === "cold_email" || c.type === "retargeting";
+          if (!c.testPeriod) c.testPeriod = isEmailType ? "3-5 days" : "5-7 days";
+          if (!c.testMetrics) c.testMetrics = isEmailType ? "Reply >1%, Interested >0.5%, Bounce <3%, Auto-reply <30%" : "Accept >30%, Reply >10%, Meeting >1%";
         }
       }
 
@@ -5947,7 +5949,7 @@ Keep each campaign object compact. No nested objects except as specified.`,
       const strategyObj = {
         phases,
         infrastructure: { warmupStartDate: infra.warmupStartDate || new Date().toISOString().split("T")[0], estimatedReadyDate: "", mailboxCount: parseInt(cd.co_mailbox_count||"200"), dailyCapacity: parseInt(cd.co_mailbox_count||"200") * 30 },
-        benchmarks: { baseOpenRate: 40, baseReplyRate: 3, baseBounceMax: 3, baseMeetingRate: 0.5 },
+        benchmarks: { baseReplyRate: 3, baseInterestedRate: 1, baseBounceMax: 3, baseAutoReplyMax: 30, baseMeetingRate: 0.5 },
         generatedAt: new Date().toISOString(),
         status: "draft",
       };
@@ -6131,10 +6133,11 @@ Keep each campaign object compact. No nested objects except as specified.`,
                             {c.benchmarks && (
                               <div style={{ display:"flex", gap:12, marginBottom:10, flexWrap:"wrap" }}>
                                 {[
-                                  c.benchmarks.openRate!=null && { label:"Open", value:`${c.benchmarks.openRate}%`, color:_C.accent },
-                                  c.benchmarks.replyRate!=null && { label:"Reply", value:`${c.benchmarks.replyRate}%`, color:_C.green },
+                                  c.benchmarks.replyRate!=null && { label:"Reply >", value:`${c.benchmarks.replyRate}%`, color:_C.green },
+                                  c.benchmarks.interestedRate!=null && { label:"Interested >", value:`${c.benchmarks.interestedRate}%`, color:_C.accent },
                                   c.benchmarks.bounceRate!=null && { label:"Bounce <", value:`${c.benchmarks.bounceRate}%`, color:_C.red },
-                                  c.benchmarks.meetingRate!=null && { label:"Meeting", value:`${c.benchmarks.meetingRate}%`, color:_C.amber },
+                                  c.benchmarks.autoReplyRate!=null && { label:"Auto-reply <", value:`${c.benchmarks.autoReplyRate}%`, color:_C.amber },
+                                  c.benchmarks.meetingRate!=null && { label:"Meeting >", value:`${c.benchmarks.meetingRate}%`, color:_C.blue },
                                 ].filter(Boolean).map((b: any) => (
                                   <div key={b.label} style={{ padding:"4px 10px", borderRadius:6, background:`${b.color}11`,
                                     border:`1px solid ${b.color}22`, fontSize:10, fontFamily:mono, color:b.color, fontWeight:600 }}>
@@ -6190,16 +6193,17 @@ Keep each campaign object compact. No nested objects except as specified.`,
           })}
 
           {/* Benchmarks summary */}
-          {benchmarks.baseOpenRate && (
+          {benchmarks.baseReplyRate && (
             <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, padding:"18px 24px",
               boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
               <div style={{ fontSize:12, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:12 }}>DEFAULT BENCHMARKS (ADJUSTED FOR THIS CLIENT)</div>
               <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
                 {[
-                  { label:"Open Rate", value:`${benchmarks.baseOpenRate}%+`, color:_C.accent },
                   { label:"Reply Rate", value:`${benchmarks.baseReplyRate}%+`, color:_C.green },
+                  { label:"Interested", value:`${benchmarks.baseInterestedRate}%+`, color:_C.accent },
                   { label:"Max Bounce", value:`${benchmarks.baseBounceMax}%`, color:_C.red },
-                  { label:"Meeting Rate", value:`${benchmarks.baseMeetingRate}%+`, color:_C.amber },
+                  { label:"Max Auto-Reply", value:`${benchmarks.baseAutoReplyMax}%`, color:_C.amber },
+                  { label:"Meeting Rate", value:`${benchmarks.baseMeetingRate}%+`, color:_C.blue },
                 ].map(b => (
                   <div key={b.label} style={{ display:"flex", alignItems:"center", gap:8 }}>
                     <div style={{ width:8, height:8, borderRadius:4, background:b.color }} />
@@ -6233,7 +6237,7 @@ const EMPTY_CAMPAIGN = () => ({
   strategyPhaseId: null as string|null,
   sequence: [] as any[],
   abTests: [] as any[],
-  benchmarks: { openRate:{good:40,warning:25,action:15,critical:5}, replyRate:{good:3,warning:1.5,action:0.5,critical:0}, bounceRate:{good:3,warning:5,action:8,critical:12}, meetingRate:{good:0.5,warning:0.2,action:0,critical:0} },
+  benchmarks: { replyRate:{good:3,warning:1.5,action:0.5,critical:0}, interestedRate:{good:1,warning:0.5,action:0.2,critical:0}, bounceRate:{good:3,warning:5,action:8,critical:12}, autoReplyRate:{good:30,warning:40,action:50,critical:60}, meetingRate:{good:0.5,warning:0.2,action:0,critical:0} },
   dailySendVolume: 100,
   handoffCriteria: "",
   performance: null as any,
@@ -6723,9 +6727,10 @@ Return ONLY valid JSON:
                 <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>Campaign Benchmarks</div>
                 <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginBottom:20 }}>Thresholds for monitoring campaign health. Green = good, amber = warning, red = action needed.</div>
                 {[
-                  { key:"openRate", label:"Open Rate (%)", colors:[_C.green, _C.amber, _C.red, _C.red] },
                   { key:"replyRate", label:"Reply Rate (%)", colors:[_C.green, _C.amber, _C.red, _C.red] },
+                  { key:"interestedRate", label:"Interested Reply Rate (%)", colors:[_C.green, _C.amber, _C.red, _C.red] },
                   { key:"bounceRate", label:"Max Bounce Rate (%)", colors:[_C.green, _C.amber, _C.red, _C.red] },
+                  { key:"autoReplyRate", label:"Max Auto-Reply Rate (%)", colors:[_C.amber, _C.amber, _C.red, _C.red] },
                   { key:"meetingRate", label:"Meeting Rate (%)", colors:[_C.green, _C.amber, _C.red, _C.red] },
                 ].map(row => (
                   <div key={row.key} style={{ marginBottom:16 }}>
