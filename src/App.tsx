@@ -10898,10 +10898,9 @@ function AppMain() {
   const companyPct = Math.round(COMPANY_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/COMPANY_FIELDS.length*100);
   const editingICP = icps.find(i=>i.id===editingId) ?? null;
 
-  // Auto-select first ICP when navigating to the icps view
+  // Clear editing when navigating away from personas
   useEffect(() => {
-    if (view === "icps" && !editingId && icps.length > 0) setEditingId(icps[0].id);
-    else if (view !== "icps") setEditingId(null);
+    if (view !== "icps") setEditingId(null);
   }, [view]); // eslint-disable-line
 
   // Re-select when the selected ICP is deleted
@@ -11938,13 +11937,18 @@ Raw JSON only.`, "", 1400);
                   const icpPct = Math.round(filled / TOTAL_FIELDS * 100);
                   return (
                     <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-                      {/* ICP Header — name + horizontal tabs */}
+                      {/* ICP Header — back + name + horizontal tabs */}
                       <div style={{ padding:"16px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
                         <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+                          <button onClick={()=>setEditingId(null)}
+                            style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas,
+                              color:C2.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
+                            ← All Personas
+                          </button>
                           <div style={{ width:10, height:10, borderRadius:5, background:editingICP.color, flexShrink:0 }} />
                           <h2 style={{ fontSize:20, fontWeight:800, color:C2.text, fontFamily:head, margin:0, flex:1,
                             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                            {editingICP.name || "Untitled ICP"}
+                            {editingICP.name || "Untitled Persona"}
                           </h2>
                           <span style={{ fontSize:11, fontFamily:mono, color:icpPct===100?C2.green:C2.muted, fontWeight:600 }}>
                             {icpPct}% complete
@@ -11963,19 +11967,133 @@ Raw JSON only.`, "", 1400);
                 })()}
 
                 {!editingId && (
-                  <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 40px" }}>
-                    <div style={{ textAlign:"center", animation:"fadeIn .3s ease", maxWidth:400 }}>
-                      <div style={{ fontSize:36, marginBottom:16, opacity:.2 }}>🎯</div>
-                      <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:8 }}>Select a Persona</div>
-                      <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:20 }}>
-                        Choose a persona from the sidebar, or create a new one to get started.
+                  <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"auto", padding:"0 clamp(20px, 3vw, 48px)" }}>
+                    {/* Header */}
+                    <div style={{ padding:"20px 0 16px", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                      <div>
+                        <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Personas</h2>
+                        <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0 }}>
+                          {icps.length} persona{icps.length!==1?"s":""} defined · Click to edit
+                        </p>
                       </div>
-                      <button onClick={()=>{ const p = newICP(icps.length); setIcps((prev:any) => [...prev, p]); setEditingId(p.id); }}
-                        style={{ padding:"10px 24px", borderRadius:10, border:"none", background:C2.accent, color:"#fff",
-                          fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 14px ${C2.accent}44` }}>
-                        + Add Persona
-                      </button>
+                      <div style={{ display:"flex", gap:8 }}>
+                        <button onClick={()=>{ const p = newICP(icps.length); setIcps((prev:any) => [...prev, p]); setEditingId(p.id); }}
+                          style={{ padding:"9px 20px", borderRadius:10, border:"none", background:C2.accent, color:"#fff",
+                            fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${C2.accent}44` }}>
+                          + Add Persona
+                        </button>
+                      </div>
                     </div>
+
+                    {icps.length === 0 ? (
+                      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <div style={{ textAlign:"center", maxWidth:400 }}>
+                          <div style={{ fontSize:48, marginBottom:16, opacity:.15 }}>🎯</div>
+                          <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:8 }}>No personas yet</div>
+                          <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:20 }}>
+                            Define your target buyer personas. Each persona represents a distinct audience segment with unique pains, messaging, and channel preferences.
+                          </div>
+                          <button onClick={()=>{ const p = newICP(icps.length); setIcps((prev:any) => [...prev, p]); setEditingId(p.id); }}
+                            style={{ padding:"10px 24px", borderRadius:10, border:"none", background:C2.accent, color:"#fff",
+                              fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                            + Create First Persona
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Persona cards grid */
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16, paddingBottom:24 }}>
+                        {(icps as any[]).map((icp: any, i: number) => {
+                          const filled = ALL_ICP_FIELDS.filter((f:any) => fieldFilled(f, icp.data[f.id])).length;
+                          const pctVal = Math.round(filled / TOTAL_FIELDS * 100);
+                          const statusColor = icp.approval === "approved" || icp.approval === "finalized" ? C2.green : C2.muted;
+                          const statusLabel = icp.approval === "approved" ? "Approved" : icp.approval === "finalized" ? "Finalized" : icp.outputs ? "Outputs Ready" : pctVal > 0 ? "Draft" : "Empty";
+                          const linkedProds = (icp.linkedProductIds||[]).map((pid:string) => products.find((p:any)=>p.id===pid)?.name).filter(Boolean);
+                          return (
+                            <div key={icp.id} onClick={()=>setEditingId(icp.id)}
+                              style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`,
+                                cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)",
+                                transition:"all .2s" }}
+                              onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.boxShadow=`0 4px 20px ${C2.accent}15`;(e.currentTarget as HTMLElement).style.borderColor=C2.accent+"44";}}
+                              onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.boxShadow="0 1px 3px rgba(0,0,0,.04)";(e.currentTarget as HTMLElement).style.borderColor=C2.border;}}>
+                              {/* Color bar */}
+                              <div style={{ height:3, background:icp.color }} />
+                              <div style={{ padding:"16px 20px" }}>
+                                {/* Name + status */}
+                                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                                  <div style={{ flex:1, minWidth:0 }}>
+                                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text,
+                                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                      {icp.name || `Persona ${i+1}`}
+                                    </div>
+                                    {icp.data?.buyer && (
+                                      <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:2,
+                                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                        {icp.data.buyer}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"3px 8px", borderRadius:6,
+                                    background:`${statusColor}15`, color:statusColor }}>{statusLabel}</span>
+                                </div>
+
+                                {/* Progress */}
+                                <div style={{ marginBottom:12 }}>
+                                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                                    <span style={{ fontSize:10, fontFamily:mono, color:C2.muted }}>Completion</span>
+                                    <span style={{ fontSize:10, fontFamily:mono, color:pctVal===100?C2.green:C2.muted, fontWeight:600 }}>{pctVal}%</span>
+                                  </div>
+                                  <div style={{ height:4, borderRadius:2, background:C2.faint, overflow:"hidden" }}>
+                                    <div style={{ height:"100%", borderRadius:2, width:`${pctVal}%`, background:icp.color, transition:"width .3s ease" }} />
+                                  </div>
+                                </div>
+
+                                {/* Key info pills */}
+                                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                                  {icp.data?.industries && (
+                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.textSoft, background:C2.faint,
+                                      padding:"2px 8px", borderRadius:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:140 }}>
+                                      {icp.data.industries.split(",")[0].trim()}
+                                    </span>
+                                  )}
+                                  {icp.data?.best_channel && (
+                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.blue, background:`${C2.blue}11`,
+                                      padding:"2px 8px", borderRadius:4 }}>
+                                      {icp.data.best_channel}
+                                    </span>
+                                  )}
+                                  {linkedProds.length > 0 && (
+                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.accent, background:`${C2.accent}11`,
+                                      padding:"2px 8px", borderRadius:4 }}>
+                                      {linkedProds.length} product{linkedProds.length!==1?"s":""}
+                                    </span>
+                                  )}
+                                  {icp.outputs && (
+                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.green, background:C2.greenLo,
+                                      padding:"2px 8px", borderRadius:4 }}>
+                                      Outputs
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Add persona card */}
+                        <div onClick={()=>{ const p = newICP(icps.length); setIcps((prev:any) => [...prev, p]); setEditingId(p.id); }}
+                          style={{ background:"transparent", borderRadius:14, border:`2px dashed ${C2.border}`,
+                            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                            minHeight:160, transition:"all .2s" }}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.accent;(e.currentTarget as HTMLElement).style.background=`${C2.accent}06`;}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.border;(e.currentTarget as HTMLElement).style.background="transparent";}}>
+                          <div style={{ textAlign:"center" }}>
+                            <div style={{ fontSize:24, color:C2.muted, marginBottom:8 }}>+</div>
+                            <div style={{ fontSize:13, fontFamily:head, fontWeight:600, color:C2.muted }}>Add Persona</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
