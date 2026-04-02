@@ -5820,14 +5820,37 @@ function StrategyPage({ strategy, onStrategyChange, companyData, products, offer
       const cd = companyData as Record<string,string>;
       const hasLists = cd.co_existing_lists && cd.co_existing_lists !== "No lists available";
 
-      // Step 1: Generate phases structure
+      // Step 1: Generate phases structure (keep it compact — max 4 phases, 2-3 campaigns each)
       setGenStep(1);
+      const prodNames = products.slice(0,3).map((p:any)=>p.name).join(", ");
+      const persNames = personas.slice(0,3).map((p:any)=>p.name).join(", ");
       const phasesRaw = await callAI(
-        `You are a B2B outreach strategist. Create a phased 12-month campaign roadmap.\n\nCompany: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"?"}. Cycle: ${cd.co_cycle||"?"}.\nProducts: ${products.map((p:any)=>p.name).join(", ")||"none"}.\nPersonas: ${personas.map((p:any)=>p.name).join(", ")||"none"}.\nMailboxes: ${cd.co_mailbox_count||200} (${warmupDaysLeft>0?warmupDaysLeft+" days warmup left":"ready"}). LinkedIn: ready. RTS: ready. Lists: ${hasLists?"Yes":"No"}.\n\nRules: Phase 1 = LinkedIn+RTS immediate${hasLists?", retargeting if lists":""}. Email after warmup (week 3+). Soft offers first, escalate. 4-6 phases.\n\nReturn ONLY JSON array of phases:\n[{"id":"phase_1","name":"Phase 1: Foundation","startWeek":1,"endWeek":2,"campaigns":[{"id":"c1","type":"linkedin_connection|cold_email|retargeting|linkedin_message|rts_calling","personaName":"exact name","productName":"exact name","offerTier":"soft|medium|hard","duration":"2 weeks","dailyVolume":50,"goal":"specific goal"}]}]`,
-        "Return only valid JSON array.", 2000
+        `Create a 12-month B2B outreach roadmap as 4 phases.
+
+Company: ${cd.co_name||"?"} (${cd.co_industry||"?"}), deal ${cd.co_deal||"$5K-25K"}, cycle ${cd.co_cycle||"1-3 months"}.
+Products: ${prodNames||"general"}. Personas: ${persNames||"general"}.
+Email warmup: ${warmupDaysLeft>0?warmupDaysLeft+" days left":"ready"}. LinkedIn+RTS: ready now. Lists: ${hasLists?"yes":"no"}.
+
+Rules: Phase 1=LinkedIn+RTS (immediate). Email starts week 3. Soft offers first. Max 3 campaigns per phase. Keep it concise.
+
+Return ONLY a JSON array. Each campaign needs: id, type (cold_email/retargeting/linkedin_connection/linkedin_message/rts_calling), personaName, productName, offerTier (soft/medium/hard), duration, dailyVolume, goal (1 sentence).
+
+Example: [{"id":"p1","name":"Phase 1","startWeek":1,"endWeek":2,"campaigns":[{"id":"c1","type":"linkedin_connection","personaName":"...","productName":"...","offerTier":"soft","duration":"2 weeks","dailyVolume":50,"goal":"..."}]}]`,
+        "Return ONLY valid JSON array. No markdown. No explanation. Keep campaigns brief.", 3000
       );
-      const phases = JSON.parse(phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
-      if (!Array.isArray(phases) || phases.length === 0) throw new Error("No phases");
+      let phases: any[];
+      try {
+        phases = JSON.parse(phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+      } catch (parseErr) {
+        // Try to salvage truncated JSON by finding the last complete object
+        const trimmed = phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim();
+        const lastBracket = trimmed.lastIndexOf("}]");
+        if (lastBracket > 0) {
+          try { phases = JSON.parse(trimmed.slice(0, lastBracket + 2)); }
+          catch { throw new Error("Could not parse strategy response"); }
+        } else { throw new Error("Invalid response format"); }
+      }
+      if (!Array.isArray(phases) || phases.length === 0) throw new Error("No phases generated");
 
       // Step 2: Generate benchmarks + decision trees for each phase
       setGenStep(2);
@@ -5845,23 +5868,32 @@ function StrategyPage({ strategy, onStrategyChange, companyData, products, offer
         }
       }
 
-      // Step 3: Generate decision trees
+      // Step 3: Generate decision trees (non-blocking — strategy works without them)
       setGenStep(3);
-      const treesRaw = await callAI(
-        `For each campaign in this roadmap, write brief decision trees.\n\nPhases:\n${phases.map((p:any)=>`${p.name}: ${(p.campaigns||[]).map((c:any)=>`${c.type} for ${c.personaName}`).join(", ")}`).join("\n")}\n\nFor EACH campaign, provide: ifMet (1 sentence), ifNotMet (1 sentence), ifFailed (1 sentence).\n\nReturn ONLY JSON array matching the phases/campaigns structure:\n[[{"ifMet":"...","ifNotMet":"...","ifFailed":"..."},...],...]`,
-        "Return only valid JSON.", 1500
-      );
       try {
+        const allCampaigns = phases.flatMap((p:any) => (p.campaigns||[]).map((c:any) => `${c.type} targeting ${c.personaName} for ${c.productName}`));
+        const treesRaw = await callAI(
+          `Write decision trees for ${allCampaigns.length} campaigns. For each: ifMet (1 sentence), ifNotMet (1 sentence), ifFailed (1 sentence).\n\nCampaigns:\n${allCampaigns.map((c,i)=>`${i+1}. ${c}`).join("\n")}\n\nReturn ONLY JSON array: [{"ifMet":"...","ifNotMet":"...","ifFailed":"..."},...]`,
+          "Return only valid JSON array. Keep each sentence under 20 words.", 2000
+        );
         const trees = JSON.parse(treesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
         if (Array.isArray(trees)) {
-          for (let pi = 0; pi < Math.min(phases.length, trees.length); pi++) {
-            const phaseTrees = Array.isArray(trees[pi]) ? trees[pi] : [trees[pi]];
-            for (let ci = 0; ci < Math.min((phases[pi].campaigns||[]).length, phaseTrees.length); ci++) {
-              phases[pi].campaigns[ci].decisionTree = phaseTrees[ci];
+          let ti = 0;
+          for (const phase of phases) {
+            for (const c of (phase.campaigns||[])) {
+              if (trees[ti]) c.decisionTree = trees[ti];
+              ti++;
             }
           }
         }
-      } catch {}
+      } catch {
+        // Decision trees are optional — add defaults
+        for (const phase of phases) {
+          for (const c of (phase.campaigns||[])) {
+            if (!c.decisionTree) c.decisionTree = { ifMet:"Scale volume and expand to next persona.", ifNotMet:"Adjust messaging angle and test new subject lines.", ifFailed:"Pivot to different product or channel." };
+          }
+        }
+      }
 
       // Step 4: Assemble final strategy
       setGenStep(4);
