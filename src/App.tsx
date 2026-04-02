@@ -535,7 +535,13 @@ async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
         return `Error: Rate limited after ${_retries} retries`;
       }
       const json = await r.json();
-      if (json.error) { console.error("Anthropic error:", json.error); return `Error: ${json.error.message}`; }
+      if (json.error) {
+        console.error("Anthropic error:", json.error);
+        if (json.error.message?.includes("credit balance")) {
+          alert("⚠️ Anthropic API credit balance is too low. Please add credits at console.anthropic.com/settings/billing");
+        }
+        return `Error: ${json.error.message}`;
+      }
       // Log usage
       const usage = json.usage;
       if (usage) logApiCall(usage.input_tokens||0, usage.output_tokens||0, json.model||"claude-sonnet-4", prompt.slice(0,60), Date.now()-startTime);
