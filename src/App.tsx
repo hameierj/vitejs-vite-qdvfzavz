@@ -4639,7 +4639,6 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                 </div>
               </details>
             )}
-            )}
           </div>
         </div>
 
