@@ -8241,12 +8241,34 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   );
 }
 
-function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any }) {
+function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{} }) {
   const [activeChatId, setActiveChatId] = useState<string|null>(() => chats[0]?.id ?? null);
   const [input,          setInput]          = useState("");
   const [isStreaming,    setIsStreaming]    = useState(false);
   const [streamingText,  setStreamingText]  = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
+
+  // Slash commands
+  const SLASH_COMMANDS: Record<string,string> = {
+    "/audit": "Run a full workspace audit. Check every section — company profile, products, personas, campaigns, strategy, preferences. Flag everything that's incomplete, inconsistent, or needs attention. Prioritize the issues by impact.",
+    "/review-campaigns": "Review all campaigns in detail. For each one, check: is the sequence complete? Does the offer match the persona's pain? Is the channel appropriate for this buyer? Flag any issues and suggest improvements.",
+    "/compare-personas": "Compare all personas side by side. Are there overlaps? Gaps in coverage? Is each persona distinct enough to warrant its own campaign? Suggest which ones to merge, split, or add.",
+    "/next-steps": "Based on the current state of the entire workspace, what are the top 3-5 things I should do next? Prioritize by impact and urgency.",
+    "/review-products": "Review all products. Are descriptions clear? Do value props differentiate from each other? Are there products that should be split or merged? Check if each product is linked to at least one persona.",
+    "/strategy": "Analyze the current strategy roadmap. Is it realistic? Are the phases well-structured? Do the KPIs make sense? Suggest improvements or flag if a strategy needs to be generated.",
+  };
+
+  const PAGE_PLACEHOLDERS: Record<string,string> = {
+    company: "Ask about the company profile...",
+    products: "Ask about products or services...",
+    icps: "Ask about personas...",
+    campaigns: "Ask about campaigns, sequences, or offers...",
+    strategy: "Ask about the strategy roadmap...",
+    preferences: "Ask about campaign preferences or benchmarks...",
+    matrix: "Ask about product × persona coverage...",
+    analytics: "Ask about performance or metrics...",
+  };
+  const placeholder = PAGE_PLACEHOLDERS[currentView] || "Ask anything — I have full context of your workspace. Try /audit";
 
   const activeChat = chats.find(c => c.id === activeChatId);
 
@@ -8278,8 +8300,12 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
       targetId = id;
     }
 
-    const userText = input.trim();
+    let userText = input.trim();
     setInput("");
+
+    // Expand slash commands
+    const slashMatch = Object.keys(SLASH_COMMANDS).find(cmd => userText.toLowerCase() === cmd);
+    if (slashMatch) userText = SLASH_COMMANDS[slashMatch];
 
     const userMsg = { id: uid(), role: "user" as const, content: userText, timestamp: Date.now() };
     onChatsChange(prev => prev.map(c => {
@@ -8319,7 +8345,13 @@ STYLE:
 - Be direct and specific. Never give generic advice — always ground it in their data.
 - When something is wrong or missing, say so clearly. Don't hedge.
 - Use short paragraphs and bullets. No walls of text.
-- If the user's question is vague, analyze the workspace state and proactively surface the most impactful insight or recommendation.`;
+- If the user's question is vague, analyze the workspace state and proactively surface the most impactful insight or recommendation.
+- Use markdown formatting: **bold** for emphasis, ## headers for sections, - bullets for lists.
+
+SLASH COMMANDS the user may invoke:
+/audit, /review-campaigns, /compare-personas, /next-steps, /review-products, /strategy
+When these are used, provide a thorough structured analysis.
+${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page when answering.` : ""}`;
 
     setIsStreaming(true);
     setStreamingText("");
@@ -8342,10 +8374,10 @@ STYLE:
   };
 
   const SUGGESTIONS = [
-    "What's the current state of my workspace? What should I do next?",
-    "Review all my campaigns and flag anything that needs attention",
-    "Which personas or products are incomplete? What's missing?",
-    "Analyze my strategy and suggest improvements",
+    { text:"/audit", desc:"Full workspace health check" },
+    { text:"/next-steps", desc:"What should I do next?" },
+    { text:"/review-campaigns", desc:"Analyze all campaigns" },
+    { text:"/compare-personas", desc:"Check persona coverage" },
   ];
 
   const displayMsgs = [
@@ -8354,119 +8386,70 @@ STYLE:
   ];
 
   return (
-    <div style={{ display:"flex", height:"calc(100vh - 130px)", gap:0, animation:"fadeIn .3s ease",
-      borderRadius:12, overflow:"hidden", border:`1px solid ${C.border}`,
-      boxShadow:"0 2px 16px rgba(0,0,0,0.07)" }}>
+    <>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.3)", zIndex:998,
+        backdropFilter:"blur(2px)", animation:"pageFade .2s ease" }} />
 
-      {/* ── Session list ── */}
-      <div style={{ width:216, flexShrink:0, display:"flex", flexDirection:"column",
-        borderRight:`1px solid ${C.border}`, background:C.surface }}>
-
-        <div style={{ padding:"12px 10px 10px", borderBottom:`1px solid ${C.border}` }}>
-          <button onClick={newChat} style={{ width:"100%", padding:"9px 12px", borderRadius:8,
-            border:"none", background:C.accent, color:"#fff", fontSize:12, fontFamily:head,
-            fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center",
-            justifyContent:"center", gap:6, boxShadow:`0 2px 8px ${C.accent}40` }}>
-            <span style={{ fontSize:15, lineHeight:1 }}>+</span> New Chat
-          </button>
-        </div>
-
-        <div style={{ flex:1, overflowY:"auto", padding:"6px 8px" }}>
-          {chats.length === 0 && (
-            <div style={{ padding:"24px 8px", textAlign:"center", color:C.muted, fontFamily:body, fontSize:12, lineHeight:1.6 }}>
-              Start a conversation to begin strategising
-            </div>
-          )}
-          {chats.map(c => {
-            const on = c.id === activeChatId;
-            return (
-              <div key={c.id} style={{ position:"relative", marginBottom:2, group:"true" }}
-                onMouseEnter={e => { const b = (e.currentTarget as HTMLElement).querySelector(".sc-del") as HTMLElement; if (b) b.style.opacity="1"; }}
-                onMouseLeave={e => { const b = (e.currentTarget as HTMLElement).querySelector(".sc-del") as HTMLElement; if (b) b.style.opacity="0"; }}>
-                <button onClick={()=>setActiveChatId(c.id)} style={{ width:"100%", padding:"8px 10px",
-                  borderRadius:7, border:"none", background:on?C.accentLo:"transparent",
-                  cursor:"pointer", textAlign:"left" }}>
-                  <div style={{ fontSize:12, fontFamily:head, fontWeight:on?600:500,
-                    color:on?C.text:C.textSoft, lineHeight:1.4,
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", paddingRight:18 }}>
-                    {c.title || "New conversation"}
-                  </div>
-                  <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginTop:1 }}>
-                    {c.messages.length} msg{c.messages.length!==1?"s":""}
-                    {" · "}{new Date(c.createdAt).toLocaleDateString([],{month:"short",day:"numeric"})}
-                  </div>
-                </button>
-                <button className="sc-del" onClick={e=>{e.stopPropagation();deleteChat(c.id);}} style={{
-                  position:"absolute", right:4, top:"50%", transform:"translateY(-50%)",
-                  width:18, height:18, borderRadius:4, border:"none", background:C.faint,
-                  color:C.muted, fontSize:12, cursor:"pointer", display:"flex",
-                  alignItems:"center", justifyContent:"center", opacity:0, transition:"opacity .15s", padding:0 }}>×</button>
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{ padding:"10px 12px", borderTop:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:10, color:C.muted, fontFamily:mono, textAlign:"center", lineHeight:1.6 }}>
-            {icps.length} ICP{icps.length!==1?"s":""}<br/>
-            {icps.filter(i=>i.outputs).length} with outputs
-          </div>
-        </div>
-      </div>
-
-      {/* ── Chat area ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", background:C.canvas, overflow:"hidden" }}>
+      {/* Slide-out panel */}
+      <div style={{ position:"fixed", top:0, right:0, bottom:0, width:"clamp(380px, 35vw, 520px)", zIndex:999,
+        display:"flex", flexDirection:"column", background:C2.canvas,
+        borderLeft:`1px solid ${C2.border}`, boxShadow:"-8px 0 40px rgba(13,15,26,0.12)",
+        animation:"copilotSlideIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
 
         {/* Header */}
-        <div style={{ padding:"13px 20px", borderBottom:`1px solid ${C.border}`, background:C.surface,
-          display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{ width:32, height:32, borderRadius:8, background:C.accent,
-            display:"flex", alignItems:"center", justifyContent:"center",
-            boxShadow:`0 2px 8px ${C.accent}40`, flexShrink:0 }}>
-            <span style={{ fontSize:16, color:"#fff" }}>◎</span>
+        <div style={{ padding:"14px 18px", borderBottom:`1px solid ${C2.border}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+          <div style={{ width:28, height:28, borderRadius:8, background:`${C2.accent}14`,
+            display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            <span style={{ fontSize:13, color:C2.accent, fontWeight:700 }}>AI</span>
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:13.5, fontWeight:700, color:C.text, fontFamily:head,
-              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-              {activeChat?.title || "Strategy AI Agent"}
-            </div>
-            <div style={{ fontSize:11, color:C.muted, fontFamily:mono }}>
-              Full account context · {clientName}
-            </div>
+            <div style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head }}>Copilot</div>
+            <div style={{ fontSize:10, color:C2.muted, fontFamily:mono }}>{clientName}{currentView ? ` · ${currentView}` : ""}</div>
           </div>
           {isStreaming && (
-            <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:C.accent, fontFamily:mono }}>
-              <span style={{ animation:"aiPulse 1s ease-in-out infinite", display:"inline-block" }}>●</span> Thinking…
-            </div>
+            <span style={{ fontSize:10, color:C2.accent, fontFamily:mono, display:"flex", alignItems:"center", gap:4 }}>
+              <span style={{ animation:"pulse 1s ease-in-out infinite" }}>●</span> Thinking
+            </span>
           )}
+          {/* Chat history dropdown */}
+          {chats.length > 1 && (
+            <select value={activeChatId||""} onChange={e=>setActiveChatId(e.target.value||null)}
+              style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.faint,
+                color:C2.textSoft, fontSize:10, fontFamily:mono, cursor:"pointer", maxWidth:120 }}>
+              {chats.map(c => <option key={c.id} value={c.id}>{(c.title||"Chat").slice(0,25)}</option>)}
+            </select>
+          )}
+          <button onClick={newChat} title="New chat"
+            style={{ width:26, height:26, borderRadius:6, border:`1px solid ${C2.border}`, background:C2.faint,
+              color:C2.muted, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+            onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.accent;}}
+            onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;}}>+</button>
+          <button onClick={onClose}
+            style={{ width:26, height:26, borderRadius:6, border:`1px solid ${C2.border}`, background:C2.faint,
+              color:C2.muted, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+            onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.red;}}
+            onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;}}>×</button>
         </div>
 
         {/* Messages */}
-        <div ref={threadRef} style={{ flex:1, overflowY:"auto", padding:"24px 28px",
-          display:"flex", flexDirection:"column", gap:20 }}>
-
+        <div ref={threadRef} style={{ flex:1, overflowY:"auto", padding:"16px 18px", display:"flex", flexDirection:"column", gap:16 }}>
           {displayMsgs.length === 0 && !isStreaming && (
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
-              justifyContent:"center", flex:1, textAlign:"center", padding:"40px 0" }}>
-              <div style={{ width:52, height:52, borderRadius:14, background:C.accentLo,
-                border:`1px solid ${C.accentBorder}`, display:"flex", alignItems:"center",
-                justifyContent:"center", fontSize:24, marginBottom:16 }}>◎</div>
-              <div style={{ fontSize:16, fontWeight:700, color:C.text, fontFamily:head, marginBottom:6 }}>
-                Strategy AI Agent
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", flex:1, textAlign:"center", padding:"32px 0" }}>
+              <div style={{ fontSize:14, fontWeight:600, color:C2.text, fontFamily:head, marginBottom:6 }}>
+                What can I help with?
               </div>
-              <div style={{ fontSize:13, color:C.muted, fontFamily:body, lineHeight:1.7,
-                maxWidth:380, marginBottom:24 }}>
-                I have full context of this account — ICPs, outputs, company profile, and campaign status. Ask me anything about strategy, gaps, or next steps.
+              <div style={{ fontSize:12, color:C2.muted, fontFamily:body, lineHeight:1.6, maxWidth:300, marginBottom:20 }}>
+                I can see your entire workspace — company, products, personas, campaigns, strategy, and analytics.
               </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:8, width:"100%", maxWidth:400 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, width:"100%" }}>
                 {SUGGESTIONS.map(s => (
-                  <button key={s} onClick={()=>setInput(s)} style={{ padding:"10px 16px", borderRadius:8,
-                    border:`1px solid ${C.border}`, background:C.surface, color:C.textSoft,
-                    fontFamily:body, fontSize:13, cursor:"pointer", textAlign:"left",
-                    transition:"all .15s" }}
-                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C.faint}
-                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.surface}>
-                    {s}
+                  <button key={s.text} onClick={()=>setInput(s.text)} style={{ padding:"10px 12px", borderRadius:8,
+                    border:`1px solid ${C2.border}`, background:C2.canvas, cursor:"pointer", textAlign:"left", transition:"all .15s" }}
+                    onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.accent;(e.currentTarget as HTMLElement).style.background=`${C2.accent}06`;}}
+                    onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.border;(e.currentTarget as HTMLElement).style.background=C2.canvas;}}>
+                    <div style={{ fontSize:12, fontWeight:700, fontFamily:mono, color:C2.accent, marginBottom:3 }}>{s.text}</div>
+                    <div style={{ fontSize:11, color:C2.textSoft, fontFamily:body }}>{s.desc}</div>
                   </button>
                 ))}
               </div>
@@ -8475,25 +8458,24 @@ STYLE:
 
           {displayMsgs.map(msg => (
             <div key={msg.id} style={{ display:"flex", flexDirection:"column",
-              alignItems: msg.role==="user" ? "flex-end" : "flex-start", gap:4 }}>
-              <div style={{ maxWidth:"80%", padding:"12px 16px",
-                borderRadius: msg.role==="user" ? "14px 14px 3px 14px" : "14px 14px 14px 3px",
-                background: msg.role==="user" ? C.accent : C.surface,
-                border: msg.role==="user" ? "none" : `1px solid ${C.border}`,
-                color: msg.role==="user" ? "#fff" : C.textSoft,
-                boxShadow: msg.role==="user" ? `0 2px 10px ${C.accent}30` : "none",
-                fontSize:13.5, lineHeight:1.75 }}>
+              alignItems: msg.role==="user" ? "flex-end" : "flex-start", gap:3 }}>
+              <div style={{ maxWidth:"88%", padding:"10px 14px",
+                borderRadius: msg.role==="user" ? "12px 12px 3px 12px" : "12px 12px 12px 3px",
+                background: msg.role==="user" ? C2.accent : C2.faint,
+                border: msg.role==="user" ? "none" : `1px solid ${C2.border}`,
+                color: msg.role==="user" ? "#fff" : C2.text,
+                fontSize:13, lineHeight:1.7 }}>
                 {msg.role === "user"
                   ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
                   : <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>}
                 {msg.id === "_streaming" && (
-                  <span style={{ display:"inline-block", width:7, height:14, background:C.accent,
-                    borderRadius:2, marginLeft:3, animation:"cursorBlink .7s step-end infinite",
+                  <span style={{ display:"inline-block", width:6, height:13, background:C2.accent,
+                    borderRadius:2, marginLeft:2, animation:"cursorBlink .7s step-end infinite",
                     verticalAlign:"text-bottom" }} />
                 )}
               </div>
-              <div style={{ fontSize:10, color:C.muted, fontFamily:mono, paddingLeft:4, paddingRight:4 }}>
-                {msg.role==="user" ? "You" : "Strategy AI"}
+              <div style={{ fontSize:9, color:C2.muted, fontFamily:mono, paddingLeft:3, paddingRight:3 }}>
+                {msg.role==="user" ? "You" : "Copilot"}
                 {msg.id !== "_streaming" && ` · ${new Date(msg.timestamp).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`}
               </div>
             </div>
@@ -8501,32 +8483,31 @@ STYLE:
         </div>
 
         {/* Input */}
-        <div style={{ padding:"14px 20px 16px", borderTop:`1px solid ${C.border}`, background:C.surface }}>
-          <div style={{ display:"flex", gap:10, alignItems:"flex-end" }}>
+        <div style={{ padding:"12px 18px 14px", borderTop:`1px solid ${C2.border}`, flexShrink:0 }}>
+          <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
             <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder="Ask about strategy, ICPs, metrics, or request email copy…"
+              placeholder={placeholder}
               rows={2}
-              style={{ flex:1, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${C.border}`,
-                background:C.canvas, color:C.text, fontSize:13.5, fontFamily:body,
-                resize:"none", lineHeight:1.6, transition:"border-color .15s" }}
-              onFocus={e=>(e.currentTarget as HTMLTextAreaElement).style.borderColor=C.accentBorder}
-              onBlur={e=>(e.currentTarget as HTMLTextAreaElement).style.borderColor=C.border} />
+              style={{ flex:1, padding:"9px 12px", borderRadius:10, border:`1px solid ${C2.border}`,
+                background:C2.faint, color:C2.text, fontSize:13, fontFamily:body,
+                resize:"none", lineHeight:1.5, transition:"border-color .15s", outline:"none" }}
+              onFocus={e=>(e.currentTarget as HTMLTextAreaElement).style.borderColor=C2.accent+"66"}
+              onBlur={e=>(e.currentTarget as HTMLTextAreaElement).style.borderColor=C2.border} />
             <button onClick={sendMessage} disabled={!input.trim()||isStreaming} style={{
-              padding:"11px 20px", borderRadius:10, border:"none", flexShrink:0,
-              background: input.trim()&&!isStreaming ? C.accent : C.border,
-              color: input.trim()&&!isStreaming ? "#fff" : C.muted,
-              fontSize:13, fontFamily:head, fontWeight:700, transition:"all .2s",
-              cursor: input.trim()&&!isStreaming ? "pointer" : "default",
-              boxShadow: input.trim()&&!isStreaming ? `0 2px 10px ${C.accent}40` : "none" }}>
-              Send →
+              padding:"9px 16px", borderRadius:10, border:"none", flexShrink:0,
+              background: input.trim()&&!isStreaming ? C2.accent : C2.faint,
+              color: input.trim()&&!isStreaming ? "#fff" : C2.muted,
+              fontSize:12, fontFamily:head, fontWeight:700, transition:"all .2s",
+              cursor: input.trim()&&!isStreaming ? "pointer" : "default" }}>
+              {isStreaming ? "..." : "Send"}
             </button>
           </div>
-          <div style={{ fontSize:10, color:C.muted, fontFamily:mono, marginTop:6 }}>
-            Enter to send · Shift+Enter for new line
+          <div style={{ fontSize:9, color:C2.muted, fontFamily:mono, marginTop:5 }}>
+            Enter to send · /audit /next-steps /review-campaigns
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -10782,6 +10763,7 @@ function AppMain() {
   const useV2 = true;
   const T = C2;
   const [view,           setView]           = useState("accounts");
+  const [showCopilot,    setShowCopilot]    = useState(false);
   const [analyticsTab,   setAnalyticsTab]   = useState<"perf"|"roi">("perf");
   const [acctSearch,     setAcctSearch]     = useState("");
   const [showCreateAcct, setShowCreateAcct] = useState(false);
@@ -11306,6 +11288,7 @@ Raw JSON only.`, "", 1400);
         }
         @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes onboardCardIn{0%{opacity:0;transform:translateY(16px) scale(0.97)}100%{opacity:1;transform:translateY(0) scale(1)}}
+        @keyframes copilotSlideIn{0%{transform:translateX(100%);opacity:0}100%{transform:translateX(0);opacity:1}}
         @keyframes obLetterIn{0%{opacity:0;transform:translateY(-12px);filter:blur(4px)}100%{opacity:1;transform:translateY(0);filter:blur(0)}}
         @keyframes obSubIn{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
@@ -11381,18 +11364,18 @@ Raw JSON only.`, "", 1400);
                 </button>
               )}
 
-              {/* Copilot */}
+              {/* Copilot toggle */}
               {activeWorkspace && (
-                <button onClick={()=>setView("chat")}
+                <button onClick={()=>setShowCopilot(p=>!p)}
                   style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"11px 14px",
                     borderRadius:12, border:"none",
-                    background: view==="chat" ? `${C2.accent}14` : "transparent",
-                    color: view==="chat" ? C2.accent : C2.muted,
+                    background: showCopilot ? `${C2.accent}14` : "transparent",
+                    color: showCopilot ? C2.accent : C2.muted,
                     cursor:"pointer", textAlign:"left", marginBottom:4, transition:"all .2s" }}
-                  onMouseEnter={e=>{ if(view!=="chat")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                  onMouseLeave={e=>{ if(view!=="chat")(e.currentTarget as HTMLButtonElement).style.background=view==="chat"?`${C2.accent}14`:"transparent"; }}>
+                  onMouseEnter={e=>{ if(!showCopilot)(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                  onMouseLeave={e=>{ if(!showCopilot)(e.currentTarget as HTMLButtonElement).style.background=showCopilot?`${C2.accent}14`:"transparent"; }}>
                   <span style={{ fontSize:16, width:20, textAlign:"center" }}>◎</span>
-                  <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="chat"?700:600 }}>Copilot</span>
+                  <span style={{ fontSize:13, fontFamily:head, fontWeight:showCopilot?700:600 }}>Copilot</span>
                 </button>
               )}
 
@@ -12409,22 +12392,7 @@ Raw JSON only.`, "", 1400);
               );
             })())}
 
-            {view==="chat" && (
-              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-              <StrategyChatPanel
-                chats={chats}
-                onChatsChange={setChats}
-                companyData={companyData}
-                icps={icps}
-                perfLogs={perfLogs}
-                clientName={(activeWorkspace as any)?.name || (companyData as any)?.co_name || "Client"}
-                fileContext={buildFileContext(wsFiles)}
-                products={products}
-                campaigns={campaigns}
-                strategy={strategy}
-              />
-              </div>
-            )}
+            {/* Copilot chat panel removed from here — now renders as floating overlay below */}
 
             {view==="files" && (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
@@ -12795,6 +12763,24 @@ Raw JSON only.`, "", 1400);
         </div>
       )}
       <ToastStack toasts={toasts} onRemove={removeToast} />
+      {/* ── Floating Copilot Panel ── */}
+      {showCopilot && activeWorkspace && (
+        <StrategyChatPanel
+          chats={chats}
+          onChatsChange={setChats}
+          companyData={companyData}
+          icps={icps}
+          perfLogs={perfLogs}
+          clientName={(activeWorkspace as any)?.name || (companyData as any)?.co_name || "Client"}
+          fileContext={buildFileContext(wsFiles)}
+          products={products}
+          campaigns={campaigns}
+          strategy={strategy}
+          currentView={view}
+          onNavigate={(v:string)=>{ setView(v); }}
+          onClose={()=>setShowCopilot(false)}
+        />
+      )}
     </>
   );
 }
