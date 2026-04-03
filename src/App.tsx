@@ -12133,7 +12133,7 @@ Raw JSON only.`, "", 1400);
                       const wsReady = wsIcps.filter(i => i.outputs).length;
                       return (
                         <div key={c.id}
-                          onClick={()=>{ setActiveWorkspace(c); setView("dashboard"); }}
+                          onClick={()=>{ setActiveWorkspace(c); const ws = loadWorkspaceData(c.id); const isEmpty = !ws || (!ws.companyData?.co_name && !(ws.icps||[]).length && !(ws.products||[]).length); setView(isEmpty ? "onboarding" : "company"); }}
                           style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px 60px",
                             padding:"13px 20px", gap:12, alignItems:"center", cursor:"pointer",
                             borderBottom: idx < filteredAccts.length-1 ? `1px solid ${C.border}` : "none",
