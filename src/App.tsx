@@ -11680,44 +11680,40 @@ Raw JSON only.`, "", 1400);
                 </button>
               )}
 
-              {/* Nav items */}
+              {/* Nav items — grouped */}
               {activeWorkspace && (
                 <>
-                  <div style={{ height:1, background:C2.border, margin:"8px 4px 12px" }} />
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5,
-                    padding:"0 14px", marginBottom:8, textTransform:"uppercase" as const }}>WORKSPACE</div>
+                  {/* ── RESEARCH ── */}
+                  <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
+                    padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>RESEARCH</div>
 
-                  {/* Company Profile */}
                   {currentRole !== "client" && (
                     <button onClick={()=>guardedNav(()=>setView("company"))}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
                         borderRadius:12, border:"none",
                         background: view==="company" ? `${C2.accent}14` : "transparent",
-                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
                       onMouseEnter={e=>{ if(view!=="company")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                       onMouseLeave={e=>{ if(view!=="company")(e.currentTarget as HTMLButtonElement).style.background=view==="company"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="company"?C2.accent:C2.muted }}>◉</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="company"?700:500, color:view==="company"?C2.text:C2.textSoft }}>Company Profile</span>
+                      <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="company"?C2.accent:C2.muted }}>◉</span>
+                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="company"?700:500, color:view==="company"?C2.text:C2.textSoft }}>Company</span>
                     </button>
                   )}
-
-                  {/* Products & Services */}
                   {currentRole !== "client" && (
                     <button onClick={()=>guardedNav(()=>setView("products"))}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
                         borderRadius:12, border:"none",
                         background: view==="products" ? `${C2.accent}14` : "transparent",
-                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
                       onMouseEnter={e=>{ if(view!=="products")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                       onMouseLeave={e=>{ if(view!=="products")(e.currentTarget as HTMLButtonElement).style.background=view==="products"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="products"?C2.accent:C2.muted }}>◆</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="products"?700:500, color:view==="products"?C2.text:C2.textSoft }}>Products & Services</span>
+                      <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="products"?C2.accent:C2.muted }}>◆</span>
+                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="products"?700:500, color:view==="products"?C2.text:C2.textSoft }}>Products</span>
                     </button>
                   )}
 
-
-
-                  {/* ICP Profiles — expandable with sub-items */}
+                  {/* Personas — expandable with sub-items */}
                   <button onClick={()=>guardedNav(()=>{ setView("icps"); })}
                     style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                       borderRadius:12, border:"none",
@@ -11787,6 +11783,11 @@ Raw JSON only.`, "", 1400);
                     </div>
                   )}
 
+                  {/* ── PLANNING ── */}
+                  <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
+                    padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>PLANNING</div>
+
                   {/* Coverage Matrix */}
                   {currentRole !== "client" && products.length > 0 && icps.length > 0 && (
                     <button onClick={()=>guardedNav(()=>setView("matrix"))}
@@ -11814,6 +11815,11 @@ Raw JSON only.`, "", 1400);
                       <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="strategy"?700:500, color:view==="strategy"?C2.text:C2.textSoft }}>Strategy</span>
                     </button>
                   )}
+
+                  {/* ── EXECUTION ── */}
+                  <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
+                    padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>EXECUTION</div>
 
                   {/* Campaigns */}
                   {currentRole !== "client" && (
@@ -11843,17 +11849,22 @@ Raw JSON only.`, "", 1400);
                     </button>
                   )}
 
+                  {/* ── RESOURCES ── */}
+                  <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
+                    padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>RESOURCES</div>
+
                   {/* My Files */}
                   {currentRole !== "client" && (
                     <button onClick={()=>guardedNav(()=>setView("files"))}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
                         borderRadius:12, border:"none",
                         background: view==="files" ? `${C2.accent}14` : "transparent",
-                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
                       onMouseEnter={e=>{ if(view!=="files")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                       onMouseLeave={e=>{ if(view!=="files")(e.currentTarget as HTMLButtonElement).style.background=view==="files"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="files"?C2.accent:C2.muted }}>◇</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="files"?700:500, color:view==="files"?C2.text:C2.textSoft }}>My Files</span>
+                      <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="files"?C2.accent:C2.muted }}>◇</span>
+                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="files"?700:500, color:view==="files"?C2.text:C2.textSoft }}>Files</span>
                     </button>
                   )}
                 </>
