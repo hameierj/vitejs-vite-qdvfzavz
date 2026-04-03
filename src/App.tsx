@@ -12520,75 +12520,66 @@ Raw JSON only.`, "", 1400);
                       /* Persona cards grid */
                       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16, paddingBottom:24 }}>
                         {(icps as any[]).map((icp: any, i: number) => {
-                          const filled = ALL_ICP_FIELDS.filter((f:any) => fieldFilled(f, icp.data[f.id])).length;
-                          const pctVal = Math.round(filled / TOTAL_FIELDS * 100);
-                          const statusColor = icp.approval === "approved" || icp.approval === "finalized" ? C2.green : C2.muted;
-                          const statusLabel = icp.approval === "approved" ? "Approved" : icp.approval === "finalized" ? "Finalized" : icp.outputs ? "Outputs Ready" : pctVal > 0 ? "Draft" : "Empty";
+                          const d = icp.data || {};
                           const linkedProds = (icp.linkedProductIds||[]).map((pid:string) => products.find((p:any)=>p.id===pid)?.name).filter(Boolean);
+                          const channel = d.best_channel ? d.best_channel.replace("Multi-channel (","").replace(")","").replace(" + ",", ") : null;
+                          const tone = d.tone ? d.tone.split(" ")[0] : null; // just first word
                           return (
                             <div key={icp.id} onClick={()=>setEditingId(icp.id)}
                               style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`,
                                 cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)",
-                                transition:"all .2s" }}
+                                transition:"all .2s", borderLeft:`4px solid ${icp.color}` }}
                               onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.boxShadow=`0 4px 20px ${C2.accent}15`;(e.currentTarget as HTMLElement).style.borderColor=C2.accent+"44";}}
                               onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.boxShadow="0 1px 3px rgba(0,0,0,.04)";(e.currentTarget as HTMLElement).style.borderColor=C2.border;}}>
-                              {/* Color bar */}
-                              <div style={{ height:3, background:icp.color }} />
-                              <div style={{ padding:"16px 20px" }}>
-                                {/* Name + status */}
-                                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-                                  <div style={{ flex:1, minWidth:0 }}>
-                                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text,
-                                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                      {icp.name || `Persona ${i+1}`}
-                                    </div>
-                                    {icp.data?.buyer && (
-                                      <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:2,
-                                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                        {icp.data.buyer}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"3px 8px", borderRadius:6,
-                                    background:`${statusColor}15`, color:statusColor }}>{statusLabel}</span>
+                              <div style={{ padding:"14px 18px" }}>
+                                {/* Name + titles */}
+                                <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:2, lineHeight:1.3 }}>
+                                  {icp.name || `Persona ${i+1}`}
                                 </div>
-
-                                {/* Progress */}
-                                <div style={{ marginBottom:12 }}>
-                                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                                    <span style={{ fontSize:10, fontFamily:mono, color:C2.muted }}>Completion</span>
-                                    <span style={{ fontSize:10, fontFamily:mono, color:pctVal===100?C2.green:C2.muted, fontWeight:600 }}>{pctVal}%</span>
+                                {d.buyer && (
+                                  <div style={{ fontSize:11, color:C2.textSoft, fontFamily:body, marginBottom:10, lineHeight:1.3 }}>
+                                    {d.buyer.length > 60 ? d.buyer.slice(0, 60) + "…" : d.buyer}
                                   </div>
-                                  <div style={{ height:4, borderRadius:2, background:C2.faint, overflow:"hidden" }}>
-                                    <div style={{ height:"100%", borderRadius:2, width:`${pctVal}%`, background:icp.color, transition:"width .3s ease" }} />
-                                  </div>
-                                </div>
+                                )}
 
-                                {/* Key info pills */}
+                                {/* Primary pain — the most important outreach info */}
+                                {d.pain1 && (
+                                  <div style={{ fontSize:11.5, color:C2.text, fontFamily:body, lineHeight:1.4, marginBottom:10,
+                                    padding:"8px 10px", borderRadius:8, background:C2.faint, borderLeft:`3px solid ${icp.color}` }}>
+                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.muted, fontWeight:600, display:"block", marginBottom:3 }}>PRIMARY PAIN</span>
+                                    {d.pain1.length > 100 ? d.pain1.slice(0, 100) + "…" : d.pain1}
+                                  </div>
+                                )}
+
+                                {/* Quick stats row */}
                                 <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                                  {icp.data?.industries && (
+                                  {d.industries && (
                                     <span style={{ fontSize:9, fontFamily:mono, color:C2.textSoft, background:C2.faint,
-                                      padding:"2px 8px", borderRadius:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:140 }}>
-                                      {icp.data.industries.split(",")[0].trim()}
+                                      padding:"3px 8px", borderRadius:4 }}>
+                                      {d.industries.split(",")[0].trim()}
                                     </span>
                                   )}
-                                  {icp.data?.best_channel && (
+                                  {channel && (
                                     <span style={{ fontSize:9, fontFamily:mono, color:C2.blue, background:`${C2.blue}11`,
-                                      padding:"2px 8px", borderRadius:4 }}>
-                                      {icp.data.best_channel}
+                                      padding:"3px 8px", borderRadius:4 }}>
+                                      {channel}
+                                    </span>
+                                  )}
+                                  {tone && (
+                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.accent, background:`${C2.accent}11`,
+                                      padding:"3px 8px", borderRadius:4 }}>
+                                      {tone}
                                     </span>
                                   )}
                                   {linkedProds.length > 0 && (
-                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.accent, background:`${C2.accent}11`,
-                                      padding:"2px 8px", borderRadius:4 }}>
+                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.muted, background:C2.faint,
+                                      padding:"3px 8px", borderRadius:4 }}>
                                       {linkedProds.length} product{linkedProds.length!==1?"s":""}
                                     </span>
                                   )}
                                   {icp.outputs && (
                                     <span style={{ fontSize:9, fontFamily:mono, color:C2.green, background:C2.greenLo,
-                                      padding:"2px 8px", borderRadius:4 }}>
-                                      Outputs
-                                    </span>
+                                      padding:"3px 8px", borderRadius:4 }}>✓ Outputs</span>
                                   )}
                                 </div>
                               </div>
