@@ -8465,7 +8465,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const activeChat = chats.find(c => c.id === activeChatId);
 
   useEffect(() => {
-    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    if (threadRef.current) threadRef.current.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
   }, [activeChat?.messages?.length, streamingText]);
 
   const newChat = () => {
@@ -8533,22 +8533,21 @@ CAPABILITIES:
 - Help plan new campaigns, personas, or products
 - Draft copy, subject lines, messaging angles, or reply templates
 
-STYLE:
-- Be direct and specific. Never give generic advice — always ground it in their data.
-- When something is wrong or missing, say so clearly. Don't hedge.
-- Use short paragraphs and bullets. No walls of text.
-- If the user's question is vague, analyze the workspace state and proactively surface the most impactful insight or recommendation.
-- Use markdown formatting: **bold** for emphasis, ## headers for sections, - bullets for lists.
-
-SLASH COMMANDS the user may invoke:
-/audit, /review-campaigns, /compare-personas, /next-steps, /review-products, /strategy
-When these are used, provide a thorough structured analysis.
-${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page when answering.` : ""}`;
+RESPONSE FORMAT (strict):
+- KEEP IT SHORT. Max 4-6 bullet points per response. No walls of text.
+- Lead with the answer or insight in 1-2 sentences. Then bullets for details.
+- Each bullet should be one line, not a paragraph. If you need more detail, the user will ask.
+- Use **bold** for key terms. Use - bullets, not numbered lists.
+- Never repeat information the user already knows. Don't echo back their data — just reference it.
+- If multiple issues exist, list the top 3 by impact. Say "and N more — ask to see the rest" for the remainder.
+- For slash commands (/audit, /review-campaigns, /compare-personas, /next-steps, /review-products, /strategy): still keep it structured and scannable — use short headers and 2-3 bullets per section max.
+- End with one clear next action, not a summary paragraph.
+${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page.` : ""}`;
 
     setIsStreaming(true);
     setStreamingText("");
     let full = "";
-    await callAIStream(apiMessages, systemPrompt, 4096, chunk => {
+    await callAIStream(apiMessages, systemPrompt, 2048, chunk => {
       full += chunk;
       setStreamingText(full);
     });
