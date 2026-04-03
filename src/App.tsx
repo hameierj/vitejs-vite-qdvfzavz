@@ -4437,7 +4437,6 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           <div style={{ display:"flex", alignItems:"center", gap:0 }}>
             {[
               { id:"form", label:"Fill Profile", done: totFill > 0, active: panel==="form", icon: totFill===TOTAL_FIELDS?"✓":"1" },
-              { id:"comments", label:"Comments", done: false, active: panel==="comments", icon: openComm>0?String(openComm):"2" },
             ].map((step, i, arr) => (
               <div key={i} style={{ display:"flex", alignItems:"center" }}>
                 <button onClick={()=>setPanel(step.id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 10px",
@@ -4640,77 +4639,6 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                 </div>
               </details>
             )}
-            {panel==="comments" && (
-              <div style={{ animation:"fadeIn .25s ease" }}>
-                <div style={{ fontSize:13, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:16 }}>
-                  Review Comments {openComm>0 && <span style={{ fontSize:11, color:_C.amber, fontFamily:mono, fontWeight:400 }}>· {openComm} open</span>}
-                </div>
-                {(icp.comments??[]).length===0 && (
-                  <div style={{ padding:"24px", textAlign:"center", color:_C.muted, fontFamily:mono, fontSize:11,
-                    borderRadius:8, border:`1px dashed ${_C.border}`, background:_C.faint, marginBottom:16 }}>No comments yet</div>
-                )}
-                <div style={{ display:"flex", flexDirection:"column", gap:9, marginBottom:16 }}>
-                  {(icp.comments??[]).map(c => (
-                    <div key={c.id} style={{ padding:"12px 14px", borderRadius:8,
-                      border:`1px solid ${c.resolved?_C.border:_C.amberBorder}`,
-                      background:c.resolved?_C.faint:_C.amberLo, opacity:c.resolved?.55:1 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-                        <span style={{ fontSize:10, color:c.resolved?_C.muted:_C.amber, fontFamily:mono, fontWeight:600 }}>{c.author} · {c.created_at}</span>
-                        {!c.resolved && <button onClick={()=>onUpdate({...icp,data,comments:(icp.comments??[]).map(x=>x.id===c.id?{...x,resolved:true}:x)})} style={{ fontSize:10, color:_C.green, background:"transparent", border:"none", cursor:"pointer", fontFamily:mono, fontWeight:700 }}>✓ Resolve</button>}
-                      </div>
-                      <div style={{ fontSize:13, color:c.resolved?_C.muted:_C.text, fontFamily:body, lineHeight:1.55 }}>{c.text}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ padding:"14px 16px", borderRadius:9, border:`1px solid ${_C.border}`, background:_C.faint }}>
-                  <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, marginBottom:10, fontWeight:600 }}>ADD A COMMENT</div>
-                  <input value={noteAuth} onChange={e=>setNoteAuth(e.target.value)} placeholder="Your name"
-                    style={{ width:"100%", padding:"8px 11px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:13, fontFamily:body, marginBottom:8, outline:"none" }} />
-                  <textarea value={newNote} onChange={e=>setNewNote(e.target.value)} rows={2} placeholder="Note, flag, or question…"
-                    style={{ width:"100%", padding:"8px 11px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", marginBottom:8, outline:"none" }} />
-                  <button onClick={addComment} disabled={!newNote.trim()||!noteAuth.trim()} style={{
-                    padding:"7px 16px", borderRadius:6, border:"none",
-                    background:newNote.trim()&&noteAuth.trim()?_C.accent:_C.border,
-                    color:newNote.trim()&&noteAuth.trim()?"#fff":_C.muted,
-                    fontSize:11, fontFamily:mono, cursor:"pointer", fontWeight:700 }}>Add Comment</button>
-                </div>
-
-                {/* Activity feed */}
-                {(() => {
-                  const activities: {time:string;icon:string;text:string;color:string}[] = [];
-                  // Version history entries
-                  for (const v of (icp.versionHistory||[])) {
-                    activities.push({ time:v.timestamp, icon:"✦", text:`Style changed to "${v.label}" on ${v.tab}`, color:_C.accent });
-                  }
-                  // Comments
-                  for (const c of (icp.comments||[])) {
-                    activities.push({ time:c.created_at, icon:"💬", text:`${c.author}: "${c.text.slice(0,60)}${c.text.length>60?"…":""}"`, color:_C.amber });
-                  }
-                  // Sort by time descending
-                  activities.sort((a,b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-                  if (!activities.length) return null;
-                  return (
-                    <details style={{ marginTop:20 }}>
-                      <summary style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, letterSpacing:.3,
-                        cursor:"pointer", userSelect:"none", padding:"6px 0" }}>ACTIVITY LOG ({activities.length})</summary>
-                      <div style={{ display:"flex", flexDirection:"column", gap:4, paddingTop:8 }}>
-                        {activities.slice(0,20).map((a,i) => (
-                          <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, padding:"6px 0",
-                            borderBottom:i<activities.length-1?`1px solid ${_C.faint}`:"none" }}>
-                            <span style={{ fontSize:11, flexShrink:0 }}>{a.icon}</span>
-                            <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, lineHeight:1.4 }}>{a.text}</div>
-                              <div style={{ fontSize:9, color:_C.muted, fontFamily:mono, marginTop:2 }}>
-                                {new Date(a.time).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  );
-                })()}
-              </div>
             )}
           </div>
         </div>
