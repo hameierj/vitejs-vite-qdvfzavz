@@ -247,6 +247,11 @@ const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]
       { id:"co_bench_meeting",     label:"Target Meeting Rate (%)",      type:"text", ph:"0.5", hint:"Meetings booked per emails sent. Typical: 0.3-1%", noConf:true },
     ]
   },
+  notes: { label:"Additional Notes", icon:"◇",
+    fields:[
+      { id:"co_notes", label:"Custom Notes & Context", type:"textarea", ph:"Anything else AI should know when generating content for this client — regulatory constraints, internal terminology, seasonal patterns, executive preferences, etc.", rows:6, hint:"This context is included in every AI generation prompt", noConf:true },
+    ]
+  },
 };
 const COMPANY_FIELDS = Object.values(COMPANY_SECTIONS).flatMap(s => s.fields);
 
@@ -270,6 +275,9 @@ const PRODUCT_SECTIONS: Record<string, {label:string; fields:any[]}> = {
     { id:"proofPoints",       label:"Best Proof Points",        type:"textarea", ph:"'3x pipeline in 90 days for Acme Corp' — specific results, stats, logos.", rows:3, hint:"One strong proof > five vague claims" },
     { id:"caseStudies",       label:"Case Studies",             type:"textarea", ph:"Customer name, problem they had, what you did, result achieved.",  rows:4, hint:"Story format: situation → solution → result" },
     { id:"socialProof",       label:"Social Proof",             type:"textarea", ph:"G2 rating, awards, press mentions, number of customers.",  rows:2 },
+  ]},
+  notes: { label:"Notes", fields:[
+    { id:"prod_notes", label:"Additional Notes", type:"textarea", ph:"Anything specific about this product that AI should know — seasonal availability, technical prerequisites, pricing nuances, etc.", rows:4, noConf:true },
   ]},
 };
 const PRODUCT_FIELDS = Object.values(PRODUCT_SECTIONS).flatMap(s => s.fields) as any[];
@@ -386,6 +394,11 @@ const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> =
       { id:"meeting_ready_criteria",  label:"Meeting-Ready",          type:"textarea", ph:"Expressed clear interest in next steps, asked about pricing/timeline, agreed to a call.", rows:2, hint:"Hand off to sales immediately" },
       { id:"not_now_criteria",        label:"Not Now (Nurture)",      type:"textarea", ph:"Interested but timing is wrong — 'reach out in Q3', 'renewing current contract in 6 months'.", rows:2, hint:"Add to nurture sequence, follow up later" },
       { id:"dead_criteria",           label:"Dead / Disqualified",    type:"textarea", ph:"Wrong person, no budget ever, competitor employee, explicit unsubscribe.", rows:2, hint:"Remove from outreach permanently" },
+    ]
+  },
+  notes: { label:"Notes", icon:"◇",
+    fields:[
+      { id:"persona_notes", label:"Additional Notes", type:"textarea", ph:"Anything specific about this persona that AI should know — quirks, preferences, internal politics, seasonality, past interactions, etc.", rows:4, noConf:true },
     ]
   },
 };
@@ -5980,6 +5993,7 @@ OFFER (${offer?.tier || "soft"} CTA): "${offer?.ctaText || offer?.name || "Worth
 PERSONA: ${persona?.name || "General"} — Titles: ${persona?.data?.buyer || "?"}, Pain: ${persona?.data?.pain1 || "?"}
 COMPETITOR: Currently using: ${persona?.data?.current_solutions || "unknown"}. Displacement: ${persona?.data?.displacement_messaging || "N/A"}
 TONE: ${persona?.data?.tone || "Consultative"}
+${cd.co_notes ? `\nIMPORTANT CONTEXT: ${cd.co_notes}` : ""}${cd.co_avoid ? `\nAVOID IN COPY: ${cd.co_avoid}` : ""}${product?.prod_notes ? `\nPRODUCT NOTES: ${product.prod_notes}` : ""}${persona?.data?.persona_notes ? `\nPERSONA NOTES: ${persona.data.persona_notes}` : ""}
 
 ${channelRules}
 
@@ -7303,6 +7317,7 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [])
     ["Goal",             cd.co_goal],
     ["Exclude",          cd.co_exclude],
     ["Avoid messaging",  cd.co_avoid],
+    ["Additional Notes", cd.co_notes],
   ].forEach(([label, val]) => { if (val) lines.push(`${label}: ${val}`); });
 
   lines.push("\n## ICP PROFILES");
