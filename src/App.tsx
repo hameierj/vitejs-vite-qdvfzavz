@@ -1752,131 +1752,171 @@ function ResearchBriefReview({ brief, onConfirm, onBack }: {
   const matrix = brief?.matrix || [];
   const [selProds, setSelProds] = useState<Set<number>>(() => new Set(prods.map((_:any,i:number) => i)));
   const [selPers, setSelPers] = useState<Set<number>>(() => new Set(pers.map((_:any,i:number) => i)));
+  const [expandedProd, setExpandedProd] = useState<number|null>(null);
+  const [expandedPers, setExpandedPers] = useState<number|null>(null);
 
   const toggleProd = (i: number) => setSelProds(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
   const togglePers = (i: number) => setSelPers(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
   const getCell = (pi: number, pei: number) => matrix.find((m:any) => m.productIdx === pi && m.personaIdx === pei) || { priority:"skip", rationale:"" };
-  const priColors: Record<string,string> = { high:C2.green, medium:C2.amber, low:C2.muted, skip:`${C2.red}66` };
+  const priColors: Record<string,string> = { high:"#00D68F", medium:"#FFC048", low:"#8E94A7", skip:"#FF6B6B" };
+  const priBg: Record<string,string> = { high:"#00D68F22", medium:"#FFC04822", low:"#8E94A711", skip:"#FF6B6B11" };
+
+  // Stats
+  const activeCombos = Array.from(selProds).flatMap(pi => Array.from(selPers).map(pei => getCell(pi, pei)));
+  const highCount = activeCombos.filter(c => c.priority === "high").length;
+  const medCount = activeCombos.filter(c => c.priority === "medium").length;
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:2147483645, background:C2.bg, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+
       {/* Header */}
-      <div style={{ padding:"16px 24px", display:"flex", alignItems:"center", gap:12, flexShrink:0, borderBottom:`1px solid ${C2.border}` }}>
-        <button onClick={onBack} style={{ padding:"8px 16px", borderRadius:10, border:`1px solid ${C2.border}`, background:C2.canvas,
-          color:C2.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>← Back</button>
+      <div style={{ padding:"16px 32px", display:"flex", alignItems:"center", gap:16, flexShrink:0, borderBottom:`1px solid ${C2.border}`, background:C2.canvas }}>
+        <button onClick={onBack} style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${C2.border}`, background:"transparent",
+          color:C2.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>←</button>
         <div style={{ flex:1 }}>
-          <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C2.text }}>Research Brief</div>
-          <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>Review AI findings — uncheck anything that doesn't apply</div>
+          <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:C2.text }}>Here's what we found</div>
+          <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>Toggle products & personas to include, then review the priority matrix below.</div>
         </div>
-        <button onClick={()=>onConfirm(Array.from(selProds), Array.from(selPers))}
-          style={{ padding:"10px 24px", borderRadius:10, border:"none", background:C2.accent, color:"#fff",
-            fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${C2.accent}44` }}>
-          Create {selProds.size} Products & {selPers.size} Personas →
-        </button>
+        <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:8, fontSize:11, fontFamily:mono }}>
+            <span style={{ padding:"4px 10px", borderRadius:6, background:"#00D68F22", color:"#00D68F", fontWeight:600 }}>{highCount} high</span>
+            <span style={{ padding:"4px 10px", borderRadius:6, background:"#FFC04822", color:"#FFC048", fontWeight:600 }}>{medCount} med</span>
+          </div>
+          <button onClick={()=>onConfirm(Array.from(selProds), Array.from(selPers))}
+            style={{ padding:"10px 24px", borderRadius:10, border:"none", background:C2.accent, color:"#fff",
+              fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${C2.accent}44` }}>
+            Create {selProds.size} Products & {selPers.size} Personas →
+          </button>
+        </div>
       </div>
 
       <div style={{ flex:1, overflow:"auto", padding:"24px 32px" }}>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24, marginBottom:28 }}>
-          {/* Products */}
-          <div>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, marginBottom:12 }}>
-              PRODUCTS & SERVICES ({selProds.size}/{prods.length} selected)
-            </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              {prods.map((p:any, i:number) => (
-                <div key={i} onClick={()=>toggleProd(i)}
-                  style={{ padding:"12px 16px", borderRadius:12, cursor:"pointer",
-                    border:`2px solid ${selProds.has(i)?C2.accent+"55":C2.border}`,
-                    background:selProds.has(i)?`${C2.accent}06`:C2.canvas, opacity:selProds.has(i)?1:0.5,
-                    transition:"all .2s" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                    <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${selProds.has(i)?C2.accent:C2.border}`,
-                      background:selProds.has(i)?C2.accent:"transparent", display:"flex", alignItems:"center", justifyContent:"center",
-                      flexShrink:0, transition:"all .15s" }}>
-                      {selProds.has(i) && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
-                    </div>
-                    <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text }}>{p.name}</span>
-                    {p.dealSize && <span style={{ fontSize:9, fontFamily:mono, color:C2.muted, marginLeft:"auto" }}>{p.dealSize}</span>}
-                  </div>
-                  <div style={{ fontSize:11, color:C2.muted, fontFamily:body, lineHeight:1.4, marginLeft:26 }}>{p.reasoning}</div>
-                </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Personas */}
-          <div>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, marginBottom:12 }}>
-              PERSONAS ({selPers.size}/{pers.length} selected)
-            </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              {pers.map((p:any, i:number) => (
-                <div key={i} onClick={()=>togglePers(i)}
-                  style={{ padding:"12px 16px", borderRadius:12, cursor:"pointer",
-                    border:`2px solid ${selPers.has(i)?C2.green+"55":C2.border}`,
-                    background:selPers.has(i)?`${C2.green}06`:C2.canvas, opacity:selPers.has(i)?1:0.5,
-                    transition:"all .2s" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                    <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${selPers.has(i)?C2.green:C2.border}`,
-                      background:selPers.has(i)?C2.green:"transparent", display:"flex", alignItems:"center", justifyContent:"center",
-                      flexShrink:0, transition:"all .15s" }}>
-                      {selPers.has(i) && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
-                    </div>
-                    <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text }}>{p.name}</span>
+        {/* Product chips */}
+        <div style={{ marginBottom:20 }}>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6, marginBottom:8 }}>PRODUCTS ({selProds.size})</div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            {prods.map((p:any, i:number) => (
+              <div key={i} style={{ display:"flex", flexDirection:"column", gap:0 }}>
+                <button onClick={()=>toggleProd(i)}
+                  style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 14px", borderRadius:10,
+                    border:`2px solid ${selProds.has(i)?C2.accent+"66":C2.border}`,
+                    background:selProds.has(i)?`${C2.accent}0A`:C2.canvas, cursor:"pointer",
+                    opacity:selProds.has(i)?1:0.5, transition:"all .15s" }}>
+                  <div style={{ width:16, height:16, borderRadius:4, border:`2px solid ${selProds.has(i)?C2.accent:C2.border}`,
+                    background:selProds.has(i)?C2.accent:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    {selProds.has(i) && <span style={{ color:"#fff", fontSize:9, fontWeight:700 }}>✓</span>}
                   </div>
-                  <div style={{ fontSize:11, color:C2.textSoft, fontFamily:body, marginLeft:26 }}>{p.buyerTitles}</div>
-                  <div style={{ fontSize:11, color:C2.muted, fontFamily:body, lineHeight:1.4, marginLeft:26, marginTop:2 }}>{p.reasoning}</div>
-                </div>
-              ))}
-            </div>
+                  <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C2.text }}>{p.name}</span>
+                  {p.dealSize && <span style={{ fontSize:9, fontFamily:mono, color:C2.muted }}>{p.dealSize}</span>}
+                  <span onClick={e=>{e.stopPropagation(); setExpandedProd(expandedProd===i?null:i);}}
+                    style={{ fontSize:10, color:C2.muted, cursor:"pointer", marginLeft:2 }}>ⓘ</span>
+                </button>
+                {expandedProd===i && (
+                  <div style={{ padding:"8px 14px", margin:"4px 0 0", borderRadius:8, background:C2.faint, border:`1px solid ${C2.border}`,
+                    fontSize:11, color:C2.textSoft, fontFamily:body, lineHeight:1.5, animation:"contentFade .2s ease", maxWidth:400 }}>
+                    {p.reasoning || p.description}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Priority Matrix */}
+        {/* Persona chips */}
+        <div style={{ marginBottom:24 }}>
+          <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6, marginBottom:8 }}>PERSONAS ({selPers.size})</div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            {pers.map((p:any, i:number) => (
+              <div key={i} style={{ display:"flex", flexDirection:"column", gap:0 }}>
+                <button onClick={()=>togglePers(i)}
+                  style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 14px", borderRadius:10,
+                    border:`2px solid ${selPers.has(i)?C2.green+"66":C2.border}`,
+                    background:selPers.has(i)?`${C2.green}0A`:C2.canvas, cursor:"pointer",
+                    opacity:selPers.has(i)?1:0.5, transition:"all .15s" }}>
+                  <div style={{ width:16, height:16, borderRadius:4, border:`2px solid ${selPers.has(i)?C2.green:C2.border}`,
+                    background:selPers.has(i)?C2.green:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    {selPers.has(i) && <span style={{ color:"#fff", fontSize:9, fontWeight:700 }}>✓</span>}
+                  </div>
+                  <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C2.text }}>{p.name}</span>
+                  <span onClick={e=>{e.stopPropagation(); setExpandedPers(expandedPers===i?null:i);}}
+                    style={{ fontSize:10, color:C2.muted, cursor:"pointer", marginLeft:2 }}>ⓘ</span>
+                </button>
+                {expandedPers===i && (
+                  <div style={{ padding:"8px 14px", margin:"4px 0 0", borderRadius:8, background:C2.faint, border:`1px solid ${C2.border}`,
+                    fontSize:11, color:C2.textSoft, fontFamily:body, lineHeight:1.5, animation:"contentFade .2s ease", maxWidth:400 }}>
+                    <div style={{ fontWeight:600, color:C2.text, marginBottom:2 }}>{p.buyerTitles}</div>
+                    {p.reasoning}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Priority Matrix — the centerpiece */}
         {matrix.length > 0 && (
           <div>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, marginBottom:12 }}>
-              PRIORITY MATRIX
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6, marginBottom:10 }}>
+              PRIORITY MATRIX — {selProds.size} × {selPers.size} = {selProds.size * selPers.size} combinations
             </div>
-            <div style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`, overflow:"auto" }}>
+            <div style={{ background:C2.canvas, borderRadius:16, border:`1px solid ${C2.border}`, overflow:"hidden", boxShadow:"0 2px 12px rgba(0,0,0,.04)" }}>
               <table style={{ width:"100%", borderCollapse:"collapse" }}>
                 <thead>
-                  <tr>
-                    <th style={{ padding:"12px 16px", textAlign:"left", fontSize:10, fontFamily:mono, color:C2.muted, borderBottom:`1px solid ${C2.border}` }}>Persona ↓ / Product →</th>
+                  <tr style={{ background:C2.faint }}>
+                    <th style={{ padding:"14px 20px", textAlign:"left", fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted,
+                      borderBottom:`1px solid ${C2.border}`, letterSpacing:.4 }}>PERSONA</th>
                     {prods.map((p:any, i:number) => (
-                      <th key={i} style={{ padding:"12px", textAlign:"center", fontSize:11, fontFamily:head, fontWeight:600,
-                        color:selProds.has(i)?C2.text:C2.muted, borderBottom:`1px solid ${C2.border}`, opacity:selProds.has(i)?1:0.4 }}>
+                      <th key={i} style={{ padding:"14px 16px", textAlign:"center", fontSize:11, fontFamily:head, fontWeight:700,
+                        color:selProds.has(i)?C2.text:C2.muted, borderBottom:`1px solid ${C2.border}`,
+                        opacity:selProds.has(i)?1:0.3, transition:"opacity .2s" }}>
                         {p.name}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {pers.map((pe:any, pei:number) => (
-                    <tr key={pei} style={{ opacity:selPers.has(pei)?1:0.4 }}>
-                      <td style={{ padding:"10px 16px", fontSize:12, fontFamily:head, fontWeight:600, color:C2.text, borderBottom:`1px solid ${C2.faint}` }}>
-                        {pe.name}
-                      </td>
-                      {prods.map((_:any, pi:number) => {
-                        const cell = getCell(pi, pei);
-                        return (
-                          <td key={pi} style={{ padding:"8px 12px", textAlign:"center", borderBottom:`1px solid ${C2.faint}` }}>
-                            <div title={cell.rationale} style={{ display:"inline-block", padding:"3px 10px", borderRadius:6,
-                              background:`${priColors[cell.priority]||C2.muted}22`, color:priColors[cell.priority]||C2.muted,
-                              fontSize:10, fontFamily:mono, fontWeight:600, cursor:"default" }}>
-                              {cell.priority}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                  {pers.map((pe:any, pei:number) => {
+                    const isActive = selPers.has(pei);
+                    return (
+                      <tr key={pei} style={{ opacity:isActive?1:0.3, transition:"opacity .2s" }}>
+                        <td style={{ padding:"12px 20px", fontSize:13, fontFamily:head, fontWeight:600, color:C2.text,
+                          borderBottom:`1px solid ${C2.faint}`, whiteSpace:"nowrap" }}>
+                          {pe.name}
+                        </td>
+                        {prods.map((_:any, pi:number) => {
+                          const cell = getCell(pi, pei);
+                          const active = selProds.has(pi) && isActive;
+                          return (
+                            <td key={pi} style={{ padding:"8px 12px", textAlign:"center", borderBottom:`1px solid ${C2.faint}` }}>
+                              <div title={cell.rationale}
+                                style={{ padding:"8px 4px", borderRadius:10,
+                                  background: active ? priBg[cell.priority] || C2.faint : "transparent",
+                                  transition:"background .2s", cursor:"default" }}>
+                                <div style={{ fontSize:13, fontWeight:800, fontFamily:head,
+                                  color: active ? priColors[cell.priority] || C2.muted : C2.border }}>
+                                  {cell.priority === "high" ? "●●●" : cell.priority === "medium" ? "●●" : cell.priority === "low" ? "●" : "—"}
+                                </div>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:600, marginTop:2,
+                                  color: active ? priColors[cell.priority] || C2.muted : C2.border }}>
+                                  {cell.priority}
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize:10, color:C2.muted, fontFamily:body, marginTop:8 }}>
-              Hover over priorities to see the reasoning. Uncheck products or personas above to exclude them.
+            <div style={{ fontSize:10, color:C2.muted, fontFamily:body, marginTop:10, display:"flex", gap:16 }}>
+              <span style={{ display:"flex", alignItems:"center", gap:4 }}><span style={{ color:"#00D68F", fontWeight:800 }}>●●●</span> High priority — start here</span>
+              <span style={{ display:"flex", alignItems:"center", gap:4 }}><span style={{ color:"#FFC048", fontWeight:800 }}>●●</span> Medium — phase 2</span>
+              <span style={{ display:"flex", alignItems:"center", gap:4 }}><span style={{ color:"#8E94A7", fontWeight:800 }}>●</span> Low — if bandwidth allows</span>
+              <span style={{ display:"flex", alignItems:"center", gap:4 }}><span style={{ color:"#FF6B6B" }}>—</span> Skip</span>
             </div>
           </div>
         )}
