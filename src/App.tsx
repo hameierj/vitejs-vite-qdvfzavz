@@ -6008,7 +6008,7 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
   companyData: any; strategy: any; v2?: boolean; addToast?: (t:any)=>string;
 }) {
   const _C = v2 ? C2 : C;
-  const [selectedId, setSelectedId] = useState<string|null>(campaigns[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string|null>(null);
   const [tab, setTab] = useState<"config"|"offers"|"sequence"|"replies"|"benchmarks">("config");
   const [genOfferLoading, setGenOfferLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -6036,7 +6036,7 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
   const deleteCampaign = (id: string) => {
     if (!confirm("Delete this campaign?")) return;
     onCampaignsChange(campaigns.filter(c => c.id !== id));
-    if (selectedId === id) setSelectedId(campaigns.filter(c => c.id !== id)[0]?.id ?? null);
+    if (selectedId === id) setSelectedId(null);
   };
 
   const generateSequence = async () => {
@@ -6137,62 +6137,32 @@ Return ONLY valid JSON:
     width:"100%", transition:"border-color .15s", resize:"vertical" as const };
 
   return (
-    <div style={{ display:"flex", height:"100%", overflow:"hidden" }}>
-      {/* Campaign list */}
-      <div style={{ width:240, flexShrink:0, display:"flex", flexDirection:"column",
-        borderRight:`1px solid ${_C.border}`, background:v2?_C.faint:_C.surface, overflow:"hidden" }}>
-        <div style={{ padding:"12px", flexShrink:0 }}>
-          <button onClick={addCampaign}
-            style={{ width:"100%", padding:"9px 14px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
-              fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
-            + New Campaign
-          </button>
-        </div>
-        <div style={{ flex:1, overflowY:"auto", padding:"0 8px 8px" }}>
-          {campaigns.length === 0 && (
-            <div style={{ padding:"32px 12px", textAlign:"center" }}>
-              <div style={{ fontSize:22, marginBottom:8, opacity:.3 }}>⊕</div>
-              <div style={{ fontSize:12, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:4 }}>No campaigns yet</div>
-              <div style={{ fontSize:11, color:_C.muted, fontFamily:body, lineHeight:1.5 }}>Create your first campaign or generate from the Strategy page.</div>
-            </div>
-          )}
-          {campaigns.map((c: any) => {
-            const isOn = selectedId === c.id;
-            const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
-            const statusObj = CAMPAIGN_STATUSES.find(s => s.id === c.status) || CAMPAIGN_STATUSES[0];
-            return (
-              <div key={c.id} onClick={()=>setSelectedId(c.id)}
-                style={{ padding:"10px 12px", borderRadius:10, marginBottom:4, cursor:"pointer",
-                  border:`2px solid ${isOn?_C.accent+"44":_C.border}`,
-                  background: isOn ? `${_C.accent}08` : _C.canvas,
-                  transition:"all .2s" }}
-                onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=_C.canvas; }}
-                onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=isOn?`${_C.accent}08`:"transparent"; }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                  <span style={{ fontSize:13 }}>{typeObj.icon}</span>
-                  <span style={{ flex:1, fontSize:12, fontWeight:isOn?700:500, fontFamily:head, color:isOn?_C.text:_C.textSoft,
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {c.name || "Untitled Campaign"}
-                  </span>
-                  <button onClick={e=>{e.stopPropagation(); deleteCampaign(c.id);}}
-                    style={{ width:18, height:18, borderRadius:4, border:`1px solid ${_C.border}`, background:"transparent",
-                      color:_C.muted, fontSize:9, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                      opacity:isOn?1:0, transition:"opacity .15s" }}>×</button>
-                </div>
-                <div style={{ display:"flex", gap:6 }}>
-                  <span style={{ fontSize:9, fontFamily:mono, padding:"2px 6px", borderRadius:4,
-                    background:`${statusObj.color}15`, color:statusObj.color, fontWeight:600 }}>{statusObj.label}</span>
-                  <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{c.sequence?.length||0} steps</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
 
-      {/* Campaign editor */}
-      {selected ? (
+      {/* ── Editor view (when a campaign is selected) ── */}
+      {selectedId && selected ? (
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+          {/* Header — back + name */}
+          <div style={{ padding:"16px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+              <button onClick={()=>setSelectedId(null)}
+                style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas,
+                  color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
+                ← All Campaigns
+              </button>
+              {(() => { const t = CAMPAIGN_TYPES.find(t => t.id === selected.type) || CAMPAIGN_TYPES[0]; return (
+                <span style={{ fontSize:14, color:t.color }}>{t.icon}</span>
+              ); })()}
+              <h2 style={{ fontSize:20, fontWeight:800, color:_C.text, fontFamily:head, margin:0, flex:1,
+                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {selected.name || "Untitled Campaign"}
+              </h2>
+              {(() => { const s = CAMPAIGN_STATUSES.find(s => s.id === selected.status) || CAMPAIGN_STATUSES[0]; return (
+                <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, padding:"3px 10px", borderRadius:6,
+                  background:`${s.color}15`, color:s.color }}>{s.label}</span>
+              ); })()}
+            </div>
+          </div>
           {/* Tab bar */}
           <div style={{ display:"flex", alignItems:"center", gap:4, padding:"12px 24px", borderBottom:`1px solid ${_C.border}`, flexShrink:0 }}>
             {(["config","offers","sequence","replies","benchmarks"] as const).map(t => {
@@ -6605,17 +6575,113 @@ Return ONLY valid JSON:
           </div>
         </div>
       ) : (
-        <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ textAlign:"center", maxWidth:400 }}>
-            <div style={{ fontSize:36, marginBottom:16, opacity:.2 }}>⊕</div>
-            <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>Campaigns</div>
-            <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, marginBottom:20 }}>
-              Create individual campaigns with sequences, A/B tests, and benchmarks. Each campaign links to a persona, product, and offer.
+        /* ── Card grid view (no campaign selected) ── */
+        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"auto", padding:"0 clamp(20px, 3vw, 48px)" }}>
+          {/* Header */}
+          <div style={{ padding:"20px 0 16px", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div>
+              <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Campaigns</h2>
+              <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
+                {campaigns.length} campaign{campaigns.length!==1?"s":""} · Click to edit
+              </p>
             </div>
             <button onClick={addCampaign}
-              style={{ padding:"10px 24px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
-                fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>+ New Campaign</button>
+              style={{ padding:"9px 20px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+                fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
+              + New Campaign
+            </button>
           </div>
+
+          {campaigns.length === 0 ? (
+            <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ textAlign:"center", maxWidth:400 }}>
+                <div style={{ fontSize:48, marginBottom:16, opacity:.15 }}>⊕</div>
+                <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>No campaigns yet</div>
+                <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, marginBottom:20 }}>
+                  Create individual campaigns with sequences and benchmarks. Each links to a persona and product.
+                </div>
+                <button onClick={addCampaign}
+                  style={{ padding:"10px 24px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+                    fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                  + Create First Campaign
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Campaign cards grid */
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12, paddingBottom:24 }}>
+              {campaigns.map((c: any) => {
+                const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
+                const statusObj = CAMPAIGN_STATUSES.find(s => s.id === c.status) || CAMPAIGN_STATUSES[0];
+                const persona = personas.find((p:any) => (c.personaIds||[])[0] === p.id);
+                const product = products.find((p:any) => p.id === c.productId);
+                const seqLen = c.sequence?.length || 0;
+                const hasEmptySteps = (c.sequence||[]).some((s:any) => !s.subject && !s.body && !s.message);
+                return (
+                  <div key={c.id} onClick={()=>{ setSelectedId(c.id); setTab("config"); }}
+                    style={{ background:_C.canvas, borderRadius:12, borderLeft:`3px solid ${statusObj.color}`,
+                      borderTop:`1px solid ${_C.border}`, borderRight:`1px solid ${_C.border}`, borderBottom:`1px solid ${_C.border}`,
+                      cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.03)",
+                      transition:"all .2s", padding:"14px 16px" }}
+                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 4px 16px ${statusObj.color}18`; el.style.borderColor=statusObj.color; const d=el.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="1";}}
+                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.03)"; el.style.borderTopColor=_C.border; el.style.borderRightColor=_C.border; el.style.borderBottomColor=_C.border; const d=el.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="0";}}>
+                    {/* Row 1: Name + status + delete */}
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                      <div style={{ flex:1, fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, lineHeight:1.3,
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        {c.name || "Untitled Campaign"}
+                      </div>
+                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"2px 7px", borderRadius:4, flexShrink:0,
+                        background:`${statusObj.color}15`, color:statusObj.color }}>{statusObj.label}</span>
+                      <button className="camp-del" onClick={e=>{
+                        e.stopPropagation();
+                        if (confirm(`Delete "${c.name || "Untitled Campaign"}"?`)) {
+                          onCampaignsChange(campaigns.filter((x:any) => x.id !== c.id));
+                          addToast({ title:"Campaign deleted", status:"success", message:c.name || "Campaign" });
+                        }
+                      }}
+                        style={{ width:20, height:20, borderRadius:5, border:"none", background:"transparent",
+                          color:_C.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                          opacity:0, transition:"opacity .15s", flexShrink:0 }}
+                        onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;}}
+                        onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;}}>×</button>
+                    </div>
+                    {/* Row 2: Persona + product */}
+                    <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, lineHeight:1.4, marginBottom:10,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {persona ? persona.name : "No persona"}{product ? ` · ${product.name}` : ""}
+                    </div>
+                    {/* Row 3: Info chips */}
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:_C.textSoft, background:_C.faint,
+                        padding:"2px 7px", borderRadius:4 }}>{typeObj.label}</span>
+                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:seqLen?_C.textSoft:_C.red,
+                        background:seqLen?_C.faint:`${_C.red}11`, padding:"2px 7px", borderRadius:4 }}>
+                        {seqLen ? `${seqLen} steps` : "No sequence"}
+                      </span>
+                      {hasEmptySteps && seqLen > 0 && (
+                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:_C.amber,
+                          background:`${_C.amber}11`, padding:"2px 7px", borderRadius:4 }}>Empty steps</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Add campaign card */}
+              <div onClick={addCampaign}
+                style={{ background:"transparent", borderRadius:12, border:`2px dashed ${_C.border}`,
+                  cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                  minHeight:80, transition:"all .2s" }}
+                onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=_C.accent;(e.currentTarget as HTMLElement).style.background=`${_C.accent}06`;}}
+                onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=_C.border;(e.currentTarget as HTMLElement).style.background="transparent";}}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ fontSize:18, color:_C.muted }}>+</span>
+                  <span style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.muted }}>New Campaign</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -12064,12 +12130,6 @@ Raw JSON only.`, "", 1400);
             {view==="campaigns" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                <div style={{ padding: "20px clamp(20px, 3vw, 48px) 14px", flexShrink:0, borderBottom:`1px solid ${C2.border}` }}>
-                  <h2 style={{ fontSize: 22, fontWeight: 800, color: C2.text, fontFamily:head, margin:"0 0 5px" }}>Campaigns</h2>
-                  <p style={{ fontSize: 13, color: C2.muted, fontFamily:body, margin:0 }}>
-                    Build and manage outreach campaigns with sequences, A/B tests, and benchmarks.
-                  </p>
-                </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
                     personas={icps} products={products} offers={offers} onOffersChange={setOffers}
