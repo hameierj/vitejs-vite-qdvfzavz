@@ -11492,7 +11492,7 @@ Raw JSON only.`, "", 1400);
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
-          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix","preferences"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix","preferences"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix","preferences"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
