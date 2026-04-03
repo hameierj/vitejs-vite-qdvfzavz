@@ -11621,49 +11621,18 @@ Raw JSON only.`, "", 1400);
             <div style={{ flex:1, overflowY:"auto", padding:"0 12px" }}>
 
               {/* + New */}
-              {activeWorkspace && currentRole === "team" && (
-                <div style={{ position:"relative", marginBottom:8 }}>
-                  <button onClick={e=>{
-                    const menu = e.currentTarget.nextElementSibling as HTMLElement;
-                    menu.style.display = menu.style.display === "block" ? "none" : "block";
-                  }}
-                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:"11px 14px",
-                      borderRadius:12, border:"none", background:C2.accent, color:"#fff", cursor:"pointer",
-                      fontSize:13, fontFamily:head, fontWeight:700, boxShadow:`0 4px 14px ${C2.accent}44`,
-                      transition:"all .2s" }}
-                    onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.transform="translateY(-1px)";(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 6px 20px ${C2.accent}55`;}}
-                    onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.transform="translateY(0)";(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 4px 14px ${C2.accent}44`;}}>
-                    <span style={{ fontSize:15 }}>+</span> New
-                  </button>
-                  <div style={{ display:"none", position:"absolute", top:"100%", left:0, right:0, marginTop:6,
-                    background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:12,
-                    boxShadow:"0 10px 40px rgba(45,52,54,.12)", zIndex:100, overflow:"hidden",
-                    animation:"contentFade .2s cubic-bezier(0.16, 1, 0.3, 1)" }}
-                    onClick={e=>(e.currentTarget as HTMLElement).style.display="none"}>
-                    <button onClick={()=>setShowQS(true)}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"12px 16px",
-                        border:"none", background:"transparent", cursor:"pointer", textAlign:"left" }}
-                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C2.faint}
-                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
-                      <span style={{ fontSize:15 }}>⚡</span>
-                      <div>
-                        <div style={{ fontSize:12.5, fontFamily:head, fontWeight:700, color:C2.text }}>Quick Start</div>
-                        <div style={{ fontSize:10.5, color:C2.muted, fontFamily:body }}>Build from website, docs, or text</div>
-                      </div>
-                    </button>
-                    <button onClick={()=>setShowAnalyzer(true)}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"12px 16px",
-                        border:"none", background:"transparent", cursor:"pointer", textAlign:"left" }}
-                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C2.faint}
-                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
-                      <span style={{ fontSize:15 }}>🔍</span>
-                      <div>
-                        <div style={{ fontSize:12.5, fontFamily:head, fontWeight:700, color:C2.text }}>Analyze Existing</div>
-                        <div style={{ fontSize:10.5, color:C2.muted, fontFamily:body }}>Reverse-engineer from screenshots</div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
+              {/* Get Started — shows for empty workspaces at the very top */}
+              {activeWorkspace && !(companyData as any)?.co_name && !(icps as any[]).length && !(products as any[]).length && (
+                <button onClick={()=>setView("onboarding")}
+                  style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"11px 14px",
+                    borderRadius:12, border:`1.5px dashed ${view==="onboarding"?C2.accent:C2.accent+"66"}`,
+                    background: view==="onboarding" ? `${C2.accent}14` : `${C2.accent}06`,
+                    cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:8 }}
+                  onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C2.accent;(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}14`;}}
+                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=view==="onboarding"?C2.accent:C2.accent+"66";(e.currentTarget as HTMLButtonElement).style.background=view==="onboarding"?`${C2.accent}14`:`${C2.accent}06`;}}>
+                  <span style={{ fontSize:16 }}>🚀</span>
+                  <span style={{ fontSize:13, fontFamily:head, fontWeight:700, color:C2.accent }}>Get Started</span>
+                </button>
               )}
 
               {/* Copilot */}
@@ -11684,20 +11653,6 @@ Raw JSON only.`, "", 1400);
               {/* Nav items — grouped */}
               {activeWorkspace && (
                 <>
-                  {/* ── GETTING STARTED (for empty workspaces) ── */}
-                  {!(companyData as any)?.co_name && !(icps as any[]).length && !(products as any[]).length && (
-                    <button onClick={()=>setView("onboarding")}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
-                        borderRadius:12, border:`1.5px dashed ${view==="onboarding"?C2.accent:C2.border}`,
-                        background: view==="onboarding" ? `${C2.accent}14` : `${C2.accent}06`,
-                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:4, marginTop:8 }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C2.accent;}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=view==="onboarding"?C2.accent:C2.border;}}>
-                      <span style={{ fontSize:14, width:18, textAlign:"center" }}>🚀</span>
-                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:700, color:C2.accent }}>Get Started</span>
-                    </button>
-                  )}
-
                   {/* ── RESEARCH ── */}
                   <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
