@@ -8442,6 +8442,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const streamFull = useRef("");
   const streamPos = useRef(0);
   const streamInterval = useRef<any>(null);
+  const prevWordCount = useRef(0);
 
   // Slash commands
   const SLASH_COMMANDS: Record<string,string> = {
@@ -8552,6 +8553,7 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
 
     streamFull.current = "";
     streamPos.current = 0;
+    prevWordCount.current = 0;
     setIsStreaming(true);
     setStreamingText("");
 
@@ -8690,12 +8692,24 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                 {msg.role === "user"
                   ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
                   : msg.id === "_streaming"
-                    ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
+                    ? (() => {
+                        const text = msg.content || "";
+                        const words = text.split(/(\s+)/);
+                        const prevCount = prevWordCount.current;
+                        prevWordCount.current = words.length;
+                        return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{
+                          words.map((w, i) => (
+                            i >= prevCount
+                              ? <span key={i} style={{ animation:"wordFadeIn .35s ease both" }}>{w}</span>
+                              : <span key={i}>{w}</span>
+                          ))
+                        }</span>;
+                      })()
                     : <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>}
                 {msg.id === "_streaming" && (
-                  <span style={{ display:"inline-block", width:5, height:12, background:C2.accent,
-                    borderRadius:2, marginLeft:2, animation:"cursorBlink .7s step-end infinite",
-                    verticalAlign:"text-bottom" }} />
+                  <span style={{ display:"inline-block", width:2, height:14, background:C2.accent,
+                    borderRadius:1, marginLeft:1, animation:"cursorBlink .8s ease-in-out infinite",
+                    verticalAlign:"text-bottom", opacity:.6 }} />
                 )}
               </div>
             </div>
@@ -11537,6 +11551,7 @@ Raw JSON only.`, "", 1400);
         @keyframes onboardCardIn{0%{opacity:0;transform:translateY(16px) scale(0.97)}100%{opacity:1;transform:translateY(0) scale(1)}}
         @keyframes copilotSlideIn{0%{transform:translateX(100%);opacity:0}100%{transform:translateX(0);opacity:1}}
         @keyframes copilotPopUp{0%{opacity:0;transform:translateY(20px) scale(0.95)}100%{opacity:1;transform:translateY(0) scale(1)}}
+        @keyframes wordFadeIn{0%{opacity:0;filter:blur(2px)}100%{opacity:1;filter:blur(0)}}
         @keyframes obLetterIn{0%{opacity:0;transform:translateY(-12px);filter:blur(4px)}100%{opacity:1;transform:translateY(0);filter:blur(0)}}
         @keyframes obSubIn{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
