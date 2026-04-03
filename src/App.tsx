@@ -64,6 +64,13 @@ async function syncFromCloud() {
       const clientId = ws.key.replace("ws_", "");
       localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(ws.value));
     }
+    // Sync API logs from all users
+    if (!controller.signal.aborted) {
+      const allLogEntries = await dbGetAll("app_data", "api_logs");
+      for (const entry of allLogEntries) {
+        localStorage.setItem(`b2br_${entry.key}`, JSON.stringify(entry.value));
+      }
+    }
     // Sync file blobs (skip if already timed out)
     if (!controller.signal.aborted) {
       const blobs = await dbGetAll("file_blobs", "");
@@ -499,12 +506,31 @@ function logApiCall(inputTokens: number, outputTokens: number, model: string, ac
     if (logs.length > 2000) logs.splice(0, logs.length - 2000);
     localStorage.setItem("b2br_api_logs", JSON.stringify(logs));
   } catch {}
-  // Sync to cloud
-  syncToCloud("api_logs", JSON.parse(localStorage.getItem("b2br_api_logs") || "[]"));
+  // Sync to cloud — use per-user key so logs don't overwrite each other
+  const userKey = _currentUserEmail ? `api_logs_${_currentUserEmail.replace(/[^a-z0-9]/gi,"_")}` : "api_logs";
+  syncToCloud(userKey, JSON.parse(localStorage.getItem("b2br_api_logs") || "[]"));
 }
 
 function loadApiLogs(): ApiLog[] {
-  try { return JSON.parse(localStorage.getItem("b2br_api_logs") || "[]"); } catch { return []; }
+  try {
+    // Merge local logs + any cloud-synced user logs
+    const local: ApiLog[] = JSON.parse(localStorage.getItem("b2br_api_logs") || "[]");
+    const allLogs = [...local];
+    const localIds = new Set(local.map(l => l.id));
+    // Check for cloud-synced logs from other users
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("b2br_api_logs_") && key !== "b2br_api_logs") {
+        try {
+          const userLogs: ApiLog[] = JSON.parse(localStorage.getItem(key) || "[]");
+          for (const log of userLogs) {
+            if (!localIds.has(log.id)) { allLogs.push(log); localIds.add(log.id); }
+          }
+        } catch {}
+      }
+    }
+    return allLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  } catch { return []; }
 }
 
 async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
