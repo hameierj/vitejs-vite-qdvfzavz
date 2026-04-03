@@ -763,6 +763,24 @@ function newICP(idx, data = {}, name = "", confidence = {}) {
            linkedProductIds:[] as string[], linkedOfferIds:[] as string[] };
 }
 
+// Naming rules injected into every AI prompt that generates product/persona names
+const NAMING_RULES = {
+  persona: `PERSONA NAMING RULES (strict):
+- Format: "[Industry/Vertical] — [Buyer Role]"
+- Examples: "SaaS — VP Sales", "Construction SMB — Owner/GM", "Healthcare — IT Director", "FinTech — CFO/Controller", "Manufacturing — Ops Manager"
+- Keep under 40 characters. No marketing fluff, no full sentences.
+- Industry should be specific enough to differentiate from other personas (not just "Technology").
+- Role should be the actual job title or function they hold, not a description of behavior.
+- If the persona spans multiple industries, pick the primary one or use the sector: "B2B Services — Procurement Lead".`,
+  product: `PRODUCT NAMING RULES (strict):
+- Format: "[Core Noun] [Qualifier]" — short, recognizable, plain language.
+- Examples: "Equipment Financing", "Fleet Management Platform", "AI Sales Agent", "Revenue Intelligence", "Payroll Processing"
+- Keep under 30 characters. Drop marketing fluff — no "Suite", "Pro", "Ultimate", "360", "Intelligence Hub".
+- If the company calls it "RevOps Intelligence Suite Pro", name it "Revenue Intelligence" or "RevOps Platform".
+- Name what it IS, not what it does. Use the simplest noun that a prospect would recognize.
+- Never repeat the company name in the product name.`,
+};
+
 function fieldFilled(f, val) {
   if (!val) return false;
   if (Array.isArray(val)) return val.length > 0;
@@ -2066,6 +2084,9 @@ For each PRODUCT include: name, description, reasoning (why this is a distinct p
 For each PERSONA include: name, buyerTitles, industries, primaryPain, reasoning (why this persona buys which products and what drives them).
 For the MATRIX: for each product×persona combo, include priority (high/medium/low/skip) and a brief rationale.
 
+${NAMING_RULES.product}
+${NAMING_RULES.persona}
+
 RULES:
 - Only include products that are GENUINELY different offerings, not features or variants
 - Only include personas that represent DISTINCT buyer segments with different pains/motivations
@@ -2514,7 +2535,7 @@ Build a complete ICP from ALL available signals.${selectedIcp ? " IMPORTANT: You
 - EMAIL/LINKEDIN COPY: Extract pains, gains, tone, hooks, CTAs, objections from the actual messaging.
 - TARGETING FILTERS: Use any visible filters for industries, titles, geo, intent topics.
 - PERFORMANCE DATA: Infer what messaging angles are working based on metrics.
-- Name the ICP based on the actual audience pattern you observe (e.g., "Bicycle Retail — Shop Owners" not just "Small Business").
+${NAMING_RULES.persona}
 
 Return ONLY JSON:
 {"name":"descriptive ICP name based on what you see","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},
@@ -4710,7 +4731,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
     addToast({ title:"Creating product…", status:"loading", message:"AI is building the product profile" });
     try {
       const result = await callAI(
-        `Create a detailed B2B product/service profile based on this description.\n\nDescription: ${addDesc||"(not provided)"}\nURL: ${addUrl||"(not provided)"}\nCompany: ${(companyData as any)?.co_name||""} (${(companyData as any)?.co_industry||""})\nCompany context: ${JSON.stringify(companyData)}\n${fileContext ? `Files:\n${fileContext}` : ""}\n\nFill ALL fields — never leave empty. Make confident inferences where needed.\n\nReturn ONLY valid JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","problemsSolved":"","valueProposition":"","idealCustomer":"","pricingRange":"","competitors":"","proofPoints":"","switchTriggers":"","dealCycle":"","caseStudies":"","socialProof":""}`,
+        `Create a detailed B2B product/service profile based on this description.\n\n${NAMING_RULES.product}\n\nDescription: ${addDesc||"(not provided)"}\nURL: ${addUrl||"(not provided)"}\nCompany: ${(companyData as any)?.co_name||""} (${(companyData as any)?.co_industry||""})\nCompany context: ${JSON.stringify(companyData)}\n${fileContext ? `Files:\n${fileContext}` : ""}\n\nFill ALL fields — never leave empty. Make confident inferences where needed.\n\nReturn ONLY valid JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","problemsSolved":"","valueProposition":"","idealCustomer":"","pricingRange":"","competitors":"","proofPoints":"","switchTriggers":"","dealCycle":"","caseStudies":"","socialProof":""}`,
         "Return only valid JSON.", 1200
       );
       const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
@@ -4754,7 +4775,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
       const existingNames = products.map(p => p.name?.toLowerCase().trim()).filter(Boolean);
       const ctx = JSON.stringify(companyData);
       const result = await callAI(
-        `Analyze this company's profile and identify ALL distinct products and services they offer.\n\nCompany context:\n${ctx}${fileContext ? `\n\nFiles:\n${fileContext}` : ""}\n\nALREADY EXISTING products (DO NOT create duplicates or similar variants of these):\n${existingNames.length ? existingNames.join(", ") : "none"}\n\nOnly return products that are GENUINELY DIFFERENT from the existing list. If all products are already captured, return an empty array [].\n\nFor each NEW product, provide: name, description, category (Software|Platform|Service|Hardware|Consulting|Other), problemsSolved, valueProposition, idealCustomer, pricingRange, competitors, proofPoints, switchTriggers.\n\nReturn ONLY valid JSON array. Return [] if no new products found.`,
+        `Analyze this company's profile and identify ALL distinct products and services they offer.\n\n${NAMING_RULES.product}\n\nCompany context:\n${ctx}${fileContext ? `\n\nFiles:\n${fileContext}` : ""}\n\nALREADY EXISTING products (DO NOT create duplicates or similar variants of these):\n${existingNames.length ? existingNames.join(", ") : "none"}\n\nOnly return products that are GENUINELY DIFFERENT from the existing list. If all products are already captured, return an empty array [].\n\nFor each NEW product, provide: name, description, category (Software|Platform|Service|Hardware|Consulting|Other), problemsSolved, valueProposition, idealCustomer, pricingRange, competitors, proofPoints, switchTriggers.\n\nReturn ONLY valid JSON array. Return [] if no new products found.`,
         "Return only valid JSON.", 2000
       );
       const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
@@ -10934,9 +10955,10 @@ function AppMain() {
 Draft a new ICP. Company: ${JSON.stringify(companyData)}
 Existing ICPs: ${allExisting}
 ${contextLine}
+${NAMING_RULES.persona}
 CRITICAL: Every field MUST be filled — never leave blank. Use best guesses where needed.
 Return ONLY JSON:
-{"name":"Short segment label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":""},
+{"name":"[Industry] — [Role]","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":""},
 "confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"intent_topics":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0,"seq_strategy":0}}
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
 tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
@@ -10977,6 +10999,8 @@ Fill ALL fields for this ICP. Company: ${JSON.stringify(companyData)}
 Other ICPs already defined: ${existing}
 User's target segment description: "${userContext || "Not specified — choose the most logical distinct segment based on company context."}"
 
+${NAMING_RULES.persona}
+
 CRITICAL RULES:
 - Every single field MUST be filled. Never leave any field as an empty string or empty array.
 - Use the user's description as the primary guide for the segment. Stay true to what they described.
@@ -10985,7 +11009,7 @@ CRITICAL RULES:
 - Write fields as a real GTM would — specific, not generic.
 
 Return ONLY JSON:
-{"name":"Short descriptive segment label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":""},
+{"name":"[Industry] — [Role]","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":""},
 "confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"intent_topics":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0,"seq_strategy":0}}
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
 tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
@@ -12352,7 +12376,7 @@ Raw JSON only.`, "", 1400);
               const p = brief.products[i];
               try {
                 const prodRaw = await callAI(
-                  `Create a COMPLETE product profile. Fill EVERY field.\n\nProduct: ${p.name}\nDescription: ${p.description||""}\nReasoning: ${p.reasoning||""}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","problemsSolved":"","valueProposition":"","idealCustomer":"","pricingRange":"","dealCycle":"","competitors":"","switchTriggers":"","proofPoints":"","caseStudies":"","socialProof":""}`,
+                  `Create a COMPLETE product profile. Fill EVERY field.\n\n${NAMING_RULES.product}\n\nProduct: ${p.name}\nDescription: ${p.description||""}\nReasoning: ${p.reasoning||""}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","problemsSolved":"","valueProposition":"","idealCustomer":"","pricingRange":"","dealCycle":"","competitors":"","switchTriggers":"","proofPoints":"","caseStudies":"","socialProof":""}`,
                   "", 1200
                 );
                 const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
@@ -12373,7 +12397,7 @@ Raw JSON only.`, "", 1400);
               const pe = brief.personas[i];
               try {
                 const raw = await callAI(
-                  `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\nProducts: ${products.map((p:any)=>`${p.name}: ${p.problemsSolved||""}`).join("; ")}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}`,
+                  `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\nProducts: ${products.map((p:any)=>`${p.name}: ${p.problemsSolved||""}`).join("; ")}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}`,
                   "", 3000
                 );
                 const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
