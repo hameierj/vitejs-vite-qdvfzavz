@@ -12528,9 +12528,9 @@ Raw JSON only.`, "", 1400);
                             <div key={icp.id} onClick={()=>setEditingId(icp.id)}
                               style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`,
                                 cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)",
-                                transition:"all .2s", borderLeftWidth:4, borderLeftStyle:"solid" as const, borderLeftColor:icp.color }}
-                              onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.boxShadow=`0 6px 24px ${icp.color}20`;(e.currentTarget as HTMLElement).style.borderColor=icp.color;}}
-                              onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.boxShadow="0 1px 3px rgba(0,0,0,.04)";(e.currentTarget as HTMLElement).style.borderColor=C2.border;(e.currentTarget as HTMLElement).style.borderLeftColor=icp.color;}}>
+                                transition:"all .2s" }}
+                              onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 6px 24px ${icp.color}20`; el.style.border=`2px solid ${icp.color}`; el.style.borderLeftWidth="4px";}}
+                              onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.04)"; el.style.border=`1px solid ${C2.border}`; el.style.borderLeftWidth="1px";}}>
                               <div style={{ padding:"14px 18px" }}>
                                 {/* Name + titles */}
                                 <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:2, lineHeight:1.3 }}>
