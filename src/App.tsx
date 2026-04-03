@@ -1993,9 +1993,10 @@ CRITICAL RULES:
 - co_exclude and co_avoid: infer sensible defaults based on the company's type and segment.
 
 Return ONLY JSON:
-{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":""},
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":"","co_bench_reply":"3","co_bench_interested":"1","co_bench_bounce_max":"3","co_bench_autoreply_max":"30","co_bench_meeting":"0.5"},
 "confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
-Do NOT generate fields for: contact info, deal size, sales cycle, meetings goal, channels, outcomes, timezone, days, start/end time, exclude list, or copy-to-avoid. Those are filled manually by the user.
+Do NOT generate fields for: contact info (first name, last name, phone, email, login email), channels, outcomes, timezone, days, start/end time, num_campaigns, campaign_purpose. Those are filled manually.
+DO fill: co_deal (pick from options), co_cycle (pick from options), co_exclude (infer from context), co_avoid (infer messaging risks), co_bench_* (estimate based on industry/deal size).
 co_pitch: full value proposition, not just a one-liner
 co_ksp: key selling points — unique benefits that make the product stand out
 co_prod_breakdown: structured product/service decomposition — for each product: who buys it, pains, gains, triggers, signals, objections, positioning
@@ -2459,7 +2460,7 @@ Based on ALL the extracted data, infer the company profile. Key approach:
 - COMBINE all signals to build the most complete picture possible.
 
 Return ONLY JSON:
-{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":""},
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":"","co_bench_reply":"3","co_bench_interested":"1","co_bench_bounce_max":"3","co_bench_autoreply_max":"30","co_bench_meeting":"0.5"},
 "confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
 
 Set confidence based on how clearly the info is visible in the screenshots (90+ = directly visible, 60-89 = strongly inferred, 30-59 = educated guess).
@@ -12786,11 +12787,21 @@ Raw JSON only.`, "", 1400);
             const ctx = qsBrief!.context;
             const toastId = addToast({ title:"Creating selected entities…", status:"loading", message:"Building products, personas, and offers" });
 
-            // Create selected products
-            const products = selProds.map((i:number) => {
+            // Create selected products — fill ALL fields via AI
+            const products: any[] = [];
+            for (const i of selProds) {
               const p = brief.products[i];
-              return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
-            });
+              try {
+                const prodRaw = await callAI(
+                  `Create a COMPLETE product profile. Fill EVERY field.\n\nProduct: ${p.name}\nDescription: ${p.description||""}\nReasoning: ${p.reasoning||""}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","problemsSolved":"","valueProposition":"","idealCustomer":"","pricingRange":"","dealCycle":"","competitors":"","switchTriggers":"","proofPoints":"","caseStudies":"","socialProof":""}`,
+                  "", 1200
+                );
+                const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
+                products.push({ ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) });
+              } catch {
+                products.push({ ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" });
+              }
+            }
 
             // Create selected personas with full AI generation
             const personas: any[] = [];
@@ -12798,8 +12809,8 @@ Raw JSON only.`, "", 1400);
               const pe = brief.personas[i];
               try {
                 const raw = await callAI(
-                  `Draft a complete B2B persona for cold outreach.\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\nProducts: ${products.map((p:any)=>p.name).join(", ")}\n\nFill ALL fields. Return ONLY JSON:\n{"name":"","fields":{"industries":"","co_sizes":[],"geo":"","buyer":"","goals":"","fears":"","pain1":"","pain2":"","triggers":"","tone":"","hook":"","cta":"","current_solutions":"","displacement_messaging":"","best_channel":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":""},"confidence":{}}`,
-                  "", 1500
+                  `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\nProducts: ${products.map((p:any)=>`${p.name}: ${p.problemsSolved||""}`).join("; ")}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}`,
+                  "", 3000
                 );
                 const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
                 const persona = newICP(personas.length, parsed.fields||{}, parsed.name||pe.name, parsed.confidence||{});
