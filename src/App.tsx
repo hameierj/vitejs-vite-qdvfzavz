@@ -8555,18 +8555,14 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
     setIsStreaming(true);
     setStreamingText("");
 
-    // Reveal 1 word every 60ms (~16 words/sec)
+    // Reveal 2 characters every 18ms — smooth letter-by-letter
     streamInterval.current = setInterval(() => {
       const full = streamFull.current;
       const pos = streamPos.current;
       if (pos >= full.length) return;
-      let next = pos;
-      while (next < full.length && full[next] !== ' ' && full[next] !== '\n') next++;
-      while (next < full.length && (full[next] === ' ' || full[next] === '\n')) next++;
-      next = Math.max(pos + 1, next);
-      streamPos.current = Math.min(next, full.length);
+      streamPos.current = Math.min(pos + 2, full.length);
       setStreamingText(full.slice(0, streamPos.current));
-    }, 60);
+    }, 18);
 
     // Chunks just feed into the ref
     await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
