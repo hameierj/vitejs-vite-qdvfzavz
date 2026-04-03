@@ -8628,6 +8628,13 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
               {chats.map(c => <option key={c.id} value={c.id}>{(c.title||"Chat").slice(0,18)}</option>)}
             </select>
           )}
+          {activeChat && activeChat.messages.length > 0 && (
+            <button onClick={()=>{ deleteChat(activeChat.id); }} title="Delete chat"
+              style={{ width:22, height:22, borderRadius:6, border:"none", background:"transparent",
+                color:C2.muted, fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+              onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.color=C2.red;}}
+              onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.color=C2.muted;}}>🗑</button>
+          )}
           <button onClick={newChat} title="New chat"
             style={{ width:22, height:22, borderRadius:6, border:"none", background:"transparent",
               color:C2.muted, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
