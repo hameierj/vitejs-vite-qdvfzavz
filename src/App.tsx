@@ -8439,6 +8439,24 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const [isStreaming,    setIsStreaming]    = useState(false);
   const [streamingText,  setStreamingText]  = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
+  const fullTextRef = useRef("");
+  const revealedRef = useRef(0);
+
+  // Smooth typewriter: reveal fullTextRef content gradually
+  useEffect(() => {
+    if (!isStreaming) return;
+    const interval = setInterval(() => {
+      const full = fullTextRef.current;
+      const current = revealedRef.current;
+      if (current < full.length) {
+        const remaining = full.length - current;
+        const step = Math.max(1, Math.min(8, Math.ceil(remaining / 5)));
+        revealedRef.current = Math.min(current + step, full.length);
+        setStreamingText(full.slice(0, revealedRef.current));
+      }
+    }, 25);
+    return () => clearInterval(interval);
+  }, [isStreaming]);
 
   // Slash commands
   const SLASH_COMMANDS: Record<string,string> = {
@@ -8544,49 +8562,33 @@ RESPONSE FORMAT (strict — you MUST follow these):
 - End with one next action in bold. No summary paragraphs. No sign-offs.
 ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page.` : ""}`;
 
+    fullTextRef.current = "";
+    revealedRef.current = 0;
     setIsStreaming(true);
     setStreamingText("");
-    let full = "";
-    let displayed = "";
-    let timer: any = null;
-
-    // Typewriter: reveal buffered text ~12 chars every 30ms
-    const tick = () => {
-      if (displayed.length < full.length) {
-        const remaining = full.length - displayed.length;
-        const step = Math.max(1, Math.min(12, Math.ceil(remaining / 6)));
-        displayed = full.slice(0, displayed.length + step);
-        setStreamingText(displayed);
-        timer = setTimeout(tick, 30);
-      } else {
-        timer = null;
-      }
-    };
 
     await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
-      full += chunk;
-      if (!timer) timer = setTimeout(tick, 30);
+      fullTextRef.current += chunk;
     });
 
-    // Flush remaining
-    if (timer) clearTimeout(timer);
-    // Finish revealing any remaining text smoothly
-    const flushTick = () => {
-      if (displayed.length < full.length) {
-        const step = Math.max(1, Math.ceil((full.length - displayed.length) / 4));
-        displayed = full.slice(0, displayed.length + step);
-        setStreamingText(displayed);
-        setTimeout(flushTick, 20);
-      } else {
-        const assistantMsg = { id: uid(), role: "assistant" as const, content: full, timestamp: Date.now() };
-        onChatsChange(prev => prev.map(c =>
-          c.id === targetId ? { ...c, messages: [...c.messages, assistantMsg] } : c
-        ));
-        setIsStreaming(false);
-        setStreamingText("");
-      }
-    };
-    flushTick();
+    // Wait for reveal to catch up
+    const full = fullTextRef.current;
+    await new Promise<void>(resolve => {
+      const check = () => {
+        if (revealedRef.current >= full.length) { resolve(); return; }
+        revealedRef.current = Math.min(revealedRef.current + Math.max(1, Math.ceil((full.length - revealedRef.current) / 3)), full.length);
+        setStreamingText(full.slice(0, revealedRef.current));
+        setTimeout(check, 15);
+      };
+      check();
+    });
+
+    const assistantMsg = { id: uid(), role: "assistant" as const, content: full, timestamp: Date.now() };
+    onChatsChange(prev => prev.map(c =>
+      c.id === targetId ? { ...c, messages: [...c.messages, assistantMsg] } : c
+    ));
+    setIsStreaming(false);
+    setStreamingText("");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
