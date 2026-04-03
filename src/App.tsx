@@ -8441,34 +8441,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const threadRef = useRef<HTMLDivElement>(null);
   const streamFull = useRef("");
   const streamPos = useRef(0);
-  const streamRaf = useRef(0);
-  const lastFrame = useRef(0);
-
-  // Word-by-word reveal loop — runs independently of chunk arrival
-  const revealLoop = useCallback(() => {
-    const now = performance.now();
-    const elapsed = now - lastFrame.current;
-    if (elapsed >= 30) { // ~33fps
-      lastFrame.current = now;
-      const full = streamFull.current;
-      const pos = streamPos.current;
-      if (pos < full.length) {
-        // Advance by 2-6 words worth of characters per frame
-        let next = pos;
-        let words = 0;
-        const targetWords = full.length - pos > 100 ? 6 : 3; // catch up faster when behind
-        while (next < full.length && words < targetWords) {
-          if (full[next] === ' ' || full[next] === '\n') words++;
-          next++;
-        }
-        // At minimum advance 1 char
-        next = Math.max(pos + 1, next);
-        streamPos.current = Math.min(next, full.length);
-        setStreamingText(full.slice(0, streamPos.current));
-      }
-    }
-    streamRaf.current = requestAnimationFrame(revealLoop);
-  }, []);
+  const streamInterval = useRef<any>(null);
 
   // Slash commands
   const SLASH_COMMANDS: Record<string,string> = {
@@ -8579,30 +8552,41 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
 
     streamFull.current = "";
     streamPos.current = 0;
-    lastFrame.current = performance.now();
     setIsStreaming(true);
     setStreamingText("");
 
-    // Start the reveal loop
-    streamRaf.current = requestAnimationFrame(revealLoop);
+    // Start slow reveal interval — 1 word every 50ms (~20 words/sec, feels like typing)
+    streamInterval.current = setInterval(() => {
+      const full = streamFull.current;
+      const pos = streamPos.current;
+      if (pos >= full.length) return; // waiting for more content
+      // Find next word boundary
+      let next = pos;
+      // Skip to end of current word
+      while (next < full.length && full[next] !== ' ' && full[next] !== '\n') next++;
+      // Include the space/newline
+      while (next < full.length && (full[next] === ' ' || full[next] === '\n')) next++;
+      next = Math.max(pos + 1, next);
+      streamPos.current = Math.min(next, full.length);
+      setStreamingText(full.slice(0, streamPos.current));
+    }, 50);
 
-    // Chunks just feed into the full text ref — no React updates here
+    // Chunks just feed into the ref
     await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
       streamFull.current += chunk;
     });
 
-    // Stream done — let reveal loop finish catching up
+    // Stream done — wait for reveal to finish
     await new Promise<void>(resolve => {
-      const wait = () => {
-        if (streamPos.current >= streamFull.current.length) { resolve(); return; }
-        requestAnimationFrame(wait);
-      };
-      wait();
+      const wait = setInterval(() => {
+        if (streamPos.current >= streamFull.current.length) {
+          clearInterval(wait);
+          resolve();
+        }
+      }, 60);
     });
 
-    // Stop the loop
-    cancelAnimationFrame(streamRaf.current);
-
+    clearInterval(streamInterval.current);
     const full = streamFull.current;
     setStreamingText(full);
 
