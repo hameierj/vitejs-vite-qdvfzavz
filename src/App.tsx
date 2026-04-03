@@ -7505,7 +7505,7 @@ For percentages with raw counts shown (e.g. "45% (450 opens)"), use the raw coun
 }
 
 // ─── STRATEGY AI CHAT ─────────────────────────────────────────────────────────
-function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = []): string {
+function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [], products: any[] = [], campaigns: any[] = [], strategy: any = null): string {
   const cd = companyData as Record<string, string>;
   const lines: string[] = [];
   lines.push("## COMPANY PROFILE");
@@ -7525,13 +7525,49 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [])
     ["Additional Notes", cd.co_notes],
   ].forEach(([label, val]) => { if (val) lines.push(`${label}: ${val}`); });
 
-  lines.push("\n## ICP PROFILES");
+  // Preferences
+  const prefFields = [
+    ["Outreach Channels", cd.co_channels], ["Num Campaigns", cd.co_num_campaigns],
+    ["Campaign Purpose", cd.co_campaign_purpose], ["Expected Outcomes", cd.co_outcomes],
+    ["Timezone", cd.co_timezone], ["Campaign Days", cd.co_days],
+    ["Schedule", cd.co_start_time && cd.co_end_time ? `${cd.co_start_time} – ${cd.co_end_time}` : null],
+    ["Target Reply Rate", cd.co_bench_reply ? `${cd.co_bench_reply}%` : null],
+    ["Target Meeting Rate", cd.co_bench_meeting ? `${cd.co_bench_meeting}%` : null],
+    ["Max Bounce Rate", cd.co_bench_bounce_max ? `${cd.co_bench_bounce_max}%` : null],
+    ["Past Email Examples", cd.co_past_emails],
+  ];
+  const filledPrefs = prefFields.filter(([,v]) => v);
+  if (filledPrefs.length) {
+    lines.push("\n## PREFERENCES & CAMPAIGN CONFIG");
+    filledPrefs.forEach(([label, val]) => lines.push(`${label}: ${Array.isArray(val) ? (val as string[]).join(", ") : val}`));
+  }
+
+  // Products
+  lines.push("\n## PRODUCTS & SERVICES");
+  if (!products.length) {
+    lines.push("No products defined yet.");
+  } else {
+    products.forEach((p, idx) => {
+      const filled = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
+      lines.push(`\n### Product ${idx+1}: ${p.name || "Unnamed"} (${Math.round(filled/PRODUCT_FIELDS.length*100)}% complete)`);
+      [
+        ["Description", p.description], ["Category", p.category], ["Value Proposition", p.valueProposition],
+        ["Problems Solved", p.problemsSolved], ["Ideal Customer", p.idealCustomer],
+        ["Pricing", p.pricingRange], ["Competitors", p.competitors],
+        ["Switch Triggers", p.switchTriggers], ["Notes", p.prod_notes],
+      ].forEach(([label, val]) => { if (val && String(val).trim()) lines.push(`${label}: ${val}`); });
+    });
+  }
+
+  // Personas
+  lines.push("\n## PERSONAS");
   if (!icps.length) {
-    lines.push("No ICPs created yet.");
+    lines.push("No personas created yet.");
   } else {
     icps.forEach((icp, idx) => {
-      lines.push(`\n### ICP ${idx + 1}: ${icp.name || "Unnamed"}`);
       const d = icp.data || {};
+      const filled = ALL_ICP_FIELDS.filter((f: any) => fieldFilled(f, d[f.id])).length;
+      lines.push(`\n### Persona ${idx + 1}: ${icp.name || "Unnamed"} (${Math.round(filled/TOTAL_FIELDS*100)}% complete)`);
       [
         ["Target Industries", d.industries], ["Company Sizes", d.co_sizes],
         ["Geography",         d.geo],        ["Buyer Title",   d.buyer],
@@ -7539,24 +7575,85 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [])
         ["Primary Pain",      d.pain1],      ["Secondary Pain",  d.pain2],
         ["Triggers",          d.triggers],   ["Tone",            d.tone],
         ["Hook",              d.hook],       ["CTA",             d.cta],
-      ].forEach(([label, val]) => { if (val) lines.push(`${label}: ${val}`); });
-      const sectionsDone = ["icp_summary","pain_map","strategy_brief","email_copy"]
-        .filter(t => (icp.sectionApprovals||{})[t] === "approved");
-      lines.push(`Outputs Generated: ${icp.outputs ? "Yes" : "No"}`);
-      if (icp.outputs) {
-        lines.push(`Approval Status: ${icp.approval || "pending"}`);
-        if (sectionsDone.length) lines.push(`Approved Sections: ${sectionsDone.join(", ")}`);
-        if (icp.outputs.icp_summary)    lines.push(`\nICP Summary:\n${icp.outputs.icp_summary}`);
-        if (icp.outputs.strategy_brief) lines.push(`\nStrategy Brief:\n${icp.outputs.strategy_brief}`);
+        ["Best Channel",      d.best_channel], ["Current Solutions", d.current_solutions],
+        ["Displacement Messaging", d.displacement_messaging],
+        ["Persona Notes",     d.persona_notes],
+      ].forEach(([label, val]) => { if (val) lines.push(`${label}: ${Array.isArray(val) ? (val as string[]).join(", ") : val}`); });
+      if (icp.linkedProductIds?.length) {
+        const linked = icp.linkedProductIds.map((pid:string) => products.find((p:any)=>p.id===pid)?.name).filter(Boolean);
+        if (linked.length) lines.push(`Linked Products: ${linked.join(", ")}`);
       }
     });
   }
-  lines.push("\n## CAMPAIGN STATUS");
-  const done     = icps.filter(i => i.outputs).length;
-  const approved = icps.filter(i => i.approval === "approved").length;
-  lines.push(`${done} of ${icps.length} ICP${icps.length!==1?"s":""} have generated outputs.`);
-  if (approved > 0) lines.push(`${approved} ICP${approved!==1?"s":""} fully approved.`);
-  if (done < icps.length) lines.push(`${icps.length - done} ICP${icps.length-done!==1?"s":""} still need outputs generated.`);
+
+  // Campaigns
+  lines.push("\n## CAMPAIGNS");
+  if (!campaigns.length) {
+    lines.push("No campaigns created yet.");
+  } else {
+    campaigns.forEach((c, idx) => {
+      const persona = icps.find((i:any) => i.id === c.personaId);
+      const product = products.find((p:any) => p.id === c.productId);
+      lines.push(`\n### Campaign ${idx+1}: ${c.name || "Unnamed"}`);
+      lines.push(`Status: ${c.status || "draft"}`);
+      lines.push(`Channel: ${c.channel || "not set"}`);
+      if (persona) lines.push(`Persona: ${persona.name}`);
+      if (product) lines.push(`Product: ${product.name}`);
+      if (c.purpose) lines.push(`Purpose: ${c.purpose}`);
+      if (c.offer?.name) lines.push(`Offer: ${c.offer.name} (${c.offer.tier || "soft"} CTA)`);
+      // Sequence summary
+      const seq = c.sequence || [];
+      if (seq.length) {
+        lines.push(`Sequence: ${seq.length} steps`);
+        seq.forEach((step: any, si: number) => {
+          const hasContent = step.subject || step.body || step.message;
+          lines.push(`  Step ${si+1}: ${step.type || "email"} — ${hasContent ? "has content" : "EMPTY"}`);
+        });
+      } else {
+        lines.push("Sequence: not generated yet");
+      }
+      // Reply handling
+      if (c.replies && Object.keys(c.replies).length) {
+        const replyTypes = Object.keys(c.replies).filter(k => c.replies[k]);
+        if (replyTypes.length) lines.push(`Reply templates: ${replyTypes.join(", ")}`);
+      }
+    });
+  }
+
+  // Strategy
+  if (strategy) {
+    lines.push("\n## STRATEGY ROADMAP");
+    if (strategy.phases?.length) {
+      strategy.phases.forEach((phase: any, idx: number) => {
+        lines.push(`\nPhase ${idx+1}: ${phase.name || "Unnamed"} (${phase.timeline || "no timeline"})`);
+        if (phase.goal) lines.push(`Goal: ${phase.goal}`);
+        if (phase.campaigns?.length) lines.push(`Campaigns: ${phase.campaigns.join(", ")}`);
+        if (phase.kpis?.length) lines.push(`KPIs: ${phase.kpis.join(", ")}`);
+      });
+    }
+    if (strategy.decisionTrees?.length) {
+      lines.push("\nDecision Trees:");
+      strategy.decisionTrees.forEach((dt: any) => {
+        lines.push(`- ${dt.trigger || dt.condition}: ${dt.action || dt.recommendation}`);
+      });
+    }
+  }
+
+  // Platform completeness
+  lines.push("\n## PLATFORM COMPLETENESS");
+  const companyFilled = ALL_COMPANY_FIELDS.filter(f => fieldFilled(f, cd[f.id])).length;
+  lines.push(`Company Profile: ${Math.round(companyFilled/ALL_COMPANY_FIELDS.length*100)}% (${companyFilled}/${ALL_COMPANY_FIELDS.length} fields)`);
+  lines.push(`Products: ${products.length} defined`);
+  lines.push(`Personas: ${icps.length} defined`);
+  lines.push(`Campaigns: ${campaigns.length} created (${campaigns.filter(c=>c.status==="active"||c.status==="live").length} active)`);
+  lines.push(`Strategy: ${strategy ? "generated" : "not generated"}`);
+  const emptySeqs = campaigns.filter(c => !c.sequence?.length).length;
+  if (emptySeqs) lines.push(`⚠ ${emptySeqs} campaign${emptySeqs!==1?"s":""} missing sequences`);
+  const incompleteProducts = products.filter(p => {
+    const f = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
+    return f < PRODUCT_FIELDS.length;
+  }).length;
+  if (incompleteProducts) lines.push(`⚠ ${incompleteProducts} product${incompleteProducts!==1?"s":""} incomplete`);
 
   if (perfLogs.length > 0) {
     lines.push("\n## PERFORMANCE DATA");
@@ -8144,7 +8241,7 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   );
 }
 
-function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "" }) {
+function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any }) {
   const [activeChatId, setActiveChatId] = useState<string|null>(() => chats[0]?.id ?? null);
   const [input,          setInput]          = useState("");
   const [isStreaming,    setIsStreaming]    = useState(false);
@@ -8195,20 +8292,34 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
       .map(m => ({ role: m.role, content: m.content }));
     const apiMessages = [...historyMsgs, { role: "user" as const, content: userText }];
 
-    const ctx = buildClientContext(companyData, icps, perfLogs);
-    const systemPrompt = `You are the Strategy AI Agent for ${clientName || "this client"}. You are a senior B2B growth strategist, campaign architect, and ICP specialist with full context of this client account.
+    const ctx = buildClientContext(companyData, icps, perfLogs, products, campaigns, strategy);
+    const systemPrompt = `You are Copilot, the AI assistant for ${clientName || "this client"}'s outreach platform. You have complete visibility into every part of their workspace — company profile, products, personas, campaigns, sequences, strategy, preferences, and analytics.
 
 ${ctx}${fileContext ? `\n${fileContext}` : ""}
 
-Your responsibilities:
-- Help plan, analyze, and refine B2B outreach campaign strategies
-- Identify ICP gaps and suggest new target segments based on patterns
-- Analyze campaign metrics when provided by the user
-- Identify what's been tried vs. what's untested
-- Help draft ICP profiles, messaging angles, and email copy
-- Provide specific, actionable recommendations grounded in the client's actual data
+YOUR ROLE:
+You are a hands-on strategist who knows every field in this workspace. When the user asks a question or shares new information, you should:
 
-Be direct, strategic, and specific. Reference the actual client data when relevant. If data is missing, say what's needed and why. Use clear formatting with headers and bullets where it adds clarity.`;
+1. **Answer directly** — give the specific answer, not a generic one. Reference their actual data.
+2. **Spot gaps & issues** — if you see incomplete profiles, missing sequences, inconsistencies between personas and campaigns, or fields that contradict each other, call them out proactively.
+3. **Suggest next steps** — always end with 1-3 concrete next actions based on the current state of their workspace. What should they do next?
+4. **Cross-reference everything** — if they update a product, think about whether persona pain points still align. If they change a persona, check if campaign sequences need updating. If they add new info, consider what else it affects.
+
+CAPABILITIES:
+- Analyze any field across company profile, products, personas, campaigns, strategy, preferences
+- Identify which campaigns are missing sequences or have empty steps
+- Compare persona targeting against campaign coverage
+- Evaluate whether messaging aligns with persona pains and product value props
+- Suggest improvements to email sequences, offers, and CTAs
+- Flag when benchmarks or goals don't match reality
+- Help plan new campaigns, personas, or products
+- Draft copy, subject lines, messaging angles, or reply templates
+
+STYLE:
+- Be direct and specific. Never give generic advice — always ground it in their data.
+- When something is wrong or missing, say so clearly. Don't hedge.
+- Use short paragraphs and bullets. No walls of text.
+- If the user's question is vague, analyze the workspace state and proactively surface the most impactful insight or recommendation.`;
 
     setIsStreaming(true);
     setStreamingText("");
@@ -8231,10 +8342,10 @@ Be direct, strategic, and specific. Reference the actual client data when releva
   };
 
   const SUGGESTIONS = [
-    "What ICP segments haven't we targeted yet?",
-    "Review our current strategy and suggest improvements",
-    "Help me create a new ICP for enterprise SaaS",
-    "What messaging angles are we missing?",
+    "What's the current state of my workspace? What should I do next?",
+    "Review all my campaigns and flag anything that needs attention",
+    "Which personas or products are incomplete? What's missing?",
+    "Analyze my strategy and suggest improvements",
   ];
 
   const displayMsgs = [
@@ -12308,6 +12419,9 @@ Raw JSON only.`, "", 1400);
                 perfLogs={perfLogs}
                 clientName={(activeWorkspace as any)?.name || (companyData as any)?.co_name || "Client"}
                 fileContext={buildFileContext(wsFiles)}
+                products={products}
+                campaigns={campaigns}
+                strategy={strategy}
               />
               </div>
             )}
