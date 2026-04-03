@@ -1188,7 +1188,7 @@ function ToastStack({ toasts, onRemove }: { toasts:Toast[]; onRemove:(id:string)
         {/* Cards behind (depth 2, then 1) — rendered first so they're behind */}
         {visible.length > 2 && stack[2] && (
           <div key={`bg2-${stack[2].id}`} style={{
-            position:"absolute", bottom: -10, left: 16, right: 16, height: 130,
+            position:"absolute", bottom: -8, left: 14, right: 14, height: 50,
             background:C.canvas, borderRadius:8,
             border:`1px solid ${stack[2].status==="success"?C.green+"22":stack[2].status==="error"?C.red+"22":C.border}`,
             boxShadow:"0 2px 8px rgba(13,15,26,.06)",
@@ -1198,7 +1198,7 @@ function ToastStack({ toasts, onRemove }: { toasts:Toast[]; onRemove:(id:string)
         )}
         {visible.length > 1 && stack[1] && (
           <div key={`bg1-${stack[1].id}`} style={{
-            position:"absolute", bottom: -5, left: 8, right: 8, height: 135,
+            position:"absolute", bottom: -4, left: 7, right: 7, height: 54,
             background:C.canvas, borderRadius:9,
             border:`1px solid ${stack[1].status==="success"?C.green+"33":stack[1].status==="error"?C.red+"33":C.border}`,
             boxShadow:"0 3px 12px rgba(13,15,26,.08)",
@@ -1214,7 +1214,7 @@ function ToastStack({ toasts, onRemove }: { toasts:Toast[]; onRemove:(id:string)
             background:C.canvas, borderRadius:10, padding:"12px 14px",
             border:`1.5px solid ${stack[0].status==="success"?C.green+"55":stack[0].status==="error"?C.red+"55":C.accentBorder}`,
             boxShadow:"0 4px 24px rgba(13,15,26,.18)",
-            width:TOAST_W, height:140, boxSizing:"border-box" as const,
+            width:TOAST_W, boxSizing:"border-box" as const,
             display:"flex", flexDirection:"column" as const,
             animation: animRef.current,
             willChange:"opacity, transform",
