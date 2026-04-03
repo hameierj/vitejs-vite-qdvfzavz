@@ -2493,12 +2493,14 @@ Build a complete ICP from ALL available signals.${selectedIcp ? " IMPORTANT: You
 - Name the ICP based on the actual audience pattern you observe (e.g., "Bicycle Retail — Shop Owners" not just "Small Business").
 
 Return ONLY JSON:
-{"name":"descriptive ICP name based on what you see","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":""},
+{"name":"descriptive ICP name based on what you see","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},
 "confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"keywords":0,"dream_accts":0,"neg":0,"intent_topics":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0}}
 co_sizes: array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
-tone: pick the best match from "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
-cta: pick the best match from "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
-Raw JSON only.`, "", 2000);
+tone: pick from "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
+cta: pick from "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
+best_channel: pick from "Email"|"LinkedIn"|"Phone"|"Multi-channel (Email + LinkedIn)"|"Multi-channel (All)"
+Fill ALL fields — no empty values. Infer competitor intel, channel behavior, and lead scoring from context.
+Raw JSON only.`, "", 3000);
 
     let icpFields: any = {}, icpName = "Analyzed Campaign", icpConf: any = {};
     try {
