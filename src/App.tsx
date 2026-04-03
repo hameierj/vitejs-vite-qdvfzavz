@@ -8555,14 +8555,14 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
     setIsStreaming(true);
     setStreamingText("");
 
-    // Reveal 2 characters every 18ms — smooth letter-by-letter
+    // Reveal 1 character every 22ms — deliberate letter-by-letter
     streamInterval.current = setInterval(() => {
       const full = streamFull.current;
       const pos = streamPos.current;
       if (pos >= full.length) return;
-      streamPos.current = Math.min(pos + 2, full.length);
+      streamPos.current = pos + 1;
       setStreamingText(full.slice(0, streamPos.current));
-    }, 18);
+    }, 22);
 
     // Chunks just feed into the ref
     await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
@@ -8684,11 +8684,27 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                 {msg.role === "user"
                   ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
                   : msg.id === "_streaming"
-                    ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap", display:"inline" }}>{msg.content}<span style={{
-                        display:"inline-block", width:4, height:14, borderRadius:2, marginLeft:2,
-                        background:`linear-gradient(180deg, ${C2.accent}, ${C2.accent}55)`,
-                        animation:"cursorBlink .9s ease-in-out infinite",
-                        verticalAlign:"text-bottom" }} /></span>
+                    ? (() => {
+                        const text = msg.content || "";
+                        const fadeLen = 6; // last N chars get the fade
+                        if (text.length <= fadeLen) {
+                          return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
+                            {text.split("").map((ch, i) => {
+                              const progress = text.length > 1 ? i / (text.length - 1) : 1;
+                              return <span key={i} style={{ opacity: 0.3 + progress * 0.7, filter:`blur(${(1 - progress) * 1.5}px)`, transition:"opacity .15s, filter .15s" }}>{ch}</span>;
+                            })}
+                          </span>;
+                        }
+                        const solid = text.slice(0, -fadeLen);
+                        const fading = text.slice(-fadeLen);
+                        return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
+                          {solid}
+                          {fading.split("").map((ch, i) => {
+                            const progress = i / (fadeLen - 1); // 0 = most faded, 1 = almost solid
+                            return <span key={i} style={{ opacity: 0.85 + progress * 0.15, filter:`blur(${(1 - progress) * 1.2}px)`, transition:"opacity .12s, filter .12s" }}>{ch}</span>;
+                          })}
+                        </span>;
+                      })()
                     : <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>}
               </div>
             </div>
