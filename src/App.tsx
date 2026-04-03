@@ -8686,12 +8686,14 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                   : msg.id === "_streaming"
                     ? (() => {
                         const text = msg.content || "";
-                        const fadeLen = 6; // last N chars get the fade
+                        const fadeLen = 8;
                         if (text.length <= fadeLen) {
                           return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
                             {text.split("").map((ch, i) => {
-                              const progress = text.length > 1 ? i / (text.length - 1) : 1;
-                              return <span key={i} style={{ opacity: 0.3 + progress * 0.7, filter:`blur(${(1 - progress) * 1.5}px)`, transition:"opacity .15s, filter .15s" }}>{ch}</span>;
+                              const p = text.length > 1 ? i / (text.length - 1) : 1;
+                              return <span key={i} style={{ display:"inline-block", opacity: 0.2 + p * 0.8,
+                                filter:`blur(${(1 - p) * 2}px)`, transform:`translateY(${(1 - p) * -4}px)`,
+                                transition:"all .18s ease-out" }}>{ch === " " ? "\u00A0" : ch}</span>;
                             })}
                           </span>;
                         }
@@ -8700,8 +8702,10 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                         return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
                           {solid}
                           {fading.split("").map((ch, i) => {
-                            const progress = i / (fadeLen - 1); // 0 = most faded, 1 = almost solid
-                            return <span key={i} style={{ opacity: 0.85 + progress * 0.15, filter:`blur(${(1 - progress) * 1.2}px)`, transition:"opacity .12s, filter .12s" }}>{ch}</span>;
+                            const p = i / (fadeLen - 1);
+                            return <span key={i} style={{ display:"inline-block", opacity: 0.7 + p * 0.3,
+                              filter:`blur(${(1 - p) * 1.5}px)`, transform:`translateY(${(1 - p) * -3}px)`,
+                              transition:"all .15s ease-out" }}>{ch === " " ? "\u00A0" : ch}</span>;
                           })}
                         </span>;
                       })()
