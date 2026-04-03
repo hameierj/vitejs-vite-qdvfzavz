@@ -11215,7 +11215,8 @@ function AppMain() {
     }
     const savedConf = saved?.companyConf ?? {};
     setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
-    setView("company");
+    // Don't override onboarding view — it was intentionally set for new/empty workspaces
+    setView(prev => prev === "onboarding" ? "onboarding" : "company");
     setEditingId(null);
     // Allow save effects to fire after state settles
     requestAnimationFrame(() => { loadingRef.current = false; });
