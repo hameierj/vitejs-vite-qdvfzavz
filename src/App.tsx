@@ -10962,7 +10962,23 @@ function AppMain() {
   const [showCreateAcct, setShowCreateAcct] = useState(false);
   const [newAcctName, setNewAcctName] = useState("");
   const [newAcctIndustry, setNewAcctIndustry] = useState("");
-  const [companyData,    setCompanyData]    = useState({});
+  const [companyData,    setCompanyDataRaw]    = useState({});
+  const IMPACT_FIELDS = new Set(["co_pitch","co_product","co_diff","co_ksp","co_proof","co_avoid","co_notes","co_prod_breakdown","co_category","co_competitors"]);
+  const setCompanyData = (updater: any) => {
+    setCompanyDataRaw(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      // Check if impactful fields changed
+      const seqCount = campaigns.filter(c => c.sequence?.length > 0).length;
+      if (seqCount > 0) {
+        const changed = Array.from(IMPACT_FIELDS).some(k => (prev as any)[k] !== (next as any)[k] && (prev as any)[k] && (next as any)[k]);
+        if (changed) {
+          setTimeout(() => addToast({ title:"Company data changed", status:"info",
+            message:`${seqCount} campaign sequence${seqCount!==1?"s":""} may need regenerating` }), 500);
+        }
+      }
+      return next;
+    });
+  };
   const [companyConf,    setCompanyConf]    = useState({});
   const [icps,           setIcps]           = useState([]);
   const [editingId,      setEditingId]      = useState(null);
@@ -12607,6 +12623,36 @@ Raw JSON only.`, "", 1400);
                     ))}
                   </div>
                 </div>
+
+                {/* ── Funnel Chart ── */}
+                {totals.sent > 0 && (
+                  <div style={{ marginBottom:28 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:12 }}>OUTREACH FUNNEL</div>
+                    <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:"20px 24px", boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
+                      {[
+                        { label:"Sent", value:totals.sent, color:_C.text },
+                        { label:"Opens", value:totals.opens, color:_C.accent },
+                        { label:"Replies", value:totals.replies, color:_C.amber },
+                        { label:"Positive", value:totals.posReplies, color:_C.green },
+                        { label:"Meetings", value:totals.meetings, color:_C.green },
+                      ].map((bar, i) => {
+                        const pct = totals.sent > 0 ? Math.max(2, bar.value / totals.sent * 100) : 0;
+                        const rate = i > 0 && totals.sent > 0 ? `${(bar.value / totals.sent * 100).toFixed(1)}%` : "";
+                        return (
+                          <div key={bar.label} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:i < 4 ? 10 : 0 }}>
+                            <div style={{ width:60, fontSize:10, fontFamily:mono, fontWeight:600, color:_C.muted, textAlign:"right", flexShrink:0 }}>{bar.label}</div>
+                            <div style={{ flex:1, height:20, background:_C.faint, borderRadius:4, overflow:"hidden", position:"relative" as const }}>
+                              <div style={{ height:"100%", width:`${pct}%`, background:bar.color, borderRadius:4,
+                                transition:"width .6s cubic-bezier(0.16, 1, 0.3, 1)", minWidth:bar.value > 0 ? 2 : 0 }} />
+                            </div>
+                            <div style={{ width:50, fontSize:11, fontFamily:mono, fontWeight:700, color:_C.text, textAlign:"right", flexShrink:0 }}>{bar.value.toLocaleString()}</div>
+                            <div style={{ width:40, fontSize:10, fontFamily:mono, color:_C.muted, textAlign:"right", flexShrink:0 }}>{rate}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ height:1, background:_C.border, margin:"0 0 28px" }} />
 
