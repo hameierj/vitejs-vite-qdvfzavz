@@ -393,12 +393,9 @@ const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> =
 const ALL_ICP_FIELDS = Object.values(ICP_SECTIONS).flatMap(s => s.fields) as any[];
 const TOTAL_FIELDS = ALL_ICP_FIELDS.length;
 
+// Persona-level analysis only — execution copy moved to Campaigns
 const OUTPUT_TABS = [
-  { id:"strategy",       label:"Strategy",          icon:"◎", color:C.accent,  multi:["icp_summary","pain_map","strategy_brief","exec_recs"] },
-  { id:"email_copy",     label:"Email",             icon:"◑", color:C.green  },
-  { id:"linkedin_copy",  label:"LinkedIn",          icon:"◈", color:"#0A66C2" },
-  { id:"call_script",    label:"Call Scripts",       icon:"◉", color:C.amber,  multi:["call_script","ai_call_script"] },
-  { id:"reply_handlers", label:"Replies",            icon:"◌", color:"#8B5CF6" },
+  { id:"strategy",       label:"Analysis",          icon:"◎", color:C.accent,  multi:["icp_summary","pain_map","strategy_brief","exec_recs"] },
 ];
 // For backwards compat — all individual output keys
 const ALL_OUTPUT_KEYS = ["icp_summary","pain_map","strategy_brief","email_copy","linkedin_copy","call_script","reply_handlers","ai_call_script","exec_recs"];
@@ -4440,7 +4437,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
           <div style={{ display:"flex", alignItems:"center", gap:0 }}>
             {[
               { id:"form", label:"Fill Profile", done: totFill > 0, active: panel==="form", icon: totFill===TOTAL_FIELDS?"✓":"1" },
-              { id:"outputs", label:"Outputs", done: !!icp.outputs, active: panel==="outputs", icon: icp.outputs?"✓":"2" },
+              { id:"outputs", label:"Analysis", done: !!icp.outputs, active: panel==="outputs", icon: icp.outputs?"✓":"2" },
               { id:"comments", label:"Comments", done: false, active: panel==="comments", icon: openComm>0?String(openComm):"3" },
             ].map((step, i, arr) => (
               <div key={i} style={{ display:"flex", alignItems:"center" }}>
@@ -6632,7 +6629,7 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
 }) {
   const _C = v2 ? C2 : C;
   const [selectedId, setSelectedId] = useState<string|null>(campaigns[0]?.id ?? null);
-  const [tab, setTab] = useState<"config"|"offers"|"sequence"|"benchmarks">("config");
+  const [tab, setTab] = useState<"config"|"offers"|"sequence"|"replies"|"benchmarks">("config");
   const [genOfferLoading, setGenOfferLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
@@ -6677,30 +6674,45 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
       const cd = companyData as Record<string,string>;
       const typeObj = CAMPAIGN_TYPES.find(t => t.id === selected.type);
 
+      const isEmail = selected.type === "cold_email" || selected.type === "retargeting";
+      const isLinkedIn = selected.type === "linkedin_connection" || selected.type === "linkedin_message";
+      const isCalling = selected.type === "rts_calling";
+
+      const channelRules = isEmail
+        ? `CHANNEL: Email sequence (5 steps)
+- Step 1 (Day 0): HOOK — lead with primary pain, use the offer CTA
+- Step 2 (Day 3): PROOF — social proof, case study, different angle
+- Step 3 (Day 7): VALUE — address secondary pain, show specific value
+- Step 4 (Day 14): URGENCY — trigger-based, time-sensitive angle
+- Step 5 (Day 21): BREAKUP — last chance, human, very short
+For Step 1, generate 2 A/B variants with different subject lines.
+Rules: Max 80 words per body, 6 words max for subjects. No AI-sounding phrases.`
+        : isLinkedIn
+        ? `CHANNEL: LinkedIn ${selected.type === "linkedin_connection" ? "connection request + follow-up messages" : "direct messages"} (3 steps)
+- Step 1 (Day 0): ${selected.type === "linkedin_connection" ? "CONNECTION NOTE — 300 char max, personalized, mention something specific" : "FIRST MESSAGE — short, relevant, reference mutual context"}
+- Step 2 (Day 3): FOLLOW-UP — add value, share insight or resource
+- Step 3 (Day 7): SOFT ASK — use the offer CTA naturally
+Rules: LinkedIn messages should be conversational, short (under 100 words), and feel personal.`
+        : `CHANNEL: Cold call script (1 detailed script)
+- Step 1: COLD CALL SCRIPT with sections: Opening (15 sec), Pain Question, Value Pitch, Objection Handling, Close/CTA
+Include: what to say when they pick up, how to handle "not interested", how to handle "send me info", the specific CTA ask.
+Rules: Natural spoken language, not formal. Include pauses and questions.`;
+
       const prompt = `Generate a ${typeObj?.label || selected.type} outreach sequence.
 
 COMPANY: ${cd.co_name || "?"} — ${cd.co_industry || "?"}
 PRODUCT: ${product?.name || "General"} — ${product?.valueProposition || product?.description || ""}
 OFFER (${offer?.tier || "soft"} CTA): "${offer?.ctaText || offer?.name || "Worth a quick chat?"}"
 PERSONA: ${persona?.name || "General"} — Titles: ${persona?.data?.buyer || "?"}, Pain: ${persona?.data?.pain1 || "?"}
-COMPETITOR INTEL: Currently using: ${persona?.data?.current_solutions || "unknown"}. Displacement: ${persona?.data?.displacement_messaging || "N/A"}
+COMPETITOR: Currently using: ${persona?.data?.current_solutions || "unknown"}. Displacement: ${persona?.data?.displacement_messaging || "N/A"}
 TONE: ${persona?.data?.tone || "Consultative"}
 
-SEQUENCE STRUCTURE (5 steps):
-- Step 1 (Day 0): HOOK — lead with primary pain, use the offer CTA
-- Step 2 (Day 3): PROOF — social proof, case study, different angle
-- Step 3 (Day 7): VALUE — address secondary pain, show specific value
-- Step 4 (Day 14): URGENCY — trigger-based, time-sensitive angle
-- Step 5 (Day 21): BREAKUP — last chance, human, very short
+${channelRules}
 
-For Step 1, generate 2 A/B variants with different subject lines.
-
-Rules:
+General rules:
 - Use the EXACT offer CTA text, not generic asks
 - Reference competitor displacement if available
-- Max 80 words per email body, 6 words max for subject lines
-- No "I hope this finds you well" or AI-sounding phrases
-- Sound like a real human wrote it quickly
+- Sound like a real human, not AI
 
 Return ONLY valid JSON:
 {"steps":[{"stepNumber":1,"role":"hook","dayOffset":0,"subject":"...","body":"...","variants":[{"label":"Variant B","subject":"...","body":"...","testVariable":"subject_line"}]},{"stepNumber":2,"role":"proof","dayOffset":3,"subject":"...","body":"...","variants":[]},...],"abTest":{"stepId":"step_1","variable":"subject_line"}}`;
@@ -6802,10 +6814,10 @@ Return ONLY valid JSON:
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
           {/* Tab bar */}
           <div style={{ display:"flex", alignItems:"center", gap:4, padding:"12px 24px", borderBottom:`1px solid ${_C.border}`, flexShrink:0 }}>
-            {(["config","offers","sequence","benchmarks"] as const).map(t => {
+            {(["config","offers","sequence","replies","benchmarks"] as const).map(t => {
               const on = tab === t;
               const campaignOffers = selected ? offers.filter((o:any) => (selected.personaIds||[]).some((pid:string)=>o.personaId===pid) && o.productId===selected.productId) : [];
-              const labels = { config:"Setup", offers:`Offers (${campaignOffers.length})`, sequence:`Sequence (${selected.sequence?.length||0})`, benchmarks:"Benchmarks" };
+              const labels = { config:"Setup", offers:`Offers (${campaignOffers.length})`, sequence:`Sequence (${selected.sequence?.length||0})`, replies:"Replies", benchmarks:"Benchmarks" };
               return (
                 <button key={t} onClick={()=>setTab(t)}
                   style={{ padding:"7px 16px", borderRadius:8, border:"none",
@@ -7099,6 +7111,85 @@ Return ONLY valid JSON:
             )}
 
             {/* BENCHMARKS TAB */}
+            {/* REPLIES TAB */}
+            {tab === "replies" && selected && (() => {
+              const persona = personas.find((p:any) => (selected.personaIds||[])[0] === p.id);
+              const product = products.find((p:any) => p.id === selected.productId);
+              const [genReplies, setGenReplies] = useState(false);
+              const replies = selected.replyHandlers || [];
+
+              const generateReplies = async () => {
+                if (!persona || !product) { addToast({ title:"Select persona & product first", status:"error", message:"" }); return; }
+                setGenReplies(true);
+                addToast({ title:"Generating reply handlers…", status:"loading", message:`${product.name} × ${persona.name}` });
+                try {
+                  const cd = companyData as Record<string,string>;
+                  const raw = await callAI(
+                    `Generate reply handlers for a ${CAMPAIGN_TYPES.find(t=>t.id===selected.type)?.label||"cold"} campaign.\n\nCompany: ${cd.co_name||""}\nProduct: ${product.name}\nPersona: ${persona.name} — ${persona.data?.buyer||""}\n\nFor each reply type, provide the response template:\n1. interested — they want to learn more\n2. not_interested — polite decline\n3. not_now — bad timing, follow up later\n4. objection_price — too expensive\n5. objection_competitor — using something else\n6. meeting_request — they want to meet\n7. info_request — send me more info\n8. wrong_person — not the right contact\n\nReturn ONLY JSON array: [{"type":"interested","label":"Interested","response":"..."},...]`,
+                    "", 2000
+                  );
+                  const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+                  if (Array.isArray(parsed)) {
+                    updCampaign(selected.id, { replyHandlers: parsed });
+                    addToast({ title:"Reply handlers created", status:"success", message:`${parsed.length} templates` });
+                  }
+                } catch { addToast({ title:"Failed", status:"error", message:"Try again" }); }
+                setGenReplies(false);
+              };
+
+              return (
+                <div style={{ maxWidth:700, animation:"contentFade .3s ease" }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+                    <div>
+                      <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Reply Handlers</div>
+                      <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>
+                        Pre-written responses for common reply types
+                      </div>
+                    </div>
+                    <button onClick={generateReplies} disabled={genReplies}
+                      style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${_C.greenBorder}`,
+                        background:_C.greenLo, color:_C.green, fontSize:11, fontFamily:head, fontWeight:700,
+                        cursor:genReplies?"wait":"pointer", opacity:genReplies?0.6:1 }}>
+                      {genReplies ? "◌ Generating..." : "◎ Generate Replies"}
+                    </button>
+                  </div>
+
+                  {replies.length === 0 ? (
+                    <div style={{ textAlign:"center", padding:"40px 20px", background:_C.faint, borderRadius:14, border:`1px solid ${_C.border}` }}>
+                      <div style={{ fontSize:13, color:_C.muted, fontFamily:body, marginBottom:12 }}>
+                        No reply handlers yet. Generate templates for common response types.
+                      </div>
+                      <button onClick={generateReplies} disabled={genReplies || !persona || !product}
+                        style={{ padding:"8px 20px", borderRadius:8, border:"none", background:_C.accent, color:"#fff",
+                          fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                        Generate Reply Templates
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                      {replies.map((r: any, ri: number) => {
+                        const typeColors: Record<string,string> = { interested:_C.green, meeting_request:_C.green, info_request:_C.blue, not_now:_C.amber, not_interested:_C.muted, objection_price:_C.red, objection_competitor:_C.red, wrong_person:_C.muted };
+                        return (
+                          <div key={ri} style={{ background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`,
+                            borderLeft:`4px solid ${typeColors[r.type]||_C.accent}`, padding:"14px 18px" }}>
+                            <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:6 }}>
+                              {r.label || r.type}
+                            </div>
+                            <textarea value={r.response||""} onChange={e=>{
+                              const updated = [...replies]; updated[ri] = { ...r, response: e.target.value };
+                              updCampaign(selected.id, { replyHandlers: updated });
+                            }} rows={3}
+                              style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${_C.border}`,
+                                background:_C.faint, color:_C.text, fontSize:12, fontFamily:body, outline:"none", resize:"vertical" }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {tab === "benchmarks" && (
               <div style={{ maxWidth:600, animation:"contentFade .3s ease" }}>
                 <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>Campaign Benchmarks</div>
