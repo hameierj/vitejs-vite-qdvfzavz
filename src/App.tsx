@@ -8533,24 +8533,48 @@ CAPABILITIES:
 - Help plan new campaigns, personas, or products
 - Draft copy, subject lines, messaging angles, or reply templates
 
-RESPONSE FORMAT (strict):
-- KEEP IT SHORT. Max 4-6 bullet points per response. No walls of text.
-- Lead with the answer or insight in 1-2 sentences. Then bullets for details.
-- Each bullet should be one line, not a paragraph. If you need more detail, the user will ask.
-- Use **bold** for key terms. Use - bullets, not numbered lists.
-- Never repeat information the user already knows. Don't echo back their data — just reference it.
-- If multiple issues exist, list the top 3 by impact. Say "and N more — ask to see the rest" for the remainder.
-- For slash commands (/audit, /review-campaigns, /compare-personas, /next-steps, /review-products, /strategy): still keep it structured and scannable — use short headers and 2-3 bullets per section max.
-- End with one clear next action, not a summary paragraph.
+RESPONSE FORMAT (strict — you MUST follow these):
+- BREVITY IS MANDATORY. Your entire response must be under 150 words. The user can always ask for more.
+- Lead with 1 sentence answering the question. Then 3-5 short bullets max.
+- Each bullet = one short line. NEVER write multi-sentence bullets.
+- Use **bold** sparingly. Use - bullets, not numbered lists.
+- Do NOT repeat or echo back the user's data. Just reference it by name.
+- If many issues exist, show top 3 only. End with "X more — ask to expand."
+- For slash commands: use ## headers with 2-3 bullets each, 4 sections max.
+- End with one next action in bold. No summary paragraphs. No sign-offs.
 ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page.` : ""}`;
 
     setIsStreaming(true);
     setStreamingText("");
     let full = "";
-    await callAIStream(apiMessages, systemPrompt, 2048, chunk => {
+    let displayed = "";
+    let buffer = "";
+    let rafId = 0;
+
+    // Smooth reveal: buffer incoming chunks, render char-by-char at ~30 chars/frame
+    const reveal = () => {
+      if (buffer.length > 0) {
+        const charsPerFrame = Math.max(1, Math.min(4, Math.ceil(buffer.length / 8)));
+        const next = buffer.slice(0, charsPerFrame);
+        buffer = buffer.slice(charsPerFrame);
+        displayed += next;
+        setStreamingText(displayed);
+      }
+      if (buffer.length > 0 || full !== displayed) {
+        rafId = requestAnimationFrame(reveal);
+      }
+    };
+
+    await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
       full += chunk;
-      setStreamingText(full);
+      buffer += chunk;
+      if (!rafId) rafId = requestAnimationFrame(reveal);
     });
+
+    // Flush any remaining buffer
+    cancelAnimationFrame(rafId);
+    displayed = full;
+    setStreamingText(full);
 
     const assistantMsg = { id: uid(), role: "assistant" as const, content: full, timestamp: Date.now() };
     onChatsChange(prev => prev.map(c =>
