@@ -8439,8 +8439,36 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const [isStreaming,    setIsStreaming]    = useState(false);
   const [streamingText,  setStreamingText]  = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
-  const streamBuf = useRef("");
-  const streamTimer = useRef<any>(null);
+  const streamFull = useRef("");
+  const streamPos = useRef(0);
+  const streamRaf = useRef(0);
+  const lastFrame = useRef(0);
+
+  // Word-by-word reveal loop — runs independently of chunk arrival
+  const revealLoop = useCallback(() => {
+    const now = performance.now();
+    const elapsed = now - lastFrame.current;
+    if (elapsed >= 30) { // ~33fps
+      lastFrame.current = now;
+      const full = streamFull.current;
+      const pos = streamPos.current;
+      if (pos < full.length) {
+        // Advance by 2-6 words worth of characters per frame
+        let next = pos;
+        let words = 0;
+        const targetWords = full.length - pos > 100 ? 6 : 3; // catch up faster when behind
+        while (next < full.length && words < targetWords) {
+          if (full[next] === ' ' || full[next] === '\n') words++;
+          next++;
+        }
+        // At minimum advance 1 char
+        next = Math.max(pos + 1, next);
+        streamPos.current = Math.min(next, full.length);
+        setStreamingText(full.slice(0, streamPos.current));
+      }
+    }
+    streamRaf.current = requestAnimationFrame(revealLoop);
+  }, []);
 
   // Slash commands
   const SLASH_COMMANDS: Record<string,string> = {
@@ -8549,25 +8577,36 @@ RESPONSE FORMAT (strict — you MUST follow these):
 - End with one next action in bold. No summary paragraphs. No sign-offs.
 ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page.` : ""}`;
 
-    streamBuf.current = "";
+    streamFull.current = "";
+    streamPos.current = 0;
+    lastFrame.current = performance.now();
     setIsStreaming(true);
     setStreamingText("");
 
-    // Throttled state updates — batch chunks, update React at most every 120ms
-    const flush = () => { setStreamingText(streamBuf.current); };
+    // Start the reveal loop
+    streamRaf.current = requestAnimationFrame(revealLoop);
 
+    // Chunks just feed into the full text ref — no React updates here
     await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
-      streamBuf.current += chunk;
-      if (!streamTimer.current) {
-        streamTimer.current = setTimeout(() => { flush(); streamTimer.current = null; }, 120);
-      }
+      streamFull.current += chunk;
     });
 
-    // Final flush
-    if (streamTimer.current) { clearTimeout(streamTimer.current); streamTimer.current = null; }
-    setStreamingText(streamBuf.current);
+    // Stream done — let reveal loop finish catching up
+    await new Promise<void>(resolve => {
+      const wait = () => {
+        if (streamPos.current >= streamFull.current.length) { resolve(); return; }
+        requestAnimationFrame(wait);
+      };
+      wait();
+    });
 
-    const assistantMsg = { id: uid(), role: "assistant" as const, content: streamBuf.current, timestamp: Date.now() };
+    // Stop the loop
+    cancelAnimationFrame(streamRaf.current);
+
+    const full = streamFull.current;
+    setStreamingText(full);
+
+    const assistantMsg = { id: uid(), role: "assistant" as const, content: full, timestamp: Date.now() };
     onChatsChange(prev => prev.map(c =>
       c.id === targetId ? { ...c, messages: [...c.messages, assistantMsg] } : c
     ));
