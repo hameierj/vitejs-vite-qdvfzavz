@@ -8578,16 +8578,11 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
   ];
 
   return (
-    <>
-      {/* Backdrop */}
-      <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.3)", zIndex:998,
-        backdropFilter:"blur(2px)", animation:"pageFade .2s ease" }} />
-
-      {/* Slide-out panel */}
-      <div style={{ position:"fixed", top:0, right:0, bottom:0, width:"clamp(380px, 35vw, 520px)", zIndex:999,
-        display:"flex", flexDirection:"column", background:C2.canvas,
-        borderLeft:`1px solid ${C2.border}`, boxShadow:"-8px 0 40px rgba(13,15,26,0.12)",
-        animation:"copilotSlideIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+      /* Bottom-right popup */
+      <div style={{ position:"fixed", bottom:24, right:24, width:"clamp(360px, 30vw, 440px)", height:"clamp(480px, 60vh, 640px)",
+        zIndex:999, display:"flex", flexDirection:"column", background:C2.canvas,
+        borderRadius:20, border:`1px solid ${C2.border}`, boxShadow:"0 12px 48px rgba(13,15,26,0.18), 0 0 0 1px rgba(108,92,231,0.08)",
+        animation:"copilotPopUp .3s cubic-bezier(0.16, 1, 0.3, 1)", overflow:"hidden" }}>
 
         {/* Header */}
         <div style={{ padding:"14px 18px", borderBottom:`1px solid ${C2.border}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
@@ -8699,7 +8694,6 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
           </div>
         </div>
       </div>
-    </>
   );
 }
 
@@ -11509,6 +11503,7 @@ Raw JSON only.`, "", 1400);
         @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes onboardCardIn{0%{opacity:0;transform:translateY(16px) scale(0.97)}100%{opacity:1;transform:translateY(0) scale(1)}}
         @keyframes copilotSlideIn{0%{transform:translateX(100%);opacity:0}100%{transform:translateX(0);opacity:1}}
+        @keyframes copilotPopUp{0%{opacity:0;transform:translateY(20px) scale(0.95)}100%{opacity:1;transform:translateY(0) scale(1)}}
         @keyframes obLetterIn{0%{opacity:0;transform:translateY(-12px);filter:blur(4px)}100%{opacity:1;transform:translateY(0);filter:blur(0)}}
         @keyframes obSubIn{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
@@ -11581,21 +11576,6 @@ Raw JSON only.`, "", 1400);
                   onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=view==="onboarding"?C2.accent:C2.accent+"66";(e.currentTarget as HTMLButtonElement).style.background=view==="onboarding"?`${C2.accent}14`:`${C2.accent}06`;}}>
                   <span style={{ fontSize:16 }}>🚀</span>
                   <span style={{ fontSize:13, fontFamily:head, fontWeight:700, color:C2.accent }}>Get Started</span>
-                </button>
-              )}
-
-              {/* Copilot toggle */}
-              {activeWorkspace && (
-                <button onClick={()=>setShowCopilot(p=>!p)}
-                  style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"11px 14px",
-                    borderRadius:12, border:"none",
-                    background: showCopilot ? `${C2.accent}14` : "transparent",
-                    color: showCopilot ? C2.accent : C2.muted,
-                    cursor:"pointer", textAlign:"left", marginBottom:4, transition:"all .2s" }}
-                  onMouseEnter={e=>{ if(!showCopilot)(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                  onMouseLeave={e=>{ if(!showCopilot)(e.currentTarget as HTMLButtonElement).style.background=showCopilot?`${C2.accent}14`:"transparent"; }}>
-                  <span style={{ fontSize:16, width:20, textAlign:"center" }}>◎</span>
-                  <span style={{ fontSize:13, fontFamily:head, fontWeight:showCopilot?700:600 }}>Copilot</span>
                 </button>
               )}
 
@@ -13122,7 +13102,19 @@ Raw JSON only.`, "", 1400);
         );
       })()}
       <ToastStack toasts={toasts} onRemove={removeToast} />
-      {/* ── Floating Copilot Panel ── */}
+      {/* ── Copilot FAB + Panel ── */}
+      {activeWorkspace && !showCopilot && (
+        <button onClick={()=>setShowCopilot(true)}
+          style={{ position:"fixed", bottom:24, right:24, zIndex:900, width:52, height:52, borderRadius:16,
+            border:"none", background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`, color:"#fff",
+            fontSize:18, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+            boxShadow:`0 4px 20px ${C2.accent}40`, transition:"all .2s",
+            animation:"btnPop .3s cubic-bezier(0.16, 1, 0.3, 1)" }}
+          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.transform="scale(1.08)";(e.currentTarget as HTMLElement).style.boxShadow=`0 6px 28px ${C2.accent}55`;}}
+          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.transform="scale(1)";(e.currentTarget as HTMLElement).style.boxShadow=`0 4px 20px ${C2.accent}40`;}}>
+          AI
+        </button>
+      )}
       {showCopilot && activeWorkspace && (
         <StrategyChatPanel
           chats={chats}
