@@ -11684,6 +11684,20 @@ Raw JSON only.`, "", 1400);
               {/* Nav items — grouped */}
               {activeWorkspace && (
                 <>
+                  {/* ── GETTING STARTED (for empty workspaces) ── */}
+                  {!(companyData as any)?.co_name && !(icps as any[]).length && !(products as any[]).length && (
+                    <button onClick={()=>setView("onboarding")}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:`1.5px dashed ${view==="onboarding"?C2.accent:C2.border}`,
+                        background: view==="onboarding" ? `${C2.accent}14` : `${C2.accent}06`,
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:4, marginTop:8 }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C2.accent;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=view==="onboarding"?C2.accent:C2.border;}}>
+                      <span style={{ fontSize:14, width:18, textAlign:"center" }}>🚀</span>
+                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:700, color:C2.accent }}>Get Started</span>
+                    </button>
+                  )}
+
                   {/* ── RESEARCH ── */}
                   <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
