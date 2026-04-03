@@ -317,7 +317,7 @@ const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> =
       { id:"industries", label:"Target Industries",          type:"textarea", ph:"B2B SaaS, Healthcare IT, Manufacturing…", rows:2, hint:"Specific verticals — not just \'tech\' or \'enterprise\'" },
       { id:"co_sizes",   label:"Company Size",               type:"chips",    opts:["SMB 1–50","Mid-Market 51–500","Enterprise 500+"] },
       { id:"geo",        label:"Geographies",                type:"text",     ph:"North America, UK, DACH, ANZ…" },
-      { id:"revenue",    label:"Revenue Range",              type:"select",   opts:["Any","<$1M","$1M–$10M","$10M–$50M","$50M–$250M","$250M+"] },
+      { id:"revenue",    label:"Revenue Range",              type:"text",     ph:"$5M–$50M, or 'Any'", hint:"Target company revenue range" },
       { id:"tech",       label:"Tech Stack Signals",         type:"textarea", ph:"Uses Salesforce, HubSpot, SAP, Workday…", rows:2, hint:"Tools they use that indicate they\'re a fit" },
       { id:"keywords",   label:"Search Keywords",            type:"textarea", ph:"Terms that indicate fit — job post keywords, tech mentions, industry jargon.", rows:2, hint:"Keywords used to find and qualify prospects" },
       { id:"dream_accts",label:"Dream Accounts",             type:"textarea", ph:"Specific companies you\'d love to land — names, websites, LinkedIn URLs.", rows:2, hint:"Helps define the ideal profile for lookalike targeting" },
@@ -356,9 +356,9 @@ const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> =
       { id:"cta",       label:"CTA Style",                      type:"select",   opts:["15-min call ask","Soft permission (\'worth a chat?\')","Video/resource share","Direct demo ask","Open-ended question","Easy yes/no reply","Direct callback ask"] },
       { id:"why_client_wins", label:"Why Client Wins for This ICP", type:"textarea", ph:"We win because of speed, flexibility, human process — better fit than banks for messy finances…", rows:2, hint:"Why your client specifically beats alternatives for THIS ICP" },
       { id:"icp_proof", label:"Best Proof for This ICP",        type:"textarea", ph:"Which case study, logo, or stat lands hardest for this audience?", hint:"One targeted proof point beats five generic ones" },
-      { id:"ref_emails",label:"Reference Email Copy",           type:"textarea", ph:"Paste examples of emails that have worked well for this audience — subject lines and body.", rows:4, hint:"Gives the AI a proven style to build from", noConf:true },
-      { id:"seq_strategy", label:"Sequence Strategy",           type:"select",   opts:["Single narrative (same lane, different angles)","Multi-angle (different strategies per email)","Escalating aggression","Problem → Solution → Proof → Urgency → Breakup"], noConf:true },
-      { id:"seq_cta_style",label:"CTA Variation",               type:"select",   opts:["Same CTA style throughout","Varied CTAs per email","Escalating commitment"], noConf:true },
+      { id:"ref_emails",label:"Reference Email Copy (manual)",   type:"textarea", ph:"Paste examples of emails that have worked well for this audience — subject lines and body. AI won't fill this — paste your own.", rows:4, hint:"User-provided only. Paste proven emails so AI can match the style when generating sequences.", noConf:true },
+      { id:"seq_strategy", label:"Sequence Strategy",           type:"textarea", ph:"e.g., Start with pain-focused hook, follow with proof, escalate urgency, end with breakup", rows:2, hint:"How should the email sequence flow? Single narrative, multi-angle, escalating?", noConf:true },
+      { id:"seq_cta_style",label:"CTA Variation",               type:"text",     ph:"e.g., Soft ask first, escalate to direct demo ask by step 3", hint:"Same CTA throughout or escalating commitment?", noConf:true },
     ]
   },
   competitorIntel: { label:"Competitor Intel", icon:"⊘",
@@ -376,7 +376,7 @@ const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> =
       { id:"best_time",           label:"Best Time to Reach",       type:"text",     ph:"Tuesday-Thursday 9-11am EST",                       hint:"Industry-specific — construction = early morning, SaaS = mid-morning" },
       { id:"linkedin_activity",   label:"LinkedIn Activity Level",  type:"select",   opts:["Very Active (posts/comments weekly)","Moderate (engages occasionally)","Low (profile exists, rarely active)","Inactive / No profile"], noConf:true },
       { id:"phone_accessibility", label:"Phone Accessibility",      type:"select",   opts:["Direct dial available","Mobile available","Gatekeeper (assistant)","Voicemail only","Not available / don't call"], noConf:true },
-      { id:"email_preference",    label:"Email Response Pattern",   type:"select",   opts:["Responds to short punchy emails","Prefers detailed/professional","Responds to personalization","Responds to data/stats","Mobile reader (keep very short)"], noConf:true },
+      { id:"email_preference",    label:"Email Response Pattern",   type:"text",     ph:"e.g., Responds to short punchy emails, data-driven, mobile reader", hint:"How does this persona type prefer to receive cold emails?", noConf:true },
     ]
   },
   leadScoring: { label:"Lead Scoring", icon:"⊛",
@@ -2150,7 +2150,7 @@ CRITICAL: Every field MUST be filled. Be specific and actionable, not generic.
 - All lead scoring: what counts as interested/warm/meeting-ready/not-now/dead for this persona
 
 Return ONLY JSON:
-{"name":"Short label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","ref_emails":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},
+{"name":"Short label","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},
 "confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"keywords":0,"dream_accts":0,"neg":0,"intent_topics":0,"real_filters":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0}}
 co_sizes: array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
 tone: one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
