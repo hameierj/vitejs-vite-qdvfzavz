@@ -11457,7 +11457,7 @@ Raw JSON only.`, "", 1400);
     if (result.offers?.length) setOffers(prev => [...prev, ...result.offers]);
     setShowQS(false);
     // Keep progress screen open until user clicks "Go to Dashboard"
-    setView("products");
+    setView("company");
   }, []);
 
   const handleAnalyzerComplete = useCallback(result => {
@@ -12870,7 +12870,7 @@ Raw JSON only.`, "", 1400);
 
             // Show completion on progress page
             prog(6, "validate", `${_tf} total fields · ${Math.floor(_ts/3600)}h ${Math.round((_ts%3600)/60)}m saved`);
-            setView("products");
+            setView("company");
           }} />,
         document.body
       )}
