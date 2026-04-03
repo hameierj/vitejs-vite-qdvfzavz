@@ -4679,7 +4679,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   products: any[]; onProductsChange: (p: any[]) => void; companyData: any; fileContext?: string; v2?: boolean; addToast?: (t:any)=>string;
 }) {
   const _C = v2 ? C2 : C;
-  const [selectedId, setSelectedId] = useState<string|null>(products[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string|null>(null);
   const [secTab, setSecTab] = useState("core");
   const [aiOn, setAiOn] = useState<string|null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -4739,7 +4739,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   const deleteProduct = (id: string) => {
     if (!confirm("Delete this product?")) return;
     onProductsChange(products.filter(p => p.id !== id));
-    if (selectedId === id) setSelectedId(products.filter(p => p.id !== id)[0]?.id ?? null);
+    if (selectedId === id) setSelectedId(null);
   };
 
   const aiExtractAll = async () => {
@@ -4813,223 +4813,305 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
     width:"100%", transition:"border-color .15s", resize:"vertical" as const };
 
   return (
-    <div style={{ display:"flex", height:"100%", overflow:"hidden" }}>
-      {/* Product list sidebar */}
-      <div style={{ width:240, flexShrink:0, display:"flex", flexDirection:"column",
-        borderRight:`1px solid ${_C.border}`, background:v2?_C.faint:_C.surface, overflow:"hidden" }}>
-        <div style={{ padding:"12px", flexShrink:0, display:"flex", flexDirection:"column", gap:6 }}>
-          <button onClick={()=>setShowAddModal(true)}
-            style={{ width:"100%", padding:"9px 14px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
-              fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
-            + Add Product
-          </button>
-          <button onClick={aiExtractAll} disabled={aiExtracting}
-            style={{ width:"100%", padding:"7px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
-              background:_C.canvas, color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600,
-              cursor:aiExtracting?"wait":"pointer", opacity:aiExtracting?0.6:1 }}>
-            {aiExtracting ? "◌ Scanning..." : "◎ Auto-detect from profile"}
-          </button>
-        </div>
-        {/* Add Product Modal */}
-        {showAddModal && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:300,
-            display:"flex", alignItems:"center", justifyContent:"center", padding:24, backdropFilter:"blur(4px)" }}
-            onClick={()=>{ if(!addCreating) setShowAddModal(false); }}>
-            <div style={{ width:"100%", maxWidth:520, background:_C.canvas, borderRadius:16,
-              border:`1px solid ${_C.border}`, boxShadow:"0 24px 60px rgba(13,15,26,0.2)",
-              animation:"slideUp .3s cubic-bezier(.2,0,.1,1)" }} onClick={e=>e.stopPropagation()}>
-              <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${_C.border}` }}>
-                <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Add Product or Service</div>
-                <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:4 }}>
-                  Describe it, provide a link, or add it manually and fill in the fields yourself.
-                </div>
-              </div>
-              <div style={{ padding:"20px 24px", display:"flex", flexDirection:"column", gap:14 }}>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
-                    Describe the product/service
-                  </label>
-                  <textarea value={addDesc} onChange={e=>setAddDesc(e.target.value)}
-                    rows={4} placeholder="Tell us about this product — what it is, who it's for, what problems it solves, how it works..."
-                    style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${_C.border}`,
-                      background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none", resize:"vertical" }}
-                    onFocus={e=>e.target.style.borderColor=_C.accent+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
-                </div>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
-                    Product page URL <span style={{ fontWeight:400, color:_C.muted }}>(optional)</span>
-                  </label>
-                  <input value={addUrl} onChange={e=>setAddUrl(e.target.value)}
-                    placeholder="https://example.com/product-page"
-                    style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
-                      background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }}
-                    onFocus={e=>e.target.style.borderColor=_C.accent+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
-                </div>
-              </div>
-              <div style={{ padding:"16px 24px", borderTop:`1px solid ${_C.border}`, display:"flex", gap:10, justifyContent:"flex-end" }}>
-                <button onClick={()=>{ setShowAddModal(false); setAddDesc(""); setAddUrl(""); }}
-                  style={{ padding:"9px 18px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
-                    color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
-                <button onClick={addProductManual}
-                  style={{ padding:"9px 18px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
-                    color:_C.text, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Add Blank</button>
-                <button onClick={addProductWithAI} disabled={addCreating || (!addDesc.trim() && !addUrl.trim())}
-                  style={{ padding:"9px 18px", borderRadius:10, border:"none",
-                    background: (addDesc.trim() || addUrl.trim()) ? _C.accent : _C.muted, color:"#fff",
-                    fontSize:12, fontFamily:head, fontWeight:700, cursor:addCreating?"wait":"pointer",
-                    opacity:addCreating?0.7:1, boxShadow:`0 2px 8px ${_C.accent}44` }}>
-                  {addCreating ? "◌ Creating..." : "◎ Create with AI"}
-                </button>
+    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+      {/* Add Product Modal */}
+      {showAddModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:300,
+          display:"flex", alignItems:"center", justifyContent:"center", padding:24, backdropFilter:"blur(4px)" }}
+          onClick={()=>{ if(!addCreating) setShowAddModal(false); }}>
+          <div style={{ width:"100%", maxWidth:520, background:_C.canvas, borderRadius:16,
+            border:`1px solid ${_C.border}`, boxShadow:"0 24px 60px rgba(13,15,26,0.2)",
+            animation:"slideUp .3s cubic-bezier(.2,0,.1,1)" }} onClick={e=>e.stopPropagation()}>
+            <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${_C.border}` }}>
+              <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text }}>Add Product or Service</div>
+              <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:4 }}>
+                Describe it, provide a link, or add it manually and fill in the fields yourself.
               </div>
             </div>
-          </div>
-        )}
-        <div style={{ flex:1, overflowY:"auto", padding:"0 8px 8px" }}>
-          {products.length === 0 && (
-            <div style={{ padding:"32px 12px", textAlign:"center" }}>
-              <div style={{ fontSize:22, marginBottom:8, opacity:.3 }}>◆</div>
-              <div style={{ fontSize:12, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:4 }}>No products yet</div>
-              <div style={{ fontSize:11, color:_C.muted, fontFamily:body, lineHeight:1.5 }}>Add your first product or use AI to extract from company info.</div>
-            </div>
-          )}
-          {products.map((p, i) => {
-            const isOn = selectedId === p.id;
-            const pFilled = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
-            const pPct = Math.round(pFilled / PRODUCT_FIELDS.length * 100);
-            return (
-              <div key={p.id} onClick={()=>setSelectedId(p.id)}
-                style={{ padding:"10px 12px", borderRadius:10, marginBottom:4, cursor:"pointer",
-                  border:`2px solid ${isOn?_C.accent+"44":_C.border}`,
-                  background: isOn ? `${_C.accent}08` : _C.canvas,
-                  boxShadow: isOn ? `0 2px 8px ${_C.accent}11` : "none",
-                  transition:"all .2s" }}
-                onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=_C.canvas; }}
-                onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background="transparent"; }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-                  <div style={{ fontSize:13, fontWeight:isOn?700:500, fontFamily:head, color:isOn?_C.text:_C.textSoft,
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1 }}>
-                    {p.name || `Product ${i+1}`}
-                  </div>
-                  <button onClick={e=>{e.stopPropagation(); deleteProduct(p.id);}}
-                    style={{ width:20, height:20, borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent",
-                      color:_C.muted, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                      opacity:isOn?1:0, transition:"opacity .15s" }}
-                    onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;}}
-                    onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;}}>×</button>
-                </div>
-                <div style={{ height:3, borderRadius:2, background:_C.faint, overflow:"hidden" }}>
-                  <div style={{ height:"100%", borderRadius:2, width:`${pPct}%`, background:pPct===100?_C.green:_C.accent, transition:"width .3s ease" }} />
-                </div>
-                <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginTop:4 }}>{pPct}% complete</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Editor */}
-      {selected ? (
-        <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
-          {/* Section nav */}
-          <div style={{ width:180, flexShrink:0, background:v2?_C.faint:_C.surface, borderRight:`1px solid ${_C.border}`,
-            padding:"16px 8px", overflowY:"auto" }}>
-            {secKeys.map(key => {
-              const s = PRODUCT_SECTIONS[key as keyof typeof PRODUCT_SECTIONS];
-              const sf = s.fields.filter(f => selected[f.id] && String(selected[f.id]).trim()).length;
-              const on = secTab === key;
-              const allDone = sf === s.fields.length;
-              return (
-                <button key={key} onClick={()=>setSecTab(key)}
-                  style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px",
-                    borderRadius:10, border:"none", whiteSpace:"nowrap",
-                    background: on ? `${_C.accent}14` : "transparent",
-                    cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:3 }}
-                  onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=_C.canvas; }}
-                  onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=on?`${_C.accent}14`:"transparent"; }}>
-                  <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight:on?700:500, color:on?_C.text:_C.textSoft }}>{s.label}</span>
-                  <span style={{ fontSize:10, fontFamily:mono, fontWeight:600,
-                    color:allDone?_C.green:on?_C.accent:_C.muted,
-                    background:allDone?_C.greenLo:on?`${_C.accent}11`:_C.canvas,
-                    padding:"2px 7px", borderRadius:6 }}>
-                    {allDone?"Done":`${sf}/${s.fields.length}`}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Fields */}
-          <div style={{ flex:1, padding:"28px 32px", overflowY:"auto", minHeight:0 }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+            <div style={{ padding:"20px 24px", display:"flex", flexDirection:"column", gap:14 }}>
               <div>
-                <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head }}>{sec.label}</div>
-                <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>{selected.name || "Unnamed product"}</div>
+                <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                  Describe the product/service
+                </label>
+                <textarea value={addDesc} onChange={e=>setAddDesc(e.target.value)}
+                  rows={4} placeholder="Tell us about this product — what it is, who it's for, what problems it solves, how it works..."
+                  style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${_C.border}`,
+                    background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none", resize:"vertical" }}
+                  onFocus={e=>e.target.style.borderColor=_C.accent+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
               </div>
-              <span style={{ fontSize:12, fontFamily:mono, color:_C.muted, background:_C.faint,
-                padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{pct}% complete</span>
+              <div>
+                <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                  Product page URL <span style={{ fontWeight:400, color:_C.muted }}>(optional)</span>
+                </label>
+                <input value={addUrl} onChange={e=>setAddUrl(e.target.value)}
+                  placeholder="https://example.com/product-page"
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                    background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none" }}
+                  onFocus={e=>e.target.style.borderColor=_C.accent+"66"} onBlur={e=>e.target.style.borderColor=_C.border} />
+              </div>
             </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:18,
-              animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)" }} key={secTab}>
-              {sec.fields.map(f => {
-                const val = selected[f.id] || "";
-                return (
-                  <div key={f.id}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-                      <label style={{ fontSize:13, fontWeight:600, fontFamily:head, color:_C.text }}>
-                        {f.label} {(f as any).required && <span style={{ color:_C.red }}>*</span>}
-                      </label>
-                      <button onClick={()=>aiField(f)} disabled={aiOn===f.id}
-                        style={{ padding:"3px 10px", borderRadius:6, border:`1px solid ${_C.greenBorder}`,
-                          background:_C.greenLo, color:_C.green, fontSize:10, fontFamily:head, fontWeight:600,
-                          cursor:aiOn===f.id?"wait":"pointer", opacity:aiOn===f.id?0.5:1 }}>
-                        {aiOn===f.id ? "◌" : "◎ AI"}
-                      </button>
-                    </div>
-                    {(f as any).hint && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:4 }}>{(f as any).hint}</div>}
-                    {f.type === "select" ? (
-                      <select value={val} onChange={e=>updProduct(selected.id, {[f.id]:e.target.value})}
-                        style={{...inputSt, cursor:"pointer"}}>
-                        <option value="">Select...</option>
-                        {(f as any).opts?.map((o:string) => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    ) : f.type === "textarea" ? (
-                      <textarea value={val} onChange={e=>updProduct(selected.id, {[f.id]:e.target.value})}
-                        rows={(f as any).rows || 3} placeholder={(f as any).ph || ""}
-                        style={{...inputSt}}
-                        onFocus={e=>e.target.style.borderColor=_C.accent+"66"}
-                        onBlur={e=>e.target.style.borderColor=_C.border} />
-                    ) : (
-                      <input value={val} onChange={e=>updProduct(selected.id, {[f.id]:e.target.value})}
-                        placeholder={(f as any).ph || ""}
-                        style={inputSt}
-                        onFocus={e=>e.target.style.borderColor=_C.accent+"66"}
-                        onBlur={e=>e.target.style.borderColor=_C.border} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:36, marginBottom:16, opacity:.2 }}>◆</div>
-            <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>Products & Services</div>
-            <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, marginBottom:20, maxWidth:360 }}>
-              Define each product or service your client sells. This feeds into persona targeting, offer creation, and campaign planning.
-            </div>
-            <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
-              <button onClick={()=>setShowAddModal(true)}
-                style={{ padding:"10px 24px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
-                  fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>+ Add Product</button>
-              <button onClick={aiExtractAll} disabled={aiExtracting}
-                style={{ padding:"10px 24px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
-                  color:_C.textSoft, fontSize:13, fontFamily:head, fontWeight:600, cursor:aiExtracting?"wait":"pointer" }}>
-                {aiExtracting ? "Scanning..." : "Auto-detect from profile"}
+            <div style={{ padding:"16px 24px", borderTop:`1px solid ${_C.border}`, display:"flex", gap:10, justifyContent:"flex-end" }}>
+              <button onClick={()=>{ setShowAddModal(false); setAddDesc(""); setAddUrl(""); }}
+                style={{ padding:"9px 18px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
+                  color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+              <button onClick={addProductManual}
+                style={{ padding:"9px 18px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
+                  color:_C.text, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Add Blank</button>
+              <button onClick={addProductWithAI} disabled={addCreating || (!addDesc.trim() && !addUrl.trim())}
+                style={{ padding:"9px 18px", borderRadius:10, border:"none",
+                  background: (addDesc.trim() || addUrl.trim()) ? _C.accent : _C.muted, color:"#fff",
+                  fontSize:12, fontFamily:head, fontWeight:700, cursor:addCreating?"wait":"pointer",
+                  opacity:addCreating?0.7:1, boxShadow:`0 2px 8px ${_C.accent}44` }}>
+                {addCreating ? "◌ Creating..." : "◎ Create with AI"}
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Editor view (when a product is selected) ── */}
+      {selectedId && selected && (
+        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+          {/* Header — back + name + progress */}
+          <div style={{ padding:"16px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+              <button onClick={()=>setSelectedId(null)}
+                style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas,
+                  color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
+                ← All Products
+              </button>
+              <div style={{ width:10, height:10, borderRadius:5, background:_C.accent, flexShrink:0 }} />
+              <h2 style={{ fontSize:20, fontWeight:800, color:_C.text, fontFamily:head, margin:0, flex:1,
+                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {selected.name || "Untitled Product"}
+              </h2>
+              <span style={{ fontSize:11, fontFamily:mono, color:pct===100?_C.green:_C.muted, fontWeight:600 }}>
+                {pct}% complete
+              </span>
+            </div>
+          </div>
+          {/* Section tabs + fields editor */}
+          <div style={{ flex:1, minHeight:0, overflow:"hidden", display:"flex" }}>
+            {/* Section nav */}
+            <div style={{ width:190, flexShrink:0, background:_C.faint, borderRight:`1px solid ${_C.border}`,
+              padding:"14px 8px", overflowY:"auto" }}>
+              {secKeys.map(key => {
+                const s = PRODUCT_SECTIONS[key as keyof typeof PRODUCT_SECTIONS];
+                const sf = s.fields.filter(f => selected[f.id] && String(selected[f.id]).trim()).length;
+                const on = secTab === key;
+                const allDone = sf === s.fields.length;
+                return (
+                  <button key={key} onClick={()=>setSecTab(key)}
+                    style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px",
+                      borderRadius:10, border:"none", whiteSpace:"nowrap" as const,
+                      background: on ? `${_C.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:3 }}
+                    onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=_C.canvas; }}
+                    onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=on?`${_C.accent}14`:"transparent"; }}>
+                    <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight:on?700:500, color:on?_C.text:_C.textSoft }}>{s.label}</span>
+                    <span style={{ fontSize:10, fontFamily:mono, fontWeight:600,
+                      color:allDone?_C.green:on?_C.accent:_C.muted,
+                      background:allDone?_C.greenLo:on?`${_C.accent}11`:_C.canvas,
+                      padding:"2px 7px", borderRadius:6 }}>
+                      {allDone?"Done":`${sf}/${s.fields.length}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* Fields */}
+            <div style={{ flex:1, padding:"28px 32px", overflowY:"auto", minHeight:0 }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+                <div>
+                  <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head }}>{sec.label}</div>
+                  <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>{selected.name || "Unnamed product"}</div>
+                </div>
+                <span style={{ fontSize:12, fontFamily:mono, color:_C.muted, background:_C.faint,
+                  padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{pct}% complete</span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:18,
+                animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)" }} key={secTab}>
+                {sec.fields.map(f => {
+                  const val = selected[f.id] || "";
+                  return (
+                    <div key={f.id}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                        <label style={{ fontSize:13, fontWeight:600, fontFamily:head, color:_C.text }}>
+                          {f.label} {(f as any).required && <span style={{ color:_C.red }}>*</span>}
+                        </label>
+                        <button onClick={()=>aiField(f)} disabled={aiOn===f.id}
+                          style={{ padding:"3px 10px", borderRadius:6, border:`1px solid ${_C.greenBorder}`,
+                            background:_C.greenLo, color:_C.green, fontSize:10, fontFamily:head, fontWeight:600,
+                            cursor:aiOn===f.id?"wait":"pointer", opacity:aiOn===f.id?0.5:1 }}>
+                          {aiOn===f.id ? "◌" : "◎ AI"}
+                        </button>
+                      </div>
+                      {(f as any).hint && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:4 }}>{(f as any).hint}</div>}
+                      {f.type === "select" ? (
+                        <select value={val} onChange={e=>updProduct(selected.id, {[f.id]:e.target.value})}
+                          style={{...inputSt, cursor:"pointer"}}>
+                          <option value="">Select...</option>
+                          {(f as any).opts?.map((o:string) => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      ) : f.type === "textarea" ? (
+                        <textarea value={val} onChange={e=>updProduct(selected.id, {[f.id]:e.target.value})}
+                          rows={(f as any).rows || 3} placeholder={(f as any).ph || ""}
+                          style={{...inputSt}}
+                          onFocus={e=>e.target.style.borderColor=_C.accent+"66"}
+                          onBlur={e=>e.target.style.borderColor=_C.border} />
+                      ) : (
+                        <input value={val} onChange={e=>updProduct(selected.id, {[f.id]:e.target.value})}
+                          placeholder={(f as any).ph || ""}
+                          style={inputSt}
+                          onFocus={e=>e.target.style.borderColor=_C.accent+"66"}
+                          onBlur={e=>e.target.style.borderColor=_C.border} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Card grid view (no product selected) ── */}
+      {!selectedId && (
+        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"auto", padding:"0 clamp(20px, 3vw, 48px)" }}>
+          {/* Header */}
+          <div style={{ padding:"20px 0 16px", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div>
+              <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Products & Services</h2>
+              <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
+                {products.length} product{products.length!==1?"s":""} defined · Click to edit
+              </p>
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={aiExtractAll} disabled={aiExtracting}
+                style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
+                  color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600,
+                  cursor:aiExtracting?"wait":"pointer", opacity:aiExtracting?0.6:1 }}>
+                {aiExtracting ? "◌ Scanning..." : "◎ Auto-detect"}
+              </button>
+              <button onClick={()=>setShowAddModal(true)}
+                style={{ padding:"9px 20px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+                  fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
+                + Add Product
+              </button>
+            </div>
+          </div>
+
+          {products.length === 0 ? (
+            <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ textAlign:"center", maxWidth:400 }}>
+                <div style={{ fontSize:48, marginBottom:16, opacity:.15 }}>◆</div>
+                <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>No products yet</div>
+                <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, marginBottom:20 }}>
+                  Define each product or service your client sells. This feeds into persona targeting, offers, and campaign copy.
+                </div>
+                <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
+                  <button onClick={()=>setShowAddModal(true)}
+                    style={{ padding:"10px 24px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+                      fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                    + Create First Product
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Product cards grid */
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16, paddingBottom:24 }}>
+              {products.map((p, i) => {
+                const pFilled = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
+                const pPct = Math.round(pFilled / PRODUCT_FIELDS.length * 100);
+                return (
+                  <div key={p.id} onClick={()=>{ setSelectedId(p.id); setSecTab("core"); }}
+                    style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
+                      cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)",
+                      transition:"all .2s" }}
+                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 6px 24px ${_C.accent}20`; el.style.border=`2px solid ${_C.accent}`; const d=el.querySelector(".prod-del") as HTMLElement; if(d) d.style.opacity="1";}}
+                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.04)"; el.style.border=`1px solid ${_C.border}`; const d=el.querySelector(".prod-del") as HTMLElement; if(d) d.style.opacity="0";}}>
+                    <div style={{ padding:"14px 18px" }}>
+                      {/* Name + delete */}
+                      <div style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:2 }}>
+                        <div style={{ flex:1, fontSize:15, fontWeight:700, fontFamily:head, color:_C.text, lineHeight:1.3 }}>
+                          {p.name || `Product ${i+1}`}
+                        </div>
+                        <button className="prod-del" onClick={e=>{
+                          e.stopPropagation();
+                          if (confirm(`Delete "${p.name || `Product ${i+1}`}"? This cannot be undone.`)) {
+                            onProductsChange(products.filter((x:any) => x.id !== p.id));
+                            addToast({ title:"Product deleted", status:"success", message:p.name || `Product ${i+1}` });
+                          }
+                        }}
+                          style={{ width:22, height:22, borderRadius:6, border:`1px solid transparent`, background:"transparent",
+                            color:_C.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                            opacity:0, transition:"all .15s", flexShrink:0 }}
+                          onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;(e.target as HTMLElement).style.borderColor=_C.red+"44";}}
+                          onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;(e.target as HTMLElement).style.borderColor="transparent";}}>×</button>
+                      </div>
+
+                      {/* Description snippet */}
+                      {p.description && (
+                        <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, marginBottom:10, lineHeight:1.3 }}>
+                          {p.description.length > 80 ? p.description.slice(0, 80) + "…" : p.description}
+                        </div>
+                      )}
+
+                      {/* Value prop box */}
+                      {p.valueProposition && (
+                        <div style={{ fontSize:11.5, color:_C.text, fontFamily:body, lineHeight:1.4, marginBottom:10,
+                          padding:"8px 10px", borderRadius:8, background:_C.faint, borderLeft:`3px solid ${_C.accent}` }}>
+                          <span style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>VALUE PROP</span>
+                          {p.valueProposition.length > 100 ? p.valueProposition.slice(0, 100) + "…" : p.valueProposition}
+                        </div>
+                      )}
+
+                      {/* Quick stats row */}
+                      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
+                        {p.category && (
+                          <span style={{ fontSize:9, fontFamily:mono, color:_C.textSoft, background:_C.faint,
+                            padding:"3px 8px", borderRadius:4 }}>
+                            {p.category}
+                          </span>
+                        )}
+                        {p.pricingRange && (
+                          <span style={{ fontSize:9, fontFamily:mono, color:_C.blue, background:`${_C.blue}11`,
+                            padding:"3px 8px", borderRadius:4 }}>
+                            {p.pricingRange}
+                          </span>
+                        )}
+                        {pPct === 100 && (
+                          <span style={{ fontSize:9, fontFamily:mono, color:_C.green, background:_C.greenLo,
+                            padding:"3px 8px", borderRadius:4 }}>✓ Complete</span>
+                        )}
+                      </div>
+
+                      {/* Progress bar */}
+                      <div style={{ height:3, borderRadius:2, background:_C.faint, overflow:"hidden" }}>
+                        <div style={{ height:"100%", borderRadius:2, width:`${pPct}%`,
+                          background:pPct===100?_C.green:_C.accent, transition:"width .3s ease" }} />
+                      </div>
+                      <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginTop:4 }}>{pFilled}/{PRODUCT_FIELDS.length} fields · {pPct}%</div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Add product card */}
+              <div onClick={()=>setShowAddModal(true)}
+                style={{ background:"transparent", borderRadius:14, border:`2px dashed ${_C.border}`,
+                  cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                  minHeight:160, transition:"all .2s" }}
+                onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=_C.accent;(e.currentTarget as HTMLElement).style.background=`${_C.accent}06`;}}
+                onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=_C.border;(e.currentTarget as HTMLElement).style.background="transparent";}}>
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:24, color:_C.muted, marginBottom:8 }}>+</div>
+                  <div style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.muted }}>Add Product</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -11860,12 +11942,6 @@ Raw JSON only.`, "", 1400);
             {view==="products" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                <div style={{ padding: "20px clamp(20px, 3vw, 48px) 14px", flexShrink:0, borderBottom:`1px solid ${C2.border}` }}>
-                  <h2 style={{ fontSize: 22, fontWeight: 800, color: C2.text, fontFamily:head, margin:"0 0 5px" }}>Products & Services</h2>
-                  <p style={{ fontSize: 13, color: C2.muted, fontFamily:body, margin:0 }}>
-                    Define each product or service — this feeds into persona targeting, offers, and campaign copy.
-                  </p>
-                </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <ProductsPage products={products} onProductsChange={setProducts} companyData={companyData}
                     fileContext={buildFileContext(wsFiles)} v2={true} addToast={addToast} />
