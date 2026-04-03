@@ -1530,11 +1530,10 @@ function calcTimeSaved(filledFieldIds: string[]): number {
 const QS_STEPS = [
   { id:"sources",   label:"Analyzing Sources",         icon:"🔍", desc:"Processing website, docs, and uploaded files", color:"#6C5CE7" },
   { id:"company",   label:"Building Company Profile",  icon:"🏢", desc:"Extracting industry, value prop, competitors, proof points", color:"#54A0FF" },
-  { id:"products",  label:"Extracting Products",       icon:"◆",  desc:"Identifying distinct products & services", color:"#00D68F" },
-  { id:"offers",    label:"Generating Offer CTAs",     icon:"◇",  desc:"Creating soft, medium, and hard CTAs per product", color:"#FFC048" },
-  { id:"personas",  label:"Drafting Personas",         icon:"◑",  desc:"Building target personas with pains, messaging, competitor intel", color:"#FF6B6B" },
-  { id:"guardrails",label:"Setting Guardrails",        icon:"◈",  desc:"Defining messaging boundaries and exclusions", color:"#8B5CF6" },
-  { id:"validate",  label:"Validating & Finalizing",   icon:"✓",  desc:"Cross-linking products, offers, and personas", color:"#00D68F" },
+  { id:"research",  label:"Research Brief",            icon:"◎",  desc:"Identifying all products, personas, and viable combinations", color:"#00D68F" },
+  { id:"review",    label:"Review & Select",           icon:"✓",  desc:"Choose which products and personas to create", color:"#FFC048" },
+  { id:"create",    label:"Creating Entities",         icon:"◆",  desc:"Building selected products, personas, offers, and guardrails", color:"#FF6B6B" },
+  { id:"validate",  label:"Validating & Finalizing",   icon:"✓",  desc:"Cross-linking everything and verifying", color:"#00D68F" },
 ];
 
 function QuickStartProgress({ currentStep, stepResults, onBack }: {
@@ -1744,9 +1743,152 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
   );
 }
 
-function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingFiles = [], onProgress }: {
+// ─── RESEARCH BRIEF REVIEW ───────────────────────────────────────────────────
+function ResearchBriefReview({ brief, onConfirm, onBack }: {
+  brief: any; onConfirm: (selectedProducts: number[], selectedPersonas: number[]) => void; onBack: () => void;
+}) {
+  const prods = brief?.products || [];
+  const pers = brief?.personas || [];
+  const matrix = brief?.matrix || [];
+  const [selProds, setSelProds] = useState<Set<number>>(() => new Set(prods.map((_:any,i:number) => i)));
+  const [selPers, setSelPers] = useState<Set<number>>(() => new Set(pers.map((_:any,i:number) => i)));
+
+  const toggleProd = (i: number) => setSelProds(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
+  const togglePers = (i: number) => setSelPers(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
+
+  const getCell = (pi: number, pei: number) => matrix.find((m:any) => m.productIdx === pi && m.personaIdx === pei) || { priority:"skip", rationale:"" };
+  const priColors: Record<string,string> = { high:C2.green, medium:C2.amber, low:C2.muted, skip:`${C2.red}66` };
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:2147483645, background:C2.bg, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+      {/* Header */}
+      <div style={{ padding:"16px 24px", display:"flex", alignItems:"center", gap:12, flexShrink:0, borderBottom:`1px solid ${C2.border}` }}>
+        <button onClick={onBack} style={{ padding:"8px 16px", borderRadius:10, border:`1px solid ${C2.border}`, background:C2.canvas,
+          color:C2.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>← Back</button>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C2.text }}>Research Brief</div>
+          <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>Review AI findings — uncheck anything that doesn't apply</div>
+        </div>
+        <button onClick={()=>onConfirm(Array.from(selProds), Array.from(selPers))}
+          style={{ padding:"10px 24px", borderRadius:10, border:"none", background:C2.accent, color:"#fff",
+            fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${C2.accent}44` }}>
+          Create {selProds.size} Products & {selPers.size} Personas →
+        </button>
+      </div>
+
+      <div style={{ flex:1, overflow:"auto", padding:"24px 32px" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24, marginBottom:28 }}>
+          {/* Products */}
+          <div>
+            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, marginBottom:12 }}>
+              PRODUCTS & SERVICES ({selProds.size}/{prods.length} selected)
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {prods.map((p:any, i:number) => (
+                <div key={i} onClick={()=>toggleProd(i)}
+                  style={{ padding:"12px 16px", borderRadius:12, cursor:"pointer",
+                    border:`2px solid ${selProds.has(i)?C2.accent+"55":C2.border}`,
+                    background:selProds.has(i)?`${C2.accent}06`:C2.canvas, opacity:selProds.has(i)?1:0.5,
+                    transition:"all .2s" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                    <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${selProds.has(i)?C2.accent:C2.border}`,
+                      background:selProds.has(i)?C2.accent:"transparent", display:"flex", alignItems:"center", justifyContent:"center",
+                      flexShrink:0, transition:"all .15s" }}>
+                      {selProds.has(i) && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
+                    </div>
+                    <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text }}>{p.name}</span>
+                    {p.dealSize && <span style={{ fontSize:9, fontFamily:mono, color:C2.muted, marginLeft:"auto" }}>{p.dealSize}</span>}
+                  </div>
+                  <div style={{ fontSize:11, color:C2.muted, fontFamily:body, lineHeight:1.4, marginLeft:26 }}>{p.reasoning}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Personas */}
+          <div>
+            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, marginBottom:12 }}>
+              PERSONAS ({selPers.size}/{pers.length} selected)
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {pers.map((p:any, i:number) => (
+                <div key={i} onClick={()=>togglePers(i)}
+                  style={{ padding:"12px 16px", borderRadius:12, cursor:"pointer",
+                    border:`2px solid ${selPers.has(i)?C2.green+"55":C2.border}`,
+                    background:selPers.has(i)?`${C2.green}06`:C2.canvas, opacity:selPers.has(i)?1:0.5,
+                    transition:"all .2s" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                    <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${selPers.has(i)?C2.green:C2.border}`,
+                      background:selPers.has(i)?C2.green:"transparent", display:"flex", alignItems:"center", justifyContent:"center",
+                      flexShrink:0, transition:"all .15s" }}>
+                      {selPers.has(i) && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
+                    </div>
+                    <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text }}>{p.name}</span>
+                  </div>
+                  <div style={{ fontSize:11, color:C2.textSoft, fontFamily:body, marginLeft:26 }}>{p.buyerTitles}</div>
+                  <div style={{ fontSize:11, color:C2.muted, fontFamily:body, lineHeight:1.4, marginLeft:26, marginTop:2 }}>{p.reasoning}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Priority Matrix */}
+        {matrix.length > 0 && (
+          <div>
+            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, marginBottom:12 }}>
+              PRIORITY MATRIX
+            </div>
+            <div style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`, overflow:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding:"12px 16px", textAlign:"left", fontSize:10, fontFamily:mono, color:C2.muted, borderBottom:`1px solid ${C2.border}` }}>Persona ↓ / Product →</th>
+                    {prods.map((p:any, i:number) => (
+                      <th key={i} style={{ padding:"12px", textAlign:"center", fontSize:11, fontFamily:head, fontWeight:600,
+                        color:selProds.has(i)?C2.text:C2.muted, borderBottom:`1px solid ${C2.border}`, opacity:selProds.has(i)?1:0.4 }}>
+                        {p.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pers.map((pe:any, pei:number) => (
+                    <tr key={pei} style={{ opacity:selPers.has(pei)?1:0.4 }}>
+                      <td style={{ padding:"10px 16px", fontSize:12, fontFamily:head, fontWeight:600, color:C2.text, borderBottom:`1px solid ${C2.faint}` }}>
+                        {pe.name}
+                      </td>
+                      {prods.map((_:any, pi:number) => {
+                        const cell = getCell(pi, pei);
+                        return (
+                          <td key={pi} style={{ padding:"8px 12px", textAlign:"center", borderBottom:`1px solid ${C2.faint}` }}>
+                            <div title={cell.rationale} style={{ display:"inline-block", padding:"3px 10px", borderRadius:6,
+                              background:`${priColors[cell.priority]||C2.muted}22`, color:priColors[cell.priority]||C2.muted,
+                              fontSize:10, fontFamily:mono, fontWeight:600, cursor:"default" }}>
+                              {cell.priority}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize:10, color:C2.muted, fontFamily:body, marginTop:8 }}>
+              Hover over priorities to see the reasoning. Uncheck products or personas above to exclude them.
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingFiles = [], onProgress, onBriefReady }: {
   onComplete: (r:any)=>void; onClose:()=>void; addToast:(t:any)=>string; updateToast:(id:string,p:any)=>void;
   existingFiles?: any[]; onProgress?: (step:number, results:Record<string,string>)=>void;
+  onBriefReady?: (coFields:any, coConf:any, context:string, brief:any)=>void;
 }) {
   const [url,      setUrl]     = useState("");
   const [linkedin, setLinkedin]= useState("");
@@ -1834,13 +1976,56 @@ Raw JSON only.`, "", 1500);
       }
     } catch {}
 
-    // ── Step 3: Extract Products & Services (BEFORE personas — personas need product context) ──
+    // ── Step 3: Generate Research Brief ──
     const coFilledKeys = Object.keys(coFields).filter(k=>coFields[k]&&String(coFields[k]).trim());
     const coFieldCount = coFilledKeys.length;
     const coTimeSaved = calcTimeSaved(coFilledKeys);
     _totalFields += coFieldCount; _totalSeconds += coTimeSaved;
     _progress(2, "company", `${coFieldCount} fields · ${Math.round(coTimeSaved/60)} min saved`);
-    updateToast(toastId, { message:"Extracting products & services…", step:3, totalSteps:7 });
+    updateToast(toastId, { message:"Researching products, personas & market fit…", step:3, totalSteps:6 });
+
+    // Generate comprehensive research brief — ONE call that identifies everything
+    try {
+      const briefRaw = await callAI(
+        `You are a senior B2B GTM strategist. Analyze this company and produce a comprehensive research brief.
+
+COMPANY: ${JSON.stringify(coFields)}
+SOURCES: ${context.slice(0,1500)}
+
+Identify:
+1. ALL distinct products/services this company sells (not features — actual separate things they sell)
+2. ALL viable buyer personas (distinct roles/industries that buy these products)
+3. For each product×persona combination: is it viable? What priority? Why?
+
+For each PRODUCT include: name, description, reasoning (why this is a distinct product worth separate outreach), dealSize, category.
+For each PERSONA include: name, buyerTitles, industries, primaryPain, reasoning (why this persona buys which products and what drives them).
+For the MATRIX: for each product×persona combo, include priority (high/medium/low/skip) and a brief rationale.
+
+RULES:
+- Only include products that are GENUINELY different offerings, not features or variants
+- Only include personas that represent DISTINCT buyer segments with different pains/motivations
+- Be thorough but not redundant — 2-8 products, 2-6 personas is typical
+- Priority should consider deal size, market size, and competitive advantage
+- "skip" means the combination doesn't make sense (wrong buyer for this product)
+
+Return ONLY valid JSON:
+{"products":[{"name":"","description":"","reasoning":"","dealSize":"","category":""}],"personas":[{"name":"","buyerTitles":"","industries":"","primaryPain":"","reasoning":""}],"matrix":[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":""}]}`,
+        "Return only valid JSON. Be thorough and specific.", 3000
+      );
+      const brief = JSON.parse(briefRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+      _progress(3, "research", `${brief.products?.length||0} products · ${brief.personas?.length||0} personas identified`);
+
+      // Pause here — hand off to user review
+      updateToast(toastId, { status:"success", title:"Research complete", message:"Review the brief and select what to create",
+        action:{ label:"Review Brief", onClick:()=>{ (window as any).__showQSProgress?.(); } } });
+      onBriefReady?.(coFields, coConf, context, brief);
+      return; // Stop here — Phase B happens after user reviews
+    } catch (e) {
+      console.error("Research brief failed:", e);
+      addToast({ title:"Research brief failed", status:"error", message:"Falling back to direct creation" });
+    }
+
+    // Fallback: if brief fails, create products directly (old flow)
     let products: any[] = [];
     try {
       const prodRaw = await callAI(
@@ -5190,6 +5375,17 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
       const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(cleaned);
       const newProd = { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
+      // Dedup check against existing products
+      if (products.length > 0) {
+        const existingNames = products.map((p:any) => p.name).filter(Boolean);
+        const similar = products.find((p:any) => p.name && newProd.name &&
+          (p.name.toLowerCase().includes(newProd.name.toLowerCase()) || newProd.name.toLowerCase().includes(p.name.toLowerCase()) ||
+           p.name.toLowerCase().split(" ").some((w:string) => w.length > 3 && newProd.name.toLowerCase().includes(w))));
+        if (similar) {
+          const userChoice = confirm(`"${newProd.name}" looks similar to existing product "${similar.name}".\n\nClick OK to create as a new product anyway.\nClick Cancel to skip.`);
+          if (!userChoice) { setAddCreating(false); return; }
+        }
+      }
       onProductsChange([...products, newProd]);
       setSelectedId(newProd.id);
       setSecTab("core");
@@ -5766,6 +5962,151 @@ function OffersPage({ offers, onOffersChange, products, personas = [], companyDa
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── COVERAGE MATRIX ─────────────────────────────────────────────────────────
+function CoverageMatrix({ products, personas, offers, campaigns, v2 = false }: {
+  products: any[]; personas: any[]; offers: any[]; campaigns: any[]; v2?: boolean;
+}) {
+  const _C = v2 ? C2 : C;
+  if (products.length === 0 || personas.length === 0) {
+    return (
+      <div style={{ padding:"28px 32px", textAlign:"center" }}>
+        <div style={{ fontSize:48, marginBottom:16, opacity:.15 }}>▦</div>
+        <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>Coverage Matrix</div>
+        <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, maxWidth:400, margin:"0 auto" }}>
+          Add at least one product and one persona to see the coverage matrix.
+        </div>
+      </div>
+    );
+  }
+
+  const totalCombos = products.length * personas.length;
+  let mapped = 0, withCampaigns = 0;
+
+  const cells = products.map((prod: any) => personas.map((pers: any) => {
+    const isLinked = (pers.linkedProductIds || []).includes(prod.id);
+    const hasOffers = offers.some((o: any) => o.productId === prod.id && o.personaId === pers.id);
+    const hasCampaign = campaigns.some((c: any) => (c.personaIds || [])[0] === pers.id && c.productId === prod.id);
+    if (hasOffers || hasCampaign) mapped++;
+    if (hasCampaign) withCampaigns++;
+    return { isLinked, hasOffers, hasCampaign };
+  }));
+
+  const coveragePct = totalCombos > 0 ? Math.round(mapped / totalCombos * 100) : 0;
+
+  return (
+    <div style={{ padding:"28px 32px", overflowY:"auto", height:"100%" }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 }}>
+        <div>
+          <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Coverage Matrix</h2>
+          <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
+            Product × Persona combinations — see what's mapped, what has campaigns, and where the gaps are.
+          </p>
+        </div>
+        <div style={{ display:"flex", gap:16, alignItems:"center" }}>
+          <div style={{ textAlign:"center" }}>
+            <div style={{ fontSize:24, fontWeight:800, fontFamily:head, color:coveragePct>=75?_C.green:coveragePct>=40?_C.amber:_C.red }}>{coveragePct}%</div>
+            <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>coverage</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display:"flex", gap:16, marginBottom:20, fontSize:11, fontFamily:body, color:_C.muted }}>
+        <span style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:_C.green }} /> Campaign active</span>
+        <span style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:_C.amber }} /> Offers created</span>
+        <span style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:`${_C.accent}33` }} /> Linked but no offers</span>
+        <span style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:_C.faint, border:`1px solid ${_C.border}` }} /> Not mapped</span>
+      </div>
+
+      {/* Grid */}
+      <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, overflow:"auto", boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth: products.length * 140 + 180 }}>
+          <thead>
+            <tr>
+              <th style={{ padding:"14px 16px", textAlign:"left", fontSize:11, fontFamily:mono, fontWeight:700, color:_C.muted,
+                borderBottom:`1px solid ${_C.border}`, position:"sticky" as const, left:0, background:_C.canvas, zIndex:1, minWidth:160 }}>
+                PERSONA ↓ / PRODUCT →
+              </th>
+              {products.map((prod: any) => (
+                <th key={prod.id} style={{ padding:"14px 12px", textAlign:"center", fontSize:11, fontFamily:head, fontWeight:600,
+                  color:_C.text, borderBottom:`1px solid ${_C.border}`, minWidth:120 }}>
+                  {prod.name || "Unnamed"}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {personas.map((pers: any, pi: number) => (
+              <tr key={pers.id}>
+                <td style={{ padding:"12px 16px", fontSize:12, fontFamily:head, fontWeight:600, color:_C.text,
+                  borderBottom:`1px solid ${_C.faint}`, position:"sticky" as const, left:0, background:_C.canvas, zIndex:1 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:6, height:6, borderRadius:3, background:pers.color || _C.accent, flexShrink:0 }} />
+                    {pers.name || `Persona ${pi+1}`}
+                  </div>
+                </td>
+                {products.map((prod: any, pri: number) => {
+                  const cell = cells[pri][pi];
+                  const bg = cell.hasCampaign ? _C.green
+                    : cell.hasOffers ? _C.amber
+                    : cell.isLinked ? `${_C.accent}33`
+                    : _C.faint;
+                  const label = cell.hasCampaign ? "Campaign"
+                    : cell.hasOffers ? "Offers"
+                    : cell.isLinked ? "Linked"
+                    : "—";
+                  return (
+                    <td key={prod.id} style={{ padding:"10px 12px", textAlign:"center", borderBottom:`1px solid ${_C.faint}` }}>
+                      <div style={{ display:"inline-flex", alignItems:"center", justifyContent:"center",
+                        padding:"4px 12px", borderRadius:6, background:bg,
+                        color: cell.hasCampaign || cell.hasOffers ? "#fff" : cell.isLinked ? _C.accent : _C.muted,
+                        fontSize:10, fontFamily:mono, fontWeight:600 }}>
+                        {label}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Gaps */}
+      {(() => {
+        const gaps: {prod:any;pers:any}[] = [];
+        products.forEach((prod:any, pri:number) => {
+          personas.forEach((pers:any, pi:number) => {
+            const cell = cells[pri][pi];
+            if (!cell.hasOffers && !cell.hasCampaign) gaps.push({ prod, pers });
+          });
+        });
+        return gaps.length > 0 ? (
+          <div style={{ marginTop:24 }}>
+            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:12 }}>
+              UNMAPPED GAPS ({gaps.length})
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              {gaps.slice(0, 12).map((g, i) => (
+                <div key={i} style={{ padding:"8px 14px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`,
+                  fontSize:11, fontFamily:body, color:_C.textSoft }}>
+                  {g.prod.name} × {g.pers.name}
+                </div>
+              ))}
+              {gaps.length > 12 && <div style={{ padding:"8px 14px", fontSize:11, color:_C.muted }}>+{gaps.length-12} more</div>}
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop:24, padding:"16px", borderRadius:10, background:_C.greenLo, border:`1px solid ${_C.greenBorder}`, textAlign:"center" }}>
+            <span style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.green }}>✓ Full coverage — all product × persona combinations are mapped</span>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -10723,6 +11064,7 @@ function AppMain() {
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [showQS,         setShowQS]         = useState(false);
   const [qsProgress,     setQsProgress]     = useState<{step:number;results:Record<string,string>}|null>(null);
+  const [qsBrief,        setQsBrief]        = useState<{coFields:any;coConf:any;context:string;brief:any}|null>(null);
   // Register global so toast action button can open progress page
   (window as any).__showQSProgress = () => { if (qsProgress) setQsProgress({...qsProgress}); else setQsProgress({step:0,results:{}}); };
   const [showAnalyzer,   setShowAnalyzer]   = useState(false);
@@ -11445,6 +11787,20 @@ Raw JSON only.`, "", 1400);
                     </div>
                   )}
 
+                  {/* Coverage Matrix */}
+                  {currentRole !== "client" && products.length > 0 && icps.length > 0 && (
+                    <button onClick={()=>guardedNav(()=>setView("matrix"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="matrix" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="matrix")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="matrix")(e.currentTarget as HTMLButtonElement).style.background=view==="matrix"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="matrix"?C2.accent:C2.muted }}>▦</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="matrix"?700:500, color:view==="matrix"?C2.text:C2.textSoft }}>Coverage</span>
+                    </button>
+                  )}
+
                   {/* Strategy */}
                   {currentRole !== "client" && (
                     <button onClick={()=>guardedNav(()=>setView("strategy"))}
@@ -11671,7 +12027,7 @@ Raw JSON only.`, "", 1400);
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
-          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -11950,6 +12306,13 @@ Raw JSON only.`, "", 1400);
                     companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast}
                     genState={strategyGen} onGenStateChange={setStrategyGen} />
                 </div>
+              </div>
+            )}
+
+            {view==="matrix" && (
+              <div style={{ position:"absolute" as const, inset:0, overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <CoverageMatrix products={products} personas={icps} offers={offers} campaigns={campaigns} v2={true} />
               </div>
             )}
 
@@ -12353,7 +12716,71 @@ Raw JSON only.`, "", 1400);
           products={products} offers={offers} />
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
-        onProgress={(step, results) => setQsProgress({ step, results })} />}
+        onProgress={(step, results) => setQsProgress({ step, results })}
+        onBriefReady={(coFields, coConf, ctx, brief) => { setQsBrief({ coFields, coConf, context:ctx, brief }); setQsProgress(null); }} />}
+
+      {/* Research Brief Review */}
+      {qsBrief && createPortal(
+        <ResearchBriefReview brief={qsBrief.brief}
+          onBack={()=>setQsBrief(null)}
+          onConfirm={async (selProds, selPers) => {
+            setQsBrief(null);
+            const brief = qsBrief!.brief;
+            const coFields = qsBrief!.coFields;
+            const coConf = qsBrief!.coConf;
+            const ctx = qsBrief!.context;
+            const toastId = addToast({ title:"Creating selected entities…", status:"loading", message:"Building products, personas, and offers" });
+
+            // Create selected products
+            const products = selProds.map((i:number) => {
+              const p = brief.products[i];
+              return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
+            });
+
+            // Create selected personas with full AI generation
+            const personas: any[] = [];
+            for (const i of selPers) {
+              const pe = brief.personas[i];
+              try {
+                const raw = await callAI(
+                  `Draft a complete B2B persona for cold outreach.\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\nProducts: ${products.map((p:any)=>p.name).join(", ")}\n\nFill ALL fields. Return ONLY JSON:\n{"name":"","fields":{"industries":"","co_sizes":[],"geo":"","buyer":"","goals":"","fears":"","pain1":"","pain2":"","triggers":"","tone":"","hook":"","cta":"","current_solutions":"","displacement_messaging":"","best_channel":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":""},"confidence":{}}`,
+                  "", 1500
+                );
+                const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+                const persona = newICP(personas.length, parsed.fields||{}, parsed.name||pe.name, parsed.confidence||{});
+                persona.linkedProductIds = products.map((p:any) => p.id);
+                personas.push(persona);
+              } catch { personas.push(newICP(personas.length, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {})); }
+            }
+
+            // Create offers for each product×persona combo
+            let offers: any[] = [];
+            for (const prod of products) {
+              for (const pers of personas) {
+                try {
+                  const offerRaw = await callAI(
+                    `Generate 3 offer tiers (soft/medium/hard) for: ${prod.name} × ${pers.name}.\nCompany: ${coFields.co_name||""}\nReturn ONLY JSON array: [{tier:"soft",name,ctaText,whatTheyGet,frictionReduction},...]`,
+                    "", 800
+                  );
+                  const parsed = JSON.parse(offerRaw.replace(/```json|```/g,"").trim());
+                  if (Array.isArray(parsed)) {
+                    offers.push(...parsed.map((o:any) => ({ ...EMPTY_OFFER(prod.id, o.tier||"soft", pers.id, "cold_outreach"), name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"" })));
+                  }
+                } catch {}
+              }
+            }
+
+            // Apply everything
+            setCompanyData((prev:any) => { const m = {...prev}; for (const [k,v] of Object.entries(coFields)) { if (v && String(v).trim()) m[k]=v; } return m; });
+            setCompanyConf((prev:any) => ({ ...prev, ...coConf }));
+            setProducts((prev:any) => [...prev, ...products]);
+            setOffers((prev:any) => [...prev, ...offers]);
+            setIcps((prev:any) => [...prev, ...personas]);
+            updateToast(toastId, { status:"success", title:"Quick Start complete", message:`${products.length} products · ${personas.length} personas · ${offers.length} offers` });
+            setView("products");
+          }} />,
+        document.body
+      )}
 
       {/* Quick Start Progress Page */}
       {qsProgress && createPortal(
