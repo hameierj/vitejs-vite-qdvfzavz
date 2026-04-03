@@ -11194,6 +11194,7 @@ Raw JSON only.`, "", 1400);
           100%{transform:scale(1)}
         }
         @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes onboardCardIn{0%{opacity:0;transform:translateY(16px) scale(0.97)}100%{opacity:1;transform:translateY(0) scale(1)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
         @keyframes aiSpark{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
@@ -11741,24 +11742,29 @@ Raw JSON only.`, "", 1400);
 
             {/* ── ONBOARDING WIZARD ── */}
             {view==="onboarding" && (
-              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", padding:"0 clamp(20px, 5vw, 80px)",
-                display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"70vh" }}>
-                <div style={{ textAlign:"center", marginBottom:36 }}>
-                  <h1 style={{ fontSize:24, fontWeight:800, fontFamily:head, color:C2.text, margin:"0 0 6px" }}>
-                    Get started
+              <div style={{ padding:"0 clamp(20px, 5vw, 80px)", display:"flex", flexDirection:"column",
+                alignItems:"center", justifyContent:"center", minHeight:"75vh", position:"relative" as const }}>
+                {/* Subtle background glow */}
+                <div style={{ position:"absolute", top:"35%", left:"50%", transform:"translate(-50%, -50%)",
+                  width:600, height:400, borderRadius:"50%", background:`radial-gradient(ellipse, ${C2.accent}08 0%, transparent 70%)`,
+                  pointerEvents:"none" }} />
+
+                <div style={{ textAlign:"center", marginBottom:44, animation:"pageFade .8s cubic-bezier(0.16, 1, 0.3, 1)", position:"relative" as const }}>
+                  <h1 style={{ fontSize:28, fontWeight:300, fontFamily:head, color:C2.text, margin:"0 0 8px", letterSpacing:"-0.5px" }}>
+                    How would you like to start?
                   </h1>
-                  <p style={{ fontSize:14, color:C2.muted, fontFamily:body, margin:0 }}>
-                    Choose how to set up {activeWorkspace?.name || "your workspace"}
+                  <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0 }}>
+                    Set up {activeWorkspace?.name || "your workspace"} in the way that works best for you.
                   </p>
                 </div>
 
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:14, width:"100%", maxWidth:860 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:16, width:"100%", maxWidth:780, position:"relative" as const }}>
                   {[
-                    { key:"qs", label:"Quick Start", desc:"AI researches your business and builds everything. You review before anything is created.", foot:"AI-powered", icon:"AI", iconAccent:true,
+                    { key:"qs", label:"Quick Start", desc:"AI builds your company profile, products, and personas. You review everything before it's saved.", foot:"AI-powered", icon:"◎", iconAccent:true,
                       onClick:()=>{ setView("company"); setShowQS(true); } },
-                    { key:"manual", label:"Start from Scratch", desc:"Fill in company, products, and personas yourself. Best when you have info ready.", foot:"Full control", icon:"+", iconAccent:false,
+                    { key:"manual", label:"Start from Scratch", desc:"Fill in each section yourself. Best when you already have the info ready.", foot:"Full control", icon:"+", iconAccent:false,
                       onClick:()=>setView("company") },
-                    { key:"import", label:"Import", desc:"Restore from an exported workspace JSON file.", foot:"Instant", icon:"↑", iconAccent:false,
+                    { key:"import", label:"Import", desc:"Upload an exported workspace JSON to restore everything.", foot:"Instant", icon:"↑", iconAccent:false,
                       onClick:()=>{ const input = document.createElement("input"); input.type="file"; input.accept=".json";
                         input.onchange = async (e:any) => {
                           const file = e.target.files?.[0]; if (!file) return;
@@ -11767,20 +11773,23 @@ Raw JSON only.`, "", 1400);
                             if (result) { addToast({ title:"Imported", status:"success", message:result.clientName }); setView("company"); }
                           } catch { addToast({ title:"Import failed", status:"error", message:"Invalid file" }); }
                         }; input.click(); } },
-                  ].map(card => (
+                  ].map((card, idx) => (
                     <div key={card.key} onClick={card.onClick}
-                      style={{ padding:"28px 24px", borderRadius:14, border:`1px solid ${C2.border}`,
-                        background:C2.canvas, cursor:"pointer", transition:"all .2s",
-                        display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" }}
-                      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent; el.style.boxShadow=`0 4px 20px ${C2.accent}14`;}}
-                      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.border; el.style.boxShadow="none";}}>
-                      <div style={{ width:40, height:40, borderRadius:10, background:card.iconAccent?`${C2.accent}12`:C2.faint,
-                        display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, flexShrink:0 }}>
-                        <span style={{ fontSize:card.icon==="AI"?16:15, color:card.iconAccent?C2.accent:C2.muted, fontWeight:card.iconAccent?700:400 }}>{card.icon}</span>
+                      style={{ padding:"32px 24px 24px", borderRadius:16, border:`1px solid ${C2.border}`,
+                        background:C2.canvas, cursor:"pointer", transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)",
+                        display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center",
+                        animation:`onboardCardIn .5s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.1}s both` }}
+                      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.transform="translateY(-3px)"; el.style.borderColor=C2.accent; el.style.boxShadow=`0 8px 30px ${C2.accent}15`;}}
+                      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.transform="translateY(0)"; el.style.borderColor=C2.border; el.style.boxShadow="none";}}>
+                      <div style={{ width:44, height:44, borderRadius:12, background:card.iconAccent?`${C2.accent}10`:C2.faint,
+                        border:`1px solid ${card.iconAccent?C2.accent+"22":C2.border}`,
+                        display:"flex", alignItems:"center", justifyContent:"center", marginBottom:18, flexShrink:0 }}>
+                        <span style={{ fontSize:16, color:card.iconAccent?C2.accent:C2.muted, fontWeight:600 }}>{card.icon}</span>
                       </div>
-                      <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:6 }}>{card.label}</div>
-                      <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:12 }}>{card.desc}</div>
-                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, marginTop:"auto" }}>{card.foot}</div>
+                      <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:8 }}>{card.label}</div>
+                      <div style={{ fontSize:12.5, color:C2.textSoft, fontFamily:body, lineHeight:1.55, marginBottom:16, maxWidth:220 }}>{card.desc}</div>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:card.iconAccent?C2.accent:C2.muted, marginTop:"auto",
+                        padding:"3px 10px", borderRadius:6, background:card.iconAccent?`${C2.accent}08`:C2.faint }}>{card.foot}</div>
                     </div>
                   ))}
                 </div>
