@@ -8442,7 +8442,6 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const streamFull = useRef("");
   const streamPos = useRef(0);
   const streamInterval = useRef<any>(null);
-  const prevWordCount = useRef(0);
 
   // Slash commands
   const SLASH_COMMANDS: Record<string,string> = {
@@ -8553,25 +8552,21 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
 
     streamFull.current = "";
     streamPos.current = 0;
-    prevWordCount.current = 0;
     setIsStreaming(true);
     setStreamingText("");
 
-    // Start slow reveal interval — 1 word every 50ms (~20 words/sec, feels like typing)
+    // Reveal 1 word every 60ms (~16 words/sec)
     streamInterval.current = setInterval(() => {
       const full = streamFull.current;
       const pos = streamPos.current;
-      if (pos >= full.length) return; // waiting for more content
-      // Find next word boundary
+      if (pos >= full.length) return;
       let next = pos;
-      // Skip to end of current word
       while (next < full.length && full[next] !== ' ' && full[next] !== '\n') next++;
-      // Include the space/newline
       while (next < full.length && (full[next] === ' ' || full[next] === '\n')) next++;
       next = Math.max(pos + 1, next);
       streamPos.current = Math.min(next, full.length);
       setStreamingText(full.slice(0, streamPos.current));
-    }, 50);
+    }, 60);
 
     // Chunks just feed into the ref
     await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
@@ -8688,29 +8683,17 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                 borderRadius: msg.role==="user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
                 background: msg.role==="user" ? C2.accent : C2.faint,
                 color: msg.role==="user" ? "#fff" : C2.text,
-                fontSize:12.5, lineHeight:1.65 }}>
+                fontSize:12.5, lineHeight:1.65,
+                ...(msg.id === "_streaming" ? { transition:"all .15s ease" } : {}) }}>
                 {msg.role === "user"
                   ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
                   : msg.id === "_streaming"
-                    ? (() => {
-                        const text = msg.content || "";
-                        const words = text.split(/(\s+)/);
-                        const prevCount = prevWordCount.current;
-                        prevWordCount.current = words.length;
-                        return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{
-                          words.map((w, i) => (
-                            i >= prevCount
-                              ? <span key={i} style={{ animation:"wordFadeIn .35s ease both" }}>{w}</span>
-                              : <span key={i}>{w}</span>
-                          ))
-                        }</span>;
-                      })()
+                    ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap", display:"inline" }}>{msg.content}<span style={{
+                        display:"inline-block", width:4, height:14, borderRadius:2, marginLeft:2,
+                        background:`linear-gradient(180deg, ${C2.accent}, ${C2.accent}55)`,
+                        animation:"cursorBlink .9s ease-in-out infinite",
+                        verticalAlign:"text-bottom" }} /></span>
                     : <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>}
-                {msg.id === "_streaming" && (
-                  <span style={{ display:"inline-block", width:2, height:14, background:C2.accent,
-                    borderRadius:1, marginLeft:1, animation:"cursorBlink .8s ease-in-out infinite",
-                    verticalAlign:"text-bottom", opacity:.6 }} />
-                )}
               </div>
             </div>
           ))}
