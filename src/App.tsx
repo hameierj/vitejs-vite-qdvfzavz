@@ -11724,7 +11724,7 @@ Raw JSON only.`, "", 1400);
                   )}
 
                   {/* Personas — expandable with sub-items */}
-                  <button onClick={()=>guardedNav(()=>{ setView("icps"); })}
+                  <button onClick={()=>guardedNav(()=>{ setEditingId(null); setView("icps"); })}
                     style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                       borderRadius:12, border:"none",
                       background: view==="icps" ? `${C2.accent}14` : "transparent",
