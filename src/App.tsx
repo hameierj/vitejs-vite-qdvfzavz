@@ -4581,10 +4581,10 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                     This ICP is finalized as source of truth. Unlock to make changes.
                   </div>
                 )}
-                {/* Linked Products & Offers */}
+                {/* Linked Products */}
                 {secTab === Object.keys(ICP_SECTIONS)[0] && products.length > 0 && (
-                  <div style={{ padding:"12px 16px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, marginBottom:4 }}>
-                    <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:8 }}>Linked Products & Offers</div>
+                  <div style={{ padding:"10px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, marginBottom:4 }}>
+                    <div style={{ fontSize:10, fontWeight:700, fontFamily:mono, color:_C.muted, letterSpacing:.4, marginBottom:8 }}>LINKED PRODUCTS</div>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                       {products.map((p: any) => {
                         const linked = (icp.linkedProductIds || []).includes(p.id);
@@ -4603,30 +4603,6 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                         );
                       })}
                     </div>
-                    {(icp.linkedProductIds || []).length > 0 && offers.length > 0 && (
-                      <div style={{ marginTop:8 }}>
-                        <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:6 }}>PREFERRED OFFER TIERS</div>
-                        <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                          {offers.filter((o:any) => (icp.linkedProductIds||[]).includes(o.productId)).map((o:any) => {
-                            const tier = OFFER_TIERS.find(t=>t.id===o.tier);
-                            const linked = (icp.linkedOfferIds || []).includes(o.id);
-                            return (
-                              <button key={o.id} onClick={()=>{
-                                const ids = icp.linkedOfferIds || [];
-                                const next = linked ? ids.filter((x:string)=>x!==o.id) : [...ids, o.id];
-                                onUpdate({ ...icp, linkedOfferIds: next });
-                              }}
-                                style={{ padding:"4px 10px", borderRadius:6, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer",
-                                  border:`1.5px solid ${linked?tier?.color+"55":_C.border}`,
-                                  background:linked?tier?.bg||"transparent":"transparent",
-                                  color:linked?tier?.color||_C.text:_C.muted, transition:"all .15s" }}>
-                                {linked?"✓ ":""}{o.name || `${tier?.label} — ${products.find((p:any)=>p.id===o.productId)?.name||"?"}`}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
