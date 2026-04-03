@@ -11744,27 +11744,32 @@ Raw JSON only.`, "", 1400);
             {view==="onboarding" && (
               <div style={{ padding:"0 clamp(20px, 5vw, 80px)", display:"flex", flexDirection:"column",
                 alignItems:"center", justifyContent:"center", minHeight:"75vh", position:"relative" as const }}>
-                {/* Subtle background glow */}
-                <div style={{ position:"absolute", top:"35%", left:"50%", transform:"translate(-50%, -50%)",
-                  width:600, height:400, borderRadius:"50%", background:`radial-gradient(ellipse, ${C2.accent}08 0%, transparent 70%)`,
-                  pointerEvents:"none" }} />
+                {/* Layered background glows */}
+                <div style={{ position:"absolute", top:"30%", left:"50%", transform:"translate(-50%, -50%)",
+                  width:900, height:500, borderRadius:"50%",
+                  background:`radial-gradient(ellipse, ${C2.accent}0C 0%, ${C2.accent}04 40%, transparent 70%)`,
+                  pointerEvents:"none", filter:"blur(40px)" }} />
+                <div style={{ position:"absolute", top:"45%", left:"35%", transform:"translate(-50%, -50%)",
+                  width:300, height:300, borderRadius:"50%",
+                  background:`radial-gradient(circle, ${C2.accent}0A 0%, transparent 70%)`,
+                  pointerEvents:"none", filter:"blur(60px)" }} />
 
-                <div style={{ textAlign:"center", marginBottom:44, animation:"pageFade .8s cubic-bezier(0.16, 1, 0.3, 1)", position:"relative" as const }}>
-                  <h1 style={{ fontSize:28, fontWeight:300, fontFamily:head, color:C2.text, margin:"0 0 8px", letterSpacing:"-0.5px" }}>
+                <div style={{ textAlign:"center", marginBottom:48, animation:"pageFade .8s cubic-bezier(0.16, 1, 0.3, 1)", position:"relative" as const }}>
+                  <h1 style={{ fontSize:30, fontWeight:300, fontFamily:head, color:C2.text, margin:"0 0 10px", letterSpacing:"-0.5px" }}>
                     How would you like to start?
                   </h1>
-                  <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0 }}>
+                  <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0, letterSpacing:"0.1px" }}>
                     Set up {activeWorkspace?.name || "your workspace"} in the way that works best for you.
                   </p>
                 </div>
 
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:16, width:"100%", maxWidth:780, position:"relative" as const }}>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:18, width:"100%", maxWidth:800, position:"relative" as const }}>
                   {[
-                    { key:"qs", label:"Quick Start", desc:"AI builds your company profile, products, and personas. You review everything before it's saved.", foot:"AI-powered", icon:"◎", iconAccent:true,
+                    { key:"qs", label:"Quick Start", desc:"AI builds your company profile, products, and personas. You review everything first.", foot:"AI-powered", icon:"◎", accent:true,
                       onClick:()=>{ setView("company"); setShowQS(true); } },
-                    { key:"manual", label:"Start from Scratch", desc:"Fill in each section yourself. Best when you already have the info ready.", foot:"Full control", icon:"+", iconAccent:false,
+                    { key:"manual", label:"Start from Scratch", desc:"Fill in each section yourself. Best when you already have the info ready.", foot:"Full control", icon:"+", accent:false,
                       onClick:()=>setView("company") },
-                    { key:"import", label:"Import", desc:"Upload an exported workspace JSON to restore everything.", foot:"Instant", icon:"↑", iconAccent:false,
+                    { key:"import", label:"Import", desc:"Upload an exported workspace JSON to restore everything.", foot:"Instant", icon:"↑", accent:false,
                       onClick:()=>{ const input = document.createElement("input"); input.type="file"; input.accept=".json";
                         input.onchange = async (e:any) => {
                           const file = e.target.files?.[0]; if (!file) return;
@@ -11775,21 +11780,39 @@ Raw JSON only.`, "", 1400);
                         }; input.click(); } },
                   ].map((card, idx) => (
                     <div key={card.key} onClick={card.onClick}
-                      style={{ padding:"32px 24px 24px", borderRadius:16, border:`1px solid ${C2.border}`,
-                        background:C2.canvas, cursor:"pointer", transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)",
+                      style={{ padding:"36px 24px 28px", borderRadius:18, border:`1px solid ${C2.border}`,
+                        background:C2.canvas, cursor:"pointer", transition:"all .3s cubic-bezier(0.16, 1, 0.3, 1)",
                         display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center",
-                        animation:`onboardCardIn .5s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.1}s both` }}
-                      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.transform="translateY(-3px)"; el.style.borderColor=C2.accent; el.style.boxShadow=`0 8px 30px ${C2.accent}15`;}}
-                      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.transform="translateY(0)"; el.style.borderColor=C2.border; el.style.boxShadow="none";}}>
-                      <div style={{ width:44, height:44, borderRadius:12, background:card.iconAccent?`${C2.accent}10`:C2.faint,
-                        border:`1px solid ${card.iconAccent?C2.accent+"22":C2.border}`,
-                        display:"flex", alignItems:"center", justifyContent:"center", marginBottom:18, flexShrink:0 }}>
-                        <span style={{ fontSize:16, color:card.iconAccent?C2.accent:C2.muted, fontWeight:600 }}>{card.icon}</span>
+                        animation:`onboardCardIn .6s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.12}s both` }}
+                      onMouseEnter={e=>{
+                        const el=e.currentTarget as HTMLElement;
+                        el.style.transform="translateY(-5px) scale(1.02)";
+                        el.style.borderColor=C2.accent;
+                        el.style.boxShadow=`0 12px 40px ${C2.accent}20, 0 0 0 1px ${C2.accent}22`;
+                        const ic=el.querySelector(".ob-icon") as HTMLElement; if(ic){ic.style.transform="scale(1.1)";ic.style.borderColor=C2.accent+"44";ic.style.background=`${C2.accent}18`;}
+                        const ft=el.querySelector(".ob-foot") as HTMLElement; if(ft){ft.style.color=C2.accent;ft.style.background=`${C2.accent}12`;ft.style.transform="scale(1.05)";}
+                        const ti=el.querySelector(".ob-title") as HTMLElement; if(ti) ti.style.color=C2.accent;
+                      }}
+                      onMouseLeave={e=>{
+                        const el=e.currentTarget as HTMLElement;
+                        el.style.transform="translateY(0) scale(1)";
+                        el.style.borderColor=C2.border;
+                        el.style.boxShadow="none";
+                        const ic=el.querySelector(".ob-icon") as HTMLElement; if(ic){ic.style.transform="scale(1)";ic.style.borderColor=card.accent?C2.accent+"22":C2.border;ic.style.background=card.accent?`${C2.accent}10`:C2.faint;}
+                        const ft=el.querySelector(".ob-foot") as HTMLElement; if(ft){ft.style.color=C2.muted;ft.style.background=C2.faint;ft.style.transform="scale(1)";}
+                        const ti=el.querySelector(".ob-title") as HTMLElement; if(ti) ti.style.color=C2.text;
+                      }}>
+                      <div className="ob-icon" style={{ width:48, height:48, borderRadius:14, background:card.accent?`${C2.accent}10`:C2.faint,
+                        border:`1px solid ${card.accent?C2.accent+"22":C2.border}`,
+                        display:"flex", alignItems:"center", justifyContent:"center", marginBottom:20, flexShrink:0,
+                        transition:"all .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                        <span style={{ fontSize:17, color:card.accent?C2.accent:C2.muted, fontWeight:600 }}>{card.icon}</span>
                       </div>
-                      <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:8 }}>{card.label}</div>
-                      <div style={{ fontSize:12.5, color:C2.textSoft, fontFamily:body, lineHeight:1.55, marginBottom:16, maxWidth:220 }}>{card.desc}</div>
-                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:card.iconAccent?C2.accent:C2.muted, marginTop:"auto",
-                        padding:"3px 10px", borderRadius:6, background:card.iconAccent?`${C2.accent}08`:C2.faint }}>{card.foot}</div>
+                      <div className="ob-title" style={{ fontSize:16, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:8,
+                        transition:"color .3s ease" }}>{card.label}</div>
+                      <div style={{ fontSize:12.5, color:C2.textSoft, fontFamily:body, lineHeight:1.55, marginBottom:20, maxWidth:210 }}>{card.desc}</div>
+                      <div className="ob-foot" style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, marginTop:"auto",
+                        padding:"4px 12px", borderRadius:8, background:C2.faint, transition:"all .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>{card.foot}</div>
                     </div>
                   ))}
                 </div>
