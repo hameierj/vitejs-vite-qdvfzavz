@@ -11741,86 +11741,77 @@ Raw JSON only.`, "", 1400);
 
             {/* ── ONBOARDING WIZARD ── */}
             {view==="onboarding" && (
-              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", padding:"0 clamp(20px, 5vw, 80px)" }}>
-                <div style={{ maxWidth:700, margin:"60px auto 0", textAlign:"center" }}>
-                  <div style={{ fontSize:48, marginBottom:20 }}>🚀</div>
-                  <h1 style={{ fontSize:28, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:8 }}>
-                    Welcome to {activeWorkspace?.name || "your new workspace"}
+              <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", padding:"0 clamp(20px, 5vw, 80px)",
+                display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"70vh" }}>
+                <div style={{ textAlign:"center", marginBottom:36 }}>
+                  <h1 style={{ fontSize:24, fontWeight:800, fontFamily:head, color:C2.text, margin:"0 0 6px" }}>
+                    Get started
                   </h1>
-                  <p style={{ fontSize:15, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:40 }}>
-                    Let's build your outreach foundation. Choose how you'd like to get started.
+                  <p style={{ fontSize:14, color:C2.muted, fontFamily:body, margin:0 }}>
+                    Choose how to set up {activeWorkspace?.name || "your workspace"}
                   </p>
+                </div>
 
-                  <div style={{ display:"flex", flexDirection:"column", gap:16, textAlign:"left" }}>
-                    {/* Quick Start — recommended */}
-                    <div onClick={()=>{ setView("company"); setShowQS(true); }}
-                      style={{ padding:"24px 28px", borderRadius:16, border:`2px solid ${C2.accent}44`,
-                        background:`${C2.accent}06`, cursor:"pointer", transition:"all .2s",
-                        position:"relative" as const, overflow:"hidden" }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.accent;(e.currentTarget as HTMLElement).style.background=`${C2.accent}0D`;}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.accent+"44";(e.currentTarget as HTMLElement).style.background=`${C2.accent}06`;}}>
-                      <div style={{ position:"absolute", top:12, right:16, padding:"3px 10px", borderRadius:6,
-                        background:C2.accent, color:"#fff", fontSize:9, fontFamily:mono, fontWeight:700 }}>RECOMMENDED</div>
-                      <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-                        <div style={{ width:52, height:52, borderRadius:14, background:`${C2.accent}15`,
-                          display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>⚡</div>
-                        <div>
-                          <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:4 }}>Quick Start with AI</div>
-                          <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.5 }}>
-                            Paste a website URL, upload docs, or describe the business. AI researches everything, identifies all products and personas, and you review before anything is created.
-                          </div>
-                          <div style={{ fontSize:11, color:C2.accent, fontFamily:mono, fontWeight:600, marginTop:8 }}>
-                            ~60 seconds · Fills 100+ fields · You review everything first
-                          </div>
-                        </div>
-                      </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:14, width:"100%", maxWidth:860 }}>
+                  {/* Quick Start */}
+                  <div onClick={()=>{ setView("company"); setShowQS(true); }}
+                    style={{ padding:"28px 24px", borderRadius:14, border:`1.5px solid ${C2.accent}33`,
+                      background:C2.canvas, cursor:"pointer", transition:"all .2s",
+                      display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" }}
+                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent; el.style.boxShadow=`0 4px 20px ${C2.accent}18`;}}
+                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent+"33"; el.style.boxShadow="none";}}>
+                    <div style={{ width:40, height:40, borderRadius:10, background:`${C2.accent}12`,
+                      display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, flexShrink:0 }}>
+                      <span style={{ fontSize:16, color:C2.accent, fontWeight:700 }}>AI</span>
                     </div>
+                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:6 }}>Quick Start</div>
+                    <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:12 }}>
+                      AI researches your business and builds everything. You review before anything is created.
+                    </div>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.accent, marginTop:"auto" }}>~60 seconds</div>
+                  </div>
 
-                    {/* Manual */}
-                    <div onClick={()=>setView("company")}
-                      style={{ padding:"24px 28px", borderRadius:16, border:`1px solid ${C2.border}`,
-                        background:C2.canvas, cursor:"pointer", transition:"all .2s" }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.accent+"66";}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.border;}}>
-                      <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-                        <div style={{ width:52, height:52, borderRadius:14, background:C2.faint,
-                          display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>✏️</div>
-                        <div>
-                          <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:4 }}>Build Manually</div>
-                          <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.5 }}>
-                            Fill in the company profile, products, and personas yourself. Best when you already have all the info ready or prefer to start from scratch.
-                          </div>
-                          <div style={{ fontSize:11, color:C2.muted, fontFamily:mono, marginTop:8 }}>
-                            Start with Company Profile → Products → Personas → Strategy
-                          </div>
-                        </div>
-                      </div>
+                  {/* Manual */}
+                  <div onClick={()=>setView("company")}
+                    style={{ padding:"28px 24px", borderRadius:14, border:`1px solid ${C2.border}`,
+                      background:C2.canvas, cursor:"pointer", transition:"all .2s",
+                      display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" }}
+                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent+"66"; el.style.boxShadow=`0 4px 20px rgba(0,0,0,.06)`;}}
+                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.border; el.style.boxShadow="none";}}>
+                    <div style={{ width:40, height:40, borderRadius:10, background:C2.faint,
+                      display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, flexShrink:0 }}>
+                      <span style={{ fontSize:15, color:C2.muted }}>+</span>
                     </div>
+                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:6 }}>Start from Scratch</div>
+                    <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:12 }}>
+                      Fill in company, products, and personas yourself. Best when you have info ready.
+                    </div>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, marginTop:"auto" }}>Full control</div>
+                  </div>
 
-                    {/* Import */}
-                    <div onClick={()=>{ const input = document.createElement("input"); input.type="file"; input.accept=".json";
-                      input.onchange = async (e:any) => {
-                        const file = e.target.files?.[0]; if (!file) return;
-                        try {
-                          const result = await importWorkspaceBundle(file, loggedInUser?.id||null);
-                          if (result) { addToast({ title:"Imported", status:"success", message:result.clientName }); setView("company"); }
-                        } catch { addToast({ title:"Import failed", status:"error", message:"Invalid file" }); }
-                      }; input.click(); }}
-                      style={{ padding:"24px 28px", borderRadius:16, border:`1px solid ${C2.border}`,
-                        background:C2.canvas, cursor:"pointer", transition:"all .2s" }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.accent+"66";}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.border;}}>
-                      <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-                        <div style={{ width:52, height:52, borderRadius:14, background:C2.faint,
-                          display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>📦</div>
-                        <div>
-                          <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:4 }}>Import Existing Workspace</div>
-                          <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.5 }}>
-                            Upload a previously exported workspace JSON file. All data including products, personas, campaigns, and files will be restored.
-                          </div>
-                        </div>
-                      </div>
+                  {/* Import */}
+                  <div onClick={()=>{ const input = document.createElement("input"); input.type="file"; input.accept=".json";
+                    input.onchange = async (e:any) => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      try {
+                        const result = await importWorkspaceBundle(file, loggedInUser?.id||null);
+                        if (result) { addToast({ title:"Imported", status:"success", message:result.clientName }); setView("company"); }
+                      } catch { addToast({ title:"Import failed", status:"error", message:"Invalid file" }); }
+                    }; input.click(); }}
+                    style={{ padding:"28px 24px", borderRadius:14, border:`1px solid ${C2.border}`,
+                      background:C2.canvas, cursor:"pointer", transition:"all .2s",
+                      display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" }}
+                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent+"66"; el.style.boxShadow=`0 4px 20px rgba(0,0,0,.06)`;}}
+                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.border; el.style.boxShadow="none";}}>
+                    <div style={{ width:40, height:40, borderRadius:10, background:C2.faint,
+                      display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, flexShrink:0 }}>
+                      <span style={{ fontSize:14, color:C2.muted }}>↑</span>
                     </div>
+                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:6 }}>Import</div>
+                    <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:12 }}>
+                      Restore from an exported workspace JSON file.
+                    </div>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, marginTop:"auto" }}>Instant</div>
                   </div>
                 </div>
               </div>
