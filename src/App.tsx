@@ -8691,9 +8691,9 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                           return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
                             {text.split("").map((ch, i) => {
                               const p = text.length > 1 ? i / (text.length - 1) : 1;
-                              return <span key={i} style={{ display:"inline-block", opacity: 0.2 + p * 0.8,
-                                filter:`blur(${(1 - p) * 2}px)`, transform:`translateY(${(1 - p) * -4}px)`,
-                                transition:"all .18s ease-out" }}>{ch === " " ? "\u00A0" : ch}</span>;
+                              return <span key={i} style={{ display:"inline-block", opacity: p * p,
+                                filter:`blur(${(1 - p) * 4}px)`, transform:`translateY(${(1 - p) * -6}px)`,
+                                transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}>{ch === " " ? "\u00A0" : ch}</span>;
                             })}
                           </span>;
                         }
@@ -8703,9 +8703,9 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                           {solid}
                           {fading.split("").map((ch, i) => {
                             const p = i / (fadeLen - 1);
-                            return <span key={i} style={{ display:"inline-block", opacity: 0.7 + p * 0.3,
-                              filter:`blur(${(1 - p) * 1.5}px)`, transform:`translateY(${(1 - p) * -3}px)`,
-                              transition:"all .15s ease-out" }}>{ch === " " ? "\u00A0" : ch}</span>;
+                            return <span key={i} style={{ display:"inline-block", opacity: p * p * 0.85 + 0.15,
+                              filter:`blur(${(1 - p) * (1 - p) * 5}px)`, transform:`translateY(${(1 - p) * (1 - p) * -5}px)`,
+                              transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}>{ch === " " ? "\u00A0" : ch}</span>;
                           })}
                         </span>;
                       })()
