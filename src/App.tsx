@@ -11757,7 +11757,7 @@ Raw JSON only.`, "", 1400);
                   pointerEvents:"none", filter:"blur(60px)" }} />
 
                 <div style={{ textAlign:"center", marginBottom:48, position:"relative" as const }}>
-                  <h1 style={{ fontSize:30, fontWeight:300, fontFamily:head, color:C2.text, margin:"0 0 10px", letterSpacing:"-0.5px", display:"flex", justifyContent:"center", flexWrap:"wrap", gap:0 }}>
+                  <h1 style={{ fontSize:36, fontWeight:600, fontFamily:head, color:C2.text, margin:"0 0 12px", letterSpacing:"-1px", display:"flex", justifyContent:"center", flexWrap:"wrap", gap:0 }}>
                     {"How would you like to start?".split("").map((ch, i) => (
                       <span key={i} style={{ display:"inline-block", animation:`obLetterIn .35s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.025}s both`,
                         ...(ch === " " ? { width:"0.3em" } : {}) }}>{ch === " " ? "\u00A0" : ch}</span>
