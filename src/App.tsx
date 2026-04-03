@@ -12782,14 +12782,24 @@ Raw JSON only.`, "", 1400);
         <ResearchBriefReview brief={qsBrief.brief}
           onBack={()=>setQsBrief(null)}
           onConfirm={async (selProds, selPers) => {
-            setQsBrief(null);
             const brief = qsBrief!.brief;
             const coFields = qsBrief!.coFields;
             const coConf = qsBrief!.coConf;
-            const ctx = qsBrief!.context;
-            const toastId = addToast({ title:"Creating selected entities…", status:"loading", message:"Building products, personas, and offers" });
+            setQsBrief(null);
 
-            // Create selected products — fill ALL fields via AI
+            // Show full-screen progress for Phase B
+            const _r: Record<string,string> = {};
+            let _tf = 0, _ts = 0;
+            const prog = (step: number, key?: string, val?: string) => {
+              if (key && val) _r[key] = val;
+              _r._totalFields = String(_tf);
+              _r._totalSeconds = String(_ts);
+              setQsProgress({ step, results: { ..._r } });
+            };
+            prog(3); // Start at step 3 (after research brief + review)
+
+            // Step 4: Create products
+            prog(4, "review", `${selProds.length} products · ${selPers.length} personas selected`);
             const products: any[] = [];
             for (const i of selProds) {
               const p = brief.products[i];
@@ -12799,13 +12809,18 @@ Raw JSON only.`, "", 1400);
                   "", 1200
                 );
                 const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
-                products.push({ ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) });
+                const prod = { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
+                const prodFilledKeys = Object.keys(prod).filter(k=>prod[k]&&String(prod[k]).trim()&&typeof prod[k]==="string"&&k!=="id"&&k!=="createdAt");
+                _tf += prodFilledKeys.length; _ts += calcTimeSaved(prodFilledKeys);
+                products.push(prod);
               } catch {
                 products.push({ ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" });
+                _tf += 4; _ts += 600;
               }
             }
+            prog(4, "create", `${products.length} products · ${_tf} fields · ${Math.round(_ts/60)} min saved`);
 
-            // Create selected personas with full AI generation
+            // Step 5: Create personas
             const personas: any[] = [];
             for (const i of selPers) {
               const pe = brief.personas[i];
@@ -12817,11 +12832,14 @@ Raw JSON only.`, "", 1400);
                 const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
                 const persona = newICP(personas.length, parsed.fields||{}, parsed.name||pe.name, parsed.confidence||{});
                 persona.linkedProductIds = products.map((p:any) => p.id);
+                const persFilledKeys = Object.keys(parsed.fields||{}).filter(k=>(parsed.fields||{})[k]&&String((parsed.fields||{})[k]).trim());
+                _tf += persFilledKeys.length; _ts += calcTimeSaved(persFilledKeys);
                 personas.push(persona);
-              } catch { personas.push(newICP(personas.length, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {})); }
+              } catch { personas.push(newICP(personas.length, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {})); _tf += 3; _ts += 300; }
             }
+            prog(5, "create", `${products.length} products · ${personas.length} personas · ${_tf} fields · ${Math.round(_ts/60)} min saved`);
 
-            // Create offers for each product×persona combo
+            // Step 5 continued: Create offers
             let offers: any[] = [];
             for (const prod of products) {
               for (const pers of personas) {
@@ -12832,11 +12850,16 @@ Raw JSON only.`, "", 1400);
                   );
                   const parsed = JSON.parse(offerRaw.replace(/```json|```/g,"").trim());
                   if (Array.isArray(parsed)) {
-                    offers.push(...parsed.map((o:any) => ({ ...EMPTY_OFFER(prod.id, o.tier||"soft", pers.id, "cold_outreach"), name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"" })));
+                    const newOffers = parsed.map((o:any) => ({ ...EMPTY_OFFER(prod.id, o.tier||"soft", pers.id, "cold_outreach"), name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"" }));
+                    offers.push(...newOffers);
+                    _tf += newOffers.length * 4; _ts += newOffers.length * 240;
                   }
                 } catch {}
               }
             }
+
+            // Step 6: Finalize
+            prog(5, "create", `${products.length} products · ${personas.length} personas · ${offers.length} offers · ${_tf} fields`);
 
             // Apply everything
             setCompanyData((prev:any) => { const m = {...prev}; for (const [k,v] of Object.entries(coFields)) { if (v && String(v).trim()) m[k]=v; } return m; });
@@ -12844,7 +12867,9 @@ Raw JSON only.`, "", 1400);
             setProducts((prev:any) => [...prev, ...products]);
             setOffers((prev:any) => [...prev, ...offers]);
             setIcps((prev:any) => [...prev, ...personas]);
-            updateToast(toastId, { status:"success", title:"Quick Start complete", message:`${products.length} products · ${personas.length} personas · ${offers.length} offers` });
+
+            // Show completion on progress page
+            prog(6, "validate", `${_tf} total fields · ${Math.floor(_ts/3600)}h ${Math.round((_ts%3600)/60)}m saved`);
             setView("products");
           }} />,
         document.body
