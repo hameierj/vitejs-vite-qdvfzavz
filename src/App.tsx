@@ -5020,79 +5020,55 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
             </div>
           ) : (
             /* Product cards grid */
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16, paddingBottom:24 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12, paddingBottom:24 }}>
               {products.map((p, i) => {
                 const pFilled = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
                 const pPct = Math.round(pFilled / PRODUCT_FIELDS.length * 100);
                 return (
                   <div key={p.id} onClick={()=>{ setSelectedId(p.id); setSecTab("core"); }}
-                    style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
-                      cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)",
-                      transition:"all .2s" }}
-                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 6px 24px ${_C.accent}20`; el.style.border=`2px solid ${_C.accent}`; const d=el.querySelector(".prod-del") as HTMLElement; if(d) d.style.opacity="1";}}
-                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.04)"; el.style.border=`1px solid ${_C.border}`; const d=el.querySelector(".prod-del") as HTMLElement; if(d) d.style.opacity="0";}}>
-                    <div style={{ padding:"14px 18px" }}>
-                      {/* Name + delete */}
-                      <div style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:2 }}>
-                        <div style={{ flex:1, fontSize:15, fontWeight:700, fontFamily:head, color:_C.text, lineHeight:1.3 }}>
-                          {p.name || `Product ${i+1}`}
-                        </div>
-                        <button className="prod-del" onClick={e=>{
-                          e.stopPropagation();
-                          if (confirm(`Delete "${p.name || `Product ${i+1}`}"? This cannot be undone.`)) {
-                            onProductsChange(products.filter((x:any) => x.id !== p.id));
-                            addToast({ title:"Product deleted", status:"success", message:p.name || `Product ${i+1}` });
-                          }
-                        }}
-                          style={{ width:22, height:22, borderRadius:6, border:`1px solid transparent`, background:"transparent",
-                            color:_C.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                            opacity:0, transition:"all .15s", flexShrink:0 }}
-                          onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;(e.target as HTMLElement).style.borderColor=_C.red+"44";}}
-                          onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;(e.target as HTMLElement).style.borderColor="transparent";}}>×</button>
+                    style={{ background:_C.canvas, borderRadius:12, borderLeft:`3px solid ${_C.accent}`,
+                      borderTop:`1px solid ${_C.border}`, borderRight:`1px solid ${_C.border}`, borderBottom:`1px solid ${_C.border}`,
+                      cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.03)",
+                      transition:"all .2s", padding:"14px 16px" }}
+                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 4px 16px ${_C.accent}18`; el.style.borderColor=_C.accent; const d=el.querySelector(".prod-del") as HTMLElement; if(d) d.style.opacity="1";}}
+                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.03)"; el.style.borderTopColor=_C.border; el.style.borderRightColor=_C.border; el.style.borderBottomColor=_C.border; const d=el.querySelector(".prod-del") as HTMLElement; if(d) d.style.opacity="0";}}>
+                    {/* Row 1: Name + category pill + delete */}
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                      <div style={{ flex:1, fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, lineHeight:1.3,
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        {p.name || `Product ${i+1}`}
                       </div>
-
-                      {/* Description snippet */}
-                      {p.description && (
-                        <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, marginBottom:10, lineHeight:1.3 }}>
-                          {p.description.length > 80 ? p.description.slice(0, 80) + "…" : p.description}
-                        </div>
+                      {p.category && (
+                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:_C.accent, background:`${_C.accent}0D`,
+                          padding:"2px 7px", borderRadius:4, flexShrink:0 }}>
+                          {p.category}
+                        </span>
                       )}
-
-                      {/* Value prop box */}
-                      {p.valueProposition && (
-                        <div style={{ fontSize:11.5, color:_C.text, fontFamily:body, lineHeight:1.4, marginBottom:10,
-                          padding:"8px 10px", borderRadius:8, background:_C.faint, borderLeft:`3px solid ${_C.accent}` }}>
-                          <span style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>VALUE PROP</span>
-                          {p.valueProposition.length > 100 ? p.valueProposition.slice(0, 100) + "…" : p.valueProposition}
-                        </div>
-                      )}
-
-                      {/* Quick stats row */}
-                      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
-                        {p.category && (
-                          <span style={{ fontSize:9, fontFamily:mono, color:_C.textSoft, background:_C.faint,
-                            padding:"3px 8px", borderRadius:4 }}>
-                            {p.category}
-                          </span>
-                        )}
-                        {p.pricingRange && (
-                          <span style={{ fontSize:9, fontFamily:mono, color:_C.blue, background:`${_C.blue}11`,
-                            padding:"3px 8px", borderRadius:4 }}>
-                            {p.pricingRange}
-                          </span>
-                        )}
-                        {pPct === 100 && (
-                          <span style={{ fontSize:9, fontFamily:mono, color:_C.green, background:_C.greenLo,
-                            padding:"3px 8px", borderRadius:4 }}>✓ Complete</span>
-                        )}
-                      </div>
-
-                      {/* Progress bar */}
-                      <div style={{ height:3, borderRadius:2, background:_C.faint, overflow:"hidden" }}>
+                      <button className="prod-del" onClick={e=>{
+                        e.stopPropagation();
+                        if (confirm(`Delete "${p.name || `Product ${i+1}`}"?`)) {
+                          onProductsChange(products.filter((x:any) => x.id !== p.id));
+                          addToast({ title:"Product deleted", status:"success", message:p.name || `Product ${i+1}` });
+                        }
+                      }}
+                        style={{ width:20, height:20, borderRadius:5, border:"none", background:"transparent",
+                          color:_C.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                          opacity:0, transition:"opacity .15s", flexShrink:0 }}
+                        onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;}}
+                        onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;}}>×</button>
+                    </div>
+                    {/* Row 2: Subtitle */}
+                    <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, lineHeight:1.4, marginBottom:10,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {p.description || "No description"}
+                    </div>
+                    {/* Row 3: Progress bar + pct */}
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ flex:1, height:3, borderRadius:2, background:_C.faint, overflow:"hidden" }}>
                         <div style={{ height:"100%", borderRadius:2, width:`${pPct}%`,
                           background:pPct===100?_C.green:_C.accent, transition:"width .3s ease" }} />
                       </div>
-                      <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginTop:4 }}>{pFilled}/{PRODUCT_FIELDS.length} fields · {pPct}%</div>
+                      <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:pPct===100?_C.green:_C.muted }}>{pPct}%</span>
                     </div>
                   </div>
                 );
@@ -5100,14 +5076,14 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
 
               {/* Add product card */}
               <div onClick={()=>setShowAddModal(true)}
-                style={{ background:"transparent", borderRadius:14, border:`2px dashed ${_C.border}`,
+                style={{ background:"transparent", borderRadius:12, border:`2px dashed ${_C.border}`,
                   cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                  minHeight:160, transition:"all .2s" }}
+                  minHeight:80, transition:"all .2s" }}
                 onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=_C.accent;(e.currentTarget as HTMLElement).style.background=`${_C.accent}06`;}}
                 onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=_C.border;(e.currentTarget as HTMLElement).style.background="transparent";}}>
-                <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:24, color:_C.muted, marginBottom:8 }}>+</div>
-                  <div style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.muted }}>Add Product</div>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ fontSize:18, color:_C.muted }}>+</span>
+                  <span style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.muted }}>Add Product</span>
                 </div>
               </div>
             </div>
@@ -12062,84 +12038,56 @@ Raw JSON only.`, "", 1400);
                       </div>
                     ) : (
                       /* Persona cards grid */
-                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16, paddingBottom:24 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12, paddingBottom:24 }}>
                         {(icps as any[]).map((icp: any, i: number) => {
                           const d = icp.data || {};
-                          const linkedProds = (icp.linkedProductIds||[]).map((pid:string) => products.find((p:any)=>p.id===pid)?.name).filter(Boolean);
-                          const channel = d.best_channel ? d.best_channel.replace("Multi-channel (","").replace(")","").replace(" + ",", ") : null;
-                          const tone = d.tone ? d.tone.split(" ")[0] : null; // just first word
+                          const icpFilled = ALL_ICP_FIELDS.filter((f: any) => fieldFilled(f, d[f.id])).length;
+                          const icpPct = Math.round(icpFilled / TOTAL_FIELDS * 100);
                           return (
                             <div key={icp.id} onClick={()=>setEditingId(icp.id)}
-                              style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`,
-                                cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)",
-                                transition:"all .2s" }}
-                              onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 6px 24px ${icp.color}20`; el.style.border=`2px solid ${icp.color}`; el.style.borderLeftWidth="4px"; const d=el.querySelector(".persona-del") as HTMLElement; if(d) d.style.opacity="1";}}
-                              onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.04)"; el.style.border=`1px solid ${C2.border}`; el.style.borderLeftWidth="1px"; const d=el.querySelector(".persona-del") as HTMLElement; if(d) d.style.opacity="0";}}>
-                              <div style={{ padding:"14px 18px" }}>
-                                {/* Name + delete */}
-                                <div style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:2 }}>
-                                  <div style={{ flex:1, fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.3 }}>
-                                    {icp.name || `Persona ${i+1}`}
-                                  </div>
-                                  <button className="persona-del" onClick={e=>{
-                                    e.stopPropagation();
-                                    if (confirm(`Delete "${icp.name || `Persona ${i+1}`}"? This cannot be undone.`)) {
-                                      setIcps((p:any) => p.filter((x:any) => x.id !== icp.id));
-                                      addToast({ title:"Persona deleted", status:"success", message:icp.name || `Persona ${i+1}` });
-                                    }
-                                  }}
-                                    style={{ width:22, height:22, borderRadius:6, border:`1px solid transparent`, background:"transparent",
-                                      color:C2.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                                      opacity:0, transition:"all .15s", flexShrink:0 }}
-                                    onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.red;(e.target as HTMLElement).style.borderColor=C2.red+"44";}}
-                                    onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;(e.target as HTMLElement).style.borderColor="transparent";}}>×</button>
+                              style={{ background:C2.canvas, borderRadius:12, borderLeft:`3px solid ${icp.color}`,
+                                borderTop:`1px solid ${C2.border}`, borderRight:`1px solid ${C2.border}`, borderBottom:`1px solid ${C2.border}`,
+                                cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.03)",
+                                transition:"all .2s", padding:"14px 16px" }}
+                              onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 4px 16px ${icp.color}18`; el.style.borderColor=icp.color; const d=el.querySelector(".persona-del") as HTMLElement; if(d) d.style.opacity="1";}}
+                              onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.03)"; el.style.borderTopColor=C2.border; el.style.borderRightColor=C2.border; el.style.borderBottomColor=C2.border; const d=el.querySelector(".persona-del") as HTMLElement; if(d) d.style.opacity="0";}}>
+                              {/* Row 1: Name + category pill + delete */}
+                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                                <div style={{ flex:1, fontSize:14, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.3,
+                                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                  {icp.name || `Persona ${i+1}`}
                                 </div>
-                                {d.buyer && (
-                                  <div style={{ fontSize:11, color:C2.textSoft, fontFamily:body, marginBottom:10, lineHeight:1.3 }}>
-                                    {d.buyer.length > 60 ? d.buyer.slice(0, 60) + "…" : d.buyer}
-                                  </div>
+                                {d.best_channel && (
+                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:C2.accent, background:`${C2.accent}0D`,
+                                    padding:"2px 7px", borderRadius:4, flexShrink:0 }}>
+                                    {d.best_channel.replace("Multi-channel (","").replace(")","").replace(" + ",", ")}
+                                  </span>
                                 )}
-
-                                {/* Primary pain — the most important outreach info */}
-                                {d.pain1 && (
-                                  <div style={{ fontSize:11.5, color:C2.text, fontFamily:body, lineHeight:1.4, marginBottom:10,
-                                    padding:"8px 10px", borderRadius:8, background:C2.faint, borderLeft:`3px solid ${icp.color}` }}>
-                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.muted, fontWeight:600, display:"block", marginBottom:3 }}>PRIMARY PAIN</span>
-                                    {d.pain1.length > 100 ? d.pain1.slice(0, 100) + "…" : d.pain1}
-                                  </div>
-                                )}
-
-                                {/* Quick stats row */}
-                                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                                  {d.industries && (
-                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.textSoft, background:C2.faint,
-                                      padding:"3px 8px", borderRadius:4 }}>
-                                      {d.industries.split(",")[0].trim()}
-                                    </span>
-                                  )}
-                                  {channel && (
-                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.blue, background:`${C2.blue}11`,
-                                      padding:"3px 8px", borderRadius:4 }}>
-                                      {channel}
-                                    </span>
-                                  )}
-                                  {tone && (
-                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.accent, background:`${C2.accent}11`,
-                                      padding:"3px 8px", borderRadius:4 }}>
-                                      {tone}
-                                    </span>
-                                  )}
-                                  {linkedProds.length > 0 && (
-                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.muted, background:C2.faint,
-                                      padding:"3px 8px", borderRadius:4 }}>
-                                      {linkedProds.length} product{linkedProds.length!==1?"s":""}
-                                    </span>
-                                  )}
-                                  {icp.outputs && (
-                                    <span style={{ fontSize:9, fontFamily:mono, color:C2.green, background:C2.greenLo,
-                                      padding:"3px 8px", borderRadius:4 }}>✓ Outputs</span>
-                                  )}
+                                <button className="persona-del" onClick={e=>{
+                                  e.stopPropagation();
+                                  if (confirm(`Delete "${icp.name || `Persona ${i+1}`}"?`)) {
+                                    setIcps((p:any) => p.filter((x:any) => x.id !== icp.id));
+                                    addToast({ title:"Persona deleted", status:"success", message:icp.name || `Persona ${i+1}` });
+                                  }
+                                }}
+                                  style={{ width:20, height:20, borderRadius:5, border:"none", background:"transparent",
+                                    color:C2.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                                    opacity:0, transition:"opacity .15s", flexShrink:0 }}
+                                  onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.red;}}
+                                  onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;}}>×</button>
+                              </div>
+                              {/* Row 2: Subtitle */}
+                              <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.4, marginBottom:10,
+                                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                {d.buyer || "No buyer title defined"}
+                              </div>
+                              {/* Row 3: Progress bar + pct */}
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                <div style={{ flex:1, height:3, borderRadius:2, background:C2.faint, overflow:"hidden" }}>
+                                  <div style={{ height:"100%", borderRadius:2, width:`${icpPct}%`,
+                                    background:icpPct===100?C2.green:icp.color, transition:"width .3s ease" }} />
                                 </div>
+                                <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:icpPct===100?C2.green:C2.muted }}>{icpPct}%</span>
                               </div>
                             </div>
                           );
@@ -12147,14 +12095,14 @@ Raw JSON only.`, "", 1400);
 
                         {/* Add persona card */}
                         <div onClick={()=>{ const p = newICP(icps.length); setIcps((prev:any) => [...prev, p]); setEditingId(p.id); }}
-                          style={{ background:"transparent", borderRadius:14, border:`2px dashed ${C2.border}`,
+                          style={{ background:"transparent", borderRadius:12, border:`2px dashed ${C2.border}`,
                             cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                            minHeight:160, transition:"all .2s" }}
+                            minHeight:80, transition:"all .2s" }}
                           onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.accent;(e.currentTarget as HTMLElement).style.background=`${C2.accent}06`;}}
                           onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.border;(e.currentTarget as HTMLElement).style.background="transparent";}}>
-                          <div style={{ textAlign:"center" }}>
-                            <div style={{ fontSize:24, color:C2.muted, marginBottom:8 }}>+</div>
-                            <div style={{ fontSize:13, fontFamily:head, fontWeight:600, color:C2.muted }}>Add Persona</div>
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <span style={{ fontSize:18, color:C2.muted }}>+</span>
+                            <span style={{ fontSize:13, fontFamily:head, fontWeight:600, color:C2.muted }}>Add Persona</span>
                           </div>
                         </div>
                       </div>
