@@ -8686,7 +8686,7 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                   : msg.id === "_streaming"
                     ? (() => {
                         const text = msg.content || "";
-                        const fadeLen = 8;
+                        const fadeLen = 20;
                         if (text.length <= fadeLen) {
                           return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
                             {text.split("").map((ch, i) => {
@@ -8703,8 +8703,8 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                           {solid}
                           {fading.split("").map((ch, i) => {
                             const p = i / (fadeLen - 1);
-                            return <span key={i} style={{ display:"inline-block", opacity: p * p * 0.85 + 0.15,
-                              filter:`blur(${(1 - p) * (1 - p) * 5}px)`, transform:`translateY(${(1 - p) * (1 - p) * -5}px)`,
+                            return <span key={i} style={{ display:"inline-block", opacity: p * p,
+                              filter:`blur(${(1 - p) * (1 - p) * 6}px)`, transform:`translateY(${(1 - p) * (1 - p) * -6}px)`,
                               transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}>{ch === " " ? "\u00A0" : ch}</span>;
                           })}
                         </span>;
