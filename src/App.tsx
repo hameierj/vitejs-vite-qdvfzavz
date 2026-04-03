@@ -221,7 +221,7 @@ const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]
       { id:"co_product",      label:"What do you actually sell?",  type:"textarea", ph:"Describe each product/service in detail — what it is, how it works, components, functionality, variations, pricing, delivery.", rows:4, hint:"If your grandmother couldn\'t follow it, simplify further" },
       { id:"co_prod_breakdown", label:"Product/Service Decomposition", type:"textarea", ph:"Product 1: Equipment Financing\n- Ideal buyer: ...\n- Pains it solves: ...\n- Gains: ...\n- Triggers: ...\n\nProduct 2: ...", rows:8, hint:"Break down each product/service — who buys it, why, when, what pain, what gain" },
       { id:"co_category",       label:"Market Category / Position",    type:"textarea", ph:"Equipment financing for SMB construction — speed and flexibility play against slow banks.", rows:2, hint:"Where you sit in the market and how buyers categorize you" },
-      { id:"co_competitors",    label:"Competitors / Alternatives",    type:"textarea", ph:"Banks (slow, rigid), dealer financing (limited), competitor lenders.", rows:2, hint:"Include both direct competitors and the status quo" },
+      { id:"co_competitors",    label:"Market Competitors",            type:"textarea", ph:"Banks (slow, rigid), dealer financing (limited), competitor lenders.", rows:2, hint:"Who the COMPANY competes with at a market level — different from what individual BUYERS currently use (that goes in Persona → Competitor Intel)" },
       { id:"co_buying_motion",  label:"Likely Buying Motion",          type:"textarea", ph:"Direct sales, inbound leads, partner/channel referrals, self-serve…", rows:2, hint:"How deals actually happen — direct vs channel vs inbound" },
       { id:"co_trust_risks",    label:"Trust / Risk Factors",          type:"textarea", ph:"Prospects worry about hidden fees, legitimacy, process friction…", rows:2, hint:"What makes prospects hesitate before engaging" },
       { id:"co_ksp",          label:"Key Selling Points",          type:"textarea", ph:"Unique benefits that make you stand out.", rows:3, hint:"Quality, price, convenience, guarantees, or solving a specific problem competitors can\'t" },
@@ -236,6 +236,15 @@ const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]
       { id:"co_past_emails",  label:"Past Email Examples",         type:"textarea", ph:"Paste your best-performing email copy here — subject lines and body text.", rows:4, hint:"Helps us match your proven style and tone", noConf:true },
       { id:"co_exclude",      label:"Global Exclude List",         type:"textarea", ph:"Current customers, investors, specific domains.",     hint:"Anyone we should never contact — applies to all ICPs", noConf:true },
       { id:"co_avoid",        label:"Copy — Always Avoid",         type:"textarea", ph:"Competitor names, pricing language, banned phrases.", hint:"Topics or angles that are off-limits in email copy", noConf:true },
+    ]
+  },
+  benchmarks: { label:"Default Benchmarks", icon:"⊙",
+    fields:[
+      { id:"co_bench_reply",      label:"Target Reply Rate (%)",         type:"text", ph:"3",   hint:"Default reply rate target — campaigns inherit this. Typical B2B cold email: 1-5%", noConf:true },
+      { id:"co_bench_interested",  label:"Target Interested Rate (%)",   type:"text", ph:"1",   hint:"Positive/interested reply rate. Typical: 0.5-2%", noConf:true },
+      { id:"co_bench_bounce_max",  label:"Max Bounce Rate (%)",          type:"text", ph:"3",   hint:"Above this = list quality issue. Keep under 3%", noConf:true },
+      { id:"co_bench_autoreply_max",label:"Max Auto-Reply Rate (%)",     type:"text", ph:"30",  hint:"OOO/auto-responders. Above 30% = too much noise", noConf:true },
+      { id:"co_bench_meeting",     label:"Target Meeting Rate (%)",      type:"text", ph:"0.5", hint:"Meetings booked per emails sent. Typical: 0.3-1%", noConf:true },
     ]
   },
 };
@@ -294,12 +303,12 @@ const CAMPAIGN_TYPES = [
   { id:"rts_calling",         label:"RTS Cold Calling",       icon:"◉", color:"#FFC048" },
 ];
 const CAMPAIGN_STATUSES = [
-  { id:"planned",   label:"Planned",   color:"#8E94A7" },
-  { id:"ready",     label:"Ready",     color:"#54A0FF" },
-  { id:"active",    label:"Active",    color:"#00D68F" },
-  { id:"reviewing", label:"Reviewing", color:"#FFC048" },
-  { id:"completed", label:"Completed", color:"#6C5CE7" },
-  { id:"paused",    label:"Paused",    color:"#FF6B6B" },
+  { id:"planned",   label:"Planning",              color:"#8E94A7", where:"CX Tool" },
+  { id:"ready",     label:"Ready to Launch",       color:"#54A0FF", where:"CX Tool → B2B Rocket" },
+  { id:"active",    label:"Live in B2B Rocket",    color:"#00D68F", where:"B2B Rocket" },
+  { id:"reviewing", label:"Reviewing Performance", color:"#FFC048", where:"CX Tool ← B2B Rocket" },
+  { id:"completed", label:"Completed",             color:"#6C5CE7", where:"CX Tool" },
+  { id:"paused",    label:"Paused",                color:"#FF6B6B", where:"B2B Rocket" },
 ];
 
 const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> = {
@@ -354,7 +363,7 @@ const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> =
   },
   competitorIntel: { label:"Competitor Intel", icon:"⊘",
     fields:[
-      { id:"current_solutions",      label:"What They Currently Use",           type:"textarea", ph:"Salesforce + manual spreadsheets, incumbent vendor X, in-house solution…", rows:3, hint:"The tools/vendors this persona uses today that you'd replace" },
+      { id:"current_solutions",      label:"What THIS Buyer Currently Uses",    type:"textarea", ph:"Salesforce + manual spreadsheets, incumbent vendor X, in-house solution…", rows:3, hint:"The specific tools/vendors THIS persona uses — different from company-level Market Competitors in the Company Profile" },
       { id:"incumbent_strengths",    label:"Why They Stay With the Incumbent",  type:"textarea", ph:"Familiarity, sunk cost, integration with other tools, risk aversion…", rows:2, hint:"Understanding this helps craft displacement messaging" },
       { id:"switching_triggers",     label:"Switching Triggers",                type:"textarea", ph:"Contract renewal, price increase, key feature missing, new leadership, compliance requirement…", rows:3, hint:"Events that make them willing to evaluate alternatives" },
       { id:"displacement_messaging", label:"Displacement Messaging",           type:"textarea", ph:"How to position against their current tool — not bashing, but highlighting gaps they feel.", rows:3, hint:"'If you're using X, you're probably dealing with Y problem. We solve that by…'" },
@@ -5954,9 +5963,11 @@ Keep each campaign object compact. No nested objects except as specified.`,
       {/* Header + Generate */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:28 }}>
         <div>
-          <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>12-Month Outreach Strategy</h2>
+          <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Outreach Strategy</h2>
           <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
-            AI-generated phased campaign roadmap based on your products, personas, and offers.
+            {phases.length > 0 && phases.some((p:any) => p.startWeek <= 6)
+              ? "Launch plan (weeks 1-6) + evolving roadmap. Updates as campaign data comes in."
+              : "Generate a launch plan for the first 45 days, then expand as you learn what works."}
           </p>
         </div>
         <button onClick={generateRoadmap} disabled={generating}
@@ -6246,6 +6257,17 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
   const updCampaign = (id: string, patch: any) => onCampaignsChange(campaigns.map(c => c.id === id ? { ...c, ...patch } : c));
   const addCampaign = () => {
     const c = EMPTY_CAMPAIGN();
+    // Inherit client-level benchmarks if set
+    const cd = companyData as Record<string,string>;
+    if (cd.co_bench_reply || cd.co_bench_interested || cd.co_bench_meeting) {
+      c.benchmarks = {
+        replyRate: { good: parseFloat(cd.co_bench_reply||"3"), warning: parseFloat(cd.co_bench_reply||"3")*0.5, action: parseFloat(cd.co_bench_reply||"3")*0.15, critical: 0 },
+        interestedRate: { good: parseFloat(cd.co_bench_interested||"1"), warning: parseFloat(cd.co_bench_interested||"1")*0.5, action: parseFloat(cd.co_bench_interested||"1")*0.2, critical: 0 },
+        bounceRate: { good: parseFloat(cd.co_bench_bounce_max||"3"), warning: 5, action: 8, critical: 12 },
+        autoReplyRate: { good: parseFloat(cd.co_bench_autoreply_max||"30"), warning: 40, action: 50, critical: 60 },
+        meetingRate: { good: parseFloat(cd.co_bench_meeting||"0.5"), warning: parseFloat(cd.co_bench_meeting||"0.5")*0.4, action: 0, critical: 0 },
+      };
+    }
     onCampaignsChange([...campaigns, c]);
     setSelectedId(c.id);
     setTab("config");
@@ -6258,8 +6280,8 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
 
   const generateSequence = async () => {
     if (!selected) return;
-    if (!selected.personaIds?.length && !selected.productId) {
-      addToast({ title:"Setup incomplete", status:"error", message:"Link at least one persona and select a product before generating a sequence" });
+    if (!(selected.personaIds||[])[0] || !selected.productId) {
+      addToast({ title:"Setup incomplete", status:"error", message:"Select a persona and product before generating a sequence" });
       return;
     }
     setGenerating(true);
@@ -6447,24 +6469,15 @@ Return ONLY valid JSON:
                   </div>
                 </div>
                 <div>
-                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Linked Persona(s)</label>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                    {personas.map((p: any) => {
-                      const linked = (selected.personaIds || []).includes(p.id);
-                      return (
-                        <button key={p.id} onClick={()=>{
-                          const ids = selected.personaIds || [];
-                          updCampaign(selected.id, { personaIds: linked ? ids.filter((x:string)=>x!==p.id) : [...ids, p.id] });
-                        }}
-                          style={{ padding:"5px 12px", borderRadius:8, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer",
-                            border:`1.5px solid ${linked?_C.accent+"55":_C.border}`,
-                            background:linked?`${_C.accent}12`:"transparent", color:linked?_C.accent:_C.muted }}>
-                          {linked?"✓ ":""}{p.name || "Unnamed"}
-                        </button>
-                      );
-                    })}
-                    {personas.length === 0 && <span style={{ fontSize:11, color:_C.muted, fontFamily:body }}>Add personas first</span>}
-                  </div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                    Persona <span style={{ fontWeight:400, color:_C.muted }}>(one persona per campaign)</span>
+                  </label>
+                  <select value={(selected.personaIds||[])[0]||""} onChange={e=>updCampaign(selected.id, {personaIds:e.target.value?[e.target.value]:[]})}
+                    style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                      background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, cursor:"pointer", outline:"none" }}>
+                    <option value="">Select persona…</option>
+                    {personas.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
+                  </select>
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
                   <div>
@@ -12226,6 +12239,32 @@ Raw JSON only.`, "", 1400);
                     </div>
                   </div>
                 )}
+
+                {/* ── Diagnostic Insights ── */}
+                {totals.sent > 0 && (() => {
+                  const insights: {icon:string;text:string;color:string}[] = [];
+                  if (replyRate !== null && replyRate < 1) insights.push({ icon:"◉", text:"Low reply rate — your pain angle may not be landing. Test different primary pains or opening hooks.", color:_C.red });
+                  else if (replyRate !== null && replyRate >= 3) insights.push({ icon:"✓", text:`Reply rate of ${replyRate}% is strong. Consider scaling volume on top-performing campaigns.`, color:_C.green });
+                  if (totals.posReplies > 0 && totals.meetings === 0) insights.push({ icon:"◉", text:"Getting interested replies but no meetings — check your CTA and handoff process. Make booking frictionless.", color:_C.amber });
+                  if (totals.replies > 0 && totals.posReplies === 0) insights.push({ icon:"◉", text:"Replies are all negative — your offer may be too aggressive or targeting is off. Try a softer CTA.", color:_C.red });
+                  if (totals.opens > 0 && totals.sent > 0 && (totals.opens/totals.sent) > 0.6) insights.push({ icon:"⚠", text:"Unusually high open rate (>60%) — likely inflated by email security scanners, not real opens. Focus on reply rate instead.", color:_C.amber });
+                  if (insights.length === 0 && totals.sent > 100) insights.push({ icon:"◎", text:"Keep monitoring. Need more data points to identify patterns.", color:_C.muted });
+                  return insights.length > 0 ? (
+                    <div style={{ marginBottom:28 }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:12 }}>DIAGNOSTIC INSIGHTS</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        {insights.map((ins, i) => (
+                          <div key={i} style={{ padding:"12px 16px", borderRadius:12, background:_C.canvas,
+                            border:`1px solid ${_C.border}`, borderLeft:`4px solid ${ins.color}`,
+                            display:"flex", alignItems:"flex-start", gap:10 }}>
+                            <span style={{ fontSize:14, color:ins.color, flexShrink:0, marginTop:1 }}>{ins.icon}</span>
+                            <span style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.5 }}>{ins.text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
 
                 {/* ── Overall Metrics ── */}
                 <div style={{ marginBottom:28 }}>
