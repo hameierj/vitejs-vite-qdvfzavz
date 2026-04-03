@@ -8578,65 +8578,80 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
   ];
 
   return (
-      /* Bottom-right popup */
-      <div style={{ position:"fixed", bottom:24, right:24, width:"clamp(360px, 30vw, 440px)", height:"clamp(480px, 60vh, 640px)",
+      <div style={{ position:"fixed", bottom:24, right:24, width:"clamp(370px, 30vw, 420px)", height:"clamp(500px, 62vh, 660px)",
         zIndex:999, display:"flex", flexDirection:"column", background:C2.canvas,
-        borderRadius:20, border:`1px solid ${C2.border}`, boxShadow:"0 12px 48px rgba(13,15,26,0.18), 0 0 0 1px rgba(108,92,231,0.08)",
+        borderRadius:20, border:`1px solid ${C2.border}`,
+        boxShadow:`0 20px 60px rgba(13,15,26,0.22), 0 0 0 1px ${C2.accent}0A`,
         animation:"copilotPopUp .3s cubic-bezier(0.16, 1, 0.3, 1)", overflow:"hidden" }}>
 
-        {/* Header */}
-        <div style={{ padding:"14px 18px", borderBottom:`1px solid ${C2.border}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-          <div style={{ width:28, height:28, borderRadius:8, background:`${C2.accent}14`,
-            display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-            <span style={{ fontSize:13, color:C2.accent, fontWeight:700 }}>AI</span>
+        {/* Header — gradient accent strip */}
+        <div style={{ padding:"12px 16px", background:`linear-gradient(135deg, ${C2.accent}0A, ${C2.accent}04)`,
+          borderBottom:`1px solid ${C2.border}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+          <div style={{ width:30, height:30, borderRadius:10,
+            background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`,
+            display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+            boxShadow:`0 2px 8px ${C2.accent}33` }}>
+            <span style={{ fontSize:11, color:"#fff", fontWeight:800, fontFamily:mono }}>AI</span>
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head }}>Copilot</div>
-            <div style={{ fontSize:10, color:C2.muted, fontFamily:mono }}>{clientName}{currentView ? ` · ${currentView}` : ""}</div>
+            <div style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head, lineHeight:1.2 }}>Copilot</div>
+            <div style={{ fontSize:9.5, color:C2.muted, fontFamily:mono, lineHeight:1.2 }}>{clientName}</div>
           </div>
           {isStreaming && (
-            <span style={{ fontSize:10, color:C2.accent, fontFamily:mono, display:"flex", alignItems:"center", gap:4 }}>
-              <span style={{ animation:"pulse 1s ease-in-out infinite" }}>●</span> Thinking
-            </span>
+            <div style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:8,
+              background:`${C2.accent}0D`, fontSize:10, color:C2.accent, fontFamily:mono, fontWeight:600 }}>
+              <span style={{ animation:"pulse 1s ease-in-out infinite" }}>●</span>Thinking
+            </div>
           )}
-          {/* Chat history dropdown */}
-          {chats.length > 1 && (
-            <select value={activeChatId||""} onChange={e=>setActiveChatId(e.target.value||null)}
-              style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.faint,
-                color:C2.textSoft, fontSize:10, fontFamily:mono, cursor:"pointer", maxWidth:120 }}>
-              {chats.map(c => <option key={c.id} value={c.id}>{(c.title||"Chat").slice(0,25)}</option>)}
-            </select>
-          )}
-          <button onClick={newChat} title="New chat"
-            style={{ width:26, height:26, borderRadius:6, border:`1px solid ${C2.border}`, background:C2.faint,
-              color:C2.muted, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
-            onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.accent;}}
-            onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;}}>+</button>
-          <button onClick={onClose}
-            style={{ width:26, height:26, borderRadius:6, border:`1px solid ${C2.border}`, background:C2.faint,
-              color:C2.muted, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
-            onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.red;}}
-            onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;}}>×</button>
+          <div style={{ display:"flex", gap:4 }}>
+            {chats.length > 1 && (
+              <select value={activeChatId||""} onChange={e=>setActiveChatId(e.target.value||null)}
+                style={{ padding:"3px 6px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas,
+                  color:C2.textSoft, fontSize:9, fontFamily:mono, cursor:"pointer", maxWidth:90, outline:"none" }}>
+                {chats.map(c => <option key={c.id} value={c.id}>{(c.title||"Chat").slice(0,20)}</option>)}
+              </select>
+            )}
+            <button onClick={newChat} title="New chat"
+              style={{ width:24, height:24, borderRadius:6, border:"none", background:C2.canvas,
+                color:C2.muted, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                transition:"all .15s" }}
+              onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.color=C2.accent; el.style.background=`${C2.accent}0D`;}}
+              onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.color=C2.muted; el.style.background=C2.canvas;}}>+</button>
+            <button onClick={onClose}
+              style={{ width:24, height:24, borderRadius:6, border:"none", background:C2.canvas,
+                color:C2.muted, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                transition:"all .15s" }}
+              onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.color=C2.red; el.style.background=`${C2.red}0D`;}}
+              onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.color=C2.muted; el.style.background=C2.canvas;}}>×</button>
+          </div>
         </div>
 
         {/* Messages */}
-        <div ref={threadRef} style={{ flex:1, overflowY:"auto", padding:"16px 18px", display:"flex", flexDirection:"column", gap:16 }}>
+        <div ref={threadRef} style={{ flex:1, overflowY:"auto", padding:"14px 16px", display:"flex", flexDirection:"column", gap:12 }}>
           {displayMsgs.length === 0 && !isStreaming && (
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", flex:1, textAlign:"center", padding:"32px 0" }}>
-              <div style={{ fontSize:14, fontWeight:600, color:C2.text, fontFamily:head, marginBottom:6 }}>
-                What can I help with?
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", flex:1, padding:"20px 0" }}>
+              {/* Subtle glow */}
+              <div style={{ width:48, height:48, borderRadius:14, marginBottom:16,
+                background:`linear-gradient(135deg, ${C2.accent}14, ${C2.accent}08)`,
+                border:`1px solid ${C2.accent}18`,
+                display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <span style={{ fontSize:18, color:C2.accent }}>◎</span>
               </div>
-              <div style={{ fontSize:12, color:C2.muted, fontFamily:body, lineHeight:1.6, maxWidth:300, marginBottom:20 }}>
-                I can see your entire workspace — company, products, personas, campaigns, strategy, and analytics.
+              <div style={{ fontSize:13, fontWeight:600, color:C2.text, fontFamily:head, marginBottom:4, textAlign:"center" }}>
+                How can I help?
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, width:"100%" }}>
+              <div style={{ fontSize:11, color:C2.muted, fontFamily:body, lineHeight:1.5, textAlign:"center", maxWidth:260, marginBottom:18 }}>
+                Full workspace context. Try a command or ask anything.
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, width:"100%" }}>
                 {SUGGESTIONS.map(s => (
-                  <button key={s.text} onClick={()=>setInput(s.text)} style={{ padding:"10px 12px", borderRadius:8,
-                    border:`1px solid ${C2.border}`, background:C2.canvas, cursor:"pointer", textAlign:"left", transition:"all .15s" }}
-                    onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.accent;(e.currentTarget as HTMLElement).style.background=`${C2.accent}06`;}}
-                    onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C2.border;(e.currentTarget as HTMLElement).style.background=C2.canvas;}}>
-                    <div style={{ fontSize:12, fontWeight:700, fontFamily:mono, color:C2.accent, marginBottom:3 }}>{s.text}</div>
-                    <div style={{ fontSize:11, color:C2.textSoft, fontFamily:body }}>{s.desc}</div>
+                  <button key={s.text} onClick={()=>setInput(s.text)}
+                    style={{ padding:"8px 10px", borderRadius:10, border:`1px solid ${C2.border}`,
+                      background:C2.canvas, cursor:"pointer", textAlign:"left", transition:"all .2s" }}
+                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent; el.style.transform="translateY(-1px)"; el.style.boxShadow=`0 2px 8px ${C2.accent}12`;}}
+                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.border; el.style.transform="translateY(0)"; el.style.boxShadow="none";}}>
+                    <div style={{ fontSize:11, fontWeight:700, fontFamily:mono, color:C2.accent, marginBottom:2 }}>{s.text}</div>
+                    <div style={{ fontSize:10, color:C2.muted, fontFamily:body, lineHeight:1.4 }}>{s.desc}</div>
                   </button>
                 ))}
               </div>
@@ -8644,53 +8659,57 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
           )}
 
           {displayMsgs.map(msg => (
-            <div key={msg.id} style={{ display:"flex", flexDirection:"column",
-              alignItems: msg.role==="user" ? "flex-end" : "flex-start", gap:3 }}>
-              <div style={{ maxWidth:"88%", padding:"10px 14px",
+            <div key={msg.id} style={{ display:"flex", gap:8, alignItems:"flex-start",
+              flexDirection: msg.role==="user" ? "row-reverse" : "row" }}>
+              {msg.role !== "user" && msg.id !== "_streaming" && (
+                <div style={{ width:22, height:22, borderRadius:7, flexShrink:0, marginTop:2,
+                  background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`,
+                  display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  <span style={{ fontSize:8, color:"#fff", fontWeight:800, fontFamily:mono }}>AI</span>
+                </div>
+              )}
+              <div style={{ maxWidth:"82%", padding:"8px 12px",
                 borderRadius: msg.role==="user" ? "12px 12px 3px 12px" : "12px 12px 12px 3px",
                 background: msg.role==="user" ? C2.accent : C2.faint,
-                border: msg.role==="user" ? "none" : `1px solid ${C2.border}`,
                 color: msg.role==="user" ? "#fff" : C2.text,
-                fontSize:13, lineHeight:1.7 }}>
+                fontSize:12.5, lineHeight:1.65 }}>
                 {msg.role === "user"
                   ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
                   : <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>}
                 {msg.id === "_streaming" && (
-                  <span style={{ display:"inline-block", width:6, height:13, background:C2.accent,
+                  <span style={{ display:"inline-block", width:5, height:12, background:C2.accent,
                     borderRadius:2, marginLeft:2, animation:"cursorBlink .7s step-end infinite",
                     verticalAlign:"text-bottom" }} />
                 )}
-              </div>
-              <div style={{ fontSize:9, color:C2.muted, fontFamily:mono, paddingLeft:3, paddingRight:3 }}>
-                {msg.role==="user" ? "You" : "Copilot"}
-                {msg.id !== "_streaming" && ` · ${new Date(msg.timestamp).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Input */}
-        <div style={{ padding:"12px 18px 14px", borderTop:`1px solid ${C2.border}`, flexShrink:0 }}>
-          <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
+        {/* Input — clean bottom bar */}
+        <div style={{ padding:"10px 14px 12px", borderTop:`1px solid ${C2.border}`, flexShrink:0,
+          background:`linear-gradient(0deg, ${C2.faint}, ${C2.canvas})` }}>
+          <div style={{ display:"flex", gap:6, alignItems:"flex-end",
+            background:C2.canvas, borderRadius:12, border:`1px solid ${C2.border}`, padding:"4px 4px 4px 12px",
+            transition:"border-color .2s" }}>
             <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKeyDown}
               placeholder={placeholder}
-              rows={2}
-              style={{ flex:1, padding:"9px 12px", borderRadius:10, border:`1px solid ${C2.border}`,
-                background:C2.faint, color:C2.text, fontSize:13, fontFamily:body,
-                resize:"none", lineHeight:1.5, transition:"border-color .15s", outline:"none" }}
-              onFocus={e=>(e.currentTarget as HTMLTextAreaElement).style.borderColor=C2.accent+"66"}
-              onBlur={e=>(e.currentTarget as HTMLTextAreaElement).style.borderColor=C2.border} />
-            <button onClick={sendMessage} disabled={!input.trim()||isStreaming} style={{
-              padding:"9px 16px", borderRadius:10, border:"none", flexShrink:0,
-              background: input.trim()&&!isStreaming ? C2.accent : C2.faint,
-              color: input.trim()&&!isStreaming ? "#fff" : C2.muted,
-              fontSize:12, fontFamily:head, fontWeight:700, transition:"all .2s",
-              cursor: input.trim()&&!isStreaming ? "pointer" : "default" }}>
-              {isStreaming ? "..." : "Send"}
+              rows={1}
+              style={{ flex:1, padding:"6px 0", border:"none", background:"transparent", color:C2.text,
+                fontSize:13, fontFamily:body, resize:"none", lineHeight:1.4, outline:"none", maxHeight:80, overflow:"auto" }}
+              onInput={e=>{const t=e.currentTarget; t.style.height="auto"; t.style.height=Math.min(t.scrollHeight,80)+"px";}} />
+            <button onClick={sendMessage} disabled={!input.trim()||isStreaming}
+              style={{ width:30, height:30, borderRadius:8, border:"none", flexShrink:0,
+                background: input.trim()&&!isStreaming ? `linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})` : C2.faint,
+                color: input.trim()&&!isStreaming ? "#fff" : C2.muted,
+                fontSize:13, cursor: input.trim()&&!isStreaming ? "pointer" : "default",
+                display:"flex", alignItems:"center", justifyContent:"center", transition:"all .2s" }}>
+              ↑
             </button>
           </div>
-          <div style={{ fontSize:9, color:C2.muted, fontFamily:mono, marginTop:5 }}>
-            Enter to send · /audit /next-steps /review-campaigns
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, color:C2.muted, fontFamily:mono, marginTop:4, padding:"0 4px" }}>
+            <span>↵ send · ⇧↵ newline</span>
+            <span>⌘J toggle</span>
           </div>
         </div>
       </div>
