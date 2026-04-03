@@ -200,17 +200,6 @@ const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]
       { id:"co_contact_phone",label:"Contact Phone Number",       type:"text",     ph:"", noConf:true },
       { id:"co_contact_email",label:"Contact Business Email",     type:"text",     ph:"",                                                   hint:"Primary business email address", noConf:true },
       { id:"co_login_email",  label:"B2B Rocket Login Email",     type:"text",     ph:"",                                                   hint:"Email used to login to app.b2brocket.ai", noConf:true },
-      { id:"co_channels",     label:"Outreach Channels",           type:"chips",    opts:["Email","LinkedIn","AI Calls"], noConf:true },
-      { id:"co_num_campaigns",label:"Number of Campaigns",         type:"select",   opts:["1","2","3","4","5+"],                            hint:"How many campaigns to start with", noConf:true },
-      { id:"co_campaign_purpose",label:"Campaign Purpose",         type:"textarea", ph:"Describe the purpose of each campaign — e.g. \'Campaign 1: target enterprise CFOs for demo bookings\'", rows:3, noConf:true },
-      { id:"co_outcomes",     label:"Expected Outcomes",           type:"chips",    opts:["Book demos","Schedule follow-up calls","Drive replies","Upsell existing customers","Re-engage inactive users","Activate trial users","Book renewal meetings","Drive event sign-ups","Collect feedback"], noConf:true },
-      { id:"co_timezone",     label:"Campaign Timezone",           type:"text",     ph:"(UTC -05:00) America/New_York", noConf:true },
-      { id:"co_days",         label:"Campaign Days",               type:"chips",    opts:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], noConf:true },
-      { id:"co_start_time",   label:"Daily Start Time",            type:"text",     ph:"9:00 AM", noConf:true },
-      { id:"co_end_time",     label:"Daily End Time",              type:"text",     ph:"5:00 PM", noConf:true },
-      { id:"co_deal",         label:"Avg Deal Size",               type:"select",   opts:["<$1K","$1K–$5K","$5K–$25K","$25K–$100K","$100K+"], noConf:true },
-      { id:"co_cycle",        label:"Sales Cycle",                 type:"select",   opts:["<1 week","1–4 weeks","1–3 months","3–6 months","6+ months"], noConf:true },
-      { id:"co_goal",         label:"Monthly Meetings Goal",       type:"select",   opts:["1–5","5–10","10–20","20–30","30+"], noConf:true },
     ]
   },
   business: { label:"Business Profile", icon:"◉",
@@ -229,6 +218,30 @@ const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]
       { id:"co_proof",        label:"Proof That Works",            type:"textarea", ph:"\'3× pipeline in 90 days for Acme.\' Logos, stats, G2 ratings, testimonials.", rows:2, hint:"The single stat or name that makes skeptics pause" },
       { id:"co_customers",    label:"Current Customers",           type:"textarea", ph:"List a few current customers with website/LinkedIn URLs.", rows:2, hint:"Used for social proof and lookalike targeting" },
       { id:"co_dream",        label:"Dream Customers",             type:"textarea", ph:"Companies you\'d love to land — website/LinkedIn URLs.", rows:2, hint:"Helps define the ideal profile and targeting criteria" },
+    ]
+  },
+};
+const COMPANY_FIELDS = Object.values(COMPANY_SECTIONS).flatMap(s => s.fields);
+
+// ─── PREFERENCES (Campaign Planning) ─────────────────────────────────────────
+const PREFERENCES_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> = {
+  campaign: { label:"Campaign Setup", icon:"◎",
+    fields:[
+      { id:"co_channels",     label:"Outreach Channels",           type:"chips",    opts:["Email","LinkedIn","AI Calls"], noConf:true },
+      { id:"co_num_campaigns",label:"Number of Campaigns",         type:"select",   opts:["1","2","3","4","5+"],                            hint:"How many campaigns to start with", noConf:true },
+      { id:"co_campaign_purpose",label:"Campaign Purpose",         type:"textarea", ph:"Describe the purpose of each campaign — e.g. \'Campaign 1: target enterprise CFOs for demo bookings\'", rows:3, noConf:true },
+      { id:"co_outcomes",     label:"Expected Outcomes",           type:"chips",    opts:["Book demos","Schedule follow-up calls","Drive replies","Upsell existing customers","Re-engage inactive users","Activate trial users","Book renewal meetings","Drive event sign-ups","Collect feedback"], noConf:true },
+      { id:"co_deal",         label:"Avg Deal Size",               type:"select",   opts:["<$1K","$1K–$5K","$5K–$25K","$25K–$100K","$100K+"], noConf:true },
+      { id:"co_cycle",        label:"Sales Cycle",                 type:"select",   opts:["<1 week","1–4 weeks","1–3 months","3–6 months","6+ months"], noConf:true },
+      { id:"co_goal",         label:"Monthly Meetings Goal",       type:"select",   opts:["1–5","5–10","10–20","20–30","30+"], noConf:true },
+    ]
+  },
+  scheduling: { label:"Scheduling", icon:"◈",
+    fields:[
+      { id:"co_timezone",     label:"Campaign Timezone",           type:"text",     ph:"(UTC -05:00) America/New_York", noConf:true },
+      { id:"co_days",         label:"Campaign Days",               type:"chips",    opts:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], noConf:true },
+      { id:"co_start_time",   label:"Daily Start Time",            type:"text",     ph:"9:00 AM", noConf:true },
+      { id:"co_end_time",     label:"Daily End Time",              type:"text",     ph:"5:00 PM", noConf:true },
     ]
   },
   guardrails: { label:"Sales & Messaging", icon:"◈",
@@ -253,7 +266,8 @@ const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]
     ]
   },
 };
-const COMPANY_FIELDS = Object.values(COMPANY_SECTIONS).flatMap(s => s.fields);
+const PREFERENCES_FIELDS = Object.values(PREFERENCES_SECTIONS).flatMap(s => s.fields);
+const ALL_COMPANY_FIELDS = [...COMPANY_FIELDS, ...PREFERENCES_FIELDS];
 
 // ─── PRODUCTS & SERVICES ─────────────────────────────────────────────────────
 const PRODUCT_SECTIONS: Record<string, {label:string; fields:any[]}> = {
@@ -1315,7 +1329,7 @@ function exportFullPDF(companyData: any, icps: any[], clientName: string) {
     }).join("");
   };
 
-  const coFields = COMPANY_FIELDS.filter(f => companyData?.[f.id]);
+  const coFields = ALL_COMPANY_FIELDS.filter(f => companyData?.[f.id]);
   const date = new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" });
 
   let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${clientName} — Full Export</title>
@@ -2621,7 +2635,7 @@ Raw JSON only.`, "", 4000);
     };
 
     // Company field changes
-    for (const f of COMPANY_FIELDS) {
+    for (const f of ALL_COMPANY_FIELDS) {
       const oldVal = companyData?.[f.id] || "";
       const newVal = coFields[f.id] || "";
       if (!newVal || !String(newVal).trim()) continue;
@@ -4012,7 +4026,7 @@ Scoring guide:
     setIntelligence({ status:"running", result:"", phase:"Reading company & ICP data…" });
 
     // Build a labeled field dump — skip empty values
-    const coFields = COMPANY_FIELDS.map(f => {
+    const coFields = ALL_COMPANY_FIELDS.map(f => {
       const v = companyData?.[f.id];
       if (!v || (Array.isArray(v) && v.length === 0)) return null;
       const display = Array.isArray(v) ? v.join(", ") : String(v);
@@ -4026,7 +4040,7 @@ Scoring guide:
       return `${f.label}: ${display}`;
     }).filter(Boolean).join("\n");
 
-    const missingCompany = COMPANY_FIELDS.filter(f => {
+    const missingCompany = ALL_COMPANY_FIELDS.filter(f => {
       const v = companyData?.[f.id];
       return !v || (Array.isArray(v) && v.length === 0) || String(v).trim() === "";
     }).map(f => f.label);
@@ -6561,7 +6575,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
     upd(fieldId, opt.text); onConfChange?.(fieldId, opt.conf); onConfLock?.(fieldId, true);
   };
 
-  const secKeys = ["client","business","guardrails"];
+  const secKeys = ["client","business"];
   const sec = COMPANY_SECTIONS[secTab];
   const secFill = sec?.fields.filter((f: any) => fieldFilled(f, data[f.id])).length ?? 0;
 
@@ -6693,7 +6707,119 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
   );
 }
 
-// ─── OUTPUTS HUB ─────────────────────────────────────────────────────────────
+// ─── PREFERENCES PANEL ───────────────────────────────────────────────────────
+function PreferencesPanel({ data, onChange }: { data: any; onChange: (d: any) => void }) {
+  const [secTab, setSecTab] = useState("campaign");
+  const upd = (id: string, v: any) => onChange({ ...data, [id]: v });
+
+  const secKeys = Object.keys(PREFERENCES_SECTIONS);
+  const sec = PREFERENCES_SECTIONS[secTab];
+
+  const [leavingTab, setLeavingTab] = useState<string|null>(null);
+  const [incomingTab, setIncomingTab] = useState<string|null>(null);
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [leavingBehind, setLeavingBehind] = useState(false);
+  const swapTab = (newTab: string) => {
+    if (newTab === secTab || isSwapping) return;
+    setLeavingTab(secTab);
+    setIncomingTab(newTab);
+    setIsSwapping(true);
+    setLeavingBehind(false);
+    setTimeout(() => { setLeavingBehind(true); }, 600);
+    setTimeout(() => { setSecTab(newTab); }, 650);
+    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); setIncomingTab(null); setLeavingBehind(false); }, 1400);
+  };
+
+  return (
+    <div style={{ display:"flex", height:"100%", overflow:"hidden", borderRadius:16, border:`1px solid ${C2.border}`,
+      background:C2.canvas, boxShadow:"0 2px 12px rgba(108,92,231,.04)" }}>
+      {/* Section nav */}
+      <div style={{ width:220, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
+        {secKeys.map(key => {
+          const s = PREFERENCES_SECTIONS[key];
+          if (!s) return null;
+          const gf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
+          const on = secTab === key;
+          const allFilled = gf === s.fields.length;
+          return (
+            <button key={key} onClick={() => swapTab(key)} style={{
+              display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+              background: on ? `${C2.accent}14` : "transparent",
+              borderRadius:12, border:"none", whiteSpace:"nowrap" as const,
+              cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:4 }}
+              onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C2.canvas; }}
+              onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+              <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight: on ? 700 : 500, color: on ? C2.text : C2.textSoft }}>{s.label}</span>
+              <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:allFilled?C2.green:on?C2.accent:C2.muted,
+                background:allFilled?C2.greenLo:on?`${C2.accent}11`:C2.canvas,
+                padding:"2px 8px", borderRadius:8, flexShrink:0, marginLeft:"auto" }}>
+                {allFilled?"Done":`${gf}/${s.fields.length}`}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Fields — card stack */}
+      <div style={{ flex:1, position:"relative" as const, overflow: isSwapping ? "visible" : "hidden", minHeight:0, perspective:"1800px", perspectiveOrigin:"70% 50%" }}>
+        {secKeys.map(key => {
+          const s = PREFERENCES_SECTIONS[key];
+          if (!s) return null;
+          const isActive = secTab === key;
+          const isLeaving = leavingTab === key;
+          const isIncoming = incomingTab === key;
+          const isVisible = isActive || isLeaving || isIncoming;
+          const sf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
+
+          const z = isLeaving
+            ? (leavingBehind ? 1 : 15)
+            : (isActive || isIncoming) ? 10 : 1;
+
+          return (
+            <div key={key} style={{
+              position:"absolute" as const, inset:0, padding:"28px 32px",
+              overflowY: isActive && !isSwapping ? "auto" : "hidden",
+              background: C2.canvas,
+              borderRadius:4,
+              transformStyle:"preserve-3d" as const,
+              backfaceVisibility:"hidden" as const,
+              transformOrigin: isLeaving ? "right center" : isIncoming ? "left center" : "center center",
+              willChange:"transform" as const,
+              boxShadow: isVisible ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "none",
+              zIndex: z,
+              transform: isLeaving ? undefined
+                : isIncoming ? undefined
+                : isActive ? "translateZ(0px) scale(1)"
+                : "translateZ(-30px) scale(0.97) translateY(8px)",
+              transition: (!isLeaving && !isIncoming) ? "transform .7s ease-in-out, box-shadow .7s ease" : undefined,
+              animation: isLeaving ? "cardFlipBehind 1.3s ease-in-out forwards"
+                : isIncoming ? "cardRiseUp 1.3s ease-in-out forwards"
+                : undefined,
+              pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
+              visibility: isVisible ? "visible" as const : "hidden" as const,
+            }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                  <div>
+                    <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head }}>{s.label}</div>
+                    <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:2 }}>Configure how campaigns should run for this client</div>
+                  </div>
+                  <span style={{ fontSize:12, color:C2.muted, fontFamily:mono, background:C2.faint,
+                    padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{sf}/{s.fields.length}</span>
+                </div>
+                {s.fields.map((f: any) => (
+                  <Field key={f.id} f={f} val={data[f.id]} onChange={(v: any) => upd(f.id, v)}
+                    accentColor={C2.accent} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── PERFORMANCE LOGGER ───────────────────────────────────────────────────────
 const PERF_METRICS = [
   { id:"sent",        label:"Emails Sent",   short:"Sent"    },
@@ -10707,6 +10833,7 @@ function AppMain() {
 
   const icpsWithOutputs = icps.filter(i=>i.outputs).length;
   const companyPct = Math.round(COMPANY_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/COMPANY_FIELDS.length*100);
+  const prefsPct = Math.round(PREFERENCES_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/PREFERENCES_FIELDS.length*100);
   const editingICP = icps.find(i=>i.id===editingId) ?? null;
 
   // Clear editing when navigating away from personas
@@ -11123,6 +11250,18 @@ Raw JSON only.`, "", 1400);
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
                     padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>PLANNING</div>
 
+                  {/* Preferences */}
+                  <button onClick={()=>guardedNav(()=>setView("preferences"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="preferences" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                    onMouseEnter={e=>{ if(view!=="preferences")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="preferences")(e.currentTarget as HTMLButtonElement).style.background=view==="preferences"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="preferences"?C2.accent:C2.muted }}>⚙</span>
+                    <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="preferences"?700:500, color:view==="preferences"?C2.text:C2.textSoft }}>Preferences</span>
+                  </button>
+
                   {/* Coverage Matrix */}
                   {products.length > 0 && icps.length > 0 && (
                     <button onClick={()=>guardedNav(()=>setView("matrix"))}
@@ -11444,7 +11583,7 @@ Raw JSON only.`, "", 1400);
                       const wsData = loadWorkspaceData(c.id);
                       const wsIcps: any[] = wsData?.icps ?? [];
                       const wsCoData = wsData?.companyData ?? {};
-                      const wsPct = Math.round(COMPANY_FIELDS.filter(f => fieldFilled(f, (wsCoData as any)[f.id])).length / COMPANY_FIELDS.length * 100);
+                      const wsPct = Math.round(ALL_COMPANY_FIELDS.filter(f => fieldFilled(f, (wsCoData as any)[f.id])).length / ALL_COMPANY_FIELDS.length * 100);
                       const wsReady = wsIcps.filter(i => i.outputs).length;
                       return (
                         <div key={c.id}
@@ -11672,7 +11811,7 @@ Raw JSON only.`, "", 1400);
                 <div style={{ padding:"20px 0 16px", flexShrink:0 }}>
                   <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Company Profile</h2>
                   <p style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.5, margin:"0 0 14px" }}>
-                    Fill this once. Every ICP inherits this context when AI auto-drafts their profile.
+                    Who is this client and what do they sell? This context feeds into every AI generation.
                   </p>
                   <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                     <div style={{ flex:1, height:6, borderRadius:3, background:C2.faint, overflow:"hidden" }}>
@@ -11690,6 +11829,30 @@ Raw JSON only.`, "", 1400);
                     onConfChange={(id: string, score: number) => setCompanyConf((p:any) => ({ ...p, [id]: score }))}
                     onConfLock={(id: string, locked: boolean) => setCompanyConfLocked((p:any) => ({ ...p, [id]: locked }))}
                     fileContext={buildFileContext(wsFiles)} />
+                </div>
+              </div>
+            )}
+
+            {view==="preferences" && (
+              <div style={{ position:"absolute" as const, inset:0, textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                <div style={{ padding:"20px 0 16px", flexShrink:0 }}>
+                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Preferences</h2>
+                  <p style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.5, margin:"0 0 14px" }}>
+                    Campaign configuration, scheduling, messaging guardrails, and benchmarks.
+                  </p>
+                  <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                    <div style={{ flex:1, height:6, borderRadius:3, background:C2.faint, overflow:"hidden" }}>
+                      <div style={{ height:"100%", borderRadius:3, width:`${prefsPct}%`,
+                        background:`linear-gradient(90deg, ${C2.accent}, ${C2.accentHi})`,
+                        transition:"width .6s ease", boxShadow:`0 0 8px ${C2.accent}33` }} />
+                    </div>
+                    <span style={{ fontSize:12, color:prefsPct===100?C2.green:C2.accent, fontFamily:mono, fontWeight:700,
+                      background:prefsPct===100?C2.greenLo:`${C2.accent}11`, padding:"3px 10px", borderRadius:8 }}>{prefsPct}%</span>
+                  </div>
+                </div>
+                <div style={{ flex:1, minHeight:0, marginBottom:16 }}>
+                  <PreferencesPanel data={companyData} onChange={setCompanyData} />
                 </div>
               </div>
             )}
