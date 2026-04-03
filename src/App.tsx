@@ -11753,66 +11753,36 @@ Raw JSON only.`, "", 1400);
                 </div>
 
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:14, width:"100%", maxWidth:860 }}>
-                  {/* Quick Start */}
-                  <div onClick={()=>{ setView("company"); setShowQS(true); }}
-                    style={{ padding:"28px 24px", borderRadius:14, border:`1.5px solid ${C2.accent}33`,
-                      background:C2.canvas, cursor:"pointer", transition:"all .2s",
-                      display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" }}
-                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent; el.style.boxShadow=`0 4px 20px ${C2.accent}18`;}}
-                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent+"33"; el.style.boxShadow="none";}}>
-                    <div style={{ width:40, height:40, borderRadius:10, background:`${C2.accent}12`,
-                      display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, flexShrink:0 }}>
-                      <span style={{ fontSize:16, color:C2.accent, fontWeight:700 }}>AI</span>
+                  {[
+                    { key:"qs", label:"Quick Start", desc:"AI researches your business and builds everything. You review before anything is created.", foot:"AI-powered", icon:"AI", iconAccent:true,
+                      onClick:()=>{ setView("company"); setShowQS(true); } },
+                    { key:"manual", label:"Start from Scratch", desc:"Fill in company, products, and personas yourself. Best when you have info ready.", foot:"Full control", icon:"+", iconAccent:false,
+                      onClick:()=>setView("company") },
+                    { key:"import", label:"Import", desc:"Restore from an exported workspace JSON file.", foot:"Instant", icon:"↑", iconAccent:false,
+                      onClick:()=>{ const input = document.createElement("input"); input.type="file"; input.accept=".json";
+                        input.onchange = async (e:any) => {
+                          const file = e.target.files?.[0]; if (!file) return;
+                          try {
+                            const result = await importWorkspaceBundle(file, loggedInUser?.id||null);
+                            if (result) { addToast({ title:"Imported", status:"success", message:result.clientName }); setView("company"); }
+                          } catch { addToast({ title:"Import failed", status:"error", message:"Invalid file" }); }
+                        }; input.click(); } },
+                  ].map(card => (
+                    <div key={card.key} onClick={card.onClick}
+                      style={{ padding:"28px 24px", borderRadius:14, border:`1px solid ${C2.border}`,
+                        background:C2.canvas, cursor:"pointer", transition:"all .2s",
+                        display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" }}
+                      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent; el.style.boxShadow=`0 4px 20px ${C2.accent}14`;}}
+                      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.border; el.style.boxShadow="none";}}>
+                      <div style={{ width:40, height:40, borderRadius:10, background:card.iconAccent?`${C2.accent}12`:C2.faint,
+                        display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, flexShrink:0 }}>
+                        <span style={{ fontSize:card.icon==="AI"?16:15, color:card.iconAccent?C2.accent:C2.muted, fontWeight:card.iconAccent?700:400 }}>{card.icon}</span>
+                      </div>
+                      <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:6 }}>{card.label}</div>
+                      <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:12 }}>{card.desc}</div>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, marginTop:"auto" }}>{card.foot}</div>
                     </div>
-                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:6 }}>Quick Start</div>
-                    <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:12 }}>
-                      AI researches your business and builds everything. You review before anything is created.
-                    </div>
-                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.accent, marginTop:"auto" }}>~60 seconds</div>
-                  </div>
-
-                  {/* Manual */}
-                  <div onClick={()=>setView("company")}
-                    style={{ padding:"28px 24px", borderRadius:14, border:`1px solid ${C2.border}`,
-                      background:C2.canvas, cursor:"pointer", transition:"all .2s",
-                      display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" }}
-                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent+"66"; el.style.boxShadow=`0 4px 20px rgba(0,0,0,.06)`;}}
-                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.border; el.style.boxShadow="none";}}>
-                    <div style={{ width:40, height:40, borderRadius:10, background:C2.faint,
-                      display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, flexShrink:0 }}>
-                      <span style={{ fontSize:15, color:C2.muted }}>+</span>
-                    </div>
-                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:6 }}>Start from Scratch</div>
-                    <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:12 }}>
-                      Fill in company, products, and personas yourself. Best when you have info ready.
-                    </div>
-                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, marginTop:"auto" }}>Full control</div>
-                  </div>
-
-                  {/* Import */}
-                  <div onClick={()=>{ const input = document.createElement("input"); input.type="file"; input.accept=".json";
-                    input.onchange = async (e:any) => {
-                      const file = e.target.files?.[0]; if (!file) return;
-                      try {
-                        const result = await importWorkspaceBundle(file, loggedInUser?.id||null);
-                        if (result) { addToast({ title:"Imported", status:"success", message:result.clientName }); setView("company"); }
-                      } catch { addToast({ title:"Import failed", status:"error", message:"Invalid file" }); }
-                    }; input.click(); }}
-                    style={{ padding:"28px 24px", borderRadius:14, border:`1px solid ${C2.border}`,
-                      background:C2.canvas, cursor:"pointer", transition:"all .2s",
-                      display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center" }}
-                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.accent+"66"; el.style.boxShadow=`0 4px 20px rgba(0,0,0,.06)`;}}
-                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=C2.border; el.style.boxShadow="none";}}>
-                    <div style={{ width:40, height:40, borderRadius:10, background:C2.faint,
-                      display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, flexShrink:0 }}>
-                      <span style={{ fontSize:14, color:C2.muted }}>↑</span>
-                    </div>
-                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:6 }}>Import</div>
-                    <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:12 }}>
-                      Restore from an exported workspace JSON file.
-                    </div>
-                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, marginTop:"auto" }}>Instant</div>
-                  </div>
+                  ))}
                 </div>
               </div>
             )}
