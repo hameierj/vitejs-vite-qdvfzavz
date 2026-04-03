@@ -8439,24 +8439,8 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const [isStreaming,    setIsStreaming]    = useState(false);
   const [streamingText,  setStreamingText]  = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
-  const fullTextRef = useRef("");
-  const revealedRef = useRef(0);
-
-  // Smooth typewriter: reveal fullTextRef content gradually
-  useEffect(() => {
-    if (!isStreaming) return;
-    const interval = setInterval(() => {
-      const full = fullTextRef.current;
-      const current = revealedRef.current;
-      if (current < full.length) {
-        const remaining = full.length - current;
-        const step = Math.max(1, Math.min(8, Math.ceil(remaining / 5)));
-        revealedRef.current = Math.min(current + step, full.length);
-        setStreamingText(full.slice(0, revealedRef.current));
-      }
-    }, 25);
-    return () => clearInterval(interval);
-  }, [isStreaming]);
+  const streamBuf = useRef("");
+  const streamTimer = useRef<any>(null);
 
   // Slash commands
   const SLASH_COMMANDS: Record<string,string> = {
@@ -8483,8 +8467,11 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const activeChat = chats.find(c => c.id === activeChatId);
 
   useEffect(() => {
-    if (threadRef.current) threadRef.current.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
-  }, [activeChat?.messages?.length, streamingText]);
+    if (threadRef.current) {
+      // Instant scroll during streaming to avoid jank, smooth otherwise
+      threadRef.current.scrollTo({ top: threadRef.current.scrollHeight, behavior: isStreaming ? "instant" as ScrollBehavior : "smooth" });
+    }
+  }, [activeChat?.messages?.length, streamingText, isStreaming]);
 
   const newChat = () => {
     const id = uid();
@@ -8562,28 +8549,25 @@ RESPONSE FORMAT (strict — you MUST follow these):
 - End with one next action in bold. No summary paragraphs. No sign-offs.
 ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page.` : ""}`;
 
-    fullTextRef.current = "";
-    revealedRef.current = 0;
+    streamBuf.current = "";
     setIsStreaming(true);
     setStreamingText("");
 
+    // Throttled state updates — batch chunks, update React at most every 120ms
+    const flush = () => { setStreamingText(streamBuf.current); };
+
     await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
-      fullTextRef.current += chunk;
+      streamBuf.current += chunk;
+      if (!streamTimer.current) {
+        streamTimer.current = setTimeout(() => { flush(); streamTimer.current = null; }, 120);
+      }
     });
 
-    // Wait for reveal to catch up
-    const full = fullTextRef.current;
-    await new Promise<void>(resolve => {
-      const check = () => {
-        if (revealedRef.current >= full.length) { resolve(); return; }
-        revealedRef.current = Math.min(revealedRef.current + Math.max(1, Math.ceil((full.length - revealedRef.current) / 3)), full.length);
-        setStreamingText(full.slice(0, revealedRef.current));
-        setTimeout(check, 15);
-      };
-      check();
-    });
+    // Final flush
+    if (streamTimer.current) { clearTimeout(streamTimer.current); streamTimer.current = null; }
+    setStreamingText(streamBuf.current);
 
-    const assistantMsg = { id: uid(), role: "assistant" as const, content: full, timestamp: Date.now() };
+    const assistantMsg = { id: uid(), role: "assistant" as const, content: streamBuf.current, timestamp: Date.now() };
     onChatsChange(prev => prev.map(c =>
       c.id === targetId ? { ...c, messages: [...c.messages, assistantMsg] } : c
     ));
