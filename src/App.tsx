@@ -4708,6 +4708,32 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   const [addUrl, setAddUrl] = useState("");
   const [addCreating, setAddCreating] = useState(false);
   const [aiExtracting, setAiExtracting] = useState(false);
+  const [bulkFilling, setBulkFilling] = useState(false);
+
+  const bulkFillProducts = async () => {
+    const incomplete = products.filter(p => {
+      const filled = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
+      return filled < PRODUCT_FIELDS.length && p.name;
+    });
+    if (!incomplete.length) { addToast({ title:"All products complete", status:"success", message:"Nothing to fill" }); return; }
+    setBulkFilling(true);
+    addToast({ title:`Filling ${incomplete.length} product${incomplete.length!==1?"s":""}…`, status:"loading", message:"AI is completing missing fields" });
+    let filled = 0;
+    for (const prod of incomplete) {
+      try {
+        const emptyFields = PRODUCT_FIELDS.filter(f => !prod[f.id] || !String(prod[f.id]).trim()).map(f => f.label);
+        const result = await callAI(
+          `Fill the missing fields for this product.\n\n${NAMING_RULES.product}\n\nProduct: ${prod.name}\nExisting data: ${JSON.stringify(prod)}\nCompany: ${(companyData as any)?.co_name||""} (${(companyData as any)?.co_industry||""})\n${fileContext ? `Files:\n${fileContext}` : ""}\n\nMissing fields: ${emptyFields.join(", ")}\n\nReturn ONLY JSON with the missing fields filled. Only include fields that were empty.`,
+          "Return only valid JSON.", 1000
+        );
+        const parsed = JSON.parse(result.replace(/```json|```/g,"").trim());
+        const patch = Object.fromEntries(Object.entries(parsed).filter(([k,v]) => v && String(v).trim() && (!prod[k] || !String(prod[k]).trim())));
+        if (Object.keys(patch).length) { onProductsChange(products.map(p => p.id === prod.id ? { ...p, ...patch } : p)); filled++; }
+      } catch {}
+    }
+    setBulkFilling(false);
+    addToast({ title:"Bulk fill complete", status:"success", message:`${filled} product${filled!==1?"s":""} updated` });
+  };
 
   const selected = products.find(p => p.id === selectedId) || null;
   const secKeys = Object.keys(PRODUCT_SECTIONS);
@@ -5008,6 +5034,14 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
               </p>
             </div>
             <div style={{ display:"flex", gap:8 }}>
+              {products.some(p => { const f = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length; return f < PRODUCT_FIELDS.length && p.name; }) && (
+                <button onClick={bulkFillProducts} disabled={bulkFilling}
+                  style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
+                    color:_C.green, fontSize:12, fontFamily:head, fontWeight:600,
+                    cursor:bulkFilling?"wait":"pointer", opacity:bulkFilling?0.6:1 }}>
+                  {bulkFilling ? "◌ Filling..." : "◎ Fill All Incomplete"}
+                </button>
+              )}
               <button onClick={aiExtractAll} disabled={aiExtracting}
                 style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
                   color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600,
@@ -6012,6 +6046,7 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
   const [tab, setTab] = useState<"config"|"offers"|"sequence"|"replies"|"benchmarks"|"preview">("config");
   const [genOfferLoading, setGenOfferLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [bulkGenSeq, setBulkGenSeq] = useState(false);
 
   const selected = campaigns.find(c => c.id === selectedId) || null;
 
@@ -6116,6 +6151,28 @@ Return ONLY valid JSON:
       }
     } catch (e) { console.error("Sequence generation failed:", e); addToast({ title:"Sequence generation failed", status:"error", message:"Try again" }); }
     setGenerating(false);
+  };
+
+  const bulkGenerateSequences = async () => {
+    const needsSeq = campaigns.filter(c => (!c.sequence || c.sequence.length === 0) && (c.personaIds||[])[0] && c.productId);
+    if (!needsSeq.length) { addToast({ title:"All campaigns have sequences", status:"success", message:"Nothing to generate" }); return; }
+    setBulkGenSeq(true);
+    const toastId = addToast({ title:`Generating ${needsSeq.length} sequence${needsSeq.length!==1?"s":""}…`, status:"loading", message:"This may take a minute" });
+    let done = 0;
+    for (const camp of needsSeq) {
+      try {
+        // Temporarily select this campaign so generateSequence works
+        setSelectedId(camp.id);
+        // Wait a tick for state to propagate
+        await new Promise(r => setTimeout(r, 100));
+        // Trigger generation
+        await generateSequence();
+        done++;
+      } catch {}
+    }
+    setSelectedId(null);
+    setBulkGenSeq(false);
+    addToast({ title:"Bulk generation complete", status:"success", message:`${done} sequence${done!==1?"s":""} generated` });
   };
 
   const updStep = (stepId: string, patch: any) => {
@@ -6644,11 +6701,21 @@ Return ONLY valid JSON:
                 {campaigns.length} campaign{campaigns.length!==1?"s":""} · Click to edit
               </p>
             </div>
-            <button onClick={addCampaign}
-              style={{ padding:"9px 20px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
-                fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
-              + New Campaign
-            </button>
+            <div style={{ display:"flex", gap:8 }}>
+              {campaigns.some(c => (!c.sequence || c.sequence.length === 0) && (c.personaIds||[])[0] && c.productId) && (
+                <button onClick={bulkGenerateSequences} disabled={bulkGenSeq}
+                  style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
+                    color:_C.green, fontSize:12, fontFamily:head, fontWeight:600,
+                    cursor:bulkGenSeq?"wait":"pointer", opacity:bulkGenSeq?0.6:1 }}>
+                  {bulkGenSeq ? "◌ Generating..." : "◎ Generate All Sequences"}
+                </button>
+              )}
+              <button onClick={addCampaign}
+                style={{ padding:"9px 20px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+                  fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
+                + New Campaign
+              </button>
+            </div>
           </div>
 
           {campaigns.length === 0 ? (
@@ -10889,6 +10956,7 @@ function AppMain() {
   const T = C2;
   const [view,           setView]           = useState("accounts");
   const [showCopilot,    setShowCopilot]    = useState(false);
+  const [showSearch,     setShowSearch]     = useState(false);
   const [analyticsTab,   setAnalyticsTab]   = useState<"perf"|"roi">("perf");
   const [acctSearch,     setAcctSearch]     = useState("");
   const [showCreateAcct, setShowCreateAcct] = useState(false);
@@ -11096,6 +11164,17 @@ function AppMain() {
   }, [apiKey]);
   useEffect(() => { try { localStorage.setItem("b2br_openai_key", openaiKey); } catch {} }, [openaiKey]);
   useEffect(() => { try { localStorage.setItem("b2br_gemini_key", geminiKey); } catch {} }, [geminiKey]);
+
+  // Keyboard shortcuts: Cmd+K = search, Cmd+J = copilot
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setShowSearch(p => !p); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "j") { e.preventDefault(); setShowCopilot(p => !p); }
+      if (e.key === "Escape") { if (showSearch) setShowSearch(false); if (showCopilot) setShowCopilot(false); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showSearch, showCopilot]);
 
   // Close ICP confirm/fill popovers on outside click
   useEffect(() => {
@@ -12918,6 +12997,84 @@ Raw JSON only.`, "", 1400);
           </div>
         </div>
       )}
+      {/* ── Global Search Modal ── */}
+      {showSearch && activeWorkspace && (() => {
+        const [q, setQ] = useState("");
+        const query = q.toLowerCase().trim();
+        const results: {type:string; label:string; sub:string; action:()=>void}[] = [];
+        if (query.length >= 2) {
+          // Search products
+          products.forEach(p => {
+            const match = [p.name, p.description, p.valueProposition, p.category, p.problemsSolved].filter(Boolean).join(" ").toLowerCase();
+            if (match.includes(query)) results.push({ type:"Product", label:p.name||"Unnamed", sub:p.category||"", action:()=>{setView("products");setShowSearch(false);} });
+          });
+          // Search personas
+          icps.forEach(icp => {
+            const d = icp.data||{};
+            const match = [icp.name, d.buyer, d.industries, d.pain1, d.goals, d.tone].filter(Boolean).join(" ").toLowerCase();
+            if (match.includes(query)) results.push({ type:"Persona", label:icp.name||"Unnamed", sub:d.buyer||"", action:()=>{setView("icps");setShowSearch(false);} });
+          });
+          // Search campaigns
+          campaigns.forEach(c => {
+            const persona = icps.find((i:any)=>(c.personaIds||[])[0]===i.id);
+            const match = [c.name, c.purpose, persona?.name].filter(Boolean).join(" ").toLowerCase();
+            if (match.includes(query)) results.push({ type:"Campaign", label:c.name||"Unnamed", sub:persona?.name||"", action:()=>{setView("campaigns");setShowSearch(false);} });
+          });
+          // Search company fields
+          ALL_COMPANY_FIELDS.forEach(f => {
+            const val = companyData[f.id];
+            if (val && String(val).toLowerCase().includes(query)) results.push({ type:"Company", label:f.label, sub:String(val).slice(0,60), action:()=>{setView("company");setShowSearch(false);} });
+          });
+        }
+        return (
+          <>
+            <div onClick={()=>setShowSearch(false)} style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.4)", zIndex:1000, backdropFilter:"blur(2px)" }} />
+            <div style={{ position:"fixed", top:"20%", left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:520, zIndex:1001,
+              animation:"slideUp .2s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+              <div style={{ background:C2.canvas, borderRadius:16, border:`1px solid ${C2.border}`, boxShadow:"0 24px 60px rgba(13,15,26,0.25)", overflow:"hidden" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 18px", borderBottom:`1px solid ${C2.border}` }}>
+                  <span style={{ fontSize:14, color:C2.muted }}>◎</span>
+                  <input autoFocus value={q} onChange={e=>setQ(e.target.value)}
+                    placeholder="Search products, personas, campaigns..."
+                    onKeyDown={e=>{ if(e.key==="Escape") setShowSearch(false); if(e.key==="Enter" && results[0]) results[0].action(); }}
+                    style={{ flex:1, border:"none", background:"transparent", color:C2.text, fontSize:15, fontFamily:head,
+                      fontWeight:500, outline:"none" }} />
+                  <span style={{ fontSize:10, fontFamily:mono, color:C2.muted, background:C2.faint, padding:"2px 8px", borderRadius:4 }}>ESC</span>
+                </div>
+                {query.length >= 2 && (
+                  <div style={{ maxHeight:340, overflowY:"auto" }}>
+                    {results.length === 0 ? (
+                      <div style={{ padding:"24px 18px", textAlign:"center", color:C2.muted, fontSize:13, fontFamily:body }}>
+                        No results for "{q}"
+                      </div>
+                    ) : (
+                      results.slice(0, 10).map((r, i) => (
+                        <button key={i} onClick={r.action}
+                          style={{ width:"100%", display:"flex", alignItems:"center", gap:12, padding:"10px 18px",
+                            border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .1s" }}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=C2.faint;}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background="transparent";}}>
+                          <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.accent, background:`${C2.accent}0D`,
+                            padding:"2px 7px", borderRadius:4, flexShrink:0, minWidth:60, textAlign:"center" }}>{r.type}</span>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:13, fontWeight:600, fontFamily:head, color:C2.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.label}</div>
+                            {r.sub && <div style={{ fontSize:11, color:C2.muted, fontFamily:body, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.sub}</div>}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+                {query.length < 2 && (
+                  <div style={{ padding:"16px 18px", color:C2.muted, fontSize:12, fontFamily:body }}>
+                    Type at least 2 characters to search · <span style={{ fontFamily:mono, fontSize:10 }}>Cmd+K</span> to toggle
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
       <ToastStack toasts={toasts} onRemove={removeToast} />
       {/* ── Floating Copilot Panel ── */}
       {showCopilot && activeWorkspace && (
