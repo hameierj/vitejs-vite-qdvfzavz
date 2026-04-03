@@ -8684,36 +8684,13 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                 {msg.role === "user"
                   ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
                   : msg.id === "_streaming"
-                    ? (() => {
-                        const text = msg.content || "";
-                        const fadeLen = 30;
-                        // Hide the raw text completely, show only the revealed portion with fade
-                        // The last `fadeLen` chars of the displayed text get the fade treatment
-                        const revealedCount = text.length;
-                        if (revealedCount <= fadeLen) {
-                          return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
-                            {text.split("").map((ch, i) => {
-                              const p = revealedCount > 1 ? i / (revealedCount - 1) : 1;
-                              const cubic = p * p * p; // cubic = stays invisible much longer
-                              return <span key={i} style={{ display:"inline-block", opacity: cubic,
-                                filter:`blur(${Math.pow(1 - p, 2) * 6}px)`, transform:`translateY(${Math.pow(1 - p, 3) * -8}px)`,
-                                transition:"all .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>{ch === " " ? "\u00A0" : ch}</span>;
-                            })}
-                          </span>;
-                        }
-                        const solid = text.slice(0, -fadeLen);
-                        const fading = text.slice(-fadeLen);
-                        return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
-                          {solid}
-                          {fading.split("").map((ch, i) => {
-                            const p = i / (fadeLen - 1); // 0 = newest (invisible), 1 = oldest (solid)
-                            const cubic = p * p * p;
-                            return <span key={i} style={{ display:"inline-block", opacity: cubic,
-                              filter:`blur(${Math.pow(1 - p, 2) * 6}px)`, transform:`translateY(${Math.pow(1 - p, 3) * -8}px)`,
-                              transition:"all .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>{ch === " " ? "\u00A0" : ch}</span>;
-                          })}
-                        </span>;
-                      })()
+                    ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap", display:"inline" }}>
+                        {(msg.content || "").split("").map((ch, i) => (
+                          <span key={i} style={{ display:"inline-block",
+                            animation:`obLetterIn .4s cubic-bezier(0.16, 1, 0.3, 1) both`,
+                            ...(ch === " " ? { width:"0.25em" } : {}) }}>{ch === " " ? "\u00A0" : ch}</span>
+                        ))}
+                      </span>
                     : <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>}
               </div>
             </div>
