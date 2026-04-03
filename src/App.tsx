@@ -6761,7 +6761,7 @@ function PreferencesPanel({ data, onChange }: { data: any; onChange: (d: any) =>
       </div>
 
       {/* Fields — card stack */}
-      <div style={{ flex:1, position:"relative" as const, overflow: isSwapping ? "visible" : "hidden", minHeight:0, perspective:"1800px", perspectiveOrigin:"70% 50%" }}>
+      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0, perspective:"1800px", perspectiveOrigin:"70% 50%" }}>
         {secKeys.map(key => {
           const s = PREFERENCES_SECTIONS[key];
           if (!s) return null;
@@ -11851,7 +11851,7 @@ Raw JSON only.`, "", 1400);
                       background:prefsPct===100?C2.greenLo:`${C2.accent}11`, padding:"3px 10px", borderRadius:8 }}>{prefsPct}%</span>
                   </div>
                 </div>
-                <div style={{ flex:1, minHeight:0, marginBottom:16 }}>
+                <div style={{ flex:1, minHeight:0, marginBottom:16, overflow:"hidden" }}>
                   <PreferencesPanel data={companyData} onChange={setCompanyData} />
                 </div>
               </div>
