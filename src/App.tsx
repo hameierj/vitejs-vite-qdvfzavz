@@ -8686,14 +8686,18 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                   : msg.id === "_streaming"
                     ? (() => {
                         const text = msg.content || "";
-                        const fadeLen = 20;
-                        if (text.length <= fadeLen) {
+                        const fadeLen = 30;
+                        // Hide the raw text completely, show only the revealed portion with fade
+                        // The last `fadeLen` chars of the displayed text get the fade treatment
+                        const revealedCount = text.length;
+                        if (revealedCount <= fadeLen) {
                           return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
                             {text.split("").map((ch, i) => {
-                              const p = text.length > 1 ? i / (text.length - 1) : 1;
-                              return <span key={i} style={{ display:"inline-block", opacity: p * p,
-                                filter:`blur(${(1 - p) * 4}px)`, transform:`translateY(${(1 - p) * -6}px)`,
-                                transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}>{ch === " " ? "\u00A0" : ch}</span>;
+                              const p = revealedCount > 1 ? i / (revealedCount - 1) : 1;
+                              const cubic = p * p * p; // cubic = stays invisible much longer
+                              return <span key={i} style={{ display:"inline-block", opacity: cubic,
+                                filter:`blur(${Math.pow(1 - p, 2) * 6}px)`, transform:`translateY(${Math.pow(1 - p, 3) * -8}px)`,
+                                transition:"all .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>{ch === " " ? "\u00A0" : ch}</span>;
                             })}
                           </span>;
                         }
@@ -8702,10 +8706,11 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                         return <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>
                           {solid}
                           {fading.split("").map((ch, i) => {
-                            const p = i / (fadeLen - 1);
-                            return <span key={i} style={{ display:"inline-block", opacity: p * p,
-                              filter:`blur(${(1 - p) * (1 - p) * 6}px)`, transform:`translateY(${(1 - p) * (1 - p) * -6}px)`,
-                              transition:"all .25s cubic-bezier(0.16, 1, 0.3, 1)" }}>{ch === " " ? "\u00A0" : ch}</span>;
+                            const p = i / (fadeLen - 1); // 0 = newest (invisible), 1 = oldest (solid)
+                            const cubic = p * p * p;
+                            return <span key={i} style={{ display:"inline-block", opacity: cubic,
+                              filter:`blur(${Math.pow(1 - p, 2) * 6}px)`, transform:`translateY(${Math.pow(1 - p, 3) * -8}px)`,
+                              transition:"all .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>{ch === " " ? "\u00A0" : ch}</span>;
                           })}
                         </span>;
                       })()
