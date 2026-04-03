@@ -8548,40 +8548,45 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
     setStreamingText("");
     let full = "";
     let displayed = "";
-    let buffer = "";
-    let rafId = 0;
+    let timer: any = null;
 
-    // Smooth reveal: buffer incoming chunks, render char-by-char at ~30 chars/frame
-    const reveal = () => {
-      if (buffer.length > 0) {
-        const charsPerFrame = Math.max(1, Math.min(4, Math.ceil(buffer.length / 8)));
-        const next = buffer.slice(0, charsPerFrame);
-        buffer = buffer.slice(charsPerFrame);
-        displayed += next;
+    // Typewriter: reveal buffered text ~12 chars every 30ms
+    const tick = () => {
+      if (displayed.length < full.length) {
+        const remaining = full.length - displayed.length;
+        const step = Math.max(1, Math.min(12, Math.ceil(remaining / 6)));
+        displayed = full.slice(0, displayed.length + step);
         setStreamingText(displayed);
-      }
-      if (buffer.length > 0 || full !== displayed) {
-        rafId = requestAnimationFrame(reveal);
+        timer = setTimeout(tick, 30);
+      } else {
+        timer = null;
       }
     };
 
     await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
       full += chunk;
-      buffer += chunk;
-      if (!rafId) rafId = requestAnimationFrame(reveal);
+      if (!timer) timer = setTimeout(tick, 30);
     });
 
-    // Flush any remaining buffer
-    cancelAnimationFrame(rafId);
-    displayed = full;
-    setStreamingText(full);
-
-    const assistantMsg = { id: uid(), role: "assistant" as const, content: full, timestamp: Date.now() };
-    onChatsChange(prev => prev.map(c =>
-      c.id === targetId ? { ...c, messages: [...c.messages, assistantMsg] } : c
-    ));
-    setIsStreaming(false);
-    setStreamingText("");
+    // Flush remaining
+    if (timer) clearTimeout(timer);
+    // Finish revealing any remaining text smoothly
+    const flushTick = () => {
+      if (displayed.length < full.length) {
+        const step = Math.max(1, Math.ceil((full.length - displayed.length) / 4));
+        displayed = full.slice(0, displayed.length + step);
+        setStreamingText(displayed);
+        setTimeout(flushTick, 20);
+      } else {
+        const assistantMsg = { id: uid(), role: "assistant" as const, content: full, timestamp: Date.now() };
+        onChatsChange(prev => prev.map(c =>
+          c.id === targetId ? { ...c, messages: [...c.messages, assistantMsg] } : c
+        ));
+        setIsStreaming(false);
+        setStreamingText("");
+      }
+    };
+    flushTick();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -8675,7 +8680,9 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                 fontSize:12.5, lineHeight:1.65 }}>
                 {msg.role === "user"
                   ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
-                  : <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>}
+                  : msg.id === "_streaming"
+                    ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
+                    : <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>}
                 {msg.id === "_streaming" && (
                   <span style={{ display:"inline-block", width:5, height:12, background:C2.accent,
                     borderRadius:2, marginLeft:2, animation:"cursorBlink .7s step-end infinite",
