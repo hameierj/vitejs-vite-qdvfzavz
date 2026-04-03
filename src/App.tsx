@@ -10478,7 +10478,7 @@ function AppMain() {
   const [showAnalyzer,   setShowAnalyzer]   = useState(false);
   const [pendingReview,  setPendingReview]  = useState<any>(null);
   const [showReview,     setShowReview]     = useState(false);
-  const [currentRole,    setCurrentRole]    = useState("team");
+  const currentRole = "team"; // Internal tool only — no client view
   const [activeWorkspace,setActiveWorkspace]= useState(null);
   const [appMode,        setAppMode]        = useState<"app"|"admin">("app");
   const [apiKey,         setApiKey]         = useState(() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } });
@@ -11066,7 +11066,7 @@ Raw JSON only.`, "", 1400);
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
                     padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>RESEARCH</div>
 
-                  {currentRole !== "client" && (
+                  {(
                     <button onClick={()=>guardedNav(()=>setView("company"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
                         borderRadius:12, border:"none",
@@ -11078,7 +11078,7 @@ Raw JSON only.`, "", 1400);
                       <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="company"?700:500, color:view==="company"?C2.text:C2.textSoft }}>Company</span>
                     </button>
                   )}
-                  {currentRole !== "client" && (
+                  {(
                     <button onClick={()=>guardedNav(()=>setView("products"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
                         borderRadius:12, border:"none",
@@ -11109,7 +11109,7 @@ Raw JSON only.`, "", 1400);
                     padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>PLANNING</div>
 
                   {/* Coverage Matrix */}
-                  {currentRole !== "client" && products.length > 0 && icps.length > 0 && (
+                  {products.length > 0 && icps.length > 0 && (
                     <button onClick={()=>guardedNav(()=>setView("matrix"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
@@ -11123,7 +11123,7 @@ Raw JSON only.`, "", 1400);
                   )}
 
                   {/* Strategy */}
-                  {currentRole !== "client" && (
+                  {(
                     <button onClick={()=>guardedNav(()=>setView("strategy"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
@@ -11142,7 +11142,7 @@ Raw JSON only.`, "", 1400);
                     padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>EXECUTION</div>
 
                   {/* Campaigns */}
-                  {currentRole !== "client" && (
+                  {(
                     <button onClick={()=>guardedNav(()=>setView("campaigns"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
@@ -11156,7 +11156,7 @@ Raw JSON only.`, "", 1400);
                   )}
 
                   {/* Analytics */}
-                  {currentRole !== "client" && (
+                  {(
                     <button onClick={()=>guardedNav(()=>setView("analytics"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
@@ -11175,7 +11175,7 @@ Raw JSON only.`, "", 1400);
                     padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>RESOURCES</div>
 
                   {/* My Files */}
-                  {currentRole !== "client" && (
+                  {(
                     <button onClick={()=>guardedNav(()=>setView("files"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
                         borderRadius:12, border:"none",
@@ -11240,26 +11240,6 @@ Raw JSON only.`, "", 1400);
                   borderRadius:11, boxShadow:`0 8px 32px rgba(0,0,0,.18)`,
                   padding:"6px", animation:"fadeIn .12s ease" }}>
 
-                  {/* View As */}
-                  <div style={{ padding:"4px 8px 3px", fontSize:9, color:C.muted, fontFamily:mono, fontWeight:700, letterSpacing:.5 }}>VIEW AS</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, padding:"0 0 6px" }}>
-                    {([
-                      { v:"team",   icon:"⚙", label:"Team"   },
-                      { v:"client", icon:"👤", label:"Client" },
-                    ] as const).map(r => {
-                      const on = currentRole === r.v;
-                      return (
-                        <button key={r.v} onClick={()=>{ setCurrentRole(r.v); }}
-                          style={{ padding:"6px 0", borderRadius:6, fontSize:10, fontFamily:mono, fontWeight:700,
-                            cursor:"pointer", transition:"all .15s",
-                            border:`1px solid ${on?C.accentBorder:C.border}`,
-                            background:on?C.accentLo:"transparent",
-                            color:on?C.accent:C.muted }}>
-                          {r.icon} {r.label}
-                        </button>
-                      );
-                    })}
-                  </div>
 
                   <div style={{ height:1, background:C.border, margin:"2px 0 4px" }} />
 
