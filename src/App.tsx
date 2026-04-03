@@ -6009,7 +6009,7 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
 }) {
   const _C = v2 ? C2 : C;
   const [selectedId, setSelectedId] = useState<string|null>(null);
-  const [tab, setTab] = useState<"config"|"offers"|"sequence"|"replies"|"benchmarks">("config");
+  const [tab, setTab] = useState<"config"|"offers"|"sequence"|"replies"|"benchmarks"|"preview">("config");
   const [genOfferLoading, setGenOfferLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
@@ -6165,10 +6165,10 @@ Return ONLY valid JSON:
           </div>
           {/* Tab bar */}
           <div style={{ display:"flex", alignItems:"center", gap:4, padding:"12px 24px", borderBottom:`1px solid ${_C.border}`, flexShrink:0 }}>
-            {(["config","offers","sequence","replies","benchmarks"] as const).map(t => {
+            {(["config","offers","sequence","replies","benchmarks","preview"] as const).map(t => {
               const on = tab === t;
               const campaignOffers = selected ? offers.filter((o:any) => (selected.personaIds||[]).some((pid:string)=>o.personaId===pid) && o.productId===selected.productId) : [];
-              const labels = { config:"Setup", offers:`Offers (${campaignOffers.length})`, sequence:`Sequence (${selected.sequence?.length||0})`, replies:"Replies", benchmarks:"Benchmarks" };
+              const labels = { config:"Setup", offers:`Offers (${campaignOffers.length})`, sequence:`Sequence (${selected.sequence?.length||0})`, replies:"Replies", benchmarks:"Benchmarks", preview:"Preview" };
               return (
                 <button key={t} onClick={()=>setTab(t)}
                   style={{ padding:"7px 16px", borderRadius:8, border:"none",
@@ -6572,6 +6572,65 @@ Return ONLY valid JSON:
                 ))}
               </div>
             )}
+
+            {/* PREVIEW TAB */}
+            {tab === "preview" && selected && (() => {
+              const seq = selected.sequence || [];
+              const persona = personas.find((p:any) => (selected.personaIds||[])[0] === p.id);
+              const product = products.find((p:any) => p.id === selected.productId);
+              const cd = companyData as Record<string,string>;
+              if (seq.length === 0) return (
+                <div style={{ textAlign:"center", padding:"60px 20px", animation:"contentFade .3s ease" }}>
+                  <div style={{ fontSize:36, opacity:.15, marginBottom:12 }}>✉</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:6 }}>No sequence to preview</div>
+                  <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>Generate a sequence first, then preview how it looks to recipients.</div>
+                </div>
+              );
+              return (
+                <div style={{ maxWidth:640, animation:"contentFade .3s ease" }}>
+                  <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>Email Preview</div>
+                  <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginBottom:20 }}>
+                    How your sequence looks to {persona?.name || "the recipient"}
+                  </div>
+                  {seq.map((step: any, si: number) => {
+                    const isEmail = !step.type || step.type === "email";
+                    const isLinkedIn = step.type === "linkedin";
+                    return (
+                      <div key={step.id || si} style={{ marginBottom:20 }}>
+                        {/* Step label */}
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                          <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, background:_C.faint,
+                            padding:"2px 8px", borderRadius:4 }}>
+                            {isLinkedIn ? "LinkedIn" : step.type === "call" ? "Call" : "Email"} · Day {step.dayOffset ?? si * 3}
+                          </span>
+                          <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{step.role || `Step ${si+1}`}</span>
+                        </div>
+                        {/* Email card */}
+                        <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:12, overflow:"hidden",
+                          boxShadow:"0 1px 4px rgba(0,0,0,.04)" }}>
+                          {isEmail && step.subject && (
+                            <div style={{ padding:"12px 16px", borderBottom:`1px solid ${_C.border}`, background:_C.faint }}>
+                              <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:2 }}>Subject</div>
+                              <div style={{ fontSize:13, fontWeight:600, fontFamily:head, color:_C.text }}>{step.subject}</div>
+                            </div>
+                          )}
+                          <div style={{ padding:"14px 16px" }}>
+                            {isEmail && (
+                              <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:8 }}>
+                                From: {cd.co_name || "Your Company"} · To: {persona?.data?.buyer || "Prospect"}
+                              </div>
+                            )}
+                            <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.7, whiteSpace:"pre-wrap" }}>
+                              {step.body || step.message || "(empty)"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
       ) : (
