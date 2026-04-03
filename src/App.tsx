@@ -11733,65 +11733,7 @@ Raw JSON only.`, "", 1400);
                     onMouseLeave={e=>{ if(view!=="icps")(e.currentTarget as HTMLButtonElement).style.background=view==="icps"?`${C2.accent}14`:"transparent"; }}>
                     <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="icps"?C2.accent:C2.muted }}>◑</span>
                     <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="icps"?700:500, color:view==="icps"?C2.text:C2.textSoft }}>Personas</span>
-                    {icps.length > 0 && <span style={{ fontSize:10, fontFamily:mono, color:C2.muted, marginLeft:"auto" }}>{icps.length}</span>}
                   </button>
-                  {/* Persona sub-items when on personas page */}
-                  {view === "icps" && icps.length > 0 && (
-                    <div style={{ padding:"4px 0 4px 20px", marginBottom:4 }}>
-                      {(icps as any[]).map((icp: any, i: number) => {
-                        const isOn = editingId === icp.id;
-                        const dotColor = icp.approval === "approved" || icp.approval === "finalized" ? C2.green : C2.muted;
-                        const isConfirmingDelete = (window as any).__confirmDeletePersona === icp.id;
-                        return (
-                          <div key={icp.id} style={{ position:"relative", marginBottom:1 }}>
-                            <div onClick={()=>setEditingId(icp.id)}
-                              style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"7px 12px",
-                                borderRadius:8, cursor:"pointer", transition:"all .2s",
-                                background: isOn ? `${C2.accent}14` : "transparent" }}
-                              onMouseEnter={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=C2.faint;
-                                const x = e.currentTarget.querySelector("[data-del]") as HTMLElement; if(x) x.style.opacity="1"; }}
-                              onMouseLeave={e=>{ if(!isOn)(e.currentTarget as HTMLElement).style.background=isOn?`${C2.accent}14`:"transparent";
-                                const x = e.currentTarget.querySelector("[data-del]") as HTMLElement; if(x && !isConfirmingDelete) x.style.opacity="0"; }}>
-                              <div style={{ width:6, height:6, borderRadius:3, background:dotColor, flexShrink:0 }} />
-                              <span style={{ flex:1, fontSize:12, fontFamily:head, fontWeight:isOn?600:400, color:isOn?C2.text:C2.textSoft,
-                                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                {icp.name || `Persona ${i+1}`}
-                              </span>
-                              <span data-del onClick={e=>{
-                                  e.stopPropagation();
-                                  (window as any).__confirmDeletePersona = icp.id;
-                                  // Force re-render
-                                  setEditingId(prev => prev);
-                                }}
-                                style={{ width:18, height:18, borderRadius:5, display:"flex", alignItems:"center", justifyContent:"center",
-                                  fontSize:10, color:C2.muted, cursor:"pointer", opacity:0, transition:"opacity .15s", flexShrink:0 }}
-                                onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.red;}}
-                                onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;}}>×</span>
-                            </div>
-                            {/* Delete confirmation */}
-                            {isConfirmingDelete && (
-                              <div style={{ padding:"8px 12px", margin:"2px 0 4px", borderRadius:8, background:C2.canvas,
-                                border:`1px solid ${C2.red}33`, animation:"contentFade .2s ease",
-                                display:"flex", alignItems:"center", gap:8 }}>
-                                <span style={{ fontSize:11, color:C2.text, fontFamily:head, fontWeight:600, flex:1 }}>Delete?</span>
-                                <button onClick={()=>{
-                                  setIcps((p:any) => p.filter((x:any) => x.id !== icp.id));
-                                  if (editingId === icp.id) setEditingId(null);
-                                  (window as any).__confirmDeletePersona = null;
-                                  addToast({ title:"Persona deleted", status:"success", message:icp.name || `Persona ${i+1}` });
-                                }}
-                                  style={{ padding:"4px 10px", borderRadius:6, border:"none", background:C2.red, color:"#fff",
-                                    fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>Delete</button>
-                                <button onClick={()=>{ (window as any).__confirmDeletePersona = null; setEditingId(prev => prev); }}
-                                  style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${C2.border}`, background:"transparent",
-                                    color:C2.muted, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
 
                   {/* ── PLANNING ── */}
                   <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
@@ -12529,12 +12471,26 @@ Raw JSON only.`, "", 1400);
                               style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`,
                                 cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)",
                                 transition:"all .2s" }}
-                              onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 6px 24px ${icp.color}20`; el.style.border=`2px solid ${icp.color}`; el.style.borderLeftWidth="4px";}}
-                              onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.04)"; el.style.border=`1px solid ${C2.border}`; el.style.borderLeftWidth="1px";}}>
+                              onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 6px 24px ${icp.color}20`; el.style.border=`2px solid ${icp.color}`; el.style.borderLeftWidth="4px"; const d=el.querySelector(".persona-del") as HTMLElement; if(d) d.style.opacity="1";}}
+                              onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.04)"; el.style.border=`1px solid ${C2.border}`; el.style.borderLeftWidth="1px"; const d=el.querySelector(".persona-del") as HTMLElement; if(d) d.style.opacity="0";}}>
                               <div style={{ padding:"14px 18px" }}>
-                                {/* Name + titles */}
-                                <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:2, lineHeight:1.3 }}>
-                                  {icp.name || `Persona ${i+1}`}
+                                {/* Name + delete */}
+                                <div style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:2 }}>
+                                  <div style={{ flex:1, fontSize:15, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.3 }}>
+                                    {icp.name || `Persona ${i+1}`}
+                                  </div>
+                                  <button className="persona-del" onClick={e=>{
+                                    e.stopPropagation();
+                                    if (confirm(`Delete "${icp.name || `Persona ${i+1}`}"? This cannot be undone.`)) {
+                                      setIcps((p:any) => p.filter((x:any) => x.id !== icp.id));
+                                      addToast({ title:"Persona deleted", status:"success", message:icp.name || `Persona ${i+1}` });
+                                    }
+                                  }}
+                                    style={{ width:22, height:22, borderRadius:6, border:`1px solid transparent`, background:"transparent",
+                                      color:C2.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                                      opacity:0, transition:"all .15s", flexShrink:0 }}
+                                    onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.red;(e.target as HTMLElement).style.borderColor=C2.red+"44";}}
+                                    onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;(e.target as HTMLElement).style.borderColor="transparent";}}>×</button>
                                 </div>
                                 {d.buyer && (
                                   <div style={{ fontSize:11, color:C2.textSoft, fontFamily:body, marginBottom:10, lineHeight:1.3 }}>
