@@ -11195,6 +11195,8 @@ Raw JSON only.`, "", 1400);
         }
         @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes onboardCardIn{0%{opacity:0;transform:translateY(16px) scale(0.97)}100%{opacity:1;transform:translateY(0) scale(1)}}
+        @keyframes obLetterIn{0%{opacity:0;transform:translateY(-12px);filter:blur(4px)}100%{opacity:1;transform:translateY(0);filter:blur(0)}}
+        @keyframes obSubIn{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
         @keyframes aiSpark{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
@@ -11754,11 +11756,15 @@ Raw JSON only.`, "", 1400);
                   background:`radial-gradient(circle, ${C2.accent}0A 0%, transparent 70%)`,
                   pointerEvents:"none", filter:"blur(60px)" }} />
 
-                <div style={{ textAlign:"center", marginBottom:48, animation:"pageFade .8s cubic-bezier(0.16, 1, 0.3, 1)", position:"relative" as const }}>
-                  <h1 style={{ fontSize:30, fontWeight:300, fontFamily:head, color:C2.text, margin:"0 0 10px", letterSpacing:"-0.5px" }}>
-                    How would you like to start?
+                <div style={{ textAlign:"center", marginBottom:48, position:"relative" as const }}>
+                  <h1 style={{ fontSize:30, fontWeight:300, fontFamily:head, color:C2.text, margin:"0 0 10px", letterSpacing:"-0.5px", display:"flex", justifyContent:"center", flexWrap:"wrap", gap:0 }}>
+                    {"How would you like to start?".split("").map((ch, i) => (
+                      <span key={i} style={{ display:"inline-block", animation:`obLetterIn .35s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.025}s both`,
+                        ...(ch === " " ? { width:"0.3em" } : {}) }}>{ch === " " ? "\u00A0" : ch}</span>
+                    ))}
                   </h1>
-                  <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0, letterSpacing:"0.1px" }}>
+                  <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0, letterSpacing:"0.1px",
+                    animation:`obSubIn .5s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both` }}>
                     Set up {activeWorkspace?.name || "your workspace"} in the way that works best for you.
                   </p>
                 </div>
@@ -11783,7 +11789,7 @@ Raw JSON only.`, "", 1400);
                       style={{ padding:"36px 24px 28px", borderRadius:18, border:`1px solid ${C2.border}`,
                         background:C2.canvas, cursor:"pointer", transition:"all .3s cubic-bezier(0.16, 1, 0.3, 1)",
                         display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center",
-                        animation:`onboardCardIn .6s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.12}s both` }}
+                        animation:`onboardCardIn .6s cubic-bezier(0.16, 1, 0.3, 1) ${1.1 + idx * 0.12}s both` }}
                       onMouseEnter={e=>{
                         const el=e.currentTarget as HTMLElement;
                         el.style.transform="translateY(-5px) scale(1.02)";
