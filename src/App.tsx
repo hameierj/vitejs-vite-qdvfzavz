@@ -1991,27 +1991,31 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     let context = "";
     const sources = [];
 
+    // Normalize URL — add https:// if missing
+    let normalizedUrl = url.trim();
+    if (normalizedUrl && !/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = `https://${normalizedUrl}`;
+
     // Fetch website content — homepage + AI-discovered product pages (30s max)
-    if (url) {
-      sources.push(`Website: ${url}`);
+    if (normalizedUrl) {
+      sources.push(`Website: ${normalizedUrl}`);
       try {
         await Promise.race([
           (async () => {
-            const homeHTML = await fetchPageHTML(url);
+            const homeHTML = await fetchPageHTML(normalizedUrl);
             const homeText = homeHTML ? htmlToText(homeHTML) : "";
-            context += homeText ? `\n\nWEBSITE HOMEPAGE (${url}):\n${homeText}` : `\n\nWEBSITE URL: ${url}`;
+            context += homeText ? `\n\nWEBSITE HOMEPAGE (${normalizedUrl}):\n${homeText}` : `\n\nWEBSITE URL: ${normalizedUrl}`;
 
             // Discover product pages via sitemaps — all in parallel
-            const baseDomain = new URL(url).hostname.replace(/^www\./, "");
-            const sitemapUrls = [url, `https://get.${baseDomain}`, `https://www.${baseDomain}`, `https://app.${baseDomain}`];
+            const baseDomain = new URL(normalizedUrl).hostname.replace(/^www\./, "");
+            const sitemapUrls = [normalizedUrl, `https://get.${baseDomain}`, `https://www.${baseDomain}`, `https://app.${baseDomain}`];
             if (homeHTML) {
-              const subdomains = extractSubdomains(homeHTML, url);
+              const subdomains = extractSubdomains(homeHTML, normalizedUrl);
               sitemapUrls.push(...subdomains.slice(0, 3));
             }
             const sitemapResults = await Promise.allSettled([...new Set(sitemapUrls)].map(u => fetchSitemapUrls(u)));
             let allUrls: string[] = [];
             for (const r of sitemapResults) { if (r.status === "fulfilled") allUrls.push(...r.value); }
-            if (homeHTML) allUrls.push(...extractLinks(homeHTML, url).map(l => l.href));
+            if (homeHTML) allUrls.push(...extractLinks(homeHTML, normalizedUrl).map(l => l.href));
             allUrls = [...new Set(allUrls)];
             console.log("[QS] Discovered URLs:", allUrls.length, allUrls.slice(0, 20));
 
@@ -2028,7 +2032,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
               // If keywords found enough, use those. Otherwise ask AI.
               let picks = keywordPicks;
               if (picks.length < 2 && allUrls.length > 0) {
-                const aiPicks = await discoverProductPages(allUrls, url);
+                const aiPicks = await discoverProductPages(allUrls, normalizedUrl);
                 picks = [...new Set([...picks, ...aiPicks])].slice(0, 8);
               }
               console.log("[QS] Final picks:", picks);
