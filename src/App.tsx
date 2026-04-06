@@ -2127,7 +2127,7 @@ co_buying_motion: how deals actually happen — direct, channel, inbound
 co_trust_risks: what makes prospects hesitate before engaging
 co_customers: known current customers if any
 co_dream: ideal target companies
-Raw JSON only.`, "", 1500);
+Raw JSON only.`, "", 3000);
     let coFields: any = {}, coConf: any = {};
     try {
       const p = JSON.parse(coRaw.replace(/```json|```/g,"").trim());
