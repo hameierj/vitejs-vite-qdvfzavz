@@ -9737,6 +9737,10 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
   };
   const handleBulkDelete = () => {
     if (!window.confirm(`Delete ${selectedClientIds.size} client${selectedClientIds.size!==1?"s":""}? This cannot be undone.`)) return;
+    // Clean up workspace data for each deleted client
+    for (const cid of selectedClientIds) {
+      try { localStorage.removeItem(`b2br_ws_${cid}`); } catch {}
+    }
     persistClients(clients.filter(c => !selectedClientIds.has(c.id)));
     setSelectedClientIds(new Set());
   };
@@ -9862,7 +9866,22 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
   };
 
   const handleDeleteClient = () => {
-    if (deleteClientId) { persistClients(clients.filter(c => c.id !== deleteClientId)); setDeleteClientId(null); }
+    if (!deleteClientId) return;
+    // Remove workspace data from localStorage
+    try { localStorage.removeItem(`b2br_ws_${deleteClientId}`); } catch {}
+    // Remove from Supabase if connected
+    try {
+      const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+      const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (sbUrl && sbKey) {
+        fetch(`${sbUrl}/rest/v1/workspaces?client_id=eq.${deleteClientId}`, {
+          method: "DELETE", headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }
+        }).catch(() => {});
+      }
+    } catch {}
+    // Remove from client list
+    persistClients(clients.filter(c => c.id !== deleteClientId));
+    setDeleteClientId(null);
   };
 
   // legacy aliases used in existing user table JSX below
