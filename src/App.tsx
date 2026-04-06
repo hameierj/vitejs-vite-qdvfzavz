@@ -9869,17 +9869,9 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
     if (!deleteClientId) return;
     // Remove workspace data from localStorage
     try { localStorage.removeItem(`b2br_ws_${deleteClientId}`); } catch {}
-    // Remove from Supabase if connected
-    try {
-      const sbUrl = import.meta.env.VITE_SUPABASE_URL;
-      const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (sbUrl && sbKey) {
-        fetch(`${sbUrl}/rest/v1/workspaces?client_id=eq.${deleteClientId}`, {
-          method: "DELETE", headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }
-        }).catch(() => {});
-      }
-    } catch {}
-    // Remove from client list
+    // Remove workspace data from Supabase
+    dbDelete("app_data", `ws_${deleteClientId}`);
+    // Remove from client list (persistClients will sync the updated list to cloud)
     persistClients(clients.filter(c => c.id !== deleteClientId));
     setDeleteClientId(null);
   };
