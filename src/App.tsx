@@ -681,14 +681,21 @@ async function callAIStream(
   }
 }
 
-// Fetch a web page's raw HTML via CORS proxy
+// Fetch a web page's raw HTML via CORS proxy (tries multiple proxies)
 async function fetchPageHTML(url: string): Promise<string> {
-  try {
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
-    if (!r.ok) return "";
-    return await r.text();
-  } catch { return ""; }
+  const proxies = [
+    (u:string) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}`,
+    (u:string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  ];
+  for (const makeUrl of proxies) {
+    try {
+      const r = await fetch(makeUrl(url), { signal: AbortSignal.timeout(12000) });
+      if (!r.ok) continue;
+      const html = await r.text();
+      if (html && html.length > 200 && !html.includes("error code:")) return html;
+    } catch {}
+  }
+  return "";
 }
 
 // Extract text content from HTML
@@ -2026,6 +2033,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
   onBriefReady?: (coFields:any, coConf:any, context:string, brief:any)=>void;
 }) {
   const [url,      setUrl]     = useState("");
+  const [extraUrls, setExtraUrls] = useState("");
   const [linkedin, setLinkedin]= useState("");
   const [text,     setText]    = useState("");
   const [files,    setFiles]   = useState([]);
@@ -2081,6 +2089,24 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
             if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
               context += `\n\nPRODUCT/ABOUT PAGE (${result.value.url}):\n${result.value.text}`;
             }
+          }
+        }
+      }
+    }
+
+    // Fetch extra URLs (product pages, about pages, etc.)
+    if (extraUrls.trim()) {
+      const urls = extraUrls.split("\n").map(u => u.trim()).filter(u => u && (u.startsWith("http://") || u.startsWith("https://")));
+      if (urls.length > 0) {
+        sources.push(`${urls.length} additional URL${urls.length!==1?"s":""}`);
+        updateToast(toastId, { message:`Fetching ${urls.length} additional page${urls.length!==1?"s":""}…` });
+        const results = await Promise.allSettled(urls.slice(0, 8).map(async u => {
+          const html = await fetchPageHTML(u);
+          return { url: u, text: html ? htmlToText(html, 5000) : "" };
+        }));
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
+            context += `\n\nADDITIONAL PAGE (${result.value.url}):\n${result.value.text}`;
           }
         }
       }
@@ -2388,6 +2414,14 @@ Raw JSON only.`, "", 2000);
                   style={{ width:"100%", padding:"9px 11px", borderRadius:7, border:`1.5px solid ${C.border}`,
                   background:C.canvas, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
               </div>
+            </div>
+            <div>
+              <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
+                Additional Pages <span style={{ color:C.muted, fontWeight:400 }}>(product pages, about page, pricing — one URL per line)</span>
+              </label>
+              <textarea value={extraUrls} onChange={e=>setExtraUrls(e.target.value)} placeholder={"https://get.bebop.ai/products/app\nhttps://get.bebop.ai/about"}
+                rows={2} style={{ width:"100%", padding:"9px 11px", borderRadius:7, border:`1.5px solid ${C.border}`,
+                background:C.canvas, color:C.text, fontSize:12, fontFamily:body, outline:"none", resize:"vertical" }} />
             </div>
             <div>
               <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
