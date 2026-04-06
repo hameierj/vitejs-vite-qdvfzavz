@@ -1691,16 +1691,30 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
       animation:"copilotPopUp .3s cubic-bezier(0.16, 1, 0.3, 1)", overflow:"hidden" }}>
       <style>{`
         @keyframes qsPulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+        @keyframes qsOrbitMini{0%{transform:rotate(0deg) translateX(14px) rotate(0deg)}100%{transform:rotate(360deg) translateX(14px) rotate(-360deg)}}
+        @keyframes qsGlowMini{0%,100%{box-shadow:0 0 8px ${activeColor}33}50%{box-shadow:0 0 20px ${activeColor}55}}
       `}</style>
 
       {/* Header */}
       <div style={{ padding:"12px 16px", display:"flex", alignItems:"center", gap:10,
         background:`linear-gradient(135deg, ${activeColor}0A, ${activeColor}04)`, borderBottom:`1px solid ${C2.border}` }}>
-        <div style={{ width:28, height:28, borderRadius:8,
-          background:`linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
-          display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
-          boxShadow:`0 2px 8px ${activeColor}33` }}>
-          <span style={{ fontSize:14 }}>{done ? "✓" : activeStep?.icon || "⚡"}</span>
+        <div style={{ width:36, height:36, position:"relative" as const, flexShrink:0 }}>
+          {/* Orbiting dots */}
+          {!done && [0,1,2].map(i => (
+            <div key={i} style={{ position:"absolute", top:"50%", left:"50%", marginTop:-2, marginLeft:-2,
+              width:4, height:4, borderRadius:"50%", background:activeColor, opacity:0.4+i*0.2,
+              animation:`qsOrbitMini ${2.5+i*0.5}s linear infinite`,
+              animationDelay:`${i*0.4}s` }} />
+          ))}
+          {/* Center orb */}
+          <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
+            width:22, height:22, borderRadius:7,
+            background: done ? `linear-gradient(135deg, ${C2.green}, #00B894)` : `linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            animation: done ? undefined : `qsGlowMini 2s ease-in-out infinite`,
+            boxShadow:`0 2px 8px ${done ? C2.green : activeColor}33` }}>
+            <span style={{ fontSize:done?10:12, color:"#fff" }}>{done ? "✓" : activeStep?.icon || "⚡"}</span>
+          </div>
         </div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.2 }}>
