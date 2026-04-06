@@ -681,6 +681,35 @@ async function callAIStream(
   }
 }
 
+// Fetch a web page's text content via CORS proxy
+async function fetchPageText(url: string): Promise<string> {
+  try {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return "";
+    const html = await r.text();
+    // Strip HTML tags, scripts, styles — extract text only
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("script,style,noscript,svg,iframe").forEach(el => el.remove());
+    const text = (doc.body?.textContent || "").replace(/\s+/g, " ").trim();
+    return text.slice(0, 6000); // cap at 6K chars
+  } catch { return ""; }
+}
+
+// Discover sub-pages from a base URL
+function discoverSubPages(baseUrl: string): string[] {
+  try {
+    const u = new URL(baseUrl);
+    const base = `${u.protocol}//${u.host}`;
+    return [
+      `${base}/about`, `${base}/about-us`,
+      `${base}/products`, `${base}/services`,
+      `${base}/solutions`, `${base}/platform`,
+      `${base}/pricing`, `${base}/features`,
+    ];
+  } catch { return []; }
+}
+
 function getOpenAIKey() { return localStorage.getItem("b2br_openai_key") || ""; }
 function getGeminiKey() { return localStorage.getItem("b2br_gemini_key") || ""; }
 
@@ -2000,9 +2029,38 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
 
     let context = "";
     const sources = [];
-    if (url)      { sources.push(`Website: ${url}`);      context += `\n\nWEBSITE URL:\n${url}`; }
-    if (linkedin) { sources.push(`LinkedIn: ${linkedin}`);context += `\n\nLINKEDIN PAGE:\n${linkedin}`; }
-    if (text)     { sources.push("Pasted text");          context += `\n\nPASTED TEXT:\n${text}`; }
+
+    // Fetch website content — homepage + key sub-pages
+    if (url) {
+      sources.push(`Website: ${url}`);
+      updateToast(toastId, { message:"Fetching website content…" });
+      const homeText = await fetchPageText(url);
+      if (homeText) {
+        context += `\n\nWEBSITE HOMEPAGE (${url}):\n${homeText}`;
+      } else {
+        context += `\n\nWEBSITE URL (could not fetch content): ${url}`;
+      }
+      // Fetch sub-pages for deeper product discovery
+      const subPages = discoverSubPages(url);
+      const subResults = await Promise.allSettled(subPages.map(async (subUrl) => {
+        const text = await fetchPageText(subUrl);
+        return { url: subUrl, text };
+      }));
+      for (const result of subResults) {
+        if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
+          const pageName = new URL(result.value.url).pathname.replace(/^\//, "").replace(/-/g, " ");
+          context += `\n\nWEBSITE PAGE "${pageName}" (${result.value.url}):\n${result.value.text.slice(0, 4000)}`;
+        }
+      }
+    }
+
+    if (linkedin) {
+      sources.push(`LinkedIn: ${linkedin}`);
+      updateToast(toastId, { message:"Fetching LinkedIn page…" });
+      const liText = await fetchPageText(linkedin);
+      context += liText ? `\n\nLINKEDIN PAGE (${linkedin}):\n${liText}` : `\n\nLINKEDIN URL: ${linkedin}`;
+    }
+    if (text) { sources.push("Pasted text"); context += `\n\nPASTED TEXT:\n${text}`; }
 
     if (files.length > 0) {
       for (const file of files) {
@@ -2073,7 +2131,7 @@ Raw JSON only.`, "", 1500);
         `You are a senior B2B GTM strategist. Analyze this company and produce a comprehensive research brief.
 
 COMPANY: ${JSON.stringify(coFields)}
-SOURCES: ${context.slice(0,1500)}
+SOURCES: ${context.slice(0,8000)}
 
 Identify:
 1. ALL distinct products/services this company sells (not features — actual separate things they sell)
@@ -2115,7 +2173,7 @@ Return ONLY valid JSON:
     let products: any[] = [];
     try {
       const prodRaw = await callAI(
-        `Analyze this company and identify ALL distinct products/services they offer.\n\nCompany: ${JSON.stringify(coFields)}\nRaw sources: ${context.slice(0,1000)}\n\nFor each product/service, provide ALL of these fields (never leave empty):\n- name: product/service name\n- description: what it is, how it works\n- category: Software|Platform|Service|Hardware|Consulting|Other\n- problemsSolved: specific problems it solves (be concrete)\n- valueProposition: why buy this vs alternatives\n- idealCustomer: who is the perfect buyer (industry, role, company size)\n- pricingRange: approximate deal size\n- competitors: who they compete with for this specific product\n- proofPoints: best evidence it works\n- switchTriggers: what makes someone switch to this from their current solution\n\nReturn ONLY valid JSON array.`, "", 2000);
+        `Analyze this company and identify ALL distinct products/services they offer.\n\n${NAMING_RULES.product}\n\nCompany: ${JSON.stringify(coFields)}\nRaw sources: ${context.slice(0,6000)}\n\nIMPORTANT: Look for products mentioned on sub-pages (about, products, services, solutions, pricing) — not just the homepage. Companies often bury product details in inner pages.\n\nFor each product/service, provide ALL of these fields (never leave empty):\n- name: product/service name\n- description: what it is, how it works\n- category: Software|Platform|Service|Hardware|Consulting|Other\n- problemsSolved: specific problems it solves (be concrete)\n- valueProposition: why buy this vs alternatives\n- idealCustomer: who is the perfect buyer (industry, role, company size)\n- pricingRange: approximate deal size\n- competitors: who they compete with for this specific product\n- proofPoints: best evidence it works\n- switchTriggers: what makes someone switch to this from their current solution\n\nReturn ONLY valid JSON array.`, "", 2000);
       const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
       if (Array.isArray(parsed)) {
         products = parsed.map((p: any) => ({
