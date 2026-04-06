@@ -5421,74 +5421,65 @@ function OffersPage({ offers, onOffersChange, products, personas = [], companyDa
 }
 
 // ─── COVERAGE MATRIX ─────────────────────────────────────────────────────────
-function CoverageMatrix({ products, personas, offers, campaigns, v2 = false }: {
+function CoverageMatrix({ products, personas, offers, campaigns, v2 = false, onCreateCampaign, onViewCampaign }: {
   products: any[]; personas: any[]; offers: any[]; campaigns: any[]; v2?: boolean;
+  onCreateCampaign?: (productId:string, personaId:string) => void;
+  onViewCampaign?: (campaignId:string) => void;
 }) {
   const _C = v2 ? C2 : C;
   if (products.length === 0 || personas.length === 0) {
     return (
-      <div style={{ padding:"28px 32px", textAlign:"center" }}>
-        <div style={{ fontSize:48, marginBottom:16, opacity:.15 }}>▦</div>
-        <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>Coverage Matrix</div>
-        <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, maxWidth:400, margin:"0 auto" }}>
-          Add at least one product and one persona to see the coverage matrix.
+      <div style={{ padding:"28px 32px", display:"flex", alignItems:"center", justifyContent:"center", height:"100%" }}>
+        <div style={{ textAlign:"center", maxWidth:400 }}>
+          <div style={{ fontSize:48, marginBottom:16, opacity:.15 }}>▦</div>
+          <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>Coverage Matrix</div>
+          <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6 }}>
+            Add at least one product and one persona to see which combinations have campaigns.
+          </div>
         </div>
       </div>
     );
   }
 
   const totalCombos = products.length * personas.length;
-  let mapped = 0, withCampaigns = 0;
+  let covered = 0;
 
-  const cells = products.map((prod: any) => personas.map((pers: any) => {
-    const isLinked = (pers.linkedProductIds || []).includes(prod.id);
-    const hasOffers = offers.some((o: any) => o.productId === prod.id && o.personaId === pers.id);
-    const hasCampaign = campaigns.some((c: any) => (c.personaIds || [])[0] === pers.id && c.productId === prod.id);
-    if (hasOffers || hasCampaign) mapped++;
-    if (hasCampaign) withCampaigns++;
-    return { isLinked, hasOffers, hasCampaign };
+  // Build cell data: find the campaign for each product × persona combo
+  const cellData = products.map((prod: any) => personas.map((pers: any) => {
+    const campaign = campaigns.find((c: any) => (c.personaIds || [])[0] === pers.id && c.productId === prod.id);
+    if (campaign) covered++;
+    return { campaign };
   }));
 
-  const coveragePct = totalCombos > 0 ? Math.round(mapped / totalCombos * 100) : 0;
+  const coveragePct = totalCombos > 0 ? Math.round(covered / totalCombos * 100) : 0;
+  const gaps = totalCombos - covered;
 
   return (
     <div style={{ padding:"28px 32px", overflowY:"auto", height:"100%" }}>
       {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
         <div>
-          <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Coverage Matrix</h2>
+          <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Coverage</h2>
           <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
-            Product × Persona combinations — see what's mapped, what has campaigns, and where the gaps are.
+            {covered}/{totalCombos} combinations have campaigns{gaps > 0 ? ` · ${gaps} gap${gaps!==1?"s":""}` : ""}
           </p>
         </div>
-        <div style={{ display:"flex", gap:16, alignItems:"center" }}>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:24, fontWeight:800, fontFamily:head, color:coveragePct>=75?_C.green:coveragePct>=40?_C.amber:_C.red }}>{coveragePct}%</div>
-            <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>coverage</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div style={{ display:"flex", gap:16, marginBottom:20, fontSize:11, fontFamily:body, color:_C.muted }}>
-        <span style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:_C.green }} /> Campaign active</span>
-        <span style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:_C.amber }} /> Offers created</span>
-        <span style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:`${_C.accent}33` }} /> Linked but no offers</span>
-        <span style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:_C.faint, border:`1px solid ${_C.border}` }} /> Not mapped</span>
+        <div style={{ fontSize:28, fontWeight:800, fontFamily:head,
+          color:coveragePct===100?_C.green:coveragePct>=50?_C.accent:_C.muted }}>{coveragePct}%</div>
       </div>
 
       {/* Grid */}
       <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, overflow:"auto", boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse", minWidth: products.length * 140 + 180 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth: products.length * 150 + 180 }}>
           <thead>
             <tr>
-              <th style={{ padding:"14px 16px", textAlign:"left", fontSize:11, fontFamily:mono, fontWeight:700, color:_C.muted,
+              <th style={{ padding:"12px 16px", textAlign:"left", fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted,
                 borderBottom:`1px solid ${_C.border}`, position:"sticky" as const, left:0, background:_C.canvas, zIndex:1, minWidth:160 }}>
-                PERSONA ↓ / PRODUCT →
+                &nbsp;
               </th>
               {products.map((prod: any) => (
-                <th key={prod.id} style={{ padding:"14px 12px", textAlign:"center", fontSize:11, fontFamily:head, fontWeight:600,
-                  color:_C.text, borderBottom:`1px solid ${_C.border}`, minWidth:120 }}>
+                <th key={prod.id} style={{ padding:"12px 14px", textAlign:"center", fontSize:12, fontFamily:head, fontWeight:600,
+                  color:_C.text, borderBottom:`1px solid ${_C.border}`, minWidth:140 }}>
                   {prod.name || "Unnamed"}
                 </th>
               ))}
@@ -5497,30 +5488,50 @@ function CoverageMatrix({ products, personas, offers, campaigns, v2 = false }: {
           <tbody>
             {personas.map((pers: any, pi: number) => (
               <tr key={pers.id}>
-                <td style={{ padding:"12px 16px", fontSize:12, fontFamily:head, fontWeight:600, color:_C.text,
-                  borderBottom:`1px solid ${_C.faint}`, position:"sticky" as const, left:0, background:_C.canvas, zIndex:1 }}>
+                <td style={{ padding:"10px 16px", fontSize:12, fontFamily:head, fontWeight:600, color:_C.text,
+                  borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none",
+                  position:"sticky" as const, left:0, background:_C.canvas, zIndex:1 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                     <div style={{ width:6, height:6, borderRadius:3, background:pers.color || _C.accent, flexShrink:0 }} />
                     {pers.name || `Persona ${pi+1}`}
                   </div>
                 </td>
                 {products.map((prod: any, pri: number) => {
-                  const cell = cells[pri][pi];
-                  const bg = cell.hasCampaign ? _C.green
-                    : cell.hasOffers ? _C.amber
-                    : cell.isLinked ? `${_C.accent}33`
-                    : _C.faint;
-                  const label = cell.hasCampaign ? "Campaign"
-                    : cell.hasOffers ? "Offers"
-                    : cell.isLinked ? "Linked"
-                    : "—";
+                  const { campaign } = cellData[pri][pi];
+                  if (campaign) {
+                    const statusObj = CAMPAIGN_STATUSES.find(s => s.id === campaign.status) || CAMPAIGN_STATUSES[0];
+                    const seqLen = campaign.sequence?.length || 0;
+                    return (
+                      <td key={prod.id} style={{ padding:"8px 10px", textAlign:"center",
+                        borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none" }}>
+                        <div onClick={()=>onViewCampaign?.(campaign.id)}
+                          style={{ padding:"8px 12px", borderRadius:10, background:`${statusObj.color}0C`,
+                            border:`1px solid ${statusObj.color}22`, cursor:"pointer", transition:"all .15s" }}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=statusObj.color;(e.currentTarget as HTMLElement).style.background=`${statusObj.color}18`;}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=statusObj.color+"22";(e.currentTarget as HTMLElement).style.background=`${statusObj.color}0C`;}}>
+                          <div style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, marginBottom:3,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {campaign.name || "Untitled"}
+                          </div>
+                          <div style={{ display:"flex", gap:4, justifyContent:"center" }}>
+                            <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"1px 6px", borderRadius:4,
+                              background:`${statusObj.color}18`, color:statusObj.color }}>{statusObj.label}</span>
+                            <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{seqLen} steps</span>
+                          </div>
+                        </div>
+                      </td>
+                    );
+                  }
+                  // Empty cell — click to create
                   return (
-                    <td key={prod.id} style={{ padding:"10px 12px", textAlign:"center", borderBottom:`1px solid ${_C.faint}` }}>
-                      <div style={{ display:"inline-flex", alignItems:"center", justifyContent:"center",
-                        padding:"4px 12px", borderRadius:6, background:bg,
-                        color: cell.hasCampaign || cell.hasOffers ? "#fff" : cell.isLinked ? _C.accent : _C.muted,
-                        fontSize:10, fontFamily:mono, fontWeight:600 }}>
-                        {label}
+                    <td key={prod.id} style={{ padding:"8px 10px", textAlign:"center",
+                      borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none" }}>
+                      <div onClick={()=>onCreateCampaign?.(prod.id, pers.id)}
+                        style={{ padding:"10px 12px", borderRadius:10, border:`2px dashed ${_C.border}`,
+                          cursor:"pointer", transition:"all .15s", color:_C.muted, fontSize:11, fontFamily:head, fontWeight:500 }}
+                        onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=_C.accent; el.style.color=_C.accent; el.style.background=`${_C.accent}06`;}}
+                        onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=_C.border; el.style.color=_C.muted; el.style.background="transparent";}}>
+                        + Campaign
                       </div>
                     </td>
                   );
@@ -5531,36 +5542,12 @@ function CoverageMatrix({ products, personas, offers, campaigns, v2 = false }: {
         </table>
       </div>
 
-      {/* Gaps */}
-      {(() => {
-        const gaps: {prod:any;pers:any}[] = [];
-        products.forEach((prod:any, pri:number) => {
-          personas.forEach((pers:any, pi:number) => {
-            const cell = cells[pri][pi];
-            if (!cell.hasOffers && !cell.hasCampaign) gaps.push({ prod, pers });
-          });
-        });
-        return gaps.length > 0 ? (
-          <div style={{ marginTop:24 }}>
-            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:12 }}>
-              UNMAPPED GAPS ({gaps.length})
-            </div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-              {gaps.slice(0, 12).map((g, i) => (
-                <div key={i} style={{ padding:"8px 14px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`,
-                  fontSize:11, fontFamily:body, color:_C.textSoft }}>
-                  {g.prod.name} × {g.pers.name}
-                </div>
-              ))}
-              {gaps.length > 12 && <div style={{ padding:"8px 14px", fontSize:11, color:_C.muted }}>+{gaps.length-12} more</div>}
-            </div>
-          </div>
-        ) : (
-          <div style={{ marginTop:24, padding:"16px", borderRadius:10, background:_C.greenLo, border:`1px solid ${_C.greenBorder}`, textAlign:"center" }}>
-            <span style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.green }}>✓ Full coverage — all product × persona combinations are mapped</span>
-          </div>
-        );
-      })()}
+      {/* Full coverage banner */}
+      {gaps === 0 && (
+        <div style={{ marginTop:20, padding:"12px 16px", borderRadius:10, background:_C.greenLo, border:`1px solid ${_C.greenBorder}`, textAlign:"center" }}>
+          <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:_C.green }}>All combinations covered</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -12330,7 +12317,22 @@ Raw JSON only.`, "", 1400);
             {view==="matrix" && (
               <div style={{ position:"absolute" as const, inset:0, overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-                <CoverageMatrix products={products} personas={icps} offers={offers} campaigns={campaigns} v2={true} />
+                <CoverageMatrix products={products} personas={icps} offers={offers} campaigns={campaigns} v2={true}
+                  onCreateCampaign={(productId, personaId) => {
+                    const c = EMPTY_CAMPAIGN();
+                    c.productId = productId;
+                    c.personaIds = [personaId];
+                    const persona = icps.find((i:any)=>i.id===personaId);
+                    const product = products.find((p:any)=>p.id===productId);
+                    c.name = `${persona?.name||"Persona"} × ${product?.name||"Product"}`;
+                    setCampaigns(prev => [...prev, c]);
+                    setView("campaigns");
+                    addToast({ title:"Campaign created", status:"success", message:c.name });
+                  }}
+                  onViewCampaign={(campaignId) => {
+                    setView("campaigns");
+                  }}
+                />
               </div>
             )}
 
