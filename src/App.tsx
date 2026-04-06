@@ -1992,72 +1992,47 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     let context = "";
     const sources = [];
 
-    // Fetch website content — homepage + AI-discovered product pages
+    // Fetch website content — homepage + AI-discovered product pages (30s max)
     if (url) {
       sources.push(`Website: ${url}`);
-      updateToast(toastId, { message:"Fetching website…" });
-      const homeHTML = await fetchPageHTML(url);
-      const homeText = homeHTML ? htmlToText(homeHTML) : "";
-      if (homeText) {
-        context += `\n\nWEBSITE HOMEPAGE (${url}):\n${homeText}`;
-      } else {
-        context += `\n\nWEBSITE URL (could not fetch): ${url}`;
-      }
+      try {
+        await Promise.race([
+          (async () => {
+            const homeHTML = await fetchPageHTML(url);
+            const homeText = homeHTML ? htmlToText(homeHTML) : "";
+            context += homeText ? `\n\nWEBSITE HOMEPAGE (${url}):\n${homeText}` : `\n\nWEBSITE URL: ${url}`;
 
-      // Discover product pages via sitemaps + subdomain sitemaps
-      {
-        updateToast(toastId, { message:"Discovering product pages…" });
-        // Collect all discoverable URLs from sitemaps
-        let allDiscoverableUrls: string[] = [];
-
-        // 1. Main domain sitemap
-        const mainSitemap = await fetchSitemapUrls(url);
-        allDiscoverableUrls.push(...mainSitemap);
-
-        // 2. Find subdomains from homepage HTML and fetch their sitemaps
-        if (homeHTML) {
-          const subdomains = extractSubdomains(homeHTML, url);
-          for (const sub of subdomains.slice(0, 3)) {
-            const subSitemap = await fetchSitemapUrls(sub);
-            allDiscoverableUrls.push(...subSitemap);
-          }
-          // Also try common subdomains even if not linked
-          const baseDomain = new URL(url).hostname.replace(/^www\./, "");
-          for (const prefix of ["get", "www", "app"]) {
-            const subHost = `https://${prefix}.${baseDomain}`;
-            if (!subdomains.some(s => s.includes(prefix))) {
-              const subSitemap = await fetchSitemapUrls(subHost);
-              allDiscoverableUrls.push(...subSitemap);
+            // Discover product pages via sitemaps — all in parallel
+            const baseDomain = new URL(url).hostname.replace(/^www\./, "");
+            const sitemapUrls = [url, `https://get.${baseDomain}`, `https://www.${baseDomain}`, `https://app.${baseDomain}`];
+            if (homeHTML) {
+              const subdomains = extractSubdomains(homeHTML, url);
+              sitemapUrls.push(...subdomains.slice(0, 3));
             }
-          }
-        }
+            const sitemapResults = await Promise.allSettled([...new Set(sitemapUrls)].map(u => fetchSitemapUrls(u)));
+            let allUrls: string[] = [];
+            for (const r of sitemapResults) { if (r.status === "fulfilled") allUrls.push(...r.value); }
+            if (homeHTML) allUrls.push(...extractLinks(homeHTML, url).map(l => l.href));
+            allUrls = [...new Set(allUrls)];
 
-        // 3. Also extract links from homepage HTML
-        if (homeHTML) {
-          const pageLinks = extractLinks(homeHTML, url);
-          allDiscoverableUrls.push(...pageLinks.map(l => l.href));
-        }
-
-        // Deduplicate
-        allDiscoverableUrls = [...new Set(allDiscoverableUrls)];
-
-        // 4. Use AI to pick the best product/about pages
-        if (allDiscoverableUrls.length > 0) {
-          const productPageUrls = await discoverProductPages(allDiscoverableUrls, url);
-          if (productPageUrls.length > 0) {
-            updateToast(toastId, { message:`Fetching ${productPageUrls.length} product page${productPageUrls.length!==1?"s":""}…` });
-            const subResults = await Promise.allSettled(productPageUrls.map(async (subUrl) => {
-              const html = await fetchPageHTML(subUrl);
-              return { url: subUrl, text: html ? htmlToText(html, 4000) : "" };
-            }));
-            for (const result of subResults) {
-              if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
-                context += `\n\nPRODUCT/ABOUT PAGE (${result.value.url}):\n${result.value.text}`;
+            if (allUrls.length > 0) {
+              const picks = await discoverProductPages(allUrls, url);
+              if (picks.length > 0) {
+                const pageResults = await Promise.allSettled(picks.map(async u => {
+                  const html = await fetchPageHTML(u);
+                  return { url: u, text: html ? htmlToText(html, 4000) : "" };
+                }));
+                for (const r of pageResults) {
+                  if (r.status === "fulfilled" && r.value.text.length > 100) {
+                    context += `\n\nPRODUCT/ABOUT PAGE (${r.value.url}):\n${r.value.text}`;
+                  }
+                }
               }
             }
-          }
-        }
-      }
+          })(),
+          new Promise(r => setTimeout(r, 30000)) // 30s timeout for entire discovery
+        ]);
+      } catch (e) { console.warn("Website fetch failed:", e); context += `\n\nWEBSITE URL: ${url}`; }
     }
 
     // Fetch extra URLs (product pages, about pages, etc.)
