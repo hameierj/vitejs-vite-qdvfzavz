@@ -12002,41 +12002,8 @@ Raw JSON only.`, "", 1400);
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
-          {/* Workspace health banner */}
-          {activeWorkspace && !["accounts","onboarding"].includes(view) && (() => {
-            const issues: {label:string; action:string}[] = [];
-            const compFilled = ALL_COMPANY_FIELDS.filter(f => fieldFilled(f, companyData[f.id])).length;
-            const compPct = Math.round(compFilled / ALL_COMPANY_FIELDS.length * 100);
-            if (compPct < 50) issues.push({ label:`Company profile ${compPct}%`, action:"company" });
-            if (products.length === 0) issues.push({ label:"No products", action:"products" });
-            else {
-              const inc = products.filter(p => { const f = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length; return f < PRODUCT_FIELDS.length * 0.5; }).length;
-              if (inc) issues.push({ label:`${inc} product${inc!==1?"s":""} incomplete`, action:"products" });
-            }
-            if (icps.length === 0) issues.push({ label:"No personas", action:"icps" });
-            const noSeq = campaigns.filter(c => !c.sequence?.length).length;
-            if (noSeq) issues.push({ label:`${noSeq} campaign${noSeq!==1?"s":""} need sequences`, action:"campaigns" });
-            if (!strategy && icps.length > 0 && products.length > 0) issues.push({ label:"Strategy not generated", action:"strategy" });
-            if (issues.length === 0) return null;
-            return (
-              <div style={{ padding:"6px clamp(20px, 3vw, 48px)", background:C2.faint, borderBottom:`1px solid ${C2.border}`,
-                display:"flex", alignItems:"center", gap:12, flexShrink:0, minHeight:0 }}>
-                <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, flexShrink:0 }}>TODO</span>
-                <div style={{ display:"flex", gap:6, flex:1, overflow:"hidden", flexWrap:"wrap" }}>
-                  {issues.slice(0, 4).map(issue => (
-                    <button key={issue.label} onClick={()=>setView(issue.action)}
-                      style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.amber, background:`${C2.amber}11`,
-                        padding:"3px 10px", borderRadius:6, border:"none", cursor:"pointer", transition:"all .15s",
-                        whiteSpace:"nowrap" }}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.color=C2.text;(e.currentTarget as HTMLElement).style.background=`${C2.amber}22`;}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.color=C2.amber;(e.currentTarget as HTMLElement).style.background=`${C2.amber}11`;}}>
-                      {issue.label}
-                    </button>
-                  ))}
-                  {issues.length > 4 && <span style={{ fontSize:10, fontFamily:mono, color:C2.muted }}>+{issues.length - 4} more</span>}
-                </div>
-              </div>
-            );
+          {/* Workspace health banner — removed */}
+          {false && (() => { return null;
           })()}
 
           <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix","preferences"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix","preferences"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix","preferences"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
