@@ -1685,7 +1685,7 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
   const mins = Math.round(totalSecondsSaved / 60);
 
   return (
-    <div style={{ position:"fixed", bottom:24, left:24, zIndex:2147483645, width:340,
+    <div style={{ position:"fixed", bottom:24, right:24, zIndex:2147483645, width:340,
       background:C2.canvas, borderRadius:16, border:`1px solid ${C2.border}`,
       boxShadow:`0 12px 48px rgba(13,15,26,0.2), 0 0 0 1px ${activeColor}0A`,
       animation:"copilotPopUp .3s cubic-bezier(0.16, 1, 0.3, 1)", overflow:"hidden" }}>
