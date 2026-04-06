@@ -1682,199 +1682,90 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
   const activeColor = activeStep?.color || C2.accent;
   const totalFieldsFilled = parseInt(stepResults._totalFields || "0");
   const totalSecondsSaved = parseInt(stepResults._totalSeconds || "0");
-  const hoursSaved = Math.floor(totalSecondsSaved / 3600);
-  const remainingMins = Math.round((totalSecondsSaved % 3600) / 60);
-  const timeSavedStr = hoursSaved > 0 ? `${hoursSaved}h ${remainingMins}m` : `${remainingMins} min`;
-
-  // Confetti particles for completion
-  const confetti = done ? Array.from({length:40}, (_,i) => ({
-    id:i, x: Math.random()*100, delay: Math.random()*2, dur: 2+Math.random()*2,
-    size: 4+Math.random()*8, color: QS_STEPS[i%QS_STEPS.length].color,
-    drift: -30+Math.random()*60,
-  })) : [];
+  const mins = Math.round(totalSecondsSaved / 60);
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:2147483645,
-      background:C2.bg,
-      display:"flex", flexDirection:"column", overflow:"hidden" }}>
-      {/* Background decoration */}
-      <div style={{ position:"absolute", inset:0, pointerEvents:"none", overflow:"hidden" }}>
-        <div style={{ position:"absolute", top:"-20%", right:"-10%", width:"50vw", height:"50vw", borderRadius:"50%",
-          background:`radial-gradient(circle, ${activeColor}08 0%, transparent 70%)` }} />
-        <div style={{ position:"absolute", bottom:"-20%", left:"-10%", width:"40vw", height:"40vw", borderRadius:"50%",
-          background:`radial-gradient(circle, ${C2.accent}06 0%, transparent 70%)` }} />
-      </div>
+    <div style={{ position:"fixed", bottom:24, left:24, zIndex:2147483645, width:340,
+      background:C2.canvas, borderRadius:16, border:`1px solid ${C2.border}`,
+      boxShadow:`0 12px 48px rgba(13,15,26,0.2), 0 0 0 1px ${activeColor}0A`,
+      animation:"copilotPopUp .3s cubic-bezier(0.16, 1, 0.3, 1)", overflow:"hidden" }}>
       <style>{`
         @keyframes qsPulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
-        @keyframes qsOrbit{0%{transform:rotate(0deg) translateX(var(--r,50px)) rotate(0deg)}100%{transform:rotate(360deg) translateX(var(--r,50px)) rotate(-360deg)}}
-        @keyframes qsGlow{0%,100%{box-shadow:0 0 20px ${activeColor}33}50%{box-shadow:0 0 50px ${activeColor}66}}
-        @keyframes qsCheck{0%{transform:scale(0) rotate(-45deg)}50%{transform:scale(1.2)}100%{transform:scale(1)}}
-        @keyframes qsSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes qsConfetti{0%{opacity:1;transform:translateY(0) rotate(0deg)}100%{opacity:0;transform:translateY(100vh) rotate(720deg)}}
-        @keyframes qsCelebrate{0%{opacity:0;transform:scale(.5)}30%{opacity:1;transform:scale(1.1)}100%{opacity:1;transform:scale(1)}}
       `}</style>
 
-      {/* Confetti overlay */}
-      {done && confetti.map(c => (
-        <div key={c.id} style={{ position:"absolute", top:-20, left:`${c.x}%`,
-          width:c.size, height:c.size, borderRadius:c.size>8?"50%":"2px",
-          background:c.color, zIndex:401, pointerEvents:"none",
-          animation:`qsConfetti ${c.dur}s ease-in ${c.delay}s forwards`,
-          transform:`translateX(${c.drift}px)` }} />
-      ))}
-
-      {/* Header — transparent, floating over content */}
-      <div style={{ position:"absolute", top:0, left:0, right:0, padding:"16px 24px",
-        display:"flex", alignItems:"center", gap:12, zIndex:402 }}>
-        <button onClick={onBack}
-          style={{ padding:"8px 16px", borderRadius:10, border:`1px solid ${C2.border}33`,
-            background:`${C2.canvas}cc`, backdropFilter:"blur(8px)",
-            color:C2.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
-          ← Back
-        </button>
-        <div style={{ flex:1 }} />
-        <div style={{ padding:"6px 14px", borderRadius:8, background:`${C2.canvas}cc`, backdropFilter:"blur(8px)",
-          fontSize:12, fontFamily:mono, color:done?C2.green:activeColor, fontWeight:700 }}>
-          {done ? "✓ Complete" : `Step ${currentStep + 1} of ${total}`}
+      {/* Header */}
+      <div style={{ padding:"12px 16px", display:"flex", alignItems:"center", gap:10,
+        background:`linear-gradient(135deg, ${activeColor}0A, ${activeColor}04)`, borderBottom:`1px solid ${C2.border}` }}>
+        <div style={{ width:28, height:28, borderRadius:8,
+          background:`linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
+          display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+          boxShadow:`0 2px 8px ${activeColor}33` }}>
+          <span style={{ fontSize:14 }}>{done ? "✓" : activeStep?.icon || "⚡"}</span>
         </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.2 }}>
+            {done ? "Quick Start Complete" : activeStep?.label || "Processing…"}
+          </div>
+          <div style={{ fontSize:10, fontFamily:mono, color:activeColor, fontWeight:600, lineHeight:1.2 }}>
+            {done ? `${totalFieldsFilled} fields · ${mins} min saved` : `Step ${currentStep + 1} of ${total}`}
+          </div>
+        </div>
+        <button onClick={onBack}
+          style={{ width:22, height:22, borderRadius:6, border:"none", background:"transparent",
+            color:C2.muted, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.color=C2.text;}}
+          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.color=C2.muted;}}>×</button>
       </div>
 
-      {/* Main — vertically centered, no scroll */}
-      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"60px 60px 40px", position:"relative" }}>
+      {/* Progress bar */}
+      <div style={{ height:3, background:C2.faint }}>
+        <div style={{ height:"100%", background:`linear-gradient(90deg, ${activeColor}, ${activeColor}88)`,
+          width:`${done ? 100 : pct}%`, transition:"width .8s ease-in-out", borderRadius:"0 2px 2px 0" }} />
+      </div>
 
-        {done ? (
-          /* ═══ Completion state ═══ */
-          <div style={{ textAlign:"center", animation:"qsCelebrate .6s ease forwards", maxWidth:560 }}>
-            <div style={{ position:"relative", width:160, height:160, margin:"0 auto 32px" }}>
-              <div style={{ width:160, height:160, borderRadius:"50%",
-                background:`linear-gradient(135deg, ${C2.green}, #00B894)`,
+      {/* Steps */}
+      <div style={{ padding:"10px 16px 14px" }}>
+        {QS_STEPS.map((step, i) => {
+          const isActive = i === currentStep && !done;
+          const isDone = i < currentStep || done;
+          const isPending = i > currentStep && !done;
+          const result = stepResults[step.id] || "";
+          return (
+            <div key={step.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"4px 0",
+              opacity: isPending ? 0.3 : 1, transition:"opacity .3s" }}>
+              <div style={{ width:18, height:18, borderRadius:6, flexShrink:0,
+                background: isDone ? step.color : isActive ? `${step.color}22` : C2.faint,
+                border: isActive ? `1.5px solid ${step.color}` : isDone ? "none" : `1px solid ${C2.border}`,
                 display:"flex", alignItems:"center", justifyContent:"center",
-                boxShadow:`0 16px 60px ${C2.green}44`,
-                animation:"qsCheck .5s ease" }}>
-                <span style={{ fontSize:60, color:"#fff" }}>✓</span>
+                animation: isActive ? "qsPulse 1.5s ease-in-out infinite" : undefined,
+                transition:"all .3s" }}>
+                {isDone
+                  ? <span style={{ color:"#fff", fontSize:9, fontWeight:700 }}>✓</span>
+                  : <span style={{ fontSize:8, fontWeight:600, color: isActive ? step.color : C2.muted }}>{i+1}</span>}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <span style={{ fontSize:11, fontWeight:isActive?700:isDone?500:400, fontFamily:head,
+                  color: isActive ? step.color : isDone ? C2.text : C2.muted }}>{step.label}</span>
+                {isDone && result && (
+                  <span style={{ fontSize:9, fontFamily:mono, color:step.color, marginLeft:6, fontWeight:600 }}>{result}</span>
+                )}
               </div>
             </div>
-            <div style={{ fontSize:36, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:10 }}>
-              You're all set!
-            </div>
-            <div style={{ fontSize:16, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:24 }}>
-              Quick Start has built your entire outreach foundation.
-            </div>
-
-            {/* Time saved highlight */}
-            {totalFieldsFilled > 0 && (
-              <div style={{ display:"flex", justifyContent:"center", gap:24, marginBottom:24 }}>
-                <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:36, fontWeight:800, fontFamily:head, color:C2.accent }}>{totalFieldsFilled}</div>
-                  <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>fields filled</div>
-                </div>
-                <div style={{ width:1, background:C2.border }} />
-                <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:36, fontWeight:800, fontFamily:head, color:C2.green }}>{timeSavedStr}</div>
-                  <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>of research saved</div>
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginBottom:32 }} />
-            <button onClick={onBack}
-              style={{ padding:"14px 40px", borderRadius:14, border:"none",
-                background:`linear-gradient(135deg, ${C2.accent}, ${C2.accent}cc)`, color:"#fff",
-                fontSize:15, fontFamily:head, fontWeight:700, cursor:"pointer",
-                boxShadow:`0 8px 24px ${C2.accent}44`, transition:"transform .2s" }}
-              onMouseEnter={e=>(e.target as HTMLElement).style.transform="translateY(-2px)"}
-              onMouseLeave={e=>(e.target as HTMLElement).style.transform="translateY(0)"}>
-              Go to Dashboard →
-            </button>
-          </div>
-        ) : (
-          /* ═══ In-progress state ═══ */
-          <div style={{ display:"flex", alignItems:"center", gap:80, maxWidth:900, width:"100%", margin:"0 auto" }}>
-
-            {/* Left: animated orb */}
-            <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"center", gap:28 }}>
-              <div style={{ position:"relative", width:220, height:220 }}>
-                {[0,1,2,3,4,5].map(i => (
-                  <div key={i} style={{ position:"absolute", top:"50%", left:"50%", marginTop:-(5+i), marginLeft:-(5+i),
-                    width:10+i*3, height:10+i*3, borderRadius:"50%",
-                    background:activeColor, opacity: 0.15 + i*0.1,
-                    // @ts-ignore
-                    "--r": `${55+i*14}px`,
-                    animation:`qsOrbit ${5+i*0.8}s linear infinite`,
-                    animationDelay:`${i*0.35}s` } as any} />
-                ))}
-                <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
-                  width:100, height:100, borderRadius:"50%",
-                  background:`linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  animation:"qsGlow 2s ease-in-out infinite",
-                  boxShadow:`0 12px 48px ${activeColor}44` }}>
-                  <span style={{ fontSize:40 }}>{activeStep?.icon || "⚡"}</span>
-                </div>
-              </div>
-              {/* Progress bar */}
-              <div style={{ width:200 }}>
-                <div style={{ height:6, borderRadius:3, background:`${C2.border}66`, overflow:"hidden" }}>
-                  <div style={{ height:"100%", borderRadius:3,
-                    background:`linear-gradient(90deg, ${activeColor}, ${activeColor}88)`,
-                    width:`${pct}%`, transition:"width 1s ease-in-out" }} />
-                </div>
-                <div style={{ fontSize:12, fontFamily:mono, color:C2.muted, textAlign:"center", marginTop:8, fontWeight:600 }}>{pct}%</div>
-              </div>
-            </div>
-
-            {/* Right: step timeline */}
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:28, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:6 }}>
-                {activeStep?.label || "Processing…"}
-              </div>
-              <div style={{ fontSize:15, color:C2.muted, fontFamily:body, marginBottom:32 }}>
-                {activeStep?.desc || ""}
-              </div>
-
-              <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
-                {QS_STEPS.map((step, i) => {
-                  const isActive = i === currentStep;
-                  const isDone = i < currentStep;
-                  const isPending = i > currentStep;
-                  const result = stepResults[step.id] || "";
-                  return (
-                    <div key={step.id} style={{ display:"flex", gap:16, alignItems:"flex-start",
-                      opacity: isPending ? 0.3 : 1, transition:"opacity .5s ease" }}>
-                      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:36, flexShrink:0 }}>
-                        <div style={{ width:32, height:32, borderRadius:10,
-                          background: isDone ? step.color : isActive ? `${step.color}22` : C2.faint,
-                          border: isActive ? `2px solid ${step.color}` : isDone ? "none" : `1px solid ${C2.border}`,
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          animation: isActive ? "qsPulse 1.5s ease-in-out infinite" : undefined,
-                          transition:"all .3s ease" }}>
-                          {isDone
-                            ? <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>✓</span>
-                            : <span style={{ fontSize:12, fontWeight:600, color: isActive ? step.color : C2.muted }}>{i+1}</span>}
-                        </div>
-                        {i < total - 1 && (
-                          <div style={{ width:2, height:28, background: isDone ? step.color : C2.border,
-                            transition:"background .5s ease" }} />
-                        )}
-                      </div>
-                      <div style={{ paddingBottom:i < total - 1 ? 8 : 0, flex:1, minHeight:48 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <span style={{ fontSize:15, fontWeight:isActive?700:isDone?600:400, fontFamily:head,
-                            color: isActive ? step.color : isDone ? C2.text : C2.muted }}>{step.label}</span>
-                          {isActive && <div style={{ width:6, height:6, borderRadius:3, background:step.color, animation:"qsPulse 1s ease-in-out infinite" }} />}
-                        </div>
-                        {isDone && result && (
-                          <div style={{ fontSize:12, fontFamily:mono, color:step.color, marginTop:3, fontWeight:600 }}>{result}</div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
+          );
+        })}
       </div>
+
+      {/* Done action */}
+      {done && (
+        <div style={{ padding:"0 16px 14px" }}>
+          <button onClick={onBack}
+            style={{ width:"100%", padding:"8px", borderRadius:8, border:"none",
+              background:C2.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
+              cursor:"pointer" }}>
+            View Results →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
