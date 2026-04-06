@@ -724,14 +724,13 @@ function extractLinks(html: string, baseUrl: string): {href:string; text:string}
   return links;
 }
 
-// Fetch sitemap.xml and extract URLs
+// Fetch sitemap.xml and extract URLs (via CORS proxy)
 async function fetchSitemapUrls(baseUrl: string): Promise<string[]> {
   try {
     const u = new URL(baseUrl);
     const sitemapUrl = `${u.protocol}//${u.host}/sitemap.xml`;
-    const r = await fetch(sitemapUrl, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return [];
-    const xml = await r.text();
+    const xml = await fetchPageHTML(sitemapUrl); // uses CORS proxy
+    if (!xml || xml.length < 50) return [];
     const urls: string[] = [];
     const locRegex = /<loc>([^<]+)<\/loc>/g;
     let match;
