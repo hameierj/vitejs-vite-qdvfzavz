@@ -9737,11 +9737,14 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
   };
   const handleBulkDelete = () => {
     if (!window.confirm(`Delete ${selectedClientIds.size} client${selectedClientIds.size!==1?"s":""}? This cannot be undone.`)) return;
-    // Clean up workspace data for each deleted client
     for (const cid of selectedClientIds) {
       try { localStorage.removeItem(`b2br_ws_${cid}`); } catch {}
+      dbDelete("app_data", `ws_${cid}`);
     }
-    persistClients(clients.filter(c => !selectedClientIds.has(c.id)));
+    const remaining = clients.filter(c => !selectedClientIds.has(c.id));
+    setClients(remaining);
+    try { localStorage.setItem("b2br_clients", JSON.stringify(remaining)); } catch {}
+    dbPut("app_data", "clients", remaining);
     setSelectedClientIds(new Set());
   };
   const [showBulkImport, setShowBulkImport] = useState(false);
@@ -9871,8 +9874,13 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
     try { localStorage.removeItem(`b2br_ws_${deleteClientId}`); } catch {}
     // Remove workspace data from Supabase
     dbDelete("app_data", `ws_${deleteClientId}`);
-    // Remove from client list (persistClients will sync the updated list to cloud)
-    persistClients(clients.filter(c => c.id !== deleteClientId));
+    // Remove from client list
+    const remaining = clients.filter(c => c.id !== deleteClientId);
+    setClients(remaining);
+    // Save to localStorage immediately
+    try { localStorage.setItem("b2br_clients", JSON.stringify(remaining)); } catch {}
+    // Push to Supabase immediately (bypass the 5s debounce)
+    dbPut("app_data", "clients", remaining);
     setDeleteClientId(null);
   };
 
