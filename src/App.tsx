@@ -827,12 +827,11 @@ const NAMING_RULES = {
 - Role should be the actual job title or function they hold, not a description of behavior.
 - If the persona spans multiple industries, pick the primary one or use the sector: "B2B Services — Procurement Lead".`,
   product: `PRODUCT NAMING RULES (strict):
-- Format: "[Core Noun] [Qualifier]" — short, recognizable, plain language.
-- Examples: "Equipment Financing", "Fleet Management Platform", "AI Sales Agent", "Revenue Intelligence", "Payroll Processing"
-- Keep under 30 characters. Drop marketing fluff — no "Suite", "Pro", "Ultimate", "360", "Intelligence Hub".
-- If the company calls it "RevOps Intelligence Suite Pro", name it "Revenue Intelligence" or "RevOps Platform".
-- Name what it IS, not what it does. Use the simplest noun that a prospect would recognize.
-- Never repeat the company name in the product name.`,
+- USE THE EXACT PRODUCT NAME as it appears on the company's website. Do NOT rename, paraphrase, or genericize products.
+- If the website calls it "Bebop RTSL", the name is "Bebop RTSL" — not "Real-Time Scripting Language" or "Automation Platform".
+- If the website calls it "HubSpot Marketing Hub", the name is "HubSpot Marketing Hub" — not "Marketing Automation".
+- Only simplify names when the company uses excessive marketing fluff like "Ultimate Enterprise Suite Pro 360".
+- Keep under 40 characters. Preserve the company's branding and product identity.`,
 };
 
 function fieldFilled(f, val) {
