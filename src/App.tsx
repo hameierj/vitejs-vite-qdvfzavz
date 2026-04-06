@@ -1664,12 +1664,12 @@ function calcTimeSaved(filledFieldIds: string[]): number {
 }
 
 const QS_STEPS = [
-  { id:"sources",   label:"Analyzing Sources",         icon:"🔍", desc:"Processing website, docs, and uploaded files", color:"#6C5CE7" },
-  { id:"company",   label:"Building Company Profile",  icon:"🏢", desc:"Extracting industry, value prop, competitors, proof points", color:"#54A0FF" },
-  { id:"research",  label:"Research Brief",            icon:"◎",  desc:"Identifying all products, personas, and viable combinations", color:"#00D68F" },
-  { id:"review",    label:"Review & Select",           icon:"✓",  desc:"Choose which products and personas to create", color:"#FFC048" },
-  { id:"create",    label:"Creating Entities",         icon:"◆",  desc:"Building selected products, personas, offers, and guardrails", color:"#FF6B6B" },
-  { id:"validate",  label:"Validating & Finalizing",   icon:"✓",  desc:"Cross-linking everything and verifying", color:"#00D68F" },
+  { id:"sources",   label:"Analyzing Sources",         icon:"◎", desc:"Processing website, docs, and uploaded files", color:"#6C5CE7" },
+  { id:"company",   label:"Company Profile",           icon:"◉", desc:"Extracting industry, value prop, competitors, proof points", color:"#54A0FF" },
+  { id:"research",  label:"Research Brief",            icon:"◈", desc:"Identifying all products, personas, and viable combinations", color:"#00D68F" },
+  { id:"review",    label:"Review & Select",           icon:"◇", desc:"Choose which products and personas to create", color:"#FFC048" },
+  { id:"create",    label:"Building Workspace",        icon:"◆", desc:"Building selected products, personas, offers, and guardrails", color:"#FF6B6B" },
+  { id:"validate",  label:"Finalizing",                icon:"○", desc:"Cross-linking everything and verifying", color:"#00D68F" },
 ];
 
 function QuickStartProgress({ currentStep, stepResults, onBack }: {
@@ -1713,7 +1713,7 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
             display:"flex", alignItems:"center", justifyContent:"center",
             animation: done ? undefined : `qsGlowMini 2s ease-in-out infinite`,
             boxShadow:`0 2px 8px ${done ? C2.green : activeColor}33` }}>
-            <span style={{ fontSize:done?10:12, color:"#fff" }}>{done ? "✓" : activeStep?.icon || "⚡"}</span>
+            <span style={{ fontSize:done?10:11, color:"#fff", fontWeight:600 }}>{done ? "✓" : activeStep?.icon || "◎"}</span>
           </div>
         </div>
         <div style={{ flex:1, minWidth:0 }}>
