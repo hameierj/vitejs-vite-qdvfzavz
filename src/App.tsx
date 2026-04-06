@@ -1720,9 +1720,9 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
           <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.2 }}>
             {done ? "Quick Start Complete" : activeStep?.label || "Processing…"}
           </div>
-          <div style={{ fontSize:10, fontFamily:mono, color:activeColor, fontWeight:600, lineHeight:1.2 }}>
-            {done ? `${totalFieldsFilled} fields · ${mins} min saved` : `Step ${currentStep + 1} of ${total}`}
-          </div>
+          {done && <div style={{ fontSize:10, fontFamily:mono, color:activeColor, fontWeight:600, lineHeight:1.2 }}>
+            {totalFieldsFilled} fields · {mins} min saved
+          </div>}
         </div>
         <button onClick={onBack}
           style={{ width:22, height:22, borderRadius:6, border:"none", background:"transparent",
