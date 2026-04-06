@@ -681,33 +681,58 @@ async function callAIStream(
   }
 }
 
-// Fetch a web page's text content via CORS proxy
-async function fetchPageText(url: string): Promise<string> {
+// Fetch a web page's raw HTML via CORS proxy
+async function fetchPageHTML(url: string): Promise<string> {
   try {
     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+    const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
     if (!r.ok) return "";
-    const html = await r.text();
-    // Strip HTML tags, scripts, styles — extract text only
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    doc.querySelectorAll("script,style,noscript,svg,iframe").forEach(el => el.remove());
-    const text = (doc.body?.textContent || "").replace(/\s+/g, " ").trim();
-    return text.slice(0, 6000); // cap at 6K chars
+    return await r.text();
   } catch { return ""; }
 }
 
-// Discover sub-pages from a base URL
-function discoverSubPages(baseUrl: string): string[] {
+// Extract text content from HTML
+function htmlToText(html: string, maxLen = 6000): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("script,style,noscript,svg,iframe").forEach(el => el.remove());
+  return (doc.body?.textContent || "").replace(/\s+/g, " ").trim().slice(0, maxLen);
+}
+
+// Extract all links from HTML, resolve relative URLs
+function extractLinks(html: string, baseUrl: string): {href:string; text:string}[] {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const links: {href:string; text:string}[] = [];
+  const seen = new Set<string>();
+  doc.querySelectorAll("a[href]").forEach(a => {
+    try {
+      const href = new URL((a as HTMLAnchorElement).getAttribute("href") || "", baseUrl).href;
+      const text = (a.textContent || "").trim().slice(0, 80);
+      // Skip anchors, mailto, tel, javascript, and file downloads
+      if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:") || /\.(pdf|zip|png|jpg|svg)$/i.test(href)) return;
+      if (seen.has(href)) return;
+      seen.add(href);
+      links.push({ href, text });
+    } catch {}
+  });
+  return links;
+}
+
+// Use AI to pick which links are likely product/about/services pages
+async function discoverProductPages(links: {href:string; text:string}[], companyUrl: string): Promise<string[]> {
+  if (links.length === 0) return [];
+  // Truncate to first 60 links to stay within token limits
+  const linkList = links.slice(0, 60).map((l, i) => `${i}. "${l.text}" → ${l.href}`).join("\n");
   try {
-    const u = new URL(baseUrl);
-    const base = `${u.protocol}//${u.host}`;
-    return [
-      `${base}/about`, `${base}/about-us`,
-      `${base}/products`, `${base}/services`,
-      `${base}/solutions`, `${base}/platform`,
-      `${base}/pricing`, `${base}/features`,
-    ];
-  } catch { return []; }
+    const raw = await callAI(
+      `You are analyzing a company website's navigation links to find product/service pages.\n\nWebsite: ${companyUrl}\n\nLinks found on the page:\n${linkList}\n\nWhich links lead to pages that describe the company's PRODUCTS, SERVICES, SOLUTIONS, or ABOUT the company? Pick the most relevant ones (max 6). Do NOT pick blog posts, careers, login, social media, legal pages, or generic marketing pages.\n\nReturn ONLY a JSON array of the link numbers: [0, 3, 7]`,
+      "Return only a valid JSON array of integers.", 200
+    );
+    const indices = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    if (Array.isArray(indices)) {
+      return indices.filter(i => typeof i === "number" && i >= 0 && i < links.length).map(i => links[i].href);
+    }
+  } catch {}
+  return [];
 }
 
 function getOpenAIKey() { return localStorage.getItem("b2br_openai_key") || ""; }
@@ -2030,26 +2055,34 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     let context = "";
     const sources = [];
 
-    // Fetch website content — homepage + key sub-pages
+    // Fetch website content — homepage + AI-discovered product pages
     if (url) {
       sources.push(`Website: ${url}`);
-      updateToast(toastId, { message:"Fetching website content…" });
-      const homeText = await fetchPageText(url);
+      updateToast(toastId, { message:"Fetching website…" });
+      const homeHTML = await fetchPageHTML(url);
+      const homeText = homeHTML ? htmlToText(homeHTML) : "";
       if (homeText) {
         context += `\n\nWEBSITE HOMEPAGE (${url}):\n${homeText}`;
       } else {
-        context += `\n\nWEBSITE URL (could not fetch content): ${url}`;
+        context += `\n\nWEBSITE URL (could not fetch): ${url}`;
       }
-      // Fetch sub-pages for deeper product discovery
-      const subPages = discoverSubPages(url);
-      const subResults = await Promise.allSettled(subPages.map(async (subUrl) => {
-        const text = await fetchPageText(subUrl);
-        return { url: subUrl, text };
-      }));
-      for (const result of subResults) {
-        if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
-          const pageName = new URL(result.value.url).pathname.replace(/^\//, "").replace(/-/g, " ");
-          context += `\n\nWEBSITE PAGE "${pageName}" (${result.value.url}):\n${result.value.text.slice(0, 4000)}`;
+
+      // Extract links from homepage and use AI to find product/about pages
+      if (homeHTML) {
+        updateToast(toastId, { message:"Discovering product pages…" });
+        const allLinks = extractLinks(homeHTML, url);
+        const productPageUrls = await discoverProductPages(allLinks, url);
+        if (productPageUrls.length > 0) {
+          updateToast(toastId, { message:`Fetching ${productPageUrls.length} product page${productPageUrls.length!==1?"s":""}…` });
+          const subResults = await Promise.allSettled(productPageUrls.map(async (subUrl) => {
+            const html = await fetchPageHTML(subUrl);
+            return { url: subUrl, text: html ? htmlToText(html, 4000) : "" };
+          }));
+          for (const result of subResults) {
+            if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
+              context += `\n\nPRODUCT/ABOUT PAGE (${result.value.url}):\n${result.value.text}`;
+            }
+          }
         }
       }
     }
@@ -2057,7 +2090,8 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     if (linkedin) {
       sources.push(`LinkedIn: ${linkedin}`);
       updateToast(toastId, { message:"Fetching LinkedIn page…" });
-      const liText = await fetchPageText(linkedin);
+      const liHTML = await fetchPageHTML(linkedin);
+      const liText = liHTML ? htmlToText(liHTML) : "";
       context += liText ? `\n\nLINKEDIN PAGE (${linkedin}):\n${liText}` : `\n\nLINKEDIN URL: ${linkedin}`;
     }
     if (text) { sources.push("Pasted text"); context += `\n\nPASTED TEXT:\n${text}`; }
