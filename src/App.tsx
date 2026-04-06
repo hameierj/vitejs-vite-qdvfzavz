@@ -2013,9 +2013,26 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
             for (const r of sitemapResults) { if (r.status === "fulfilled") allUrls.push(...r.value); }
             if (homeHTML) allUrls.push(...extractLinks(homeHTML, url).map(l => l.href));
             allUrls = [...new Set(allUrls)];
+            console.log("[QS] Discovered URLs:", allUrls.length, allUrls.slice(0, 20));
 
             if (allUrls.length > 0) {
-              const picks = await discoverProductPages(allUrls, url);
+              // First: keyword filter for obvious product/about pages
+              const keywordPicks = allUrls.filter(u => {
+                const path = u.toLowerCase();
+                const skip = /blog|template|internal|lp\/|login|register|terms|privacy|career|style-guide|licensing|instruction|schedule|demo|affiliate|news|backup/i;
+                if (skip.test(path)) return false;
+                return /product|service|solution|about|platform|feature|pricing|app|insight|rtsl|outreach/i.test(path);
+              }).slice(0, 8);
+              console.log("[QS] Keyword picks:", keywordPicks);
+
+              // If keywords found enough, use those. Otherwise ask AI.
+              let picks = keywordPicks;
+              if (picks.length < 2 && allUrls.length > 0) {
+                const aiPicks = await discoverProductPages(allUrls, url);
+                picks = [...new Set([...picks, ...aiPicks])].slice(0, 8);
+              }
+              console.log("[QS] Final picks:", picks);
+
               if (picks.length > 0) {
                 const pageResults = await Promise.allSettled(picks.map(async u => {
                   const html = await fetchPageHTML(u);
@@ -2023,6 +2040,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
                 }));
                 for (const r of pageResults) {
                   if (r.status === "fulfilled" && r.value.text.length > 100) {
+                    console.log("[QS] Fetched page:", r.value.url, r.value.text.length, "chars");
                     context += `\n\nPRODUCT/ABOUT PAGE (${r.value.url}):\n${r.value.text}`;
                   }
                 }
