@@ -1706,15 +1706,12 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
               animation:`qsOrbitMini ${2.5+i*0.5}s linear infinite`,
               animationDelay:`${i*0.4}s` }} />
           ))}
-          {/* Center orb */}
-          <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
-            width:22, height:22, borderRadius:7,
-            background: done ? `linear-gradient(135deg, ${C2.green}, #00B894)` : `linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
-            display:"flex", alignItems:"center", justifyContent:"center",
-            animation: done ? undefined : `qsGlowMini 2s ease-in-out infinite`,
-            boxShadow:`0 2px 8px ${done ? C2.green : activeColor}33` }}>
-            <span style={{ fontSize:done?10:11, color:"#fff", fontWeight:600 }}>{done ? "✓" : activeStep?.icon || "◎"}</span>
-          </div>
+          {/* Center icon — no background */}
+          <span style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
+            fontSize:16, color: done ? C2.green : activeColor, fontWeight:600,
+            animation: done ? undefined : `qsGlowMini 2s ease-in-out infinite` }}>
+            {done ? "✓" : activeStep?.icon || "◎"}
+          </span>
         </div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.2 }}>
