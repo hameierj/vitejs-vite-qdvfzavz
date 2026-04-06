@@ -724,19 +724,53 @@ function extractLinks(html: string, baseUrl: string): {href:string; text:string}
   return links;
 }
 
-// Use AI to pick which links are likely product/about/services pages
-async function discoverProductPages(links: {href:string; text:string}[], companyUrl: string): Promise<string[]> {
-  if (links.length === 0) return [];
-  // Truncate to first 60 links to stay within token limits
-  const linkList = links.slice(0, 60).map((l, i) => `${i}. "${l.text}" → ${l.href}`).join("\n");
+// Fetch sitemap.xml and extract URLs
+async function fetchSitemapUrls(baseUrl: string): Promise<string[]> {
+  try {
+    const u = new URL(baseUrl);
+    const sitemapUrl = `${u.protocol}//${u.host}/sitemap.xml`;
+    const r = await fetch(sitemapUrl, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return [];
+    const xml = await r.text();
+    const urls: string[] = [];
+    const locRegex = /<loc>([^<]+)<\/loc>/g;
+    let match;
+    while ((match = locRegex.exec(xml)) !== null) urls.push(match[1]);
+    return urls;
+  } catch { return []; }
+}
+
+// Discover subdomains from HTML links
+function extractSubdomains(html: string, baseUrl: string): string[] {
+  try {
+    const baseDomain = new URL(baseUrl).hostname.replace(/^www\./, "");
+    const subdomains = new Set<string>();
+    const hrefRegex = /href=["'](https?:\/\/[^"']+)["']/g;
+    let match;
+    while ((match = hrefRegex.exec(html)) !== null) {
+      try {
+        const host = new URL(match[1]).hostname;
+        if (host !== baseDomain && host.endsWith(baseDomain) && !host.includes("cdn") && !host.includes("static")) {
+          subdomains.add(`https://${host}`);
+        }
+      } catch {}
+    }
+    return Array.from(subdomains);
+  } catch { return []; }
+}
+
+// Use AI to pick which sitemap/page URLs are product/about pages
+async function discoverProductPages(urls: string[], companyUrl: string): Promise<string[]> {
+  if (urls.length === 0) return [];
+  const urlList = urls.slice(0, 80).map((u, i) => `${i}. ${u}`).join("\n");
   try {
     const raw = await callAI(
-      `You are analyzing a company website's navigation links to find product/service pages.\n\nWebsite: ${companyUrl}\n\nLinks found on the page:\n${linkList}\n\nWhich links lead to pages that describe the company's PRODUCTS, SERVICES, SOLUTIONS, or ABOUT the company? Pick the most relevant ones (max 6). Do NOT pick blog posts, careers, login, social media, legal pages, or generic marketing pages.\n\nReturn ONLY a JSON array of the link numbers: [0, 3, 7]`,
+      `You are analyzing a company's sitemap URLs to find product/service pages.\n\nWebsite: ${companyUrl}\n\nURLs found:\n${urlList}\n\nWhich URLs lead to pages describing the company's PRODUCTS, SERVICES, SOLUTIONS, or ABOUT the company? Pick the most relevant ones (max 8).\n\nSkip: blog posts, landing pages (/lp/), demos, login, legal, templates, internal pages, affiliates.\nPrioritize: product pages, about pages, solution pages, main service descriptions.\n\nReturn ONLY a JSON array of the URL numbers: [0, 3, 7]`,
       "Return only a valid JSON array of integers.", 200
     );
     const indices = JSON.parse(raw.replace(/```json|```/g, "").trim());
     if (Array.isArray(indices)) {
-      return indices.filter(i => typeof i === "number" && i >= 0 && i < links.length).map(i => links[i].href);
+      return indices.filter(i => typeof i === "number" && i >= 0 && i < urls.length).map(i => urls[i]);
     }
   } catch {}
   return [];
@@ -2074,20 +2108,56 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
         context += `\n\nWEBSITE URL (could not fetch): ${url}`;
       }
 
-      // Extract links from homepage and use AI to find product/about pages
-      if (homeHTML) {
+      // Discover product pages via sitemaps + subdomain sitemaps
+      {
         updateToast(toastId, { message:"Discovering product pages…" });
-        const allLinks = extractLinks(homeHTML, url);
-        const productPageUrls = await discoverProductPages(allLinks, url);
-        if (productPageUrls.length > 0) {
-          updateToast(toastId, { message:`Fetching ${productPageUrls.length} product page${productPageUrls.length!==1?"s":""}…` });
-          const subResults = await Promise.allSettled(productPageUrls.map(async (subUrl) => {
-            const html = await fetchPageHTML(subUrl);
-            return { url: subUrl, text: html ? htmlToText(html, 4000) : "" };
-          }));
-          for (const result of subResults) {
-            if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
-              context += `\n\nPRODUCT/ABOUT PAGE (${result.value.url}):\n${result.value.text}`;
+        // Collect all discoverable URLs from sitemaps
+        let allDiscoverableUrls: string[] = [];
+
+        // 1. Main domain sitemap
+        const mainSitemap = await fetchSitemapUrls(url);
+        allDiscoverableUrls.push(...mainSitemap);
+
+        // 2. Find subdomains from homepage HTML and fetch their sitemaps
+        if (homeHTML) {
+          const subdomains = extractSubdomains(homeHTML, url);
+          for (const sub of subdomains.slice(0, 3)) {
+            const subSitemap = await fetchSitemapUrls(sub);
+            allDiscoverableUrls.push(...subSitemap);
+          }
+          // Also try common subdomains even if not linked
+          const baseDomain = new URL(url).hostname.replace(/^www\./, "");
+          for (const prefix of ["get", "www", "app"]) {
+            const subHost = `https://${prefix}.${baseDomain}`;
+            if (!subdomains.some(s => s.includes(prefix))) {
+              const subSitemap = await fetchSitemapUrls(subHost);
+              allDiscoverableUrls.push(...subSitemap);
+            }
+          }
+        }
+
+        // 3. Also extract links from homepage HTML
+        if (homeHTML) {
+          const pageLinks = extractLinks(homeHTML, url);
+          allDiscoverableUrls.push(...pageLinks.map(l => l.href));
+        }
+
+        // Deduplicate
+        allDiscoverableUrls = [...new Set(allDiscoverableUrls)];
+
+        // 4. Use AI to pick the best product/about pages
+        if (allDiscoverableUrls.length > 0) {
+          const productPageUrls = await discoverProductPages(allDiscoverableUrls, url);
+          if (productPageUrls.length > 0) {
+            updateToast(toastId, { message:`Fetching ${productPageUrls.length} product page${productPageUrls.length!==1?"s":""}…` });
+            const subResults = await Promise.allSettled(productPageUrls.map(async (subUrl) => {
+              const html = await fetchPageHTML(subUrl);
+              return { url: subUrl, text: html ? htmlToText(html, 4000) : "" };
+            }));
+            for (const result of subResults) {
+              if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
+                context += `\n\nPRODUCT/ABOUT PAGE (${result.value.url}):\n${result.value.text}`;
+              }
             }
           }
         }
