@@ -1747,11 +1747,11 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
           return (
             <div key={step.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"4px 0",
               opacity: isPending ? 0.3 : 1, transition:"opacity .3s" }}>
-              <span style={{ fontSize:14, flexShrink:0, width:18, textAlign:"center",
+              <span style={{ fontSize:11, flexShrink:0, width:18, textAlign:"center", fontFamily:mono, fontWeight:700,
                 color: isDone ? step.color : isActive ? step.color : C2.muted,
                 animation: isActive ? "qsPulse 1.5s ease-in-out infinite" : undefined,
                 transition:"color .3s" }}>
-                {isDone ? "✓" : step.icon}
+                {isDone ? "✓" : i + 1}
               </span>
               <div style={{ flex:1, minWidth:0 }}>
                 <span style={{ fontSize:11, fontWeight:isActive?700:isDone?500:400, fontFamily:head,
