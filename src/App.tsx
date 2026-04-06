@@ -1698,7 +1698,8 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
       {/* Header */}
       <div style={{ padding:"12px 16px", display:"flex", alignItems:"center", gap:10,
         background:`linear-gradient(135deg, ${activeColor}0A, ${activeColor}04)`, borderBottom:`1px solid ${C2.border}` }}>
-        <div style={{ width:36, height:36, position:"relative" as const, flexShrink:0 }}>
+        <div style={{ width:36, height:36, position:"relative" as const, flexShrink:0,
+          display:"flex", alignItems:"center", justifyContent:"center" }}>
           {/* Orbiting dots */}
           {!done && [0,1,2].map(i => (
             <div key={i} style={{ position:"absolute", top:"50%", left:"50%", marginTop:-2, marginLeft:-2,
@@ -1706,10 +1707,8 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
               animation:`qsOrbitMini ${2.5+i*0.5}s linear infinite`,
               animationDelay:`${i*0.4}s` }} />
           ))}
-          {/* Center icon — no background, no box-shadow */}
-          <span style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
-            fontSize:16, color: done ? C2.green : activeColor, fontWeight:600,
-            animation: done ? undefined : `qsPulse 2s ease-in-out infinite` }}>
+          {/* Center icon */}
+          <span style={{ fontSize:16, color: done ? C2.green : activeColor, fontWeight:600, zIndex:1 }}>
             {done ? "✓" : activeStep?.icon || "◎"}
           </span>
         </div>
