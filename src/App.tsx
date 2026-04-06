@@ -1717,9 +1717,9 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
           <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.2 }}>
             {done ? "Quick Start Complete" : activeStep?.label || "Processing…"}
           </div>
-          {done && <div style={{ fontSize:10, fontFamily:mono, color:activeColor, fontWeight:600, lineHeight:1.2 }}>
-            {totalFieldsFilled} fields · {mins} min saved
-          </div>}
+          <div style={{ fontSize:10, fontFamily:mono, color:activeColor, fontWeight:600, lineHeight:1.2 }}>
+            {done ? `${totalFieldsFilled} fields · ${mins} min saved` : `Step ${currentStep + 1} of ${total}`}
+          </div>
         </div>
         <button onClick={onBack}
           style={{ width:22, height:22, borderRadius:6, border:"none", background:"transparent",
@@ -1978,8 +1978,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
   const run = async () => {
     // Close modal immediately — run in background
     onClose();
-    const toastId = addToast({ title:"Quick Start running…", status:"loading", message:"Analyzing sources", step:0, totalSteps:7, startTime:Date.now(),
-      action:{ label:"View Progress", onClick:()=>{ (window as any).__showQSProgress?.(); } } });
+    const toastId = ""; // Progress shown via QS Progress panel, not toast stack
     const _results: Record<string,string> = {};
     let _totalFields = 0;
     let _totalSeconds = 0;
@@ -2187,8 +2186,6 @@ Return ONLY valid JSON:
       _progress(3, "research", `${brief.products?.length||0} products · ${brief.personas?.length||0} personas identified`);
 
       // Pause here — hand off to user review
-      updateToast(toastId, { status:"success", title:"Research complete", message:"Review the brief and select what to create",
-        action:{ label:"Review Brief", onClick:()=>{ (window as any).__showQSProgress?.(); } } });
       onBriefReady?.(coFields, coConf, context, brief);
       return; // Stop here — Phase B happens after user reviews
     } catch (e) {
@@ -2341,9 +2338,8 @@ Raw JSON only.`, "", 2000);
 
     const result = { coFields, coConf, icps, products, offers };
     onComplete(result);
-    updateToast(toastId, { status:"success", title:"Quick Start complete",
-      message:`${products.length} products · ${offers.length} offers · ${icps.length} persona${icps.length!==1?"s":""}`,
-      action:{ label:"View", onClick:()=>{} } });
+    addToast({ status:"success", title:"Quick Start complete",
+      message:`${products.length} products · ${offers.length} offers · ${icps.length} persona${icps.length!==1?"s":""}` });
   };
 
   return (
