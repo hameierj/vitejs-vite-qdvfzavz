@@ -2166,7 +2166,12 @@ For the MATRIX: for each product×persona combo, include priority (high/medium/l
 ${NAMING_RULES.product}
 ${NAMING_RULES.persona}
 
-RULES:
+PRODUCT IDENTIFICATION RULES:
+- Look for the company's CORE NAMED PRODUCTS — the ones with their own branded name and dedicated page
+- If the website has a "Products" dropdown with 3 items, those are the 3 products. Not more, not fewer.
+- Features, capabilities, or use cases within a product are NOT separate products
+- If a page describes a feature or workflow of a larger product, it's NOT a separate product
+- Cross-check: if the about/home page lists "Our Products: X, Y, Z" — use exactly those
 - Only include products that are GENUINELY different offerings, not features or variants
 - Only include personas that represent DISTINCT buyer segments with different pains/motivations
 - Be thorough but not redundant — 2-8 products, 2-6 personas is typical
