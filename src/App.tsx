@@ -1706,10 +1706,10 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
               animation:`qsOrbitMini ${2.5+i*0.5}s linear infinite`,
               animationDelay:`${i*0.4}s` }} />
           ))}
-          {/* Center icon — no background */}
+          {/* Center icon — no background, no box-shadow */}
           <span style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
             fontSize:16, color: done ? C2.green : activeColor, fontWeight:600,
-            animation: done ? undefined : `qsGlowMini 2s ease-in-out infinite` }}>
+            animation: done ? undefined : `qsPulse 2s ease-in-out infinite` }}>
             {done ? "✓" : activeStep?.icon || "◎"}
           </span>
         </div>
