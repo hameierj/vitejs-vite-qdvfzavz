@@ -11665,7 +11665,7 @@ Raw JSON only.`, "", 1400);
                   </button>
 
                   {/* Coverage Matrix */}
-                  {products.length > 0 && icps.length > 0 && (
+                  {(
                     <button onClick={()=>guardedNav(()=>setView("matrix"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
