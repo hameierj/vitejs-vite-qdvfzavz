@@ -702,7 +702,7 @@ async function fetchPageHTML(url: string): Promise<string> {
 function htmlToText(html: string, maxLen = 6000): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("script,style,noscript,svg,iframe").forEach(el => el.remove());
-  return (doc.body?.textContent || "").replace(/\s+/g, " ").trim().slice(0, maxLen);
+  return (doc.body?.textContent || "").replace(/\s+/g, " ").trim().slice(0, maxLen || 10000);
 }
 
 // Extract all links from HTML, resolve relative URLs
@@ -1412,10 +1412,10 @@ function buildFileContext(files: any[]): string {
         const regex = /<w:t[^>]*>([^<]+)<\/w:t>/g;
         let m;
         while ((m = regex.exec(raw)) !== null && texts.length < 200) texts.push(m[1]);
-        if (texts.length > 0) parts.push(`FILE "${f.name}":\n${texts.join(" ").slice(0, 2000)}`);
+        if (texts.length > 0) parts.push(`FILE "${f.name}":\n${texts.join(" ").slice(0, 4000)}`);
       } catch {}
     } else if (f.type?.startsWith("text/") || f.type?.includes("json") || f.type?.includes("csv")) {
-      try { parts.push(`FILE "${f.name}":\n${atob(f.b64).slice(0, 2000)}`); } catch {}
+      try { parts.push(`FILE "${f.name}":\n${atob(f.b64).slice(0, 4000)}`); } catch {}
     } else if (f.type?.startsWith("image/")) {
       parts.push(`FILE "${f.name}": [image — ${f.tags?.join(", ") || "screenshot"}]`);
     } else {
@@ -2040,7 +2040,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
               if (picks.length > 0) {
                 const pageResults = await Promise.allSettled(picks.map(async u => {
                   const html = await fetchPageHTML(u);
-                  return { url: u, text: html ? htmlToText(html, 4000) : "" };
+                  return { url: u, text: html ? htmlToText(html, 6000) : "" };
                 }));
                 for (const r of pageResults) {
                   if (r.status === "fulfilled" && r.value.text.length > 100) {
@@ -2152,7 +2152,7 @@ Raw JSON only.`, "", 3000);
         `You are a senior B2B GTM strategist. Analyze this company and produce a comprehensive research brief.
 
 COMPANY: ${JSON.stringify(coFields)}
-SOURCES: ${context.slice(0,8000)}
+SOURCES: ${context.slice(0,15000)}
 
 Identify:
 1. ALL distinct products/services this company sells (not features — actual separate things they sell)
@@ -2180,7 +2180,7 @@ PRODUCT IDENTIFICATION RULES:
 
 Return ONLY valid JSON:
 {"products":[{"name":"","description":"","reasoning":"","dealSize":"","category":""}],"personas":[{"name":"","buyerTitles":"","industries":"","primaryPain":"","reasoning":""}],"matrix":[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":""}]}`,
-        "Return only valid JSON. Be thorough and specific.", 3000
+        "Return only valid JSON. Be thorough and specific.", 4000
       );
       const brief = JSON.parse(briefRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
       _progress(3, "research", `${brief.products?.length||0} products · ${brief.personas?.length||0} personas identified`);
@@ -2197,7 +2197,7 @@ Return ONLY valid JSON:
     let products: any[] = [];
     try {
       const prodRaw = await callAI(
-        `Analyze this company and identify ALL distinct products/services they offer.\n\n${NAMING_RULES.product}\n\nCompany: ${JSON.stringify(coFields)}\nRaw sources: ${context.slice(0,6000)}\n\nIMPORTANT: Look for products mentioned on sub-pages (about, products, services, solutions, pricing) — not just the homepage. Companies often bury product details in inner pages.\n\nFor each product/service, provide ALL of these fields (never leave empty):\n- name: product/service name\n- description: what it is, how it works\n- category: Software|Platform|Service|Hardware|Consulting|Other\n- problemsSolved: specific problems it solves (be concrete)\n- valueProposition: why buy this vs alternatives\n- idealCustomer: who is the perfect buyer (industry, role, company size)\n- pricingRange: approximate deal size\n- competitors: who they compete with for this specific product\n- proofPoints: best evidence it works\n- switchTriggers: what makes someone switch to this from their current solution\n\nReturn ONLY valid JSON array.`, "", 2000);
+        `Analyze this company and identify ALL distinct products/services they offer.\n\n${NAMING_RULES.product}\n\nCompany: ${JSON.stringify(coFields)}\nRaw sources: ${context.slice(0,12000)}\n\nIMPORTANT: Look for products mentioned on sub-pages (about, products, services, solutions, pricing) — not just the homepage. Companies often bury product details in inner pages.\n\nFor each product/service, provide ALL of these fields (never leave empty):\n- name: product/service name\n- description: what it is, how it works\n- category: Software|Platform|Service|Hardware|Consulting|Other\n- problemsSolved: specific problems it solves (be concrete)\n- valueProposition: why buy this vs alternatives\n- idealCustomer: who is the perfect buyer (industry, role, company size)\n- pricingRange: approximate deal size\n- competitors: who they compete with for this specific product\n- proofPoints: best evidence it works\n- switchTriggers: what makes someone switch to this from their current solution\n\nReturn ONLY valid JSON array.`, "", 3000);
       const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
       if (Array.isArray(parsed)) {
         products = parsed.map((p: any) => ({
