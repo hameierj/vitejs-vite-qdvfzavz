@@ -1776,8 +1776,9 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
 }
 
 // ─── RESEARCH BRIEF REVIEW ───────────────────────────────────────────────────
-function ResearchBriefReview({ brief, onConfirm, onBack }: {
+function ResearchBriefReview({ brief, onConfirm, onBack, onRevise }: {
   brief: any; onConfirm: (selectedProducts: number[], selectedPersonas: number[]) => void; onBack: () => void;
+  onRevise?: (feedback: string) => Promise<void>;
 }) {
   const prods = brief?.products || [];
   const pers = brief?.personas || [];
@@ -1786,6 +1787,16 @@ function ResearchBriefReview({ brief, onConfirm, onBack }: {
   const [selPers, setSelPers] = useState<Set<number>>(() => new Set(pers.map((_:any,i:number) => i)));
   const [expandedProd, setExpandedProd] = useState<number|null>(null);
   const [expandedPers, setExpandedPers] = useState<number|null>(null);
+  const [feedback, setFeedback] = useState("");
+  const [revising, setRevising] = useState(false);
+
+  const submitFeedback = async () => {
+    if (!feedback.trim() || !onRevise) return;
+    setRevising(true);
+    await onRevise(feedback.trim());
+    setFeedback("");
+    setRevising(false);
+  };
 
   const toggleProd = (i: number) => setSelProds(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
   const togglePers = (i: number) => setSelPers(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
@@ -1953,6 +1964,32 @@ function ResearchBriefReview({ brief, onConfirm, onBack }: {
           </div>
         )}
       </div>
+
+      {/* Feedback bar */}
+      {onRevise && (
+        <div style={{ padding:"12px 32px", borderTop:`1px solid ${C2.border}`, background:C2.canvas, flexShrink:0,
+          display:"flex", gap:10, alignItems:"flex-end" }}>
+          <div style={{ flex:1 }}>
+            <textarea value={feedback} onChange={e=>setFeedback(e.target.value)}
+              placeholder="Tell AI what to change — e.g. 'Replace Bebop Outreach with Bebop RTSL' or 'Add a persona for enterprise IT directors'"
+              rows={2} disabled={revising}
+              style={{ width:"100%", padding:"9px 12px", borderRadius:10, border:`1px solid ${C2.border}`,
+                background:C2.faint, color:C2.text, fontSize:13, fontFamily:body, resize:"none",
+                outline:"none", lineHeight:1.5 }}
+              onKeyDown={e=>{ if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitFeedback(); } }}
+              onFocus={e=>(e.currentTarget as HTMLTextAreaElement).style.borderColor=C2.accent+"66"}
+              onBlur={e=>(e.currentTarget as HTMLTextAreaElement).style.borderColor=C2.border} />
+          </div>
+          <button onClick={submitFeedback} disabled={!feedback.trim() || revising}
+            style={{ padding:"9px 20px", borderRadius:10, border:"none", flexShrink:0,
+              background: feedback.trim() && !revising ? C2.accent : C2.faint,
+              color: feedback.trim() && !revising ? "#fff" : C2.muted,
+              fontSize:12, fontFamily:head, fontWeight:700, cursor: feedback.trim() && !revising ? "pointer" : "default",
+              transition:"all .2s" }}>
+            {revising ? "Revising..." : "Revise"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -12807,6 +12844,22 @@ Raw JSON only.`, "", 1400);
       {qsBrief && createPortal(
         <ResearchBriefReview brief={qsBrief.brief}
           onBack={()=>setQsBrief(null)}
+          onRevise={async (feedback) => {
+            const currentBrief = qsBrief!.brief;
+            addToast({ title:"Revising...", status:"loading", message:feedback.slice(0, 60) });
+            try {
+              const raw = await callAI(
+                `You previously generated this research brief for a B2B company:\n\n${JSON.stringify(currentBrief)}\n\nThe user reviewed it and wants changes:\n"${feedback}"\n\n${NAMING_RULES.product}\n${NAMING_RULES.persona}\n\nApply the user's feedback and return the COMPLETE revised brief. Keep everything the user didn't mention unchanged. Return ONLY valid JSON with the same structure:\n{"products":[{"name":"","description":"","reasoning":"","dealSize":"","category":""}],"personas":[{"name":"","buyerTitles":"","industries":"","primaryPain":"","reasoning":""}],"matrix":[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":""}]}`,
+                "Return only valid JSON.", 4000
+              );
+              const revised = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+              setQsBrief(prev => prev ? { ...prev, brief: revised } : prev);
+              addToast({ title:"Brief revised", status:"success", message:"Review the updated results" });
+            } catch (e) {
+              console.error("Revision failed:", e);
+              addToast({ title:"Revision failed", status:"error", message:"Try again with different feedback" });
+            }
+          }}
           onConfirm={async (selProds, selPers) => {
             const brief = qsBrief!.brief;
             const coFields = qsBrief!.coFields;
