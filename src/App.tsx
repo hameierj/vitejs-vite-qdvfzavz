@@ -12932,14 +12932,14 @@ Raw JSON only.`, "", 1400);
             }
             prog(6, "personas", `${_tf}`);
 
-            // Step 7: Create offers — all combos in parallel with 30s timeout
+            // Step 7: Create offers — sequential so each builds on previous
             let offers: any[] = [];
-            const offerCombos = products.flatMap((prod:any) => personas.map((pers:any) => ({ prod, pers })));
-            try {
-              await Promise.race([
-                Promise.allSettled(offerCombos.map(async ({ prod, pers }:{prod:any;pers:any}) => {
+            for (const prod of products) {
+              for (const pers of personas) {
+                try {
+                  const existingOfferNames = offers.map(o => `${o.name} (${o.tier})`).slice(-6).join(", ");
                   const offerRaw = await callAI(
-                    `Generate 3 offer tiers (soft/medium/hard) for: ${prod.name} × ${pers.name}.\nCompany: ${coFields.co_name||""}\nReturn ONLY JSON array: [{tier:"soft",name,ctaText,whatTheyGet,frictionReduction},...]`,
+                    `Generate 3 offer tiers (soft/medium/hard) for: ${prod.name} × ${pers.name}.\nCompany: ${coFields.co_name||""}\nProduct: ${prod.description||""}\nPersona pain: ${pers.data?.pain1||""}\n${existingOfferNames ? `Existing offers (vary from these): ${existingOfferNames}` : ""}\nReturn ONLY JSON array: [{tier:"soft",name,ctaText,whatTheyGet,frictionReduction},...]`,
                     "", 800
                   );
                   const parsed = JSON.parse(offerRaw.replace(/```json|```/g,"").trim());
@@ -12948,10 +12948,9 @@ Raw JSON only.`, "", 1400);
                     offers.push(...newOffers);
                     _tf += newOffers.length * 4; _ts += newOffers.length * 240;
                   }
-                })),
-                new Promise(r => setTimeout(r, 30000))
-              ]);
-            } catch {}
+                } catch {}
+              }
+            }
 
             prog(7, "offers", `${offers.length}`);
 
