@@ -12346,7 +12346,7 @@ Raw JSON only.`, "", 1400);
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:18, width:"100%", maxWidth:800, position:"relative" as const }}>
                   {[
                     { key:"qs", label:"Quick Start", desc:"AI builds your company profile, products, and personas. You review everything first.", foot:"AI-powered", icon:"◎", accent:true,
-                      onClick:()=>{ setView("company"); setShowQS(true); } },
+                      onClick:()=>{ setShowQS(true); } },
                     { key:"manual", label:"Start from Scratch", desc:"Fill in each section yourself. Best when you already have the info ready.", foot:"Full control", icon:"+", accent:false,
                       onClick:()=>setView("company") },
                     { key:"import", label:"Import", desc:"Upload an exported workspace JSON to restore everything.", foot:"Instant", icon:"↑", accent:false,
@@ -12443,7 +12443,7 @@ Raw JSON only.`, "", 1400);
                     onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.canvas}>
                     View ICPs
                   </button>
-                  <button onClick={()=>setShowQS(true)} style={{ padding:"10px 18px", borderRadius:8, border:"none",
+                  <button onClick={()=>{ setView("onboarding"); setShowQS(true); }} style={{ padding:"10px 18px", borderRadius:8, border:"none",
                     background:C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer",
                     boxShadow:`0 2px 10px ${C.accent}40` }}>
                     ⚡ Quick Start
@@ -12945,7 +12945,7 @@ Raw JSON only.`, "", 1400);
           addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={true}
           products={products} offers={offers} />
       )}
-      {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
+      {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>{ setShowQS(false); setView("onboarding"); }} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
         onProgress={(step, results) => setQsProgress({ step, results })}
         onBriefReady={(coFields, coConf, ctx, brief, phaseAResults) => { setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: phaseAResults || {} }); setQsProgress(null); }} />}
 
