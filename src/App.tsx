@@ -1716,7 +1716,7 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
             {done ? "Quick Start Complete" : activeStep?.label || "Processing…"}
           </div>
           <div style={{ fontSize:10, fontFamily:mono, color:activeColor, fontWeight:600, lineHeight:1.2 }}>
-            {done ? `${totalFieldsFilled} fields · ${mins} min saved` : `Step ${currentStep + 1} of ${total}`}
+            Step {done ? total : currentStep + 1} of {total}
           </div>
         </div>
         <button onClick={onBack}
@@ -1748,13 +1748,15 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
                 transition:"color .3s" }}>
                 {isDone ? "✓" : i + 1}
               </span>
-              <div style={{ flex:1, minWidth:0 }}>
-                <span style={{ fontSize:11, fontWeight:isActive?700:isDone?500:400, fontFamily:head,
-                  color: isActive ? step.color : isDone ? C2.text : C2.muted }}>{step.label}</span>
-                {isDone && result && (
-                  <span style={{ fontSize:9, fontFamily:mono, color:step.color, marginLeft:6, fontWeight:600 }}>{result}</span>
-                )}
-              </div>
+              <span style={{ flex:1, fontSize:11, fontWeight:isActive?700:isDone?500:400, fontFamily:head,
+                color: isActive ? step.color : isDone ? C2.text : C2.muted }}>{step.label}</span>
+              {isDone && result && (() => {
+                const num = result.match(/^(\d+)/)?.[1];
+                return num ? (
+                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:step.color, background:`${step.color}15`,
+                    padding:"1px 6px", borderRadius:4, flexShrink:0 }}>{num}</span>
+                ) : null;
+              })()}
             </div>
           );
         })}
