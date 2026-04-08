@@ -1663,12 +1663,15 @@ function calcTimeSaved(filledFieldIds: string[]): number {
 }
 
 const QS_STEPS = [
-  { id:"sources",   label:"Analyzing Sources",         icon:"◎", desc:"Processing website, docs, and uploaded files", color:"#6C5CE7" },
+  { id:"fetch",     label:"Fetching Website",          icon:"◎", desc:"Fetching homepage, sitemaps, and product pages", color:"#6C5CE7" },
   { id:"company",   label:"Company Profile",           icon:"◉", desc:"Extracting industry, value prop, competitors, proof points", color:"#54A0FF" },
-  { id:"research",  label:"Research Brief",            icon:"◈", desc:"Identifying all products, personas, and viable combinations", color:"#00D68F" },
+  { id:"research",  label:"Research Brief",            icon:"◈", desc:"Identifying products, personas, and market fit", color:"#00D68F" },
   { id:"review",    label:"Review & Select",           icon:"◇", desc:"Choose which products and personas to create", color:"#FFC048" },
-  { id:"create",    label:"Building Workspace",        icon:"◆", desc:"Building selected products, personas, offers, and guardrails", color:"#FF6B6B" },
-  { id:"validate",  label:"Finalizing",                icon:"○", desc:"Cross-linking everything and verifying", color:"#00D68F" },
+  { id:"products",  label:"Creating Products",         icon:"◆", desc:"Building detailed product profiles", color:"#FF6B6B" },
+  { id:"personas",  label:"Creating Personas",         icon:"◆", desc:"Building persona profiles with targeting data", color:"#E84393" },
+  { id:"offers",    label:"Generating Offers",         icon:"◆", desc:"Creating offer CTAs for each product × persona", color:"#FFC048" },
+  { id:"guardrails",label:"Setting Guardrails",        icon:"◆", desc:"Exclude lists and messaging rules", color:"#54A0FF" },
+  { id:"validate",  label:"Finalizing",                icon:"○", desc:"Cross-linking and validating everything", color:"#00D68F" },
 ];
 
 function QuickStartProgress({ currentStep, stepResults, onBack }: {
@@ -2029,6 +2032,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
 
     let context = "";
     const sources = [];
+    let pagesFetched = 0;
 
     // Normalize URL — add https:// if missing
     let normalizedUrl = url.trim();
@@ -2041,6 +2045,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
         await Promise.race([
           (async () => {
             const homeHTML = await fetchPageHTML(normalizedUrl);
+            if (homeHTML) { pagesFetched++; _progress(0, "fetch", `${pagesFetched} page${pagesFetched!==1?"s":""} fetched`); }
             const homeText = homeHTML ? htmlToText(homeHTML) : "";
             context += homeText ? `\n\nWEBSITE HOMEPAGE (${normalizedUrl}):\n${homeText}` : `\n\nWEBSITE URL: ${normalizedUrl}`;
 
@@ -2083,7 +2088,8 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
                 }));
                 for (const r of pageResults) {
                   if (r.status === "fulfilled" && r.value.text.length > 100) {
-                    console.log("[QS] Fetched page:", r.value.url, r.value.text.length, "chars");
+                    pagesFetched++;
+                    _progress(0, "fetch", `${pagesFetched} page${pagesFetched!==1?"s":""} fetched`);
                     context += `\n\nPRODUCT/ABOUT PAGE (${r.value.url}):\n${r.value.text}`;
                   }
                 }
@@ -2107,6 +2113,8 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
         }));
         for (const result of results) {
           if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
+            pagesFetched++;
+            _progress(0, "fetch", `${pagesFetched} page${pagesFetched!==1?"s":""} fetched`);
             context += `\n\nADDITIONAL PAGE (${result.value.url}):\n${result.value.text}`;
           }
         }
@@ -2137,12 +2145,10 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     }
 
     // Normalize intake data
-    updateToast(toastId, { message:"Normalizing intake data…", step:1, totalSteps:7 });
-    _progress(0, "sources", `${sources.length} source${sources.length!==1?"s":""} loaded`);
+    if (!pagesFetched) _progress(0, "fetch", `${sources.length} source${sources.length!==1?"s":""}`);
     context = normalizeIntake(context);
 
     _progress(1);
-    updateToast(toastId, { message:"Building company profile…", step:2, totalSteps:7 });
     const coRaw = await callAI(`
 Analyze this company for B2B cold outreach. Sources: ${context||"(limited — use your best judgment based on any signals available)"}
 
@@ -2182,8 +2188,7 @@ Raw JSON only.`, "", 3000);
     const coFieldCount = coFilledKeys.length;
     const coTimeSaved = calcTimeSaved(coFilledKeys);
     _totalFields += coFieldCount; _totalSeconds += coTimeSaved;
-    _progress(2, "company", `${coFieldCount} fields · ${Math.round(coTimeSaved/60)} min saved`);
-    updateToast(toastId, { message:"Researching products, personas & market fit…", step:3, totalSteps:6 });
+    _progress(2, "company", `${coFieldCount}`);
 
     // Generate comprehensive research brief — ONE call that identifies everything
     try {
@@ -2222,7 +2227,7 @@ Return ONLY valid JSON:
         "Return only valid JSON. Be thorough and specific.", 4000
       );
       const brief = JSON.parse(briefRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
-      _progress(3, "research", `${brief.products?.length||0} products · ${brief.personas?.length||0} personas identified`);
+      _progress(3, "research", `${(brief.products?.length||0) + (brief.personas?.length||0)}`);
 
       // Pause here — hand off to user review (pass Phase A results directly)
       onBriefReady?.(coFields, coConf, context, brief, { ..._results });
@@ -2255,7 +2260,7 @@ Return ONLY valid JSON:
     const prodFieldCount = prodFilledKeys.length;
     const prodTimeSaved = calcTimeSaved(prodFilledKeys);
     _totalFields += prodFieldCount; _totalSeconds += prodTimeSaved;
-    _progress(3, "products", `${products.length} product${products.length!==1?"s":""} · ${prodFieldCount} fields · ${Math.round(prodTimeSaved/60)} min saved`);
+    _progress(4, "products", `${prodFieldCount}`);
     updateToast(toastId, { message:"Generating offer CTAs…", step:4, totalSteps:7 });
     let offers: any[] = [];
     if (products.length > 0) {
@@ -2278,7 +2283,7 @@ Return ONLY valid JSON:
     const offerFieldCount = offerFilledKeys.length;
     const offerTimeSaved = calcTimeSaved(offerFilledKeys);
     _totalFields += offerFieldCount; _totalSeconds += offerTimeSaved;
-    _progress(4, "offers", `${offers.length} offer${offers.length!==1?"s":""} · ${offerFieldCount} fields · ${Math.round(offerTimeSaved/60)} min saved`);
+    _progress(6, "offers", `${offerFieldCount}`);
     updateToast(toastId, { message:"Drafting personas…", step:5, totalSteps:7 });
     const productContext = products.map((p:any) => `${p.name}: ${p.problemsSolved}. Ideal: ${p.idealCustomer}`).join("\n") || "No specific products";
     const offerContext = offers.map((o:any) => { const p=products.find((x:any)=>x.id===o.productId); return `${p?.name||"?"} (${o.tier}): "${o.ctaText||o.name}"`; }).join("\n") || "No offers";
@@ -2345,7 +2350,7 @@ Raw JSON only.`, "", 2000);
     const personaFieldCount = personaFilledKeys.length;
     const personaTimeSaved = calcTimeSaved(personaFilledKeys);
     _totalFields += personaFieldCount; _totalSeconds += personaTimeSaved;
-    _progress(5, "personas", `${icps.length} persona${icps.length!==1?"s":""} · ${personaFieldCount} fields · ${Math.round(personaTimeSaved/60)} min saved`);
+    _progress(5, "personas", `${personaFieldCount}`);
     updateToast(toastId, { message:"Setting guardrails…", step:6, totalSteps:7 });
     try {
       const salesRaw = await callAI(
@@ -2361,7 +2366,7 @@ Raw JSON only.`, "", 2000);
     const guardFieldCount = guardFilledKeys.length;
     const guardTimeSaved = calcTimeSaved(guardFilledKeys);
     _totalFields += guardFieldCount; _totalSeconds += guardTimeSaved;
-    _progress(6, "guardrails", `${guardFieldCount} guardrails · ${Math.round(guardTimeSaved/60)} min saved`);
+    _progress(7, "guardrails", `${guardFieldCount}`);
     updateToast(toastId, { message:"Validating & finalizing…", step:7, totalSteps:7 });
     // Ensure all product IDs are valid in offers
     offers = offers.filter(o => products.some((p:any) => p.id === o.productId));
@@ -2373,7 +2378,7 @@ Raw JSON only.`, "", 2000);
 
     const totalHours = Math.floor(_totalSeconds / 3600);
     const totalMins = Math.round((_totalSeconds % 3600) / 60);
-    _progress(7, "validate", `${_totalFields} fields · ${totalHours > 0 ? totalHours + "h " : ""}${totalMins}m saved`);
+    _progress(8, "validate", `${_totalFields}`);
 
     const result = { coFields, coConf, icps, products, offers };
     onComplete(result);
@@ -12882,10 +12887,10 @@ Raw JSON only.`, "", 1400);
               _r._totalSeconds = String(_ts);
               setQsProgress({ step, results: { ..._r } });
             };
-            prog(3); // Start at step 3 (after research brief + review)
+            prog(3, "review", `${selProds.length + selPers.length}`);
 
-            // Step 4: Create products
-            prog(4, "review", `${selProds.length} products · ${selPers.length} personas selected`);
+            // Step 5: Create products
+            prog(4);
             const products: any[] = [];
             for (const i of selProds) {
               const p = brief.products[i];
@@ -12904,9 +12909,9 @@ Raw JSON only.`, "", 1400);
                 _tf += 4; _ts += 600;
               }
             }
-            prog(4, "create", `${products.length} products · ${_tf} fields · ${Math.round(_ts/60)} min saved`);
+            prog(5, "products", `${_tf}`);
 
-            // Step 5: Create personas
+            // Step 6: Create personas
             const personas: any[] = [];
             for (const i of selPers) {
               const pe = brief.personas[i];
@@ -12923,9 +12928,9 @@ Raw JSON only.`, "", 1400);
                 personas.push(persona);
               } catch { personas.push(newICP(personas.length, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {})); _tf += 3; _ts += 300; }
             }
-            prog(5, "create", `${products.length} products · ${personas.length} personas · ${_tf} fields · ${Math.round(_ts/60)} min saved`);
+            prog(6, "personas", `${_tf}`);
 
-            // Step 5 continued: Create offers
+            // Step 7: Create offers
             let offers: any[] = [];
             for (const prod of products) {
               for (const pers of personas) {
@@ -12944,8 +12949,7 @@ Raw JSON only.`, "", 1400);
               }
             }
 
-            // Step 6: Finalize
-            prog(5, "create", `${products.length} products · ${personas.length} personas · ${offers.length} offers · ${_tf} fields`);
+            prog(7, "offers", `${offers.length}`);
 
             // Apply everything
             setCompanyData((prev:any) => { const m = {...prev}; for (const [k,v] of Object.entries(coFields)) { if (v && String(v).trim()) m[k]=v; } return m; });
@@ -12954,8 +12958,11 @@ Raw JSON only.`, "", 1400);
             setOffers((prev:any) => [...prev, ...offers]);
             setIcps((prev:any) => [...prev, ...personas]);
 
-            // Show completion on progress page
-            prog(6, "validate", `${_tf} total fields · ${Math.floor(_ts/3600)}h ${Math.round((_ts%3600)/60)}m saved`);
+            // Step 8: Guardrails (already set via company profile)
+            prog(8, "guardrails", `✓`);
+
+            // Step 9: Finalize
+            prog(9, "validate", `${_tf}`);
             setView("company");
           }} />,
         document.body
