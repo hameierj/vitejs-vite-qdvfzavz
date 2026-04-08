@@ -2142,7 +2142,8 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     }
 
     // Normalize intake data
-    if (!pagesFetched) _progress(0, "fetch", `${sources.length}`);
+    // Ensure fetch result is stored even if the count was set inside Promise.race
+    _progress(0, "fetch", `${pagesFetched || sources.length}`);
     context = normalizeIntake(context);
 
     _progress(1);
