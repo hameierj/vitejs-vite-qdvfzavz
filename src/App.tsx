@@ -1999,7 +1999,7 @@ function ResearchBriefReview({ brief, onConfirm, onBack, onRevise }: {
 function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingFiles = [], onProgress, onBriefReady }: {
   onComplete: (r:any)=>void; onClose:()=>void; addToast:(t:any)=>string; updateToast:(id:string,p:any)=>void;
   existingFiles?: any[]; onProgress?: (step:number, results:Record<string,string>)=>void;
-  onBriefReady?: (coFields:any, coConf:any, context:string, brief:any)=>void;
+  onBriefReady?: (coFields:any, coConf:any, context:string, brief:any, phaseAResults?:Record<string,string>)=>void;
 }) {
   const [url,      setUrl]     = useState("");
   const [extraUrls, setExtraUrls] = useState("");
@@ -2224,8 +2224,8 @@ Return ONLY valid JSON:
       const brief = JSON.parse(briefRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
       _progress(3, "research", `${brief.products?.length||0} products · ${brief.personas?.length||0} personas identified`);
 
-      // Pause here — hand off to user review
-      onBriefReady?.(coFields, coConf, context, brief);
+      // Pause here — hand off to user review (pass Phase A results directly)
+      onBriefReady?.(coFields, coConf, context, brief, { ..._results });
       return; // Stop here — Phase B happens after user reviews
     } catch (e) {
       console.error("Research brief failed:", e);
@@ -12840,7 +12840,7 @@ Raw JSON only.`, "", 1400);
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
         onProgress={(step, results) => setQsProgress({ step, results })}
-        onBriefReady={(coFields, coConf, ctx, brief) => { setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: qsProgress?.results || {} }); setQsProgress(null); }} />}
+        onBriefReady={(coFields, coConf, ctx, brief, phaseAResults) => { setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: phaseAResults || {} }); setQsProgress(null); }} />}
 
       {/* Research Brief Review */}
       {qsBrief && createPortal(
