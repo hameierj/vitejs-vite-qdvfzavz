@@ -12048,7 +12048,7 @@ Raw JSON only.`, "", 1400);
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix","preferences"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix","preferences"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix","preferences"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix","preferences","onboarding"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix","preferences","onboarding"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix","preferences","onboarding"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -12216,7 +12216,8 @@ Raw JSON only.`, "", 1400);
             {/* ── ONBOARDING WIZARD ── */}
             {view==="onboarding" && (
               <div style={{ padding:"0 clamp(20px, 5vw, 80px)", display:"flex", flexDirection:"column",
-                alignItems:"center", justifyContent:"center", height:"100%", minHeight:"75vh", position:"relative" as const }}>
+                alignItems:"center", justifyContent:"center",
+                position:"absolute" as const, inset:0 }}>
 
                 {/* ── Quick Start In-Progress View ── */}
                 {qsProgress && (() => {
