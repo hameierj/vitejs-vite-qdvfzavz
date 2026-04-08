@@ -12876,7 +12876,7 @@ Raw JSON only.`, "", 1400);
             // Show full-screen progress for Phase B — carry over Phase A results
             const phaseA = qsBrief?.phaseAResults || {};
             const _r: Record<string,string> = {
-              sources: phaseA.sources || "",
+              fetch: phaseA.fetch || "",
               company: phaseA.company || "",
               research: phaseA.research || "",
             };
