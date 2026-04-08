@@ -1753,13 +1753,10 @@ function QuickStartProgress({ currentStep, stepResults, onBack }: {
               </span>
               <span style={{ flex:1, fontSize:11, fontWeight:isActive?700:isDone?500:400, fontFamily:head,
                 color: isActive ? step.color : isDone ? C2.text : C2.muted }}>{step.label}</span>
-              {isDone && result && (() => {
-                const num = result.match(/^(\d+)/)?.[1];
-                return num ? (
-                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:step.color, background:`${step.color}15`,
-                    padding:"1px 6px", borderRadius:4, flexShrink:0 }}>{num}</span>
-                ) : null;
-              })()}
+              {isDone && result && (
+                <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:step.color, background:`${step.color}15`,
+                  padding:"1px 6px", borderRadius:4, flexShrink:0 }}>{result.match(/^(\d+)/)?.[1] || result}</span>
+              )}
             </div>
           );
         })}
