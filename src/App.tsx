@@ -12891,8 +12891,7 @@ Raw JSON only.`, "", 1400);
 
             // Step 5: Create products
             prog(4);
-            const products: any[] = [];
-            for (const i of selProds) {
+            const prodResults = await Promise.allSettled(selProds.map(async (i: number) => {
               const p = brief.products[i];
               try {
                 const prodRaw = await callAI(
@@ -12900,20 +12899,20 @@ Raw JSON only.`, "", 1400);
                   "", 1200
                 );
                 const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
-                const prod = { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
-                const prodFilledKeys = Object.keys(prod).filter(k=>prod[k]&&String(prod[k]).trim()&&typeof prod[k]==="string"&&k!=="id"&&k!=="createdAt");
-                _tf += prodFilledKeys.length; _ts += calcTimeSaved(prodFilledKeys);
-                products.push(prod);
+                return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
               } catch {
-                products.push({ ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" });
-                _tf += 4; _ts += 600;
+                return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
               }
+            }));
+            const products = prodResults.map(r => r.status === "fulfilled" ? r.value : EMPTY_PRODUCT());
+            for (const prod of products) {
+              const keys = Object.keys(prod).filter(k=>prod[k]&&String(prod[k]).trim()&&typeof prod[k]==="string"&&k!=="id"&&k!=="createdAt");
+              _tf += keys.length; _ts += calcTimeSaved(keys);
             }
             prog(5, "products", `${_tf}`);
 
-            // Step 6: Create personas
-            const personas: any[] = [];
-            for (const i of selPers) {
+            // Step 6: Create personas — all in parallel
+            const persResults = await Promise.allSettled(selPers.map(async (i: number, idx: number) => {
               const pe = brief.personas[i];
               try {
                 const raw = await callAI(
@@ -12921,12 +12920,16 @@ Raw JSON only.`, "", 1400);
                   "", 3000
                 );
                 const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
-                const persona = newICP(personas.length, parsed.fields||{}, parsed.name||pe.name, parsed.confidence||{});
+                const persona = newICP(idx, parsed.fields||{}, parsed.name||pe.name, parsed.confidence||{});
                 persona.linkedProductIds = products.map((p:any) => p.id);
-                const persFilledKeys = Object.keys(parsed.fields||{}).filter(k=>(parsed.fields||{})[k]&&String((parsed.fields||{})[k]).trim());
-                _tf += persFilledKeys.length; _ts += calcTimeSaved(persFilledKeys);
-                personas.push(persona);
-              } catch { personas.push(newICP(personas.length, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {})); _tf += 3; _ts += 300; }
+                return { persona, fieldCount: Object.keys(parsed.fields||{}).filter(k=>(parsed.fields||{})[k]&&String((parsed.fields||{})[k]).trim()).length };
+              } catch {
+                return { persona: newICP(idx, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {}), fieldCount: 3 };
+              }
+            }));
+            const personas = persResults.map(r => r.status === "fulfilled" ? r.value.persona : newICP(0, {}, "Unnamed", {}));
+            for (const r of persResults) {
+              if (r.status === "fulfilled") { _tf += r.value.fieldCount; _ts += r.value.fieldCount * 120; }
             }
             prog(6, "personas", `${_tf}`);
 
