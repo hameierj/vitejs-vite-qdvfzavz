@@ -12217,6 +12217,107 @@ Raw JSON only.`, "", 1400);
             {view==="onboarding" && (
               <div style={{ padding:"0 clamp(20px, 5vw, 80px)", display:"flex", flexDirection:"column",
                 alignItems:"center", justifyContent:"center", minHeight:"75vh", position:"relative" as const }}>
+
+                {/* ── Quick Start In-Progress View ── */}
+                {qsProgress && (() => {
+                  const total = QS_STEPS.length;
+                  const step = qsProgress.step;
+                  const pct = Math.round((step / total) * 100);
+                  const done = step >= total;
+                  const activeStep = QS_STEPS[Math.min(step, total-1)];
+                  const activeColor = activeStep?.color || C2.accent;
+                  const results = qsProgress.results || {};
+                  return (
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:"100%", maxWidth:500,
+                      animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                      <style>{`
+                        @keyframes qsOrbitLg{0%{transform:rotate(0deg) translateX(var(--r,40px)) rotate(0deg)}100%{transform:rotate(360deg) translateX(var(--r,40px)) rotate(-360deg)}}
+                        @keyframes qsGlowLg{0%,100%{box-shadow:0 0 12px ${activeColor}22}50%{box-shadow:0 0 36px ${activeColor}44}}
+                      `}</style>
+
+                      {/* Animated orb */}
+                      <div style={{ position:"relative", width:120, height:120, marginBottom:28 }}>
+                        {!done && [0,1,2,3,4].map(i => (
+                          <div key={i} style={{ position:"absolute", top:"50%", left:"50%", marginTop:-(3+i), marginLeft:-(3+i),
+                            width:6+i*2, height:6+i*2, borderRadius:"50%",
+                            background:activeColor, opacity:0.15+i*0.12,
+                            // @ts-ignore
+                            "--r": `${30+i*10}px`,
+                            animation:`qsOrbitLg ${3+i*0.6}s linear infinite`,
+                            animationDelay:`${i*0.3}s` } as any} />
+                        ))}
+                        <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
+                          width:52, height:52, borderRadius:16,
+                          background: done ? `linear-gradient(135deg, ${C2.green}, #00B894)` : `linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          animation: done ? undefined : `qsGlowLg 2s ease-in-out infinite`,
+                          boxShadow:`0 8px 32px ${done ? C2.green : activeColor}33` }}>
+                          <span style={{ fontSize:done?22:20, color:"#fff" }}>{done ? "✓" : activeStep?.icon || "◎"}</span>
+                        </div>
+                      </div>
+
+                      {/* Title */}
+                      <div style={{ fontSize:22, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:4, textAlign:"center" }}>
+                        {done ? "Quick Start Complete" : activeStep?.label || "Processing…"}
+                      </div>
+                      <div style={{ fontSize:13, color:C2.muted, fontFamily:body, marginBottom:24, textAlign:"center" }}>
+                        {done ? "Your workspace is ready" : activeStep?.desc || ""}
+                      </div>
+
+                      {/* Progress bar */}
+                      <div style={{ width:"100%", maxWidth:320, marginBottom:28 }}>
+                        <div style={{ height:4, borderRadius:2, background:C2.faint, overflow:"hidden" }}>
+                          <div style={{ height:"100%", borderRadius:2,
+                            background:`linear-gradient(90deg, ${activeColor}, ${activeColor}88)`,
+                            width:`${done ? 100 : pct}%`, transition:"width 1s ease-in-out" }} />
+                        </div>
+                        <div style={{ fontSize:10, fontFamily:mono, color:C2.muted, textAlign:"center", marginTop:6 }}>
+                          Step {done ? total : step + 1} of {total}
+                        </div>
+                      </div>
+
+                      {/* Step list */}
+                      <div style={{ width:"100%", maxWidth:360 }}>
+                        {QS_STEPS.map((s, i) => {
+                          const isActive = i === step && !done;
+                          const isDone = i < step || done;
+                          const isPending = i > step && !done;
+                          const result = results[s.id] || "";
+                          return (
+                            <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"6px 0",
+                              opacity:isPending?0.3:1, transition:"opacity .3s" }}>
+                              <span style={{ fontSize:12, width:20, textAlign:"center", fontFamily:mono, fontWeight:700,
+                                color: isDone ? s.color : isActive ? s.color : C2.muted,
+                                animation: isActive ? "qsPulse 1.5s ease-in-out infinite" : undefined }}>
+                                {isDone ? "✓" : i + 1}
+                              </span>
+                              <span style={{ flex:1, fontSize:13, fontWeight:isActive?700:isDone?500:400, fontFamily:head,
+                                color: isActive ? s.color : isDone ? C2.text : C2.muted }}>{s.label}</span>
+                              {isDone && result && (
+                                <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:s.color, background:`${s.color}15`,
+                                  padding:"2px 8px", borderRadius:4 }}>{result.match(/^(\d+)/)?.[1] || result}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Done button */}
+                      {done && (
+                        <button onClick={()=>{ setQsProgress(null); setView("company"); }}
+                          style={{ marginTop:24, padding:"12px 32px", borderRadius:12, border:"none",
+                            background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`, color:"#fff",
+                            fontSize:14, fontFamily:head, fontWeight:700, cursor:"pointer",
+                            boxShadow:`0 4px 16px ${C2.accent}44` }}>
+                          View Results →
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ── Onboarding Cards (hidden during QS) ── */}
+                {!qsProgress && <>
                 {/* Layered background glows */}
                 <div style={{ position:"absolute", top:"30%", left:"50%", transform:"translate(-50%, -50%)",
                   width:900, height:500, borderRadius:"50%",
@@ -12293,6 +12394,7 @@ Raw JSON only.`, "", 1400);
                     </div>
                   ))}
                 </div>
+                </>}
               </div>
             )}
 
@@ -12969,8 +13071,8 @@ Raw JSON only.`, "", 1400);
         document.body
       )}
 
-      {/* Quick Start Progress Page */}
-      {qsProgress && createPortal(
+      {/* Quick Start Progress Toast — only when NOT on onboarding */}
+      {qsProgress && view !== "onboarding" && createPortal(
         <QuickStartProgress
           currentStep={qsProgress.step}
           stepResults={qsProgress.results}
