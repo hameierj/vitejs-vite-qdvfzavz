@@ -12911,25 +12911,24 @@ Raw JSON only.`, "", 1400);
             }
             prog(5, "products", `${_tf}`);
 
-            // Step 6: Create personas — all in parallel
-            const persResults = await Promise.allSettled(selPers.map(async (i: number, idx: number) => {
+            // Step 6: Create personas — sequential so each knows about the others
+            const personas: any[] = [];
+            for (let idx = 0; idx < selPers.length; idx++) {
+              const i = selPers[idx];
               const pe = brief.personas[i];
+              const existingPersonaNames = personas.map(p => p.name).filter(Boolean).join(", ");
               try {
                 const raw = await callAI(
-                  `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\nProducts: ${products.map((p:any)=>`${p.name}: ${p.problemsSolved||""}`).join("; ")}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}`,
+                  `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\nProducts: ${products.map((p:any)=>`${p.name}: ${p.problemsSolved||""}`).join("; ")}${existingPersonaNames ? `\nOther personas already created (DO NOT overlap with these): ${existingPersonaNames}` : ""}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}`,
                   "", 3000
                 );
                 const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
                 const persona = newICP(idx, parsed.fields||{}, parsed.name||pe.name, parsed.confidence||{});
                 persona.linkedProductIds = products.map((p:any) => p.id);
-                return { persona, fieldCount: Object.keys(parsed.fields||{}).filter(k=>(parsed.fields||{})[k]&&String((parsed.fields||{})[k]).trim()).length };
-              } catch {
-                return { persona: newICP(idx, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {}), fieldCount: 3 };
-              }
-            }));
-            const personas = persResults.map(r => r.status === "fulfilled" ? r.value.persona : newICP(0, {}, "Unnamed", {}));
-            for (const r of persResults) {
-              if (r.status === "fulfilled") { _tf += r.value.fieldCount; _ts += r.value.fieldCount * 120; }
+                const fc = Object.keys(parsed.fields||{}).filter(k=>(parsed.fields||{})[k]&&String((parsed.fields||{})[k]).trim()).length;
+                _tf += fc; _ts += fc * 120;
+                personas.push(persona);
+              } catch { personas.push(newICP(idx, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {})); _tf += 3; _ts += 300; }
             }
             prog(6, "personas", `${_tf}`);
 
