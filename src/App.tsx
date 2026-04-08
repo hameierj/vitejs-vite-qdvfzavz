@@ -12216,7 +12216,7 @@ Raw JSON only.`, "", 1400);
             {/* ── ONBOARDING WIZARD ── */}
             {view==="onboarding" && (
               <div style={{ padding:"0 clamp(20px, 5vw, 80px)", display:"flex", flexDirection:"column",
-                alignItems:"center", justifyContent:"center", minHeight:"75vh", position:"relative" as const }}>
+                alignItems:"center", justifyContent:"center", height:"100%", minHeight:"75vh", position:"relative" as const }}>
 
                 {/* ── Quick Start In-Progress View ── */}
                 {qsProgress && (() => {
@@ -12228,8 +12228,8 @@ Raw JSON only.`, "", 1400);
                   const activeColor = activeStep?.color || C2.accent;
                   const results = qsProgress.results || {};
                   return (
-                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                      width:"100%", maxWidth:500, flex:1, minHeight:"70vh",
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
+                      width:"100%", maxWidth:500,
                       animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
                       <style>{`
                         @keyframes qsOrbitLg{0%{transform:rotate(0deg) translateX(var(--r,40px)) rotate(0deg)}100%{transform:rotate(360deg) translateX(var(--r,40px)) rotate(-360deg)}}
