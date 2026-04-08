@@ -2045,7 +2045,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
         await Promise.race([
           (async () => {
             const homeHTML = await fetchPageHTML(normalizedUrl);
-            if (homeHTML) { pagesFetched++; _progress(0, "fetch", `${pagesFetched} page${pagesFetched!==1?"s":""} fetched`); }
+            if (homeHTML) { pagesFetched++; _progress(0, "fetch", `${pagesFetched}`); }
             const homeText = homeHTML ? htmlToText(homeHTML) : "";
             context += homeText ? `\n\nWEBSITE HOMEPAGE (${normalizedUrl}):\n${homeText}` : `\n\nWEBSITE URL: ${normalizedUrl}`;
 
@@ -2089,7 +2089,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
                 for (const r of pageResults) {
                   if (r.status === "fulfilled" && r.value.text.length > 100) {
                     pagesFetched++;
-                    _progress(0, "fetch", `${pagesFetched} page${pagesFetched!==1?"s":""} fetched`);
+                    _progress(0, "fetch", `${pagesFetched}`);
                     context += `\n\nPRODUCT/ABOUT PAGE (${r.value.url}):\n${r.value.text}`;
                   }
                 }
@@ -2114,7 +2114,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
         for (const result of results) {
           if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
             pagesFetched++;
-            _progress(0, "fetch", `${pagesFetched} page${pagesFetched!==1?"s":""} fetched`);
+            _progress(0, "fetch", `${pagesFetched}`);
             context += `\n\nADDITIONAL PAGE (${result.value.url}):\n${result.value.text}`;
           }
         }
@@ -2145,7 +2145,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     }
 
     // Normalize intake data
-    if (!pagesFetched) _progress(0, "fetch", `${sources.length} source${sources.length!==1?"s":""}`);
+    if (!pagesFetched) _progress(0, "fetch", `${sources.length}`);
     context = normalizeIntake(context);
 
     _progress(1);
