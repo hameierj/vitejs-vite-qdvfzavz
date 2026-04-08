@@ -11157,7 +11157,7 @@ function AppMain() {
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [showQS,         setShowQS]         = useState(false);
   const [qsProgress,     setQsProgress]     = useState<{step:number;results:Record<string,string>}|null>(null);
-  const [qsBrief,        setQsBrief]        = useState<{coFields:any;coConf:any;context:string;brief:any}|null>(null);
+  const [qsBrief,        setQsBrief]        = useState<{coFields:any;coConf:any;context:string;brief:any;phaseAResults?:Record<string,string>}|null>(null);
   // Register global so toast action button can open progress page
   (window as any).__showQSProgress = () => { if (qsProgress) setQsProgress({...qsProgress}); else setQsProgress({step:0,results:{}}); };
   const [showAnalyzer,   setShowAnalyzer]   = useState(false);
@@ -12840,7 +12840,7 @@ Raw JSON only.`, "", 1400);
       )}
       {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>setShowQS(false)} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
         onProgress={(step, results) => setQsProgress({ step, results })}
-        onBriefReady={(coFields, coConf, ctx, brief) => { setQsBrief({ coFields, coConf, context:ctx, brief }); setQsProgress(null); }} />}
+        onBriefReady={(coFields, coConf, ctx, brief) => { setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: qsProgress?.results || {} }); setQsProgress(null); }} />}
 
       {/* Research Brief Review */}
       {qsBrief && createPortal(
@@ -12868,8 +12868,13 @@ Raw JSON only.`, "", 1400);
             const coConf = qsBrief!.coConf;
             setQsBrief(null);
 
-            // Show full-screen progress for Phase B
-            const _r: Record<string,string> = {};
+            // Show full-screen progress for Phase B — carry over Phase A results
+            const phaseA = qsBrief?.phaseAResults || {};
+            const _r: Record<string,string> = {
+              sources: phaseA.sources || "",
+              company: phaseA.company || "",
+              research: phaseA.research || "",
+            };
             let _tf = 0, _ts = 0;
             const prog = (step: number, key?: string, val?: string) => {
               if (key && val) _r[key] = val;
