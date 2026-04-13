@@ -2,6 +2,208 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import mammoth from "mammoth";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import {
+  Upload, Sparkles, Mail, Search, ShieldCheck, Users,
+  FileText, BarChart3, Target, MessageCircle, Zap, Globe,
+  Database, Building2, Rocket, TrendingUp, CalendarCheck,
+} from "lucide-react";
+
+// ─── WELCOME SCREEN ──────────────────────────────────────────────────────────
+interface WelcomeIconDef {
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  cx: number; cy: number; scale: number; rotate: number;
+  color: string; bg: string;
+}
+const _welcomeIconsRaw: WelcomeIconDef[] = [
+  { icon: Sparkles,      cx: -439, cy: -129, scale: 0.85, rotate: -5,  color: "#8b6fc0", bg: "#f0ecf8" },
+  { icon: Globe,         cx: -375, cy: -286, scale: 1.15, rotate: 3,   color: "#2e8b6e", bg: "#e6f5ed" },
+  { icon: Mail,          cx: -229, cy: -363, scale: 1.0,  rotate: -7,  color: "#d4813a", bg: "#fdf0e4" },
+  { icon: Upload,        cx: -82,  cy: -306, scale: 0.9,  rotate: 4,   color: "#4a90d9", bg: "#e8f0fb" },
+  { icon: Target,        cx: 0,    cy: -207, scale: 1.1,  rotate: -3,  color: "#cf5c5c", bg: "#fce8e8" },
+  { icon: ShieldCheck,   cx: 118,  cy: -300, scale: 0.82, rotate: 6,   color: "#3a8f8f", bg: "#e4f3f3" },
+  { icon: Database,      cx: 260,  cy: -377, scale: 1.0,  rotate: -8,  color: "#7068c4", bg: "#edebfa" },
+  { icon: Users,         cx: 394,  cy: -309, scale: 1.18, rotate: 5,   color: "#c76a42", bg: "#fdf0ea" },
+  { icon: Search,        cx: 1,    cy: 315,  scale: 0.88, rotate: -4,  color: "#d4a03a", bg: "#fdf6e4" },
+  { icon: MessageCircle, cx: 374,  cy: 6,    scale: 1.0,  rotate: 7,   color: "#5886c4", bg: "#e9eff8" },
+  { icon: Zap,           cx: 288,  cy: 138,  scale: 1.12, rotate: -6,  color: "#e0853a", bg: "#fdf0e4" },
+  { icon: FileText,      cx: 457,  cy: -150, scale: 0.85, rotate: 3,   color: "#9a6abf", bg: "#f2ecf9" },
+  { icon: BarChart3,     cx: 135,  cy: 242,  scale: 1.05, rotate: -5,  color: "#3a9a6e", bg: "#e6f5ed" },
+  { icon: Rocket,        cx: -124, cy: 246,  scale: 0.95, rotate: 8,   color: "#6C5CE7", bg: "#eeeafc" },
+  { icon: TrendingUp,    cx: -239, cy: 146,  scale: 0.9,  rotate: -4,  color: "#c45878", bg: "#fae8ee" },
+  { icon: CalendarCheck, cx: -354, cy: 32,   scale: 0.88, rotate: 5,   color: "#4a7dc4", bg: "#e8eefb" },
+];
+// Pre-compute clockwise order from top center (12 o'clock) for staggered animation
+const _welcomeClockwiseOrder = _welcomeIconsRaw.map((ic, i) => {
+  // atan2 gives angle from positive X axis; we want angle from negative Y axis (top), clockwise
+  let angle = Math.atan2(ic.cx, -ic.cy); // note: swapped to measure from top, clockwise
+  if (angle < 0) angle += 2 * Math.PI;
+  return { idx: i, angle };
+}).sort((a, b) => a.angle - b.angle).map((entry, order) => ({ ...entry, order }));
+const welcomeIcons = _welcomeIconsRaw;
+// Map original index → animation order (0 = first to appear, starting from top going clockwise)
+const _welcomeAnimOrder: number[] = new Array(_welcomeIconsRaw.length);
+_welcomeClockwiseOrder.forEach(e => { _welcomeAnimOrder[e.idx] = e.order; });
+function makeWelcomeFloatConfig(i: number) {
+  const seed = (i * 7 + 3) % 13;
+  return { duration: 3 + (seed % 5) * 0.6, delay: (seed % 7) * 0.4, dy: (5 + (seed % 4) * 2.5) * (seed % 2 === 0 ? 1 : -1) };
+}
+function WelcomeScreen({ companyName, onQuickStart, onManual, onImport, onPasteForm }: { companyName?: string; onQuickStart: () => void; onManual: () => void; onImport: () => void; onPasteForm: () => void }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [phase, setPhase] = useState<"text"|"icons-white"|"floating">("text");
+  const [iconPositions, setIconPositions] = useState(() => welcomeIcons.map(ic => ({ cx: ic.cx, cy: ic.cy, scale: ic.scale, rotate: ic.rotate })));
+  const [dragging, setDragging] = useState<number|null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const dragStart = useRef<{x:number;y:number;cx:number;cy:number}>({x:0,y:0,cx:0,cy:0});
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase("icons-white"), 300);
+    const t2 = setTimeout(() => setPhase("floating"), 2000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  useEffect(() => {
+    if (dragging === null) return;
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
+      setIconPositions(prev => prev.map((p, i) => i === dragging ? { ...p, cx: dragStart.current.cx + dx, cy: dragStart.current.cy + dy } : p));
+    };
+    const onUp = () => setDragging(null);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [dragging]);
+
+  const copyPositions = () => {
+    const names = ["Sparkles","Globe","Mail","Upload","Target","ShieldCheck","Database","Users","Search","MessageCircle","Zap","FileText","BarChart3","Rocket","TrendingUp","CalendarCheck"];
+    const lines = iconPositions.map((p, i) =>
+      `  { icon: ${names[i]||"?"}, cx: ${Math.round(p.cx)}, cy: ${Math.round(p.cy)}, scale: ${p.scale}, rotate: ${p.rotate}, color: "${welcomeIcons[i].color}", bg: "${welcomeIcons[i].bg}" },`
+    );
+    navigator.clipboard.writeText("[\n" + lines.join("\n") + "\n]");
+    alert("Copied to clipboard!");
+  };
+
+  const showIcons = phase !== "text";
+  const floating = phase === "floating" && !editMode;
+  return (
+    <div style={{ position:"relative", flex:1, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", background:"#fff", userSelect: editMode ? "none" : "none" }}>
+      <div style={{ position:"relative" }}>
+        {welcomeIcons.map((item, i) => {
+          const Icon = item.icon;
+          const cfg = makeWelcomeFloatConfig(i);
+          const pos = iconPositions[i];
+          return (
+            <div key={i}
+              onMouseDown={editMode ? (e) => { e.preventDefault(); dragStart.current = { x: e.clientX, y: e.clientY, cx: pos.cx, cy: pos.cy }; setDragging(i); } : undefined}
+              style={{
+              position:"absolute", left:"50%", top:"50%",
+              transform:`translate(calc(-50% + ${pos.cx}px), calc(-50% + ${pos.cy}px)) rotate(${pos.rotate}deg)`,
+              opacity: showIcons ? 1 : 0,
+              transition: dragging === i ? "none" : `opacity 500ms ease ${(_welcomeAnimOrder[i] ?? i) * 80}ms, transform 0.5s ease`,
+              animation: floating ? `welcomeFloat-${i} ${cfg.duration}s ease-in-out ${cfg.delay}s infinite alternate` : "none",
+              cursor: editMode ? "grab" : "default",
+              zIndex: editMode ? 20 : undefined,
+              outline: editMode ? "2px dashed rgba(89,86,214,0.3)" : "none",
+              outlineOffset: 4, borderRadius: 10 * pos.scale,
+            }}>
+              <div style={{ width: 44 * pos.scale, height: 44 * pos.scale, borderRadius: 10 * pos.scale,
+                backgroundColor: item.bg, display:"flex", alignItems:"center", justifyContent:"center",
+                pointerEvents: editMode ? "none" : "auto" }}>
+                <Icon width={20 * pos.scale} height={20 * pos.scale} strokeWidth={1.5} style={{ color: item.color }} />
+              </div>
+              {editMode && <div style={{ position:"absolute", top:-18, left:"50%", transform:"translateX(-50%)", fontSize:9, fontFamily:"monospace", color:"#5956D6", whiteSpace:"nowrap", background:"rgba(255,255,255,0.9)", padding:"1px 4px", borderRadius:3 }}>{Math.round(pos.cx)},{Math.round(pos.cy)}</div>}
+            </div>
+          );
+        })}
+        <div style={{ position:"relative", zIndex: editMode ? 1 : 10, display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center", padding:"0 24px", pointerEvents: editMode ? "none" as const : "auto" as const }}>
+          <h1 style={{ fontSize:56, fontWeight:600, lineHeight:1.15, letterSpacing:"-0.28px", color:"#1d1d1f", margin:0, textAlign:"center" }}>
+            {(() => {
+              const line1 = companyName || "Your Company";
+              let charIdx = 0;
+              const renderChars = (text: string, color?: string) => text.split("").map((ch, i) => {
+                const idx = charIdx++;
+                return <span key={idx} style={{ display:"inline-block", color: color || "#1d1d1f",
+                  animation:`welcomeLetterIn .5s cubic-bezier(0.16, 1, 0.3, 1) ${2.2 + idx * 0.035}s both`,
+                  ...(ch === " " ? { width:"0.3em" } : {}) }}>{ch === " " ? "\u00A0" : ch}</span>;
+              });
+              return <div style={{ whiteSpace:"nowrap" }}>{renderChars(line1, "#6C5CE7")}</div>;
+            })()}
+          </h1>
+          <p style={{ marginTop:16, fontSize:17, letterSpacing:"-0.374px", color:"rgba(0,0,0,0.48)", lineHeight:1.47,
+            maxWidth:520,
+            animation:"welcomeSubIn .8s cubic-bezier(0.16, 1, 0.3, 1) 3.2s both" }}>
+            From first research to booked meeting — every persona, product, objection, and email sequence, built and managed by AI.
+          </p>
+          <div style={{ position:"relative", marginTop:32, animation:"welcomeSubIn .7s cubic-bezier(0.34, 1.3, 0.64, 1) 3.6s both" }}>
+            <button onClick={()=>setMenuOpen(!menuOpen)} style={{ display:"inline-flex", alignItems:"center", gap:6,
+              padding:"10px 22px", background:"#6C5CE7", color:"#fff", fontSize:17, fontWeight:400,
+              letterSpacing:"-0.374px", borderRadius:980, border:"none", cursor:"pointer" }}>
+              Get started <span style={{ fontSize:12, marginLeft:2, transition:"transform .2s", transform:menuOpen?"rotate(180deg)":"rotate(0)" }}>▾</span>
+            </button>
+            {menuOpen && (
+              <div style={{ position:"absolute", top:"calc(100% + 8px)", left:"50%", transform:"translateX(-50%)",
+                background:"#fff", borderRadius:14, border:"1px solid #e5e5ec", boxShadow:"0 8px 32px rgba(0,0,0,0.12)",
+                padding:6, minWidth:200, animation:"welcomeDropIn .15s ease", zIndex:20 }}>
+                {[
+                  { label:"Quick Start", sub:"AI-powered", icon:"⚡", onClick:onQuickStart },
+                  { label:"Start from Scratch", sub:"Manual", icon:"+", onClick:onManual },
+                  { label:"Paste Form", sub:"Implementation form", icon:"📋", onClick:onPasteForm },
+                  { label:"Import Workspace", sub:"JSON file", icon:"↑", onClick:onImport },
+                ].map((opt, i) => (
+                  <button key={i} onClick={()=>{ setMenuOpen(false); opt.onClick(); }}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                      borderRadius:10, border:"none", background:"transparent", cursor:"pointer", textAlign:"left",
+                      transition:"background .12s" }}
+                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background="#f3f3f6"}
+                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                    <span style={{ fontSize:16, width:24, textAlign:"center" }}>{opt.icon}</span>
+                    <div>
+                      <div style={{ fontSize:14, fontWeight:600, color:"#1a1a2e" }}>{opt.label}</div>
+                      <div style={{ fontSize:11, color:"#8E94A7" }}>{opt.sub}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <style>{`
+        @keyframes welcomeFadeUp {
+          from { opacity: 0; transform: translateY(16px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes welcomeLetterIn {
+          0% { opacity: 0; transform: translateY(-14px); filter: blur(6px); }
+          100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+        }
+        @keyframes welcomeSubIn {
+          0% { opacity: 0; transform: translateY(10px); filter: blur(3px); }
+          100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+        }
+        @keyframes welcomeDropIn {
+          0% { opacity: 0; scale: 0.95; }
+          100% { opacity: 1; scale: 1; }
+        }
+        @keyframes welcomePhaseIn {
+          0% { opacity: 0; transform: translateY(24px) scale(0.96); filter: blur(10px); }
+          100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+        }
+        @keyframes welcomePhaseOut {
+          0% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+          100% { opacity: 0; transform: translateY(-20px) scale(1.02); filter: blur(8px); }
+        }
+        ${welcomeIcons.map((item, i) => {
+          const cfg = makeWelcomeFloatConfig(i);
+          return `@keyframes welcomeFloat-${i} {
+            from { transform: translate(calc(-50% + ${item.cx}px), calc(-50% + ${item.cy}px)) rotate(${item.rotate}deg); }
+            to { transform: translate(calc(-50% + ${item.cx}px), calc(-50% + ${item.cy + cfg.dy}px)) rotate(${item.rotate}deg); }
+          }`;
+        }).join("\n")}
+      `}</style>
+    </div>
+  );
+}
 
 // ─── SUPABASE SYNC LAYER ─────────────────────────────────────────────────────
 const SUPABASE_URL = "https://ndiunvmjwpwvoyrqnmls.supabase.co";
@@ -199,6 +401,7 @@ const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]
       { id:"co_contact_title",label:"Contact Job Title / Role",   type:"text",     ph:"", noConf:true },
       { id:"co_contact_phone",label:"Contact Phone Number",       type:"text",     ph:"", noConf:true },
       { id:"co_contact_email",label:"Contact Business Email",     type:"text",     ph:"",                                                   hint:"Primary business email address", noConf:true },
+      { id:"co_contact_linkedin",label:"Contact LinkedIn URL",    type:"text",     ph:"https://linkedin.com/in/...",                         hint:"LinkedIn profile of the primary contact", noConf:true },
       { id:"co_login_email",  label:"B2B Rocket Login Email",     type:"text",     ph:"",                                                   hint:"Email used to login to app.b2brocket.ai", noConf:true },
     ]
   },
@@ -206,7 +409,15 @@ const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]
     fields:[
       { id:"co_industry",     label:"Industry",                   type:"text",     ph:"B2B SaaS, FinTech, Healthcare IT…",                  hint:"The industry or vertical this company operates in" },
       { id:"co_website",      label:"Website",                    type:"text",     ph:"https://acme.com",                                   hint:"Primary marketing site" },
+      { id:"co_size",         label:"Company Size",               type:"select",   opts:["1–10 employees","10–50 employees","50–200 employees","200–500 employees","500–1000 employees","1000+ employees"], noConf:true, hint:"Approximate headcount — helps calibrate deal size and approach" },
+      { id:"co_revenue",      label:"Company Revenue / MRR",      type:"text",     ph:"$50K–$200K MRR / $5M ARR",                           hint:"Approximate revenue — helps size campaign benchmarks and ROI projections" },
       { id:"co_pitch",        label:"Value Proposition",          type:"textarea", ph:"A clear statement explaining the unique benefits your product offers, why customers should choose you over competitors, and how you solve their problems.", rows:3, hint:"The core promise of value delivered — goes beyond a one-liner" },
+      { id:"co_we_help",      label:"We Help (who)",              type:"textarea", ph:"Data driven advertising agencies and enterprise marketing teams", rows:2, hint:"The specific audience you serve — be as narrow as possible" },
+      { id:"co_who_struggle",  label:"Who Struggle With",         type:"textarea", ph:"Growing revenue targets and owning their own data layer", rows:2, hint:"The specific problem your audience faces" },
+      { id:"co_by_providing",  label:"By Providing",              type:"textarea", ph:"DaaS — Data as a Service platform for real-time buyer intent", rows:2, hint:"Your solution in one line" },
+      { id:"co_unlike",        label:"Unlike (competitors)",      type:"textarea", ph:"Audience Labs, generic DSP data, platform-native audiences", rows:2, hint:"Who you're positioning against — what the buyer compares you to" },
+      { id:"co_we_uniquely",   label:"We Uniquely",               type:"textarea", ph:"Seamless integrations across all ad platforms and DSPs with the freshest intent data from 700K+ publisher sites", rows:2, hint:"Your one true differentiator — the thing only you can claim" },
+      { id:"co_core_problem",  label:"Core Problem You Solve",    type:"textarea", ph:"Pearl Diver provides the clarity agencies need to stop guessing and start scaling...", rows:4, hint:"Focus on their pain, not your solution — this becomes the foundation of all outreach messaging" },
       { id:"co_product",      label:"What do you actually sell?",  type:"textarea", ph:"Describe each product/service in detail — what it is, how it works, components, functionality, variations, pricing, delivery.", rows:4, hint:"If your grandmother couldn\'t follow it, simplify further" },
       { id:"co_prod_breakdown", label:"Product/Service Decomposition", type:"textarea", ph:"Product 1: Equipment Financing\n- Ideal buyer: ...\n- Pains it solves: ...\n- Gains: ...\n- Triggers: ...\n\nProduct 2: ...", rows:8, hint:"Break down each product/service — who buys it, why, when, what pain, what gain" },
       { id:"co_category",       label:"Market Category / Position",    type:"textarea", ph:"Equipment financing for SMB construction — speed and flexibility play against slow banks.", rows:2, hint:"Where you sit in the market and how buyers categorize you" },
@@ -225,7 +436,17 @@ const COMPANY_FIELDS = Object.values(COMPANY_SECTIONS).flatMap(s => s.fields);
 
 // ─── PREFERENCES (Campaign Planning) ─────────────────────────────────────────
 const PREFERENCES_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> = {
-  campaign: { label:"Campaign Setup", icon:"◎",
+  outbound: { label:"Outbound Readiness", icon:"◎",
+    fields:[
+      { id:"co_outbound_maturity", label:"Outbound Maturity",       type:"select",   opts:["Just Getting Started","Have Done Some Outreach","Running & Optimizing","Scaling Existing Program"], noConf:true, hint:"Where you are today with outbound lead generation" },
+      { id:"co_monthly_volume",    label:"Monthly Outreach Volume", type:"select",   opts:["Not sending yet","Under 100","100–500","500–2,000","2,000–10,000","10,000+"], noConf:true, hint:"How many outreach messages (emails + LinkedIn) sent per month" },
+      { id:"co_prev_tools",        label:"Previous Outbound Tools", type:"textarea", ph:"HubSpot, Apollo, Outreach, Salesloft, Lemlist, Instantly…", rows:2, noConf:true, hint:"Tools you've used for outbound — helps understand workflow expectations" },
+      { id:"co_existing_leads",    label:"Existing Lead List",      type:"select",   opts:["No list yet","Some, but incomplete","Yes — needs cleaning","Yes — ready to use"], noConf:true, hint:"Do you have existing contacts/leads to start with?" },
+      { id:"co_biggest_challenge", label:"Biggest Outbound Challenge", type:"textarea", ph:"Time to create touch points, low reply rates, list quality, personalization at scale…", rows:2, noConf:true, hint:"What has been your biggest struggle with outbound so far?" },
+      { id:"co_90day_goal",        label:"90-Day Success Definition", type:"textarea", ph:"20 booked demos per month / 50 qualified replies / $100K pipeline generated", rows:2, noConf:true, hint:"What does success look like for you in the next 90 days? Be specific with numbers." },
+    ]
+  },
+  campaign: { label:"Campaign Setup", icon:"◉",
     fields:[
       { id:"co_channels",     label:"Outreach Channels",           type:"chips",    opts:["Email","LinkedIn","AI Calls"], noConf:true },
       { id:"co_num_campaigns",label:"Number of Campaigns",         type:"select",   opts:["1","2","3","4","5+"],                            hint:"How many campaigns to start with", noConf:true },
@@ -247,7 +468,9 @@ const PREFERENCES_SECTIONS: Record<string, {label:string; icon?:string; fields:a
   guardrails: { label:"Sales & Messaging", icon:"◈",
     fields:[
       { id:"co_past_emails",  label:"Past Email Examples",         type:"textarea", ph:"Paste your best-performing email copy here — subject lines and body text.", rows:4, hint:"Helps us match your proven style and tone", noConf:true },
-      { id:"co_exclude",      label:"Global Exclude List",         type:"textarea", ph:"Current customers, investors, specific domains.",     hint:"Anyone we should never contact — applies to all ICPs", noConf:true },
+      { id:"co_website_permission", label:"Website Content Permission", type:"select", opts:["Yes — use any content from our website","Yes — but only specific pages","No — do not reference website content"], noConf:true, hint:"Can we pull content from your website for outreach copy?" },
+      { id:"co_website_urls", label:"Approved Website URLs",       type:"textarea", ph:"https://pearldiver.io\nhttps://pearldiver.io/products", rows:2, hint:"If 'specific pages only' — list the approved URLs", noConf:true },
+      { id:"co_exclude",      label:"Global Exclude List",         type:"textarea", ph:"Current customers, investors, specific domains.",     hint:"Anyone we should never contact — applies to all ICPs. Upload a DNC file in the Knowledge Center for larger lists.", noConf:true },
       { id:"co_avoid",        label:"Copy — Always Avoid",         type:"textarea", ph:"Competitor names, pricing language, banned phrases.", hint:"Topics or angles that are off-limits in email copy", noConf:true },
     ]
   },
@@ -275,20 +498,53 @@ const PRODUCT_SECTIONS: Record<string, {label:string; fields:any[]}> = {
     { id:"name",              label:"Product / Service Name",   type:"text",     ph:"",                                                   required:true, noConf:true },
     { id:"description",       label:"Description",              type:"textarea", ph:"What is it and how does it work?",                    rows:3 },
     { id:"category",          label:"Category",                 type:"select",   opts:["Software","Platform","Service","Hardware","Consulting","Marketplace","Other"], noConf:true },
+    { id:"useCases",          label:"Use Cases",                type:"textarea", ph:"Scenario 1: Mid-market teams replacing manual spreadsheet tracking\nScenario 2: Enterprise orgs consolidating 3+ tools into one", rows:4, hint:"Specific scenarios where this product applies — feeds into outreach copy angles" },
+    { id:"keyFeatures",       label:"Key Features / Capabilities", type:"textarea", ph:"Feature 1: Real-time dashboard with 50+ metrics\nFeature 2: One-click integrations with Salesforce, HubSpot\nFeature 3: AI-powered lead scoring", rows:4, hint:"Concrete features — these become proof points in email copy" },
     { id:"problemsSolved",    label:"Problems It Solves",       type:"textarea", ph:"What specific pain points does this address? Be concrete — not 'saves time' but 'eliminates 8hrs/week of manual data entry'.", rows:4, hint:"The more specific, the better the outreach copy" },
     { id:"valueProposition",  label:"Value Proposition",        type:"textarea", ph:"Why should someone buy this instead of alternatives?", rows:3, hint:"The core promise — must be differentiated" },
+    { id:"timeToValue",       label:"Implementation / Time to Value", type:"textarea", ph:"Live in 2 weeks with full onboarding. No engineering required. See ROI within 30 days.", rows:2, hint:"Speed to value is a key differentiator — use in copy when fast" },
   ]},
   market: { label:"Market Fit", fields:[
     { id:"idealCustomer",     label:"Ideal Customer",           type:"textarea", ph:"What type of company/person is the perfect buyer?",   rows:3, hint:"Industry, size, role, situation" },
-    { id:"pricingRange",      label:"Pricing / Deal Size",      type:"text",     ph:"$5K-$25K per year",                                  hint:"Range is fine — helps size campaign benchmarks" },
-    { id:"dealCycle",         label:"Typical Sales Cycle",      type:"select",   opts:["<1 week","1-4 weeks","1-3 months","3-6 months","6+ months"], noConf:true },
+    { id:"marketMaturity",    label:"Market Maturity",          type:"select",   opts:["Established category — buyers know what this is","Emerging category — some education needed","New category — significant education required","Replacing an existing behavior (not a tool)"], noConf:true, hint:"Changes entire messaging approach — known categories sell differently than new ones" },
     { id:"competitors",       label:"Competitive Alternatives", type:"textarea", ph:"Who do prospects compare you to? Include the status quo (doing nothing).", rows:3, hint:"Both direct competitors and 'we'll just keep doing it manually'" },
+    { id:"buyerObjections",   label:"Buyer Objections (product-level)", type:"textarea", ph:"'Too expensive for what it does'\n'Missing feature X that competitor has'\n'Security/compliance concerns'\n'We'd need to migrate data'", rows:4, hint:"Product-specific objections — different from persona objections. Critical for reply handlers" },
     { id:"switchTriggers",    label:"What Makes Them Switch",   type:"textarea", ph:"What events or frustrations cause them to look for a new solution?", rows:2 },
+  ]},
+  commercials: { label:"Commercials", fields:[
+    { id:"dealType",          label:"Deal Type",                type:"select",   opts:["Recurring (subscription / retainer)","One-Time (project / purchase)","Both — recurring and one-time options"], noConf:true, hint:"Determines which financial fields are relevant and how AI frames value" },
+    // Recurring fields
+    { id:"acv",               label:"Average Contract Value (ACV)", type:"text", ph:"$24,000/year",                                       hint:"Annual contract value — the number that sizes the deal in outreach", showWhen:"recurring" },
+    { id:"mrr",               label:"Monthly Recurring Revenue per Deal", type:"text", ph:"$2,000/mo",                                    hint:"MRR per customer — different messaging for $500/mo vs $5K/mo", showWhen:"recurring" },
+    { id:"contractLength",    label:"Typical Contract Length",  type:"select",   opts:["Month-to-month","Quarterly","6 months","Annual","Multi-year","Custom"], noConf:true, showWhen:"recurring" },
+    { id:"renewalRate",       label:"Renewal / Retention Rate", type:"text",     ph:"92% annual renewal",                                  hint:"Retention rate — feeds upsell campaign messaging and trust signals", showWhen:"recurring" },
+    { id:"expansionRevenue",  label:"Expansion / Upsell Rate", type:"text",     ph:"35% of customers upgrade within 6 months",            hint:"Net revenue retention — shows growth potential in ROI pitch", showWhen:"recurring" },
+    { id:"ltv",               label:"Customer Lifetime Value (LTV)", type:"text",ph:"$72,000 over 3 years",                               hint:"LTV justifies acquisition cost — AI uses this in value framing", showWhen:"recurring" },
+    // One-time fields
+    { id:"avgDealSize",       label:"Average Deal Size",        type:"text",     ph:"$15,000 per project",                                 hint:"Typical one-time deal value — feeds pipeline projections", showWhen:"onetime" },
+    { id:"repeatRate",        label:"Repeat Purchase Rate",     type:"text",     ph:"40% come back within 12 months",                     hint:"How often one-time buyers return — changes follow-up strategy", showWhen:"onetime" },
+    { id:"referralRate",      label:"Referral Rate",            type:"text",     ph:"25% of deals come from referrals",                   hint:"If high, AI can incorporate referral asks into post-sale sequences", showWhen:"onetime" },
+    // Shared fields
+    { id:"avgDaysToClose",    label:"Average Days to Close",    type:"text",     ph:"28 days from first touch",                            hint:"Exact number feeds follow-up cadence timing in playbooks" },
+    { id:"closeRateByStage",  label:"Close Rate by Stage",      type:"textarea", ph:"Lead → Demo: 25%\nDemo → Proposal: 60%\nProposal → Close: 40%\nOverall: 6%", rows:3, hint:"Stage-by-stage conversion — more useful than a single win rate" },
+    { id:"dealStakeholders",  label:"Typical Deal Stakeholders", type:"textarea", ph:"1 champion (ops manager)\n1 decision maker (VP/C-level)\n1 blocker (IT/security)\nAvg 2-3 people involved", rows:3, hint:"Number and type of people involved — changes messaging depth and multi-threading strategy" },
+    { id:"discountAuthority", label:"Discount / Flexibility",   type:"textarea", ph:"Reps can offer: 10% annual discount, free trial (14 days), extended payment terms\nManager approval needed for: 20%+ discount, custom contracts\nNever discount: implementation fees", rows:3, hint:"What can be offered to close — AI uses this in closing sequences and objection handling" },
+    { id:"paymentTerms",      label:"Payment Terms / Options",  type:"textarea", ph:"Net 30, credit card accepted, annual prepay (2 months free), quarterly billing available", rows:2, hint:"Payment flexibility can be a closing lever — AI references this when price is an objection" },
   ]},
   proof: { label:"Proof & Evidence", fields:[
     { id:"proofPoints",       label:"Best Proof Points",        type:"textarea", ph:"'3x pipeline in 90 days for Acme Corp' — specific results, stats, logos.", rows:3, hint:"One strong proof > five vague claims" },
+    { id:"roiMetrics",        label:"ROI / Outcome Metrics",    type:"textarea", ph:"Average 3.2x ROI within 6 months\nSaves 12 hrs/week per rep\nReduces cost-per-lead by 40%\n85% faster onboarding", rows:3, hint:"Specific numbers AI uses for data-driven hooks and value justification" },
     { id:"caseStudies",       label:"Case Studies",             type:"textarea", ph:"Customer name, problem they had, what you did, result achieved.",  rows:4, hint:"Story format: situation → solution → result" },
+    { id:"industryProof",     label:"Industry-Specific Proof",  type:"textarea", ph:"SaaS: 'Used by 200+ SaaS companies including [logos]'\nHealthcare: 'HIPAA compliant, deployed at 3 hospital networks'\nConstruction: '500+ contractors use this daily'", rows:4, hint:"Proof mapped per vertical — a SaaS logo means nothing to construction buyers" },
     { id:"socialProof",       label:"Social Proof",             type:"textarea", ph:"G2 rating, awards, press mentions, number of customers.",  rows:2 },
+    { id:"objectionRebuttals",label:"Objection Rebuttals",      type:"textarea", ph:"'Too expensive' → Show ROI calc: pays for itself in 2 months\n'Missing feature X' → Roadmap commitment + workaround\n'Security concerns' → SOC2 cert + encryption details", rows:4, hint:"When they say X, we show Y — bridges proof to displacement" },
+    { id:"unsolvedImpact",    label:"What Happens If Unsolved",   type:"textarea", ph:"Agencies can't scale beyond billable human hours\nMillions a year left on the table\nCompetitors gain data advantage", rows:3, hint:"The cost of inaction — use for urgency messaging in outreach" },
+  ]},
+  positioning: { label:"Positioning & Messaging", fields:[
+    { id:"elevatorPitch",     label:"Elevator Pitch (30 sec)",  type:"textarea", ph:"[Product] helps [audience] [achieve outcome] by [how it works], without [key friction they hate].", rows:2, hint:"Forced brevity — feeds subject lines and LinkedIn intros" },
+    { id:"positioningStatement", label:"Positioning Statement", type:"textarea", ph:"For [target audience] who [need/pain], [product] is a [category] that [key benefit], unlike [alternatives] which [limitation].", rows:3, hint:"Classic positioning framework — keeps all messaging aligned" },
+    { id:"messagingDos",      label:"Messaging Do's",           type:"textarea", ph:"Lead with speed/simplicity angle\nAlways mention the free trial\nUse customer names when possible", rows:3, hint:"Product-specific messaging rules — separate from company-level guardrails" },
+    { id:"messagingDonts",    label:"Messaging Don'ts",         type:"textarea", ph:"Never compare directly to [competitor] by name\nDon't mention pricing in cold outreach\nAvoid technical jargon — buyers aren't engineers", rows:3, hint:"Product-specific things to avoid in copy" },
   ]},
   notes: { label:"Notes", fields:[
     { id:"prod_notes", label:"Additional Notes", type:"textarea", ph:"Anything specific about this product that AI should know — seasonal availability, technical prerequisites, pricing nuances, etc.", rows:4, noConf:true },
@@ -296,6 +552,20 @@ const PRODUCT_SECTIONS: Record<string, {label:string; fields:any[]}> = {
 };
 const PRODUCT_FIELDS = Object.values(PRODUCT_SECTIONS).flatMap(s => s.fields) as any[];
 const EMPTY_PRODUCT = () => ({ id:uid(), ...Object.fromEntries(PRODUCT_FIELDS.map(f=>[f.id,""])), createdAt:new Date().toISOString() });
+// Get visible product fields based on dealType (filters out irrelevant commercial fields)
+const getVisibleProductFields = (product: any) => {
+  const dt = (product?.dealType || "").toLowerCase();
+  const isRecurring = dt.includes("recurring");
+  const isOneTime = dt.includes("one-time");
+  const isBoth = dt.includes("both");
+  return PRODUCT_FIELDS.filter((f: any) => {
+    if (!f.showWhen) return true;
+    if (isBoth) return true;
+    if (f.showWhen === "recurring") return isRecurring || !dt;
+    if (f.showWhen === "onetime") return isOneTime || !dt;
+    return true;
+  });
+};
 
 // ─── OFFERS ──────────────────────────────────────────────────────────────────
 const OFFER_TIERS = [
@@ -419,6 +689,152 @@ const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> =
 
 const ALL_ICP_FIELDS = Object.values(ICP_SECTIONS).flatMap(s => s.fields) as any[];
 const TOTAL_FIELDS = ALL_ICP_FIELDS.length;
+
+// ─── CONTENT & ASSETS ───────────────────────────────────────────────────────
+const EMPTY_CONTENT_ASSET = () => ({
+  id: uid(), title: "", type: "blog_post", url: "", description: "",
+  funnelStage: "awareness", personaIds: [] as string[], productIds: [] as string[],
+  tags: [] as string[], createdAt: new Date().toISOString(),
+});
+const CONTENT_TYPES = [
+  { id:"blog_post",    label:"Blog Post" },
+  { id:"whitepaper",   label:"Whitepaper / eBook" },
+  { id:"case_study",   label:"Case Study" },
+  { id:"webinar",      label:"Webinar / Video" },
+  { id:"landing_page", label:"Landing Page" },
+  { id:"one_pager",    label:"One-Pager / PDF" },
+  { id:"demo_video",   label:"Demo Video" },
+  { id:"infographic",  label:"Infographic" },
+  { id:"podcast",      label:"Podcast Episode" },
+  { id:"template",     label:"Template / Tool" },
+  { id:"other",        label:"Other" },
+];
+const FUNNEL_STAGES = [
+  { id:"awareness",    label:"Awareness",    color:"#54A0FF" },
+  { id:"consideration",label:"Consideration",color:"#FFC048" },
+  { id:"decision",     label:"Decision",     color:"#00D68F" },
+  { id:"retention",    label:"Retention",    color:"#6C5CE7" },
+];
+
+// ─── COMPETITIVE BATTLECARDS ────────────────────────────────────────────────
+const BATTLECARD_TYPES = [
+  { id:"competitor",  label:"Competitor",       icon:"⚔", desc:"Compare against a specific competitor" },
+  { id:"objection",   label:"Objection",        icon:"🛡", desc:"Handle a common objection with evidence" },
+  { id:"product",     label:"Product / Feature", icon:"◆", desc:"Deep comparison for technical buyers" },
+  { id:"industry",    label:"Industry / Vertical", icon:"🏢", desc:"Industry-specific compliance, priorities, trends" },
+  { id:"persona",     label:"Persona",          icon:"👤", desc:"Role-specific messaging and value props" },
+  { id:"winloss",     label:"Win / Lose",       icon:"📊", desc:"Why we win or lose based on past deals" },
+  { id:"ecosystem",   label:"Tech Stack",       icon:"🔗", desc:"Integration and ecosystem advantages" },
+];
+// Fields per battlecard type
+const BATTLECARD_FIELDS: Record<string, [string,string,string,number][]> = {
+  competitor: [
+    ["competitorName","Competitor Name","Who are you positioning against?",1],
+    ["website","Website","Competitor's website URL",1],
+    ["overview","Overview","What they do, who they serve, market position",3],
+    ["strengths","Their Strengths","What they do well — be honest",3],
+    ["weaknesses","Their Weaknesses","Where they fall short — your opportunity",3],
+    ["pricing","Pricing Intel","What we know about their pricing",2],
+    ["idealFor","They Win When...","Scenarios where they're the better fit",2],
+    ["landmines","Landmines","Things to avoid saying or comparing on",2],
+    ["displacementAngles","Displacement Angles","How to position against them",3],
+    ["winLossNotes","Win/Loss Notes","Why we've won or lost against them",3],
+  ],
+  objection: [
+    ["competitorName","Objection","The specific objection (e.g. 'Too expensive')",1],
+    ["overview","Why It Comes Up","Root cause — what triggers this objection",3],
+    ["displacementAngles","Approved Response","The go-to rebuttal with framing",3],
+    ["strengths","Supporting Evidence","Stats, case studies, proof that backs it up",3],
+    ["weaknesses","What NOT to Say","Responses that make it worse",2],
+    ["winLossNotes","Real Examples","Past deals where this objection came up and how it was handled",3],
+  ],
+  product: [
+    ["competitorName","Product / Feature","The specific product or feature being compared",1],
+    ["overview","Our Capability","What our product does in this area",3],
+    ["strengths","Our Advantages","Where we're stronger — specific features",3],
+    ["weaknesses","Their Advantages","Where the competitor is stronger — be honest",3],
+    ["pricing","Pricing Comparison","How pricing compares for this capability",2],
+    ["displacementAngles","Key Talking Points","What to emphasize with technical buyers",3],
+    ["landmines","Technical Gotchas","Limitations or caveats to be aware of",2],
+  ],
+  industry: [
+    ["competitorName","Industry / Vertical","e.g. Healthcare, Fintech, Manufacturing",1],
+    ["overview","Industry Context","Key trends, challenges, and priorities in this vertical",3],
+    ["strengths","Our Fit","Why our solution works well for this industry",3],
+    ["weaknesses","Compliance / Regulations","Industry-specific requirements to be aware of",3],
+    ["displacementAngles","Key Messaging","Industry-specific language and value props",3],
+    ["winLossNotes","Reference Customers","Logos, case studies, proof points in this vertical",3],
+  ],
+  persona: [
+    ["competitorName","Persona / Role","e.g. CFO, VP Engineering, IT Manager",1],
+    ["overview","Day in Their Life","What they care about, how they're measured, their priorities",3],
+    ["strengths","Value Props That Resonate","What matters most to this role",3],
+    ["weaknesses","What Doesn't Land","Messaging angles that fall flat with this persona",2],
+    ["displacementAngles","Recommended Approach","How to frame the conversation for this role",3],
+    ["landmines","Topics to Avoid","Sensitive areas for this persona",2],
+  ],
+  winloss: [
+    ["competitorName","Competitor / Scenario","Who or what scenario this covers",1],
+    ["overview","Pattern Summary","High-level win/loss trend",3],
+    ["strengths","Why We Win","Key factors when we succeed",3],
+    ["weaknesses","Why We Lose","Key factors when we fail",3],
+    ["displacementAngles","Lessons & Actions","What to do differently based on these patterns",3],
+    ["winLossNotes","Deal Examples","Specific anonymized deal stories",3],
+  ],
+  ecosystem: [
+    ["competitorName","Technology / Platform","e.g. Salesforce, Microsoft Azure, HubSpot",1],
+    ["overview","Integration Overview","How our product connects with this platform",3],
+    ["strengths","Integration Advantages","What works better than competitor integrations",3],
+    ["weaknesses","Limitations","What doesn't integrate or requires workarounds",2],
+    ["displacementAngles","Talking Points","How to position our ecosystem advantage",3],
+    ["landmines","Compatibility Issues","Known issues or version requirements",2],
+  ],
+};
+const EMPTY_BATTLECARD = (bcType = "competitor") => ({
+  id: uid(), bcType, competitorName: "", website: "", overview: "",
+  strengths: "", weaknesses: "", pricing: "", idealFor: "",
+  landmines: "", displacementAngles: "", winLossNotes: "",
+  productIds: [] as string[], createdAt: new Date().toISOString(),
+});
+
+// ─── PLAYBOOKS (per product × persona) ──────────────────────────────────────
+const OBJECTION_CATEGORIES = [
+  { id:"pricing",      label:"Pricing / Budget" },
+  { id:"timing",       label:"Timing / Priority" },
+  { id:"competitor",   label:"Competitor / Incumbent" },
+  { id:"authority",    label:"Authority / Decision Process" },
+  { id:"trust",        label:"Trust / Risk" },
+  { id:"need",         label:"Need / Relevance" },
+  { id:"technical",    label:"Technical / Integration" },
+  { id:"inertia",      label:"Inertia / Status Quo" },
+];
+const SIGNAL_TYPES = [
+  { id:"funding",      label:"Funding Round",     icon:"💰" },
+  { id:"hiring",       label:"Key Hire / Job Post",icon:"👤" },
+  { id:"tech_change",  label:"Tech Stack Change",  icon:"⚙" },
+  { id:"expansion",    label:"Expansion / New Office", icon:"🏢" },
+  { id:"leadership",   label:"Leadership Change",  icon:"👔" },
+  { id:"news",         label:"Press / News",       icon:"📰" },
+  { id:"intent",       label:"Intent Signal",      icon:"🎯" },
+  { id:"contract",     label:"Contract Renewal",   icon:"📋" },
+  { id:"pain_event",   label:"Pain Event",         icon:"⚠" },
+  { id:"other",        label:"Other",              icon:"◇" },
+];
+const EMPTY_PLAYBOOK = (productId = "", personaId = "") => ({
+  id: uid(), productId, personaId,
+  // Process
+  discoveryQuestions: "", demoTalkingPoints: "", qualificationCriteria: "",
+  meetingAgenda: "", handoffProcess: "", pricingGuidance: "",
+  closingTechniques: "", followUpCadence: "", commonScenarios: "", escalationPath: "",
+  // Objections (embedded — specific to this product × persona)
+  objections: [] as { id: string; objection: string; category: string; severity: string; rebuttal: string; proof: string; talkTrack: string }[],
+  // Signals (embedded — what triggers buying for this combo)
+  signals: [] as { id: string; signalType: string; detail: string; suggestedAction: string; priority: string }[],
+  notes: "", createdAt: new Date().toISOString(),
+});
+// Compat helpers used in fallback QS path
+const EMPTY_OBJECTION = () => ({ id: uid(), objection: "", category: "pricing", severity: "common", rebuttal: "", proof: "", talkTrack: "" });
+const EMPTY_SIGNAL = () => ({ id: uid(), signalType: "funding", detail: "", suggestedAction: "", priority: "medium" });
 
 // Persona-level analysis only — execution copy moved to Campaigns
 const OUTPUT_TABS = [
@@ -679,6 +1095,407 @@ async function callAIStream(
       console.error("callAIStream failed:", e);
     }
   }
+}
+
+// ─── COPILOT TOOL DEFINITIONS ────────────────────────────────────────────────
+const COPILOT_TOOLS = [
+  {
+    name: "update_company_fields",
+    description: "Update one or more fields on the company profile or preferences. Use this whenever the user asks to change, set, or update any company-level information. Field IDs include: co_name, co_contact_first, co_contact_last, co_contact_title, co_contact_phone, co_contact_email, co_contact_linkedin, co_login_email, co_industry, co_website, co_size, co_revenue, co_pitch, co_we_help, co_who_struggle, co_by_providing, co_unlike, co_we_uniquely, co_core_problem, co_product, co_prod_breakdown, co_category, co_competitors, co_buying_motion, co_trust_risks, co_ksp, co_diff, co_proof, co_customers, co_dream, co_outbound_maturity, co_monthly_volume, co_prev_tools, co_existing_leads, co_biggest_challenge, co_90day_goal, co_channels (array), co_num_campaigns, co_campaign_purpose, co_outcomes (array), co_deal, co_cycle, co_goal, co_timezone, co_days (array), co_start_time, co_end_time, co_past_emails, co_website_permission, co_website_urls, co_exclude, co_avoid, co_bench_reply, co_bench_interested, co_bench_bounce_max, co_bench_autoreply_max, co_bench_meeting, co_notes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fields: {
+          type: "object" as const,
+          description: "An object where keys are field IDs (e.g. co_pitch, co_industry) and values are the new values to set. For chip/multi-select fields (co_channels, co_outcomes, co_days), pass an array of strings.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "update_persona",
+    description: "Update fields on an existing persona/ICP. Use when the user wants to modify any persona field — targeting, persona details, pains, messaging, competitor intel, channel behavior, lead scoring, or notes. You must provide the persona ID (or name to look up) and the fields to change. Field IDs include: name (persona name), industries, co_sizes, geo, revenue, tech, keywords, dream_accts, neg, intent_topics, real_filters, buyer, champ, goals, fears, metrics, objections, sub_personas, pain1, pain2, gains, triggers, buying_signals_direct, buying_signals_indirect, sq_cost, friction_points, tone, hook, cta, why_client_wins, icp_proof, ref_emails, seq_strategy, seq_cta_style, current_solutions, incumbent_strengths, switching_triggers, displacement_messaging, win_loss_patterns, best_channel, best_time, linkedin_activity, phone_accessibility, email_preference, interested_criteria, warm_criteria, meeting_ready_criteria, not_now_criteria, dead_criteria, persona_notes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        persona_id: { type: "string" as const, description: "The ID of the persona to update. If unknown, use persona_name instead." },
+        persona_name: { type: "string" as const, description: "The name of the persona to look up and update. Used when persona_id is not known." },
+        fields: {
+          type: "object" as const,
+          description: "An object where keys are field IDs and values are the new values.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "create_persona",
+    description: "Create a new persona/ICP with the given fields. Use when the user asks to add a new persona or ICP.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fields: {
+          type: "object" as const,
+          description: "Initial field values. Must include 'name'. Can include any persona field IDs.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "update_product",
+    description: "Update fields on an existing product. Field IDs include: name, description, category, useCases, keyFeatures, problemsSolved, valueProposition, timeToValue, idealCustomer, marketMaturity, competitors, buyerObjections, switchTriggers, dealType ('Recurring (subscription / retainer)'|'One-Time (project / purchase)'|'Both — recurring and one-time options'), acv, mrr, contractLength, renewalRate, expansionRevenue, ltv, avgDealSize, repeatRate, referralRate, avgDaysToClose, closeRateByStage, dealStakeholders, discountAuthority, paymentTerms, proofPoints, roiMetrics, caseStudies, industryProof, socialProof, objectionRebuttals, elevatorPitch, positioningStatement, messagingDos, messagingDonts, unsolvedImpact, prod_notes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        product_id: { type: "string" as const, description: "The ID of the product to update. If unknown, use product_name instead." },
+        product_name: { type: "string" as const, description: "The name of the product to look up." },
+        fields: {
+          type: "object" as const,
+          description: "An object where keys are field IDs and values are the new values.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "create_product",
+    description: "Create a new product with the given fields. Must include 'name'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fields: {
+          type: "object" as const,
+          description: "Initial field values. Must include 'name'.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "update_campaign",
+    description: "Update fields on an existing campaign. Field IDs include: name, status, type, personaId, productId, offerId, purpose, channels (array), notes, sequence (array of steps), dailyCap, totalCap.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        campaign_id: { type: "string" as const, description: "The ID of the campaign to update. If unknown, use campaign_name." },
+        campaign_name: { type: "string" as const, description: "The name of the campaign to look up." },
+        fields: {
+          type: "object" as const,
+          description: "An object where keys are field IDs and values are the new values.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "create_campaign",
+    description: "Create a new campaign. Must include 'name'. Can include personaId, productId, type, purpose, channels, status, sequence.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fields: {
+          type: "object" as const,
+          description: "Initial field values. Must include 'name'.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "update_strategy",
+    description: "Update or replace the strategy roadmap. Pass the full strategy object or partial updates.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        strategy: {
+          type: "object" as const,
+          description: "The strategy object or partial update to merge into the existing strategy.",
+          additionalProperties: true,
+        },
+      },
+      required: ["strategy"],
+    },
+  },
+  {
+    name: "create_offer",
+    description: "Create a new offer/CTA tier for a product-persona combination. Offers define the call-to-action used in campaigns. Fields: productId, tier ('soft'|'medium'|'hard'), personaId (optional), purpose ('cold_outreach'|'retargeting'|'upsell'|'nurture'|'event'|'referral'), name, ctaText, whatTheyGet, frictionReduction.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fields: {
+          type: "object" as const,
+          description: "Offer fields. Must include 'productId' and 'tier'. Can include: name, ctaText, whatTheyGet, frictionReduction, personaId, purpose.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "update_offer",
+    description: "Update an existing offer by ID or by matching product name + tier. Fields: name, ctaText, whatTheyGet, frictionReduction, personaId, purpose, tier.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        offer_id: { type: "string" as const, description: "The ID of the offer to update." },
+        product_name: { type: "string" as const, description: "Product name to find the offer (used with tier)." },
+        tier: { type: "string" as const, description: "Offer tier: soft, medium, or hard (used with product_name)." },
+        fields: {
+          type: "object" as const,
+          description: "Fields to update on the offer.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "add_performance_log",
+    description: "Add a performance log entry with campaign metrics. Use when the user shares performance data, metrics, or results from a campaign run. Fields: icpId (persona ID), date (YYYY-MM-DD), dateTo (optional, for range), label (description), metrics object with: sent, opens, replies, posReplies, meetings, conversions, revenue. Optional tags: pain_focus, hook_type, cta_type, tone_intensity, persona_target, segment, channel. Optional notes string.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        icpId: { type: "string" as const, description: "The persona/ICP ID this log is for. Use persona_name if ID unknown." },
+        persona_name: { type: "string" as const, description: "Persona name to look up the ID." },
+        date: { type: "string" as const, description: "Date in YYYY-MM-DD format." },
+        dateTo: { type: "string" as const, description: "End date for a range (optional)." },
+        label: { type: "string" as const, description: "Description of this log entry." },
+        metrics: {
+          type: "object" as const,
+          description: "Metrics object: { sent, opens, replies, posReplies, meetings, conversions, revenue }. All numbers, use 0 for unknown.",
+          properties: {
+            sent: { type: "number" as const }, opens: { type: "number" as const },
+            replies: { type: "number" as const }, posReplies: { type: "number" as const },
+            meetings: { type: "number" as const }, conversions: { type: "number" as const },
+            revenue: { type: "number" as const },
+          },
+        },
+        tags: {
+          type: "object" as const,
+          description: "Optional tags: { pain_focus, hook_type, cta_type, tone_intensity, persona_target, segment, channel }.",
+          additionalProperties: true,
+        },
+        notes: { type: "string" as const, description: "Optional notes about this log entry." },
+      },
+      required: ["date", "label", "metrics"],
+    },
+  },
+  {
+    name: "update_roi_config",
+    description: "Update ROI calculator configuration. Fields include: currency, b2bRocketCost (monthly), mailboxes, domains, startDate, closeRate (%), acv (avg contract value), grossMargin (%), avgSalesCycle (days), prevSdrCost, prevToolsCost, replLeadDb, replOutreach, replAiContent, replEmailValid, rtsLeadValue, contactValue, interestedReplyValue, notInterestedValue.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fields: {
+          type: "object" as const,
+          description: "ROI config fields to update. Keys are field names, values are numbers or strings.",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "add_link",
+    description: "Add a reference link to the workspace. Use when the user shares a URL or asks to save a link.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string" as const, description: "Display name for the link." },
+        url: { type: "string" as const, description: "The URL." },
+        description: { type: "string" as const, description: "Optional description of what this link is for." },
+      },
+      required: ["name", "url"],
+    },
+  },
+  {
+    name: "manage_playbook",
+    description: "Create, update, or add objections/signals to a product × persona playbook. Use when the user discusses sales process, objections, buying signals, discovery questions, demo scripts, or any sales enablement content for a specific product and persona combination.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string" as const, enum: ["create", "update", "add_objection", "add_signal"], description: "'create' a new playbook, 'update' fields on existing, 'add_objection' to a playbook, 'add_signal' to a playbook" },
+        playbook_id: { type: "string" as const, description: "ID of playbook to update (for update/add_objection/add_signal)" },
+        product_name: { type: "string" as const, description: "Product name to find/create playbook for" },
+        persona_name: { type: "string" as const, description: "Persona name to find/create playbook for" },
+        fields: { type: "object" as const, description: "For create/update: discoveryQuestions, demoTalkingPoints, qualificationCriteria, meetingAgenda, handoffProcess, pricingGuidance, closingTechniques, followUpCadence, commonScenarios, escalationPath, notes. For add_objection: {objection, category, severity, rebuttal, proof, talkTrack}. For add_signal: {signalType, detail, suggestedAction, priority}.", additionalProperties: true },
+      },
+      required: ["action", "fields"],
+    },
+  },
+  {
+    name: "manage_battlecards",
+    description: "Add or update competitive battlecards. Use when the user discusses competitors, competitive positioning, or displacement strategies. Action: 'add' or 'update'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string" as const, enum: ["add", "update"], description: "'add' or 'update'" },
+        battlecard_id: { type: "string" as const, description: "ID of battlecard to update" },
+        competitor_name: { type: "string" as const, description: "Competitor name to look up (for update)" },
+        fields: { type: "object" as const, description: "Fields: competitorName, website, overview, strengths, weaknesses, pricing, idealFor, landmines, displacementAngles, winLossNotes", additionalProperties: true },
+      },
+      required: ["action", "fields"],
+    },
+  },
+  {
+    name: "manage_content_assets",
+    description: "Add or update content assets (blog posts, case studies, webinars, landing pages, etc). Use when the user mentions marketing content, assets, or resources that can be referenced in outreach sequences.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string" as const, enum: ["add", "update"], description: "'add' or 'update'" },
+        asset_id: { type: "string" as const, description: "ID of asset to update" },
+        fields: { type: "object" as const, description: "Fields: title, type (blog_post|whitepaper|case_study|webinar|landing_page|one_pager|demo_video|infographic|podcast|template|other), url, description, funnelStage (awareness|consideration|decision|retention), personaIds (array), productIds (array), tags (array)", additionalProperties: true },
+      },
+      required: ["action", "fields"],
+    },
+  },
+  {
+    name: "update_dfy_setup",
+    description: "Update the DFY (Done For You) cold outreach infrastructure setup. Use when the user wants to change domain types, quantity, forwarding domain, mailbox names/allocation, lock domains, or trigger domain generation. Fields: tlds (array of strings like '.com','.io'), domainCount (number), mailboxCount (auto-calculated as domainCount*3), forwardingDomain (string URL), mailboxNames (array of {firstName,lastName,allocation}), approvedDomains (array of domain stems to select), lockedDomains (array of domain stems to lock in).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fields: {
+          type: "object" as const,
+          description: "DFY setup fields to update. Can include: tlds (array), domainCount (number), forwardingDomain (string), mailboxNames (array of {firstName,lastName,allocation}), approvedDomains (array), lockedDomains (array).",
+          additionalProperties: true,
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "propose_form_changes",
+    description: "ALWAYS use this tool when the user pastes an implementation form, onboarding form, or bulk data that maps to multiple workspace fields. Instead of updating fields directly, this proposes changes for user review. Parse the form text and map each value to the appropriate field ID. Include ALL fields found in the form — company fields (co_name, co_industry, co_website, co_size, co_revenue, co_contact_first, co_contact_last, co_contact_title, co_contact_phone, co_contact_email, co_contact_linkedin, co_login_email, co_pitch, co_we_help, co_who_struggle, co_by_providing, co_unlike, co_we_uniquely, co_core_problem, co_product, co_ksp, co_diff, co_proof, co_customers, co_dream, co_competitors, co_category, co_prod_breakdown, co_buying_motion, co_trust_risks, co_exclude, co_avoid, co_past_emails, co_channels, co_num_campaigns, co_campaign_purpose, co_outcomes, co_deal, co_cycle, co_goal, co_timezone, co_days, co_start_time, co_end_time, co_outbound_maturity, co_monthly_volume, co_prev_tools, co_existing_leads, co_biggest_challenge, co_90day_goal, co_website_permission, co_notes, co_bench_reply, co_bench_meeting) and persona fields (industries, co_sizes, geo, buyer, pain1, keywords, neg, intent_topics). Map form data intelligently — 'Job Title / Role' → co_contact_title, 'WE HELP' → co_we_help, 'Target Industries' → persona industries field, etc.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        changes: {
+          type: "array" as const,
+          description: "Array of proposed field changes. Each entry: {field: 'co_name', label: 'Company Name', section: 'Company Profile', newVal: 'Pearl Diver'}",
+          items: {
+            type: "object" as const,
+            properties: {
+              field: { type: "string" as const, description: "The field ID (e.g. co_name, co_industry)" },
+              label: { type: "string" as const, description: "Human-readable field name" },
+              section: { type: "string" as const, description: "Which section this belongs to (Company Profile, Preferences, Persona, etc.)" },
+              newVal: { type: "string" as const, description: "The new value from the form" },
+            },
+            required: ["field", "label", "section", "newVal"],
+          },
+        },
+      },
+      required: ["changes"],
+    },
+  },
+];
+
+// Stream AI response with tool-use support, returns { text, toolCalls }
+async function callAIStreamWithTools(
+  messages: { role: string; content: any }[],
+  sys: string,
+  tokens: number,
+  tools: any[],
+  onTextChunk: (text: string) => void,
+  _retries = 5
+): Promise<{ text: string; toolCalls: { id: string; name: string; input: any }[] }> {
+  const key = getApiKey();
+  if (!key) { alert("Please enter your Anthropic API key first."); return { text: "", toolCalls: [] }; }
+  const startTime = Date.now();
+  for (let attempt = 0; attempt <= _retries; attempt++) {
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: tokens,
+          system: sys,
+          messages,
+          tools,
+          stream: true,
+        }),
+      });
+      if (r.status === 429 || r.status === 529 || r.status >= 500) {
+        const retryAfter = parseFloat(r.headers.get("retry-after") || "0");
+        const delay = Math.max(retryAfter * 1000, Math.min(1000 * Math.pow(2, attempt), 30000));
+        if (attempt < _retries) { await new Promise(ok => setTimeout(ok, delay)); continue; }
+        return { text: "", toolCalls: [] };
+      }
+      if (!r.body) return { text: "", toolCalls: [] };
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+      const toolCalls: { id: string; name: string; input: any }[] = [];
+      let currentToolId = "";
+      let currentToolName = "";
+      let currentToolJson = "";
+      let inToolUse = false;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(data);
+            if (evt.type === "content_block_start") {
+              if (evt.content_block?.type === "tool_use") {
+                inToolUse = true;
+                currentToolId = evt.content_block.id;
+                currentToolName = evt.content_block.name;
+                currentToolJson = "";
+              }
+            }
+            if (evt.type === "content_block_delta") {
+              if (evt.delta?.type === "text_delta") {
+                fullText += evt.delta.text;
+                onTextChunk(evt.delta.text);
+              }
+              if (evt.delta?.type === "input_json_delta") {
+                currentToolJson += evt.delta.partial_json;
+              }
+            }
+            if (evt.type === "content_block_stop" && inToolUse) {
+              try {
+                const input = JSON.parse(currentToolJson);
+                toolCalls.push({ id: currentToolId, name: currentToolName, input });
+              } catch { toolCalls.push({ id: currentToolId, name: currentToolName, input: {} }); }
+              inToolUse = false;
+            }
+            if (evt.type === "message_delta" && evt.usage) {
+              logApiCall(evt.usage.input_tokens||0, evt.usage.output_tokens||0, "claude-sonnet-4-stream", "copilot-tools", Date.now()-startTime);
+            }
+          } catch {}
+        }
+      }
+      return { text: fullText, toolCalls };
+    } catch (e) {
+      if (attempt < _retries) { await new Promise(ok => setTimeout(ok, 1000 * Math.pow(2, attempt))); continue; }
+      console.error("callAIStreamWithTools failed:", e);
+    }
+  }
+  return { text: "", toolCalls: [] };
 }
 
 // Fetch a web page's raw HTML via CORS proxy (tries multiple proxies)
@@ -1631,10 +2448,28 @@ const FIELD_TIME_SECONDS: Record<string, number> = {
   co_customers:240, co_dream:300,
   // Company profile — guardrails (3-5 min)
   co_past_emails:300, co_exclude:180, co_avoid:180,
-  // Product fields — moderate to deep (2-8 min each)
-  name:30, description:240, category:15, problemsSolved:420, valueProposition:480,
-  idealCustomer:300, pricingRange:60, dealCycle:60, competitors:360, switchTriggers:300,
-  proofPoints:420, caseStudies:600, socialProof:240,
+  // New company fields
+  co_contact_linkedin:30, co_size:30, co_revenue:60,
+  co_we_help:300, co_who_struggle:300, co_by_providing:180, co_unlike:240, co_we_uniquely:360, co_core_problem:480,
+  co_outbound_maturity:15, co_monthly_volume:15, co_prev_tools:60, co_existing_leads:15, co_biggest_challenge:180, co_90day_goal:180,
+  co_website_permission:10, co_website_urls:30,
+  // Product fields
+  unsolvedImpact:300,
+  // Benchmarks & notes (1-3 min each)
+  co_bench_reply:60, co_bench_interested:60, co_bench_bounce_max:60, co_bench_autoreply_max:60, co_bench_meeting:60, co_notes:180,
+  // Product fields — core (2-8 min each)
+  name:30, description:240, category:15, useCases:360, keyFeatures:420, problemsSolved:420,
+  valueProposition:480, timeToValue:180,
+  // Product fields — market fit
+  idealCustomer:300, marketMaturity:60, competitors:360, buyerObjections:420, switchTriggers:300,
+  // Product fields — commercials (2-5 min each)
+  dealType:30, acv:120, mrr:60, contractLength:30, renewalRate:120, expansionRevenue:180,
+  ltv:180, avgDealSize:120, repeatRate:120, referralRate:120, avgDaysToClose:120,
+  closeRateByStage:300, dealStakeholders:240, discountAuthority:300, paymentTerms:180,
+  // Product fields — proof & evidence
+  proofPoints:420, roiMetrics:360, caseStudies:600, industryProof:480, socialProof:240, objectionRebuttals:480,
+  // Product fields — positioning & messaging
+  elevatorPitch:300, positioningStatement:360, messagingDos:240, messagingDonts:240,
   // Offer fields (2-5 min each)
   ctaText:300, whatTheyGet:180, frictionReduction:240,
   // Persona — targeting (1-5 min each)
@@ -1663,15 +2498,16 @@ function calcTimeSaved(filledFieldIds: string[]): number {
 }
 
 const QS_STEPS = [
-  { id:"fetch",     label:"Fetching Website",          icon:"◎", desc:"Fetching homepage, sitemaps, and product pages", color:"#6C5CE7" },
-  { id:"company",   label:"Company Profile",           icon:"◉", desc:"Extracting industry, value prop, competitors, proof points", color:"#54A0FF" },
-  { id:"research",  label:"Research Brief",            icon:"◈", desc:"Identifying products, personas, and market fit", color:"#00D68F" },
-  { id:"review",    label:"Review & Select",           icon:"◇", desc:"Choose which products and personas to create", color:"#FFC048" },
-  { id:"products",  label:"Creating Products",         icon:"◆", desc:"Building detailed product profiles", color:"#FF6B6B" },
-  { id:"personas",  label:"Creating Personas",         icon:"◆", desc:"Building persona profiles with targeting data", color:"#E84393" },
-  { id:"offers",    label:"Generating Offers",         icon:"◆", desc:"Creating offer CTAs for each product × persona", color:"#FFC048" },
-  { id:"guardrails",label:"Setting Guardrails",        icon:"◆", desc:"Exclude lists and messaging rules", color:"#54A0FF" },
-  { id:"validate",  label:"Finalizing",                icon:"○", desc:"Cross-linking and validating everything", color:"#00D68F" },
+  { id:"fetch",       label:"Fetching Website",          icon:"◎", desc:"Fetching homepage, sitemaps, and product pages", color:"#6C5CE7" },
+  { id:"company",     label:"Company Profile",           icon:"◉", desc:"Extracting industry, value prop, competitors, proof points", color:"#54A0FF" },
+  { id:"research",    label:"Research Brief",            icon:"◈", desc:"Identifying products, personas, and market fit", color:"#00D68F" },
+  { id:"review",      label:"Review & Select",           icon:"◇", desc:"Choose which products and personas to create", color:"#FFC048" },
+  { id:"products",    label:"Creating Products",         icon:"◆", desc:"Building detailed product profiles with positioning", color:"#FF6B6B" },
+  { id:"personas",    label:"Creating Personas",         icon:"◆", desc:"Building persona profiles with targeting data", color:"#E84393" },
+  { id:"offers",      label:"Generating Offers",         icon:"◆", desc:"Creating offer CTAs for each product × persona", color:"#FFC048" },
+  { id:"intelligence",label:"Building Intelligence",     icon:"⚔", desc:"Battlecards, objections, signals, and playbook", color:"#54A0FF" },
+  { id:"guardrails",  label:"Setting Guardrails",        icon:"◆", desc:"Exclude lists and messaging rules", color:"#6C5CE7" },
+  { id:"validate",    label:"Finalizing",                icon:"○", desc:"Cross-linking and validating everything", color:"#00D68F" },
 ];
 
 function QuickStartProgress({ currentStep, stepResults, onBack }: {
@@ -1996,10 +2832,11 @@ function ResearchBriefReview({ brief, onConfirm, onBack, onRevise }: {
   );
 }
 
-function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingFiles = [], onProgress, onBriefReady }: {
+function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingFiles = [], onProgress, onBriefReady, inline = false }: {
   onComplete: (r:any)=>void; onClose:()=>void; addToast:(t:any)=>string; updateToast:(id:string,p:any)=>void;
   existingFiles?: any[]; onProgress?: (step:number, results:Record<string,string>)=>void;
   onBriefReady?: (coFields:any, coConf:any, context:string, brief:any, phaseAResults?:Record<string,string>)=>void;
+  inline?: boolean;
 }) {
   const [url,      setUrl]     = useState("");
   const [extraUrls, setExtraUrls] = useState("");
@@ -2157,10 +2994,16 @@ CRITICAL RULES:
 - co_exclude and co_avoid: infer sensible defaults based on the company's type and segment.
 
 Return ONLY JSON:
-{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":"","co_bench_reply":"3","co_bench_interested":"1","co_bench_bounce_max":"3","co_bench_autoreply_max":"30","co_bench_meeting":"0.5"},
-"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
-Do NOT generate fields for: contact info (first name, last name, phone, email, login email), channels, outcomes, timezone, days, start/end time, num_campaigns, campaign_purpose. Those are filled manually.
-DO fill: co_deal (pick from options), co_cycle (pick from options), co_exclude (infer from context), co_avoid (infer messaging risks), co_bench_* (estimate based on industry/deal size).
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_size":"","co_revenue":"","co_pitch":"","co_we_help":"","co_who_struggle":"","co_by_providing":"","co_unlike":"","co_we_uniquely":"","co_core_problem":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":"","co_bench_reply":"3","co_bench_interested":"1","co_bench_bounce_max":"3","co_bench_autoreply_max":"30","co_bench_meeting":"0.5"},
+"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_size":0,"co_revenue":0,"co_pitch":0,"co_we_help":0,"co_who_struggle":0,"co_by_providing":0,"co_unlike":0,"co_we_uniquely":0,"co_core_problem":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
+Do NOT generate fields for: contact info (first name, last name, phone, email, linkedin, login email), channels, outcomes, timezone, days, start/end time, num_campaigns, campaign_purpose, outbound maturity, monthly volume, previous tools, existing leads, biggest challenge, 90-day goal, website permission. Those are filled manually.
+DO fill: co_size (pick from options), co_revenue (estimate), co_deal (pick from options), co_cycle (pick from options), co_exclude (infer from context), co_avoid (infer messaging risks), co_bench_* (estimate based on industry/deal size).
+co_we_help: the specific audience they serve
+co_who_struggle: the specific problem that audience faces
+co_by_providing: their solution in one line
+co_unlike: who they position against
+co_we_uniquely: their one true differentiator
+co_core_problem: the core problem they solve — focus on buyer pain, not the solution
 co_pitch: full value proposition, not just a one-liner
 co_ksp: key selling points — unique benefits that make the product stand out
 co_prod_breakdown: structured product/service decomposition — for each product: who buys it, pains, gains, triggers, signals, objections, positioning
@@ -2239,15 +3082,12 @@ Return ONLY valid JSON:
     let products: any[] = [];
     try {
       const prodRaw = await callAI(
-        `Analyze this company and identify ALL distinct products/services they offer.\n\n${NAMING_RULES.product}\n\nCompany: ${JSON.stringify(coFields)}\nRaw sources: ${context.slice(0,12000)}\n\nIMPORTANT: Look for products mentioned on sub-pages (about, products, services, solutions, pricing) — not just the homepage. Companies often bury product details in inner pages.\n\nFor each product/service, provide ALL of these fields (never leave empty):\n- name: product/service name\n- description: what it is, how it works\n- category: Software|Platform|Service|Hardware|Consulting|Other\n- problemsSolved: specific problems it solves (be concrete)\n- valueProposition: why buy this vs alternatives\n- idealCustomer: who is the perfect buyer (industry, role, company size)\n- pricingRange: approximate deal size\n- competitors: who they compete with for this specific product\n- proofPoints: best evidence it works\n- switchTriggers: what makes someone switch to this from their current solution\n\nReturn ONLY valid JSON array.`, "", 3000);
+        `Analyze this company and identify ALL distinct products/services they offer.\n\n${NAMING_RULES.product}\n\nCompany: ${JSON.stringify(coFields)}\nRaw sources: ${context.slice(0,12000)}\n\nIMPORTANT: Look for products mentioned on sub-pages (about, products, services, solutions, pricing) — not just the homepage.\n\nFor each product/service, provide ALL of these fields (never leave empty):\n- name, description, category (Software|Platform|Service|Hardware|Consulting|Other)\n- useCases, keyFeatures, problemsSolved, valueProposition, timeToValue\n- idealCustomer, marketMaturity, competitors, buyerObjections, switchTriggers\n- dealType (Recurring/One-Time/Both), acv, mrr, contractLength, renewalRate, expansionRevenue, ltv, avgDealSize, repeatRate, referralRate\n- avgDaysToClose, closeRateByStage, dealStakeholders, discountAuthority, paymentTerms\n- proofPoints, roiMetrics, caseStudies, industryProof, socialProof, objectionRebuttals, unsolvedImpact\n- elevatorPitch, positioningStatement, messagingDos, messagingDonts\n\nunsolvedImpact: what happens if the customer does nothing — the cost of inaction (lost revenue, competitive disadvantage, scaling limits)\nFor dealType: infer from context (SaaS = recurring, project-based = one-time). Fill relevant commercial fields, leave irrelevant ones empty.\n\nReturn ONLY valid JSON array.`, "", 5000);
       const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
       if (Array.isArray(parsed)) {
         products = parsed.map((p: any) => ({
-          id: uid(), name:p.name||"", description:p.description||"", category:p.category||"Other",
-          problemsSolved:p.problemsSolved||"", valueProposition:p.valueProposition||"",
-          idealCustomer:p.idealCustomer||"", pricingRange:p.pricingRange||"",
-          competitors:p.competitors||"", proofPoints:p.proofPoints||"",
-          caseStudies:"", socialProof:"", dealCycle:"", switchTriggers:p.switchTriggers||"",
+          id: uid(), ...Object.fromEntries(PRODUCT_FIELDS.map((f:any)=>[f.id, p[f.id]||""])),
+          name:p.name||"", description:p.description||"", category:p.category||"Other",
           createdAt:new Date().toISOString(),
         }));
       }
@@ -2364,8 +3204,41 @@ Raw JSON only.`, "", 2000);
     const guardFieldCount = guardFilledKeys.length;
     const guardTimeSaved = calcTimeSaved(guardFilledKeys);
     _totalFields += guardFieldCount; _totalSeconds += guardTimeSaved;
-    _progress(7, "guardrails", `${guardFieldCount}`);
-    updateToast(toastId, { message:"Validating & finalizing…", step:7, totalSteps:7 });
+    // ── Step 7: Build Intelligence ──
+    _progress(7);
+    let fbBattlecards: any[] = [], fbPlaybooks: any[] = [], fbContentAssets: any[] = [];
+    try {
+      const intelRaw = await callAI(
+        `Generate competitive intelligence for: ${coFields.co_name||""} (${coFields.co_industry||""}).
+Products: ${products.map((p:any)=>p.name).join(", ")||"general"}
+Personas: ${icps.map((p:any)=>p.name).join(", ")||"general"}
+Competitors: ${coFields.co_competitors||"unknown"}
+
+Return ONLY JSON:
+{"battlecards":[{"competitorName":"","overview":"","strengths":"","weaknesses":"","displacementAngles":"","landmines":""}],
+"objections":[{"objection":"","category":"pricing|timing|competitor|authority|trust|need|technical|inertia","severity":"critical|common|occasional","rebuttal":"","proof":"","talkTrack":""}],
+"playbook":{"handoffProcess":"","discoveryFramework":"","qualificationCriteria":"","pricingGuidance":"","closingTechniques":"","followUpCadence":"","commonScenarios":""},
+"contentAssets":[{"title":"","type":"blog_post|case_study|webinar|one_pager","description":"","funnelStage":"awareness|consideration|decision"}]}
+
+Generate: 2-3 battlecards, 5-8 objections, full playbook, 4-6 content suggestions. Be specific.`,
+        "", 3500
+      );
+      const intel = JSON.parse(intelRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+      if (intel.battlecards?.length) { fbBattlecards = intel.battlecards.map((bc:any) => ({ ...EMPTY_BATTLECARD(), ...bc })); _totalFields += fbBattlecards.length * 6; _totalSeconds += fbBattlecards.length * 600; }
+      if (intel.playbooks?.length) {
+        fbPlaybooks = intel.playbooks.map((pb:any) => {
+          const objs = (pb.objections||[]).map((o:any) => ({ ...EMPTY_OBJECTION(), ...o }));
+          const sigs = (pb.signals||[]).map((s:any) => ({ ...EMPTY_SIGNAL(), ...s }));
+          return { ...EMPTY_PLAYBOOK(pb.productId||"", pb.personaId||""), ...pb, objections: objs, signals: sigs };
+        });
+        _totalFields += fbPlaybooks.length * 10; _totalSeconds += fbPlaybooks.length * 900;
+      }
+      if (intel.contentAssets?.length) { fbContentAssets = intel.contentAssets.map((c:any) => ({ ...EMPTY_CONTENT_ASSET(), ...c })); _totalFields += fbContentAssets.length * 3; _totalSeconds += fbContentAssets.length * 180; }
+    } catch (e) { console.warn("Fallback intelligence failed:", e); }
+    _progress(7, "intelligence", `${fbBattlecards.length + fbPlaybooks.length}`);
+
+    _progress(8, "guardrails", `${guardFieldCount}`);
+    updateToast(toastId, { message:"Validating & finalizing…", step:9, totalSteps:10 });
     // Ensure all product IDs are valid in offers
     offers = offers.filter(o => products.some((p:any) => p.id === o.productId));
     // Ensure persona links are valid
@@ -2376,36 +3249,25 @@ Raw JSON only.`, "", 2000);
 
     const totalHours = Math.floor(_totalSeconds / 3600);
     const totalMins = Math.round((_totalSeconds % 3600) / 60);
-    _progress(8, "validate", `${_totalFields}`);
+    _progress(9, "validate", `${_totalFields}`);
 
-    const result = { coFields, coConf, icps, products, offers };
+    // Collect source URLs to auto-create links in Knowledge Center
+    const sourceUrls: {name:string;url:string;description:string}[] = [];
+    if (normalizedUrl) sourceUrls.push({ name: coFields.co_name || "Company Website", url: normalizedUrl, description: "Main website — source for Quick Start" });
+    if (linkedin) sourceUrls.push({ name: `${coFields.co_name || "Company"} LinkedIn`, url: linkedin, description: "LinkedIn company page" });
+    if (extraUrls.trim()) {
+      extraUrls.split("\n").map(u=>u.trim()).filter(u=>u.startsWith("http")).forEach(u => {
+        sourceUrls.push({ name: u.split("/").filter(Boolean).pop() || "Page", url: u, description: "Additional page provided during Quick Start" });
+      });
+    }
+    const result = { coFields, coConf, icps, products, offers, battlecards: fbBattlecards, playbooks: fbPlaybooks, contentAssets: fbContentAssets, sourceUrls };
     onComplete(result);
     addToast({ status:"success", title:"Quick Start complete",
       message:`${products.length} products · ${offers.length} offers · ${icps.length} persona${icps.length!==1?"s":""}` });
   };
 
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:300,
-      display:"flex", alignItems:"center", justifyContent:"center",
-      padding:24, backdropFilter:"blur(6px)", overflowY:"auto" }}>
-      <div style={{ width:"100%", maxWidth:560, background:C.canvas, borderRadius:14,
-        border:`1px solid ${C.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.2)",
-        animation:"slideUp .3s cubic-bezier(.2,0,.1,1)" }}>
-
-        {/* Header */}
-        <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${C.border}`,
-          display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{ width:38, height:38, borderRadius:10, background:C.accentLo,
-            border:`1px solid ${C.accentBorder}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>⚡</div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:16, fontWeight:700, color:C.text, fontFamily:head }}>Quick Start</div>
-            <div style={{ fontSize:12, color:C.muted, fontFamily:body, marginTop:1 }}>AI pre-fills company profile + drafts ICP segments from your sources</div>
-          </div>
-          <button onClick={onClose} style={{ padding:"6px 10px", borderRadius:6,
-            border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:12, cursor:"pointer" }}>✕</button>
-        </div>
-
-        <div style={{ padding:"20px 24px" }}>
+  const formContent = (
+        <div style={{ padding: inline ? 0 : "20px 24px" }}>
           <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
               <div>
@@ -2534,6 +3396,30 @@ Raw JSON only.`, "", 2000);
             </button>
           </div>
         </div>
+  );
+
+  if (inline) return formContent;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.5)", zIndex:300,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      padding:24, backdropFilter:"blur(6px)", overflowY:"auto" }}>
+      <div style={{ width:"100%", maxWidth:560, background:C.canvas, borderRadius:14,
+        border:`1px solid ${C.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.2)",
+        animation:"slideUp .3s cubic-bezier(.2,0,.1,1)" }}>
+        {/* Header */}
+        <div style={{ padding:"20px 24px 16px", borderBottom:`1px solid ${C.border}`,
+          display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ width:38, height:38, borderRadius:10, background:C.accentLo,
+            border:`1px solid ${C.accentBorder}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>⚡</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:16, fontWeight:700, color:C.text, fontFamily:head }}>Quick Start</div>
+            <div style={{ fontSize:12, color:C.muted, fontFamily:body, marginTop:1 }}>AI pre-fills company profile + drafts ICP segments from your sources</div>
+          </div>
+          <button onClick={onClose} style={{ padding:"6px 10px", borderRadius:6,
+            border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:12, cursor:"pointer" }}>✕</button>
+        </div>
+        <div style={{ padding:"20px 24px" }}>{formContent}</div>
       </div>
     </div>
   );
@@ -2636,11 +3522,11 @@ Based on ALL the extracted data, infer the company profile. Key approach:
 - COMBINE all signals to build the most complete picture possible.
 
 Return ONLY JSON:
-{"fields":{"co_name":"","co_industry":"","co_website":"","co_pitch":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":"","co_bench_reply":"3","co_bench_interested":"1","co_bench_bounce_max":"3","co_bench_autoreply_max":"30","co_bench_meeting":"0.5"},
-"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_size":"","co_revenue":"","co_pitch":"","co_we_help":"","co_who_struggle":"","co_by_providing":"","co_unlike":"","co_we_uniquely":"","co_core_problem":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":"","co_bench_reply":"3","co_bench_interested":"1","co_bench_bounce_max":"3","co_bench_autoreply_max":"30","co_bench_meeting":"0.5"},
+"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_size":0,"co_revenue":0,"co_pitch":0,"co_we_help":0,"co_who_struggle":0,"co_by_providing":0,"co_unlike":0,"co_we_uniquely":0,"co_core_problem":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
 
 Set confidence based on how clearly the info is visible in the screenshots (90+ = directly visible, 60-89 = strongly inferred, 30-59 = educated guess).
-Raw JSON only.`, "", 2000);
+Raw JSON only.`, "", 2500);
 
     let coFields: any = {}, coConf: any = {};
     try {
@@ -4843,8 +5729,9 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
 
   const bulkFillProducts = async () => {
     const incomplete = products.filter(p => {
-      const filled = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
-      return filled < PRODUCT_FIELDS.length && p.name;
+      const vf = getVisibleProductFields(p);
+      const filled = vf.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length;
+      return filled < vf.length && p.name;
     });
     if (!incomplete.length) { addToast({ title:"All products complete", status:"success", message:"Nothing to fill" }); return; }
     setBulkFilling(true);
@@ -4888,8 +5775,8 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
     addToast({ title:"Creating product…", status:"loading", message:"AI is building the product profile" });
     try {
       const result = await callAI(
-        `Create a detailed B2B product/service profile based on this description.\n\n${NAMING_RULES.product}\n\nDescription: ${addDesc||"(not provided)"}\nURL: ${addUrl||"(not provided)"}\nCompany: ${(companyData as any)?.co_name||""} (${(companyData as any)?.co_industry||""})\nCompany context: ${JSON.stringify(companyData)}\n${fileContext ? `Files:\n${fileContext}` : ""}\n\nFill ALL fields — never leave empty. Make confident inferences where needed.\n\nReturn ONLY valid JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","problemsSolved":"","valueProposition":"","idealCustomer":"","pricingRange":"","competitors":"","proofPoints":"","switchTriggers":"","dealCycle":"","caseStudies":"","socialProof":""}`,
-        "Return only valid JSON.", 1200
+        `Create a detailed B2B product/service profile based on this description. Fill EVERY field — no empty values.\n\n${NAMING_RULES.product}\n\nDescription: ${addDesc||"(not provided)"}\nURL: ${addUrl||"(not provided)"}\nCompany: ${(companyData as any)?.co_name||""} (${(companyData as any)?.co_industry||""})\nCompany context: ${JSON.stringify(companyData)}\n${fileContext ? `Files:\n${fileContext}` : ""}\n\nReturn ONLY valid JSON with ALL these fields:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both","acv":"","mrr":"","contractLength":"","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}\n\nunsolvedImpact: what happens if the customer does nothing.\nFor dealType: infer from context. Fill relevant commercial fields only — leave the other type empty.`,
+        "Return only valid JSON.", 3000
       );
       const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(cleaned);
@@ -4983,8 +5870,9 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
   };
 
   const sec = PRODUCT_SECTIONS[secTab as keyof typeof PRODUCT_SECTIONS];
-  const filled = selected ? PRODUCT_FIELDS.filter(f => selected[f.id] && String(selected[f.id]).trim()).length : 0;
-  const pct = PRODUCT_FIELDS.length > 0 ? Math.round(filled / PRODUCT_FIELDS.length * 100) : 0;
+  const visibleFields = selected ? getVisibleProductFields(selected) : PRODUCT_FIELDS;
+  const filled = selected ? visibleFields.filter((f: any) => selected[f.id] && String(selected[f.id]).trim()).length : 0;
+  const pct = visibleFields.length > 0 ? Math.round(filled / visibleFields.length * 100) : 0;
 
   const inputSt: any = { padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
     background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, outline:"none",
@@ -5075,9 +5963,17 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
               padding:"14px 8px", overflowY:"auto" }}>
               {secKeys.map(key => {
                 const s = PRODUCT_SECTIONS[key as keyof typeof PRODUCT_SECTIONS];
-                const sf = s.fields.filter(f => selected[f.id] && String(selected[f.id]).trim()).length;
+                const visF = s.fields.filter((f:any) => {
+                  if (!f.showWhen) return true;
+                  const dt = (selected?.dealType || "").toLowerCase();
+                  if (dt.includes("both")) return true;
+                  if (f.showWhen === "recurring") return dt.includes("recurring") || !dt;
+                  if (f.showWhen === "onetime") return dt.includes("one-time") || !dt;
+                  return true;
+                });
+                const sf = visF.filter((f:any) => selected[f.id] && String(selected[f.id]).trim()).length;
                 const on = secTab === key;
-                const allDone = sf === s.fields.length;
+                const allDone = sf === visF.length;
                 return (
                   <button key={key} onClick={()=>setSecTab(key)}
                     style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px",
@@ -5091,7 +5987,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
                       color:allDone?_C.green:on?_C.accent:_C.muted,
                       background:allDone?_C.greenLo:on?`${_C.accent}11`:_C.canvas,
                       padding:"2px 7px", borderRadius:6 }}>
-                      {allDone?"Done":`${sf}/${s.fields.length}`}
+                      {allDone?"Done":`${sf}/${visF.length}`}
                     </span>
                   </button>
                 );
@@ -5109,7 +6005,18 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
               </div>
               <div style={{ display:"flex", flexDirection:"column", gap:18,
                 animation:"contentFade .35s cubic-bezier(0.16, 1, 0.3, 1)" }} key={secTab}>
-                {sec.fields.map(f => {
+                {sec.fields.filter(f => {
+                  // Filter commercial fields based on dealType
+                  if (!f.showWhen) return true;
+                  const dt = (selected.dealType || "").toLowerCase();
+                  const isRecurring = dt.includes("recurring");
+                  const isOneTime = dt.includes("one-time");
+                  const isBoth = dt.includes("both");
+                  if (isBoth) return true;
+                  if (f.showWhen === "recurring") return isRecurring || !dt;
+                  if (f.showWhen === "onetime") return isOneTime || !dt;
+                  return true;
+                }).map(f => {
                   const val = selected[f.id] || "";
                   return (
                     <div key={f.id}>
@@ -5165,7 +6072,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
               </p>
             </div>
             <div style={{ display:"flex", gap:8 }}>
-              {products.some(p => { const f = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length; return f < PRODUCT_FIELDS.length && p.name; }) && (
+              {products.some(p => { const vf = getVisibleProductFields(p); const f = vf.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length; return f < vf.length && p.name; }) && (
                 <button onClick={bulkFillProducts} disabled={bulkFilling}
                   style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
                     color:_C.green, fontSize:12, fontFamily:head, fontWeight:600,
@@ -5208,8 +6115,9 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
             /* Product cards grid */
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12, paddingBottom:24 }}>
               {products.map((p, i) => {
-                const pFilled = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
-                const pPct = Math.round(pFilled / PRODUCT_FIELDS.length * 100);
+                const visF = getVisibleProductFields(p);
+                const pFilled = visF.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length;
+                const pPct = Math.round(pFilled / visF.length * 100);
                 return (
                   <div key={p.id} onClick={()=>{ setSelectedId(p.id); setSecTab("core"); }}
                     style={{ background:_C.canvas, borderRadius:12, borderLeft:`3px solid ${_C.accent}`,
@@ -6964,27 +7872,12 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
     upd(fieldId, opt.text); onConfChange?.(fieldId, opt.conf); onConfLock?.(fieldId, true);
   };
 
-  const secKeys = ["client","business"];
-  const sec = COMPANY_SECTIONS[secTab];
+  const ALL_SECTIONS = { ...COMPANY_SECTIONS, ...PREFERENCES_SECTIONS };
+  const secKeys = [...Object.keys(COMPANY_SECTIONS), ...Object.keys(PREFERENCES_SECTIONS)];
+  const sec = ALL_SECTIONS[secTab];
   const secFill = sec?.fields.filter((f: any) => fieldFilled(f, data[f.id])).length ?? 0;
 
-  // Card-stack animation state
-  const [leavingTab, setLeavingTab] = useState<string|null>(null);
-  const [incomingTab, setIncomingTab] = useState<string|null>(null);
-  const [isSwapping, setIsSwapping] = useState(false);
-  const [leavingBehind, setLeavingBehind] = useState(false); // true once card should be behind
-  const swapTab = (newTab: string) => {
-    if (newTab === secTab || isSwapping) return;
-    setLeavingTab(secTab);
-    setIncomingTab(newTab);
-    setIsSwapping(true);
-    setLeavingBehind(false);
-    // Phase 1: card lifts and flips out in 3D (stays on top)
-    // Phase 2: at midpoint the card passes behind via z-index swap
-    setTimeout(() => { setLeavingBehind(true); }, 600);
-    setTimeout(() => { setSecTab(newTab); }, 650);
-    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); setIncomingTab(null); setLeavingBehind(false); }, 1400);
-  };
+  const swapTab = (newTab: string) => { setSecTab(newTab); };
 
   return (
     <div style={{ display:"flex", height:"100%", overflow:"hidden", borderRadius:16, border:`1px solid ${C2.border}`,
@@ -6992,7 +7885,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
       {/* Section nav */}
       <div style={{ width:220, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
         {secKeys.map(key => {
-          const s = COMPANY_SECTIONS[key];
+          const s = ALL_SECTIONS[key];
           if (!s) return null;
           const gf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
           const on = secTab === key;
@@ -7016,45 +7909,20 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
         })}
       </div>
 
-      {/* Fields — card stack (all sections always rendered, stacked) */}
-      <div style={{ flex:1, position:"relative" as const, overflow: isSwapping ? "visible" : "hidden", minHeight:0, perspective:"1800px", perspectiveOrigin:"70% 50%" }}>
+      {/* Fields */}
+      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0 }}>
         {secKeys.map(key => {
-          const s = COMPANY_SECTIONS[key];
+          const s = ALL_SECTIONS[key];
           if (!s) return null;
           const isActive = secTab === key;
-          const isLeaving = leavingTab === key;
-          const isIncoming = incomingTab === key;
-          const isVisible = isActive || isLeaving || isIncoming;
+          if (!isActive) return null;
           const sf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
-
-          // Leaving card starts on top, then drops behind at midpoint via state
-          const z = isLeaving
-            ? (leavingBehind ? 1 : 15)
-            : (isActive || isIncoming) ? 10 : 1;
 
           return (
             <div key={key} style={{
               position:"absolute" as const, inset:0, padding:"28px 32px",
-              overflowY: isActive && !isSwapping ? "auto" : "hidden",
+              overflowY: "auto",
               background: C2.canvas,
-              borderRadius:4,
-              transformStyle:"preserve-3d" as const,
-              backfaceVisibility:"hidden" as const,
-              transformOrigin: isLeaving ? "right center" : isIncoming ? "left center" : "center center",
-              willChange:"transform" as const,
-              boxShadow: isVisible ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "none",
-              zIndex: z,
-              transform: isLeaving ? undefined
-                : isIncoming ? undefined
-                : isActive ? "translateZ(0px) scale(1)"
-                : "translateZ(-30px) scale(0.97) translateY(8px)",
-              transition: (!isLeaving && !isIncoming) ? "transform .7s ease-in-out, box-shadow .7s ease" : undefined,
-              animation: isLeaving ? "cardFlipBehind 1.3s ease-in-out forwards"
-                : isIncoming ? "cardRiseUp 1.3s ease-in-out forwards"
-                : undefined,
-              pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
-              // Hide non-participating cards completely
-              visibility: isVisible ? "visible" as const : "hidden" as const,
             }}>
               <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
@@ -7104,19 +7972,7 @@ function PreferencesPanel({ data, onChange }: { data: any; onChange: (d: any) =>
   const secKeys = Object.keys(PREFERENCES_SECTIONS);
   const sec = PREFERENCES_SECTIONS[secTab];
 
-  const [leavingTab, setLeavingTab] = useState<string|null>(null);
-  const [incomingTab, setIncomingTab] = useState<string|null>(null);
-  const [isSwapping, setIsSwapping] = useState(false);
-  const [leavingBehind, setLeavingBehind] = useState(false);
   const swapTab = (newTab: string) => {
-    if (newTab === secTab || isSwapping) return;
-    setLeavingTab(secTab);
-    setIncomingTab(newTab);
-    setIsSwapping(true);
-    setLeavingBehind(false);
-    setTimeout(() => { setLeavingBehind(true); }, 600);
-    setTimeout(() => { setSecTab(newTab); }, 650);
-    setTimeout(() => { setIsSwapping(false); setLeavingTab(null); setIncomingTab(null); setLeavingBehind(false); }, 1400);
   };
 
   return (
@@ -7149,43 +8005,20 @@ function PreferencesPanel({ data, onChange }: { data: any; onChange: (d: any) =>
         })}
       </div>
 
-      {/* Fields — card stack */}
-      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0, perspective:"1800px", perspectiveOrigin:"70% 50%" }}>
+      {/* Fields */}
+      <div style={{ flex:1, position:"relative" as const, overflow:"hidden", minHeight:0 }}>
         {secKeys.map(key => {
           const s = PREFERENCES_SECTIONS[key];
           if (!s) return null;
           const isActive = secTab === key;
-          const isLeaving = leavingTab === key;
-          const isIncoming = incomingTab === key;
-          const isVisible = isActive || isLeaving || isIncoming;
+          if (!isActive) return null;
           const sf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
-
-          const z = isLeaving
-            ? (leavingBehind ? 1 : 15)
-            : (isActive || isIncoming) ? 10 : 1;
 
           return (
             <div key={key} style={{
               position:"absolute" as const, inset:0, padding:"28px 32px",
-              overflowY: isActive && !isSwapping ? "auto" : "hidden",
+              overflowY: "auto",
               background: C2.canvas,
-              borderRadius:4,
-              transformStyle:"preserve-3d" as const,
-              backfaceVisibility:"hidden" as const,
-              transformOrigin: isLeaving ? "right center" : isIncoming ? "left center" : "center center",
-              willChange:"transform" as const,
-              boxShadow: isVisible ? "0 8px 32px rgba(45,52,54,.10), 0 2px 8px rgba(45,52,54,.06)" : "none",
-              zIndex: z,
-              transform: isLeaving ? undefined
-                : isIncoming ? undefined
-                : isActive ? "translateZ(0px) scale(1)"
-                : "translateZ(-30px) scale(0.97) translateY(8px)",
-              transition: (!isLeaving && !isIncoming) ? "transform .7s ease-in-out, box-shadow .7s ease" : undefined,
-              animation: isLeaving ? "cardFlipBehind 1.3s ease-in-out forwards"
-                : isIncoming ? "cardRiseUp 1.3s ease-in-out forwards"
-                : undefined,
-              pointerEvents: isActive && !isSwapping ? "auto" as const : "none" as const,
-              visibility: isVisible ? "visible" as const : "hidden" as const,
             }}>
               <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
@@ -7815,7 +8648,7 @@ For percentages with raw counts shown (e.g. "45% (450 opens)"), use the raw coun
 }
 
 // ─── STRATEGY AI CHAT ─────────────────────────────────────────────────────────
-function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [], products: any[] = [], campaigns: any[] = [], strategy: any = null): string {
+function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [], products: any[] = [], campaigns: any[] = [], strategy: any = null, playbooks: any[] = [], battlecards: any[] = [], contentAssets: any[] = [], dfySetup: any = null, callRecords: any[] = []): string {
   const cd = companyData as Record<string, string>;
   const lines: string[] = [];
   lines.push("## COMPANY PROFILE");
@@ -7823,15 +8656,30 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
     ["Company",          cd.co_name],
     ["Industry",         cd.co_industry],
     ["Website",          cd.co_website],
+    ["Company Size",     cd.co_size],
+    ["Revenue/MRR",      cd.co_revenue],
     ["Pitch",            cd.co_pitch],
+    ["We Help",          cd.co_we_help],
+    ["Who Struggle With",cd.co_who_struggle],
+    ["By Providing",     cd.co_by_providing],
+    ["Unlike",           cd.co_unlike],
+    ["We Uniquely",      cd.co_we_uniquely],
+    ["Core Problem",     cd.co_core_problem],
     ["Product/Service",  cd.co_product],
     ["Differentiation",  cd.co_diff],
     ["Social Proof",     cd.co_proof],
     ["Avg Deal Size",    cd.co_deal],
     ["Sales Cycle",      cd.co_cycle],
     ["Goal",             cd.co_goal],
+    ["90-Day Goal",      cd.co_90day_goal],
+    ["Outbound Maturity",cd.co_outbound_maturity],
+    ["Monthly Volume",   cd.co_monthly_volume],
+    ["Previous Tools",   cd.co_prev_tools],
+    ["Existing Leads",   cd.co_existing_leads],
+    ["Biggest Challenge",cd.co_biggest_challenge],
     ["Exclude",          cd.co_exclude],
     ["Avoid messaging",  cd.co_avoid],
+    ["Website Permission",cd.co_website_permission],
     ["Additional Notes", cd.co_notes],
   ].forEach(([label, val]) => { if (val) lines.push(`${label}: ${val}`); });
 
@@ -7858,13 +8706,30 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
     lines.push("No products defined yet.");
   } else {
     products.forEach((p, idx) => {
-      const filled = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
-      lines.push(`\n### Product ${idx+1}: ${p.name || "Unnamed"} (${Math.round(filled/PRODUCT_FIELDS.length*100)}% complete)`);
+      const vpf = getVisibleProductFields(p);
+      const filled = vpf.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length;
+      lines.push(`\n### Product ${idx+1}: ${p.name || "Unnamed"} (${Math.round(filled/vpf.length*100)}% complete)`);
       [
         ["Description", p.description], ["Category", p.category], ["Value Proposition", p.valueProposition],
-        ["Problems Solved", p.problemsSolved], ["Ideal Customer", p.idealCustomer],
-        ["Pricing", p.pricingRange], ["Competitors", p.competitors],
-        ["Switch Triggers", p.switchTriggers], ["Notes", p.prod_notes],
+        ["Use Cases", p.useCases], ["Key Features", p.keyFeatures],
+        ["Problems Solved", p.problemsSolved], ["Time to Value", p.timeToValue],
+        ["Ideal Customer", p.idealCustomer], ["Market Maturity", p.marketMaturity],
+        ["Competitors", p.competitors], ["Buyer Objections", p.buyerObjections],
+        ["Switch Triggers", p.switchTriggers],
+        // Commercials
+        ["Deal Type", p.dealType], ["ACV", p.acv], ["MRR", p.mrr],
+        ["Contract Length", p.contractLength], ["Renewal Rate", p.renewalRate],
+        ["Expansion Revenue", p.expansionRevenue], ["LTV", p.ltv],
+        ["Avg Deal Size", p.avgDealSize], ["Repeat Rate", p.repeatRate],
+        ["Referral Rate", p.referralRate], ["Days to Close", p.avgDaysToClose],
+        ["Close Rate by Stage", p.closeRateByStage], ["Deal Stakeholders", p.dealStakeholders],
+        ["Discount Authority", p.discountAuthority], ["Payment Terms", p.paymentTerms],
+        // Proof
+        ["ROI Metrics", p.roiMetrics], ["Industry Proof", p.industryProof],
+        ["Objection Rebuttals", p.objectionRebuttals],
+        ["Unsolved Impact", p.unsolvedImpact],
+        ["Elevator Pitch", p.elevatorPitch], ["Positioning", p.positioningStatement],
+        ["Notes", p.prod_notes],
       ].forEach(([label, val]) => { if (val && String(val).trim()) lines.push(`${label}: ${val}`); });
     });
   }
@@ -7960,8 +8825,9 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
   const emptySeqs = campaigns.filter(c => !c.sequence?.length).length;
   if (emptySeqs) lines.push(`⚠ ${emptySeqs} campaign${emptySeqs!==1?"s":""} missing sequences`);
   const incompleteProducts = products.filter(p => {
-    const f = PRODUCT_FIELDS.filter(f => p[f.id] && String(p[f.id]).trim()).length;
-    return f < PRODUCT_FIELDS.length;
+    const vf = getVisibleProductFields(p);
+    const f = vf.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length;
+    return f < vf.length;
   }).length;
   if (incompleteProducts) lines.push(`⚠ ${incompleteProducts} product${incompleteProducts!==1?"s":""} incomplete`);
 
@@ -7994,6 +8860,73 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
       if (e.notes) lines.push(`  Notes: ${e.notes}`);
     });
   }
+
+  // Battlecards
+  if (battlecards.length) {
+    lines.push("\n## COMPETITIVE BATTLECARDS");
+    battlecards.forEach((bc: any) => {
+      lines.push(`\n### ${bc.competitorName || "Unnamed"}`);
+      if (bc.overview) lines.push(`Overview: ${bc.overview}`);
+      if (bc.strengths) lines.push(`Strengths: ${bc.strengths}`);
+      if (bc.weaknesses) lines.push(`Weaknesses: ${bc.weaknesses}`);
+      if (bc.displacementAngles) lines.push(`Displacement: ${bc.displacementAngles}`);
+      if (bc.landmines) lines.push(`Landmines: ${bc.landmines}`);
+    });
+  }
+
+  // Playbooks (per product × persona)
+  if (playbooks.length) {
+    lines.push("\n## PLAYBOOKS");
+    playbooks.forEach((pb: any) => {
+      const prod = products.find((p:any) => p.id === pb.productId);
+      const pers = icps.find((i:any) => i.id === pb.personaId);
+      lines.push(`\n### ${prod?.name||"?"} × ${pers?.name||"?"}`);
+      const pbFields = ["discoveryQuestions","demoTalkingPoints","qualificationCriteria","handoffProcess","pricingGuidance","closingTechniques","followUpCadence","commonScenarios"];
+      pbFields.forEach(k => { if (pb[k]?.trim()) lines.push(`${k}: ${pb[k]}`); });
+      if (pb.objections?.length) {
+        lines.push(`Objections (${pb.objections.length}):`);
+        pb.objections.forEach((o:any) => lines.push(`  - [${o.category}/${o.severity}] "${o.objection}" → ${o.rebuttal||"no rebuttal"}`));
+      }
+      if (pb.signals?.length) {
+        lines.push(`Signals (${pb.signals.length}):`);
+        pb.signals.forEach((s:any) => lines.push(`  - [${s.signalType}] ${s.detail} → ${s.suggestedAction||""}`));
+      }
+    });
+  }
+
+  // Content Assets
+  if (contentAssets.length) {
+    lines.push("\n## CONTENT & ASSETS");
+    contentAssets.forEach((ca: any) => {
+      lines.push(`- [${ca.funnelStage}/${ca.type}] ${ca.title}${ca.url ? ` (${ca.url})` : ""}${ca.description ? ` — ${ca.description}` : ""}`);
+    });
+  }
+
+  // DFY Setup
+  if (dfySetup) {
+    lines.push("\n## DFY SETUP (Cold Outreach Infrastructure)");
+    lines.push(`TLDs: ${(dfySetup.tlds||[]).join(", ") || "not set"}`);
+    lines.push(`Domains needed: ${dfySetup.domainCount || 0} (${dfySetup.mailboxCount || 0} mailboxes)`);
+    if (dfySetup.forwardingDomain) lines.push(`Forwarding domain: ${dfySetup.forwardingDomain} (verified: ${dfySetup.forwardingVerified === true ? "yes" : "no"})`);
+    if (dfySetup.mailboxNames?.length) lines.push(`Mailbox names: ${dfySetup.mailboxNames.map((n:any) => `${n.firstName} ${n.lastName} (${n.allocation}%)`).join(", ")}`);
+    if (dfySetup.suggestedDomains?.length) lines.push(`Suggested domains: ${dfySetup.suggestedDomains.length} found`);
+    if (dfySetup.approvedDomains?.length) lines.push(`Approved domains: ${dfySetup.approvedDomains.join(", ")}`);
+    if (dfySetup.lockedDomains?.length) lines.push(`Locked domains: ${dfySetup.lockedDomains.join(", ")}`);
+  }
+
+  // Call Records
+  if (callRecords.length) {
+    lines.push("\n## CALL SCORES");
+    lines.push(`${callRecords.length} calls scored`);
+    callRecords.slice(0, 5).forEach((rec: any) => {
+      const r = rec.result || {};
+      lines.push(`- ${rec.clientName||"?"} (${rec.callType}) — ${r.overallScore||0}/100 ${r.grade||""} [${rec.callDate||""}]`);
+      if (r.coachingActions?.length) lines.push(`  Actions: ${r.coachingActions.slice(0,2).join("; ")}`);
+    });
+    const avgScore = Math.round(callRecords.reduce((a:number,r:any)=>a+(r.result?.overallScore||0),0)/callRecords.length);
+    lines.push(`Average score: ${avgScore}/100`);
+  }
+
   return lines.join("\n");
 }
 
@@ -8551,11 +9484,12 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   );
 }
 
-function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{} }) {
+function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[] }) {
   const [activeChatId, setActiveChatId] = useState<string|null>(() => chats[0]?.id ?? null);
   const [input,          setInput]          = useState("");
   const [isStreaming,    setIsStreaming]    = useState(false);
   const [streamingText,  setStreamingText]  = useState("");
+  const [pendingChanges, setPendingChanges] = useState<{id:string; changes:{field:string;label:string;section:string;oldVal:string;newVal:string;status:"new"|"conflict"|"same";approved:boolean}[]; appliedAt?:number}|null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const streamFull = useRef("");
   const streamPos = useRef(0);
@@ -8569,6 +9503,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
     "/next-steps": "Based on the current state of the entire workspace, what are the top 3-5 things I should do next? Prioritize by impact and urgency.",
     "/review-products": "Review all products. Are descriptions clear? Do value props differentiate from each other? Are there products that should be split or merged? Check if each product is linked to at least one persona.",
     "/strategy": "Analyze the current strategy roadmap. Is it realistic? Are the phases well-structured? Do the KPIs make sense? Suggest improvements or flag if a strategy needs to be generated.",
+    "/import-form": "The user wants to import an implementation form. Ask them to paste the form content in their next message. When they paste it, parse ALL fields and use the propose_form_changes tool to show a diff of what would change. Do NOT apply any changes directly — always use propose_form_changes.",
   };
 
   const PAGE_PLACEHOLDERS: Record<string,string> = {
@@ -8592,6 +9527,21 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
     }
   }, [activeChat?.messages?.length, streamingText, isStreaming]);
 
+  // Handle injected messages (from paste form flow)
+  useEffect(() => {
+    const inject = (window as any).__copilotInject;
+    if (inject) {
+      delete (window as any).__copilotInject;
+      setActiveChatId(inject.chatId);
+      setInput(inject.text);
+      // Auto-send after a small delay
+      setTimeout(() => {
+        const sendBtn = document.querySelector("[data-copilot-send]") as HTMLButtonElement;
+        if (sendBtn) sendBtn.click();
+      }, 300);
+    }
+  });
+
   const newChat = () => {
     const id = uid();
     onChatsChange(prev => [{ id, title: "New conversation", createdAt: Date.now(), messages: [] }, ...prev]);
@@ -8602,6 +9552,277 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
     onChatsChange(prev => prev.filter(c => c.id !== chatId));
     if (activeChatId === chatId) {
       setActiveChatId(chats.filter(c => c.id !== chatId)[0]?.id ?? null);
+    }
+  };
+
+  // ── Tool execution ──
+  const executeTool = (name: string, input: any): string => {
+    try {
+      if (name === "update_company_fields") {
+        const fields = input.fields || {};
+        onUpdateCompany((prev: any) => ({ ...prev, ...fields }));
+        const keys = Object.keys(fields);
+        onToast({ title: "Company updated", status: "success", message: `Updated ${keys.join(", ")}` });
+        return `Updated company fields: ${keys.join(", ")}`;
+      }
+      if (name === "update_persona") {
+        const fields = input.fields || {};
+        let found = false;
+        onUpdateIcps((prev: any[]) => prev.map((p: any) => {
+          if (p.id === input.persona_id || (input.persona_name && p.name?.toLowerCase() === input.persona_name.toLowerCase())) {
+            found = true;
+            return { ...p, ...fields };
+          }
+          return p;
+        }));
+        if (!found && input.persona_name) {
+          // Try partial match
+          onUpdateIcps((prev: any[]) => prev.map((p: any) => {
+            if (p.name?.toLowerCase().includes(input.persona_name.toLowerCase())) {
+              found = true;
+              return { ...p, ...fields };
+            }
+            return p;
+          }));
+        }
+        const label = input.persona_name || input.persona_id || "persona";
+        onToast({ title: "Persona updated", status: "success", message: `Updated ${label}: ${Object.keys(fields).join(", ")}` });
+        return found ? `Updated persona "${label}": ${Object.keys(fields).join(", ")}` : `Persona "${label}" not found — no changes made`;
+      }
+      if (name === "create_persona") {
+        const fields = input.fields || {};
+        const newP = { id: uid(), ...Object.fromEntries(ALL_ICP_FIELDS.map((f: any) => [f.id, ""])), ...fields, createdAt: new Date().toISOString() };
+        onUpdateIcps((prev: any[]) => [...prev, newP]);
+        onToast({ title: "Persona created", status: "success", message: fields.name || "New persona" });
+        return `Created persona "${fields.name || "Untitled"}" with fields: ${Object.keys(fields).join(", ")}`;
+      }
+      if (name === "update_product") {
+        const fields = input.fields || {};
+        let found = false;
+        onUpdateProducts((prev: any[]) => prev.map((p: any) => {
+          if (p.id === input.product_id || (input.product_name && p.name?.toLowerCase() === input.product_name.toLowerCase())) {
+            found = true;
+            return { ...p, ...fields };
+          }
+          return p;
+        }));
+        if (!found && input.product_name) {
+          onUpdateProducts((prev: any[]) => prev.map((p: any) => {
+            if (p.name?.toLowerCase().includes(input.product_name.toLowerCase())) {
+              found = true;
+              return { ...p, ...fields };
+            }
+            return p;
+          }));
+        }
+        const label = input.product_name || input.product_id || "product";
+        onToast({ title: "Product updated", status: "success", message: `Updated ${label}` });
+        return found ? `Updated product "${label}": ${Object.keys(fields).join(", ")}` : `Product "${label}" not found`;
+      }
+      if (name === "create_product") {
+        const fields = input.fields || {};
+        const newP = { id: uid(), ...Object.fromEntries(PRODUCT_FIELDS.map((f: any) => [f.id, ""])), ...fields, createdAt: new Date().toISOString() };
+        onUpdateProducts((prev: any[]) => [...prev, newP]);
+        onToast({ title: "Product created", status: "success", message: fields.name || "New product" });
+        return `Created product "${fields.name || "Untitled"}"`;
+      }
+      if (name === "update_campaign") {
+        const fields = input.fields || {};
+        let found = false;
+        onUpdateCampaigns((prev: any[]) => prev.map((c: any) => {
+          if (c.id === input.campaign_id || (input.campaign_name && c.name?.toLowerCase() === input.campaign_name.toLowerCase())) {
+            found = true;
+            return { ...c, ...fields };
+          }
+          return c;
+        }));
+        if (!found && input.campaign_name) {
+          onUpdateCampaigns((prev: any[]) => prev.map((c: any) => {
+            if (c.name?.toLowerCase().includes(input.campaign_name.toLowerCase())) {
+              found = true;
+              return { ...c, ...fields };
+            }
+            return c;
+          }));
+        }
+        const label = input.campaign_name || input.campaign_id || "campaign";
+        onToast({ title: "Campaign updated", status: "success", message: `Updated ${label}` });
+        return found ? `Updated campaign "${label}": ${Object.keys(fields).join(", ")}` : `Campaign "${label}" not found`;
+      }
+      if (name === "create_campaign") {
+        const fields = input.fields || {};
+        const newC = { id: uid(), name: "", status: "planned", type: "cold_email", personaId: "", productId: "", offerId: "", purpose: "", channels: [], notes: "", sequence: [], ...fields, createdAt: new Date().toISOString() };
+        onUpdateCampaigns((prev: any[]) => [...prev, newC]);
+        onToast({ title: "Campaign created", status: "success", message: fields.name || "New campaign" });
+        return `Created campaign "${fields.name || "Untitled"}"`;
+      }
+      if (name === "update_strategy") {
+        const strat = input.strategy || {};
+        onUpdateStrategy((prev: any) => prev ? { ...prev, ...strat } : strat);
+        onToast({ title: "Strategy updated", status: "success", message: "Strategy roadmap updated" });
+        return `Updated strategy roadmap`;
+      }
+      if (name === "create_offer") {
+        const fields = input.fields || {};
+        const newOffer = {
+          id: uid(), productId: "", tier: "soft", personaId: "", purpose: "",
+          name: "", ctaText: "", whatTheyGet: "", frictionReduction: "",
+          usedInCampaigns: [] as string[], replyRate: null as number|null,
+          createdAt: new Date().toISOString(), ...fields,
+        };
+        onUpdateOffers((prev: any[]) => [...prev, newOffer]);
+        onToast({ title: "Offer created", status: "success", message: fields.name || `${fields.tier || "soft"} CTA` });
+        return `Created offer "${fields.name || fields.tier + " CTA"}"`;
+      }
+      if (name === "update_offer") {
+        const fields = input.fields || {};
+        let found = false;
+        onUpdateOffers((prev: any[]) => prev.map((o: any) => {
+          if (o.id === input.offer_id) { found = true; return { ...o, ...fields }; }
+          if (input.product_name && input.tier) {
+            const matchProduct = products.find((p: any) => p.name?.toLowerCase().includes(input.product_name.toLowerCase()));
+            if (matchProduct && o.productId === matchProduct.id && o.tier === input.tier) { found = true; return { ...o, ...fields }; }
+          }
+          return o;
+        }));
+        onToast({ title: "Offer updated", status: "success", message: `Updated ${input.tier || ""} offer` });
+        return found ? `Updated offer: ${Object.keys(fields).join(", ")}` : `Offer not found`;
+      }
+      if (name === "add_performance_log") {
+        let icpId = input.icpId || "";
+        if (!icpId && input.persona_name) {
+          const match = icps.find((p: any) => p.name?.toLowerCase().includes(input.persona_name.toLowerCase()));
+          if (match) icpId = (match as any).id;
+        }
+        const entry = {
+          id: uid(), icpId, dateType: input.dateTo ? "range" : "single",
+          date: input.date || new Date().toISOString().slice(0,10),
+          dateTo: input.dateTo || "", label: input.label || "",
+          metrics: { sent:0, opens:0, replies:0, posReplies:0, meetings:0, conversions:0, revenue:0, ...(input.metrics || {}) },
+          tags: { pain_focus:"", hook_type:"", cta_type:"", tone_intensity:"", persona_target:"", segment:"", channel:"", ...(input.tags || {}) },
+          notes: input.notes || "", createdAt: Date.now(),
+        };
+        onUpdatePerfLogs((prev: any[]) => [...prev, entry]);
+        onToast({ title: "Performance logged", status: "success", message: input.label || "New entry" });
+        return `Added performance log: ${input.label || "entry"} — ${input.metrics?.sent || 0} sent, ${input.metrics?.replies || 0} replies, ${input.metrics?.meetings || 0} meetings`;
+      }
+      if (name === "update_roi_config") {
+        const fields = input.fields || {};
+        onUpdateRoiConfig((prev: any) => ({ ...prev, ...fields }));
+        onToast({ title: "ROI config updated", status: "success", message: `Updated ${Object.keys(fields).join(", ")}` });
+        return `Updated ROI config: ${Object.keys(fields).join(", ")}`;
+      }
+      if (name === "add_link") {
+        const link = { id: uid(), name: input.name || "", url: input.url || "", description: input.description || "", addedAt: new Date().toISOString() };
+        onUpdateLinks((prev: any[]) => [...prev, link]);
+        onToast({ title: "Link added", status: "success", message: input.name || input.url });
+        return `Added link: ${input.name || input.url}`;
+      }
+      if (name === "manage_playbook") {
+        const fields = input.fields || {};
+        if (input.action === "create") {
+          const prodMatch = products.find((p:any) => p.name?.toLowerCase().includes((input.product_name||"").toLowerCase()));
+          const persMatch = icps.find((i:any) => i.name?.toLowerCase().includes((input.persona_name||"").toLowerCase()));
+          const pb = { ...EMPTY_PLAYBOOK(prodMatch?.id||"", persMatch?.id||""), ...fields };
+          onUpdatePlaybooks((prev: any[]) => [...prev, pb]);
+          onToast({ title: "Playbook created", status: "success", message: `${input.product_name||""} × ${input.persona_name||""}` });
+          return `Created playbook for ${input.product_name||"product"} × ${input.persona_name||"persona"}`;
+        }
+        // Find existing playbook
+        let pbId = input.playbook_id;
+        if (!pbId && input.product_name && input.persona_name) {
+          const prodMatch = products.find((p:any) => p.name?.toLowerCase().includes(input.product_name.toLowerCase()));
+          const persMatch = icps.find((i:any) => i.name?.toLowerCase().includes(input.persona_name.toLowerCase()));
+          const match = playbooks.find((pb:any) => pb.productId === prodMatch?.id && pb.personaId === persMatch?.id);
+          if (match) pbId = match.id;
+        }
+        if (input.action === "update") {
+          onUpdatePlaybooks((prev: any[]) => prev.map((pb:any) => pb.id === pbId ? { ...pb, ...fields } : pb));
+          onToast({ title: "Playbook updated", status: "success", message: Object.keys(fields).join(", ") });
+          return pbId ? `Updated playbook` : `Playbook not found`;
+        }
+        if (input.action === "add_objection") {
+          const obj = { ...EMPTY_OBJECTION(), ...fields };
+          onUpdatePlaybooks((prev: any[]) => prev.map((pb:any) => pb.id === pbId ? { ...pb, objections: [...(pb.objections||[]), obj] } : pb));
+          onToast({ title: "Objection added", status: "success", message: fields.objection?.slice(0,50) || "New" });
+          return pbId ? `Added objection to playbook` : `Playbook not found`;
+        }
+        if (input.action === "add_signal") {
+          const sig = { ...EMPTY_SIGNAL(), ...fields };
+          onUpdatePlaybooks((prev: any[]) => prev.map((pb:any) => pb.id === pbId ? { ...pb, signals: [...(pb.signals||[]), sig] } : pb));
+          onToast({ title: "Signal added", status: "success", message: fields.detail?.slice(0,50) || "New" });
+          return pbId ? `Added signal to playbook` : `Playbook not found`;
+        }
+        return `Unknown playbook action: ${input.action}`;
+      }
+      if (name === "manage_battlecards") {
+        const fields = input.fields || {};
+        if (input.action === "add") {
+          const bc = { ...EMPTY_BATTLECARD(), ...fields };
+          onUpdateBattlecards((prev: any[]) => [...prev, bc]);
+          onToast({ title: "Battlecard added", status: "success", message: fields.competitorName || "New competitor" });
+          return `Added battlecard for "${fields.competitorName || "competitor"}"`;
+        } else {
+          let found = false;
+          onUpdateBattlecards((prev: any[]) => prev.map((b: any) => {
+            if (b.id === input.battlecard_id || (input.competitor_name && b.competitorName?.toLowerCase().includes(input.competitor_name.toLowerCase()))) {
+              found = true; return { ...b, ...fields };
+            }
+            return b;
+          }));
+          onToast({ title: "Battlecard updated", status: "success", message: input.competitor_name || "Updated" });
+          return found ? `Updated battlecard` : `Battlecard not found`;
+        }
+      }
+      if (name === "manage_content_assets") {
+        const fields = input.fields || {};
+        if (input.action === "add") {
+          const asset = { ...EMPTY_CONTENT_ASSET(), ...fields };
+          onUpdateContentAssets((prev: any[]) => [...prev, asset]);
+          onToast({ title: "Content added", status: "success", message: fields.title || "New asset" });
+          return `Added content asset: "${fields.title || "new"}"`;
+        } else {
+          onUpdateContentAssets((prev: any[]) => prev.map((c: any) => c.id === input.asset_id ? { ...c, ...fields } : c));
+          onToast({ title: "Content updated", status: "success", message: "Updated" });
+          return `Updated content asset`;
+        }
+      }
+      if (name === "update_dfy_setup") {
+        const fields = input.fields || {};
+        const patch: any = {};
+        if (fields.tlds) patch.tlds = fields.tlds;
+        if (fields.domainCount) { patch.domainCount = fields.domainCount; patch.mailboxCount = fields.domainCount * 3; patch.customAmount = ![67,34,15].includes(fields.domainCount); }
+        if (fields.forwardingDomain) patch.forwardingDomain = fields.forwardingDomain;
+        if (fields.mailboxNames) patch.mailboxNames = fields.mailboxNames;
+        if (fields.approvedDomains) patch.approvedDomains = fields.approvedDomains;
+        if (fields.lockedDomains) patch.lockedDomains = fields.lockedDomains;
+        onUpdateDfySetup((prev: any) => ({ ...prev, ...patch }));
+        const changes = Object.keys(patch).filter(k => k !== "mailboxCount" && k !== "customAmount");
+        onToast({ title: "DFY updated", status: "success", message: changes.join(", ") });
+        return `Updated DFY setup: ${changes.join(", ")}`;
+      }
+      if (name === "propose_form_changes") {
+        const proposedChanges = (input.changes || []).map((c: any) => {
+          const cd = companyData as any;
+          const oldVal = cd[c.field] || "";
+          const isNew = !oldVal || !String(oldVal).trim();
+          const isSame = String(oldVal).trim().toLowerCase() === String(c.newVal).trim().toLowerCase();
+          return {
+            field: c.field, label: c.label || c.field, section: c.section || "Company",
+            oldVal: String(oldVal), newVal: String(c.newVal),
+            status: isSame ? "same" as const : isNew ? "new" as const : "conflict" as const,
+            approved: isNew, // auto-approve new fields, conflicts need manual approval
+          };
+        }).filter((c: any) => c.status !== "same"); // don't show unchanged fields
+        const id = uid();
+        setPendingChanges({ id, changes: proposedChanges });
+        const newCount = proposedChanges.filter((c:any) => c.status === "new").length;
+        const conflictCount = proposedChanges.filter((c:any) => c.status === "conflict").length;
+        return `Parsed ${proposedChanges.length} fields from the form. ${newCount} new fields (auto-approved), ${conflictCount} conflicts need your review. Check the changes card below.`;
+      }
+      return `Unknown tool: ${name}`;
+    } catch (e: any) {
+      return `Error executing ${name}: ${e.message}`;
     }
   };
 
@@ -8630,36 +9851,60 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
       return { ...c, title: isFirst ? userText.slice(0,60) : c.title, messages: [...c.messages, userMsg] };
     }));
 
+    // Auto-detect URLs in user message and create links in Knowledge Center
+    const urlMatches = userText.match(/https?:\/\/[^\s,)"']+/gi);
+    if (urlMatches?.length && onUpdateContentAssets) {
+      onUpdateContentAssets((prev: any[]) => {
+        const existingUrls = new Set((prev||[]).map((c:any) => c.url?.toLowerCase()));
+        const newLinks = urlMatches
+          .filter(u => !existingUrls.has(u.toLowerCase()))
+          .map(u => ({ ...EMPTY_CONTENT_ASSET(), title: u.replace(/https?:\/\/(www\.)?/,"").split("/")[0], url: u, description: "Shared in AI copilot chat", type: "other" }));
+        return newLinks.length ? [...(prev||[]), ...newLinks] : prev;
+      });
+    }
+
     const historyMsgs = (chats.find(c => c.id === targetId)?.messages ?? [])
       .map(m => ({ role: m.role, content: m.content }));
-    const apiMessages = [...historyMsgs, { role: "user" as const, content: userText }];
+    const apiMessages: { role: string; content: any }[] = [...historyMsgs, { role: "user", content: userText }];
 
-    const ctx = buildClientContext(companyData, icps, perfLogs, products, campaigns, strategy);
+    const ctx = buildClientContext(companyData, icps, perfLogs, products, campaigns, strategy, playbooks, battlecards, contentAssets, dfySetup, callRecords);
     const systemPrompt = `You are Copilot, the AI assistant for ${clientName || "this client"}'s outreach platform. You have complete visibility into every part of their workspace — company profile, products, personas, campaigns, sequences, strategy, preferences, and analytics.
 
 ${ctx}${fileContext ? `\n${fileContext}` : ""}
 
 YOUR ROLE:
-You are a hands-on strategist who knows every field in this workspace. When the user asks a question or shares new information, you should:
+You are a hands-on strategist who knows every field in this workspace AND can directly modify any data. When the user asks to change, update, set, or create anything — USE YOUR TOOLS to make the change immediately. Do not just suggest changes; execute them.
 
-1. **Answer directly** — give the specific answer, not a generic one. Reference their actual data.
-2. **Spot gaps & issues** — if you see incomplete profiles, missing sequences, inconsistencies between personas and campaigns, or fields that contradict each other, call them out proactively.
-3. **Suggest next steps** — always end with 1-3 concrete next actions based on the current state of their workspace. What should they do next?
-4. **Cross-reference everything** — if they update a product, think about whether persona pain points still align. If they change a persona, check if campaign sequences need updating. If they add new info, consider what else it affects.
+WHEN TO USE TOOLS:
+- User says "set the industry to SaaS" → call update_company_fields
+- User says "add a persona for CFOs" → call create_persona
+- User says "change the value prop to..." → call the appropriate update tool
+- User says "create a new campaign targeting..." → call create_campaign
+- User provides new info like "our main pain point is..." → update the relevant fields
+- User pastes or describes content for a SINGLE field → update that field directly
+- User pastes a FORM or BULK DATA with many fields → ALWAYS use propose_form_changes (never update directly)
+- User mentions "implementation form", "onboarding form", or pastes structured text with multiple field:value pairs → use propose_form_changes
+
+CRITICAL: When the user pastes a large block of text that looks like a completed form (multiple field labels followed by values), you MUST use propose_form_changes instead of calling multiple update tools. The user needs to review and approve changes before they're applied. This is especially important when existing data might be overwritten.
+
+WHEN NOT TO USE TOOLS:
+- User asks a question ("what's our industry?") → just answer from context
+- User asks for analysis or review → analyze and respond with text
+- User asks for suggestions → suggest in text, only apply if they confirm
+
+After using a tool, briefly confirm what you changed in your text response. Keep it short — the user sees a toast notification too.
 
 CAPABILITIES:
-- Analyze any field across company profile, products, personas, campaigns, strategy, preferences
-- Identify which campaigns are missing sequences or have empty steps
-- Compare persona targeting against campaign coverage
-- Evaluate whether messaging aligns with persona pains and product value props
-- Suggest improvements to email sequences, offers, and CTAs
-- Flag when benchmarks or goals don't match reality
-- Help plan new campaigns, personas, or products
-- Draft copy, subject lines, messaging angles, or reply templates
+- Directly update any company profile field, preference, or benchmark
+- Create or modify personas/ICPs with full field-level control
+- Create or modify products with all fields
+- Create or modify campaigns including sequences and targeting
+- Update the strategy roadmap
+- Analyze, compare, and flag issues across the entire workspace
 
 RESPONSE FORMAT (strict — you MUST follow these):
 - BREVITY IS MANDATORY. Your entire response must be under 150 words. The user can always ask for more.
-- Lead with 1 sentence answering the question. Then 3-5 short bullets max.
+- Lead with 1 sentence answering the question or confirming the change. Then 3-5 short bullets max.
 - Each bullet = one short line. NEVER write multi-sentence bullets.
 - Use **bold** sparingly. Use - bullets, not numbered lists.
 - Do NOT repeat or echo back the user's data. Just reference it by name.
@@ -8673,19 +9918,37 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
     setIsStreaming(true);
     setStreamingText("");
 
-    // Reveal 1 character every 22ms — deliberate letter-by-letter
+    // Reveal 1 character every 5ms
     streamInterval.current = setInterval(() => {
       const full = streamFull.current;
       const pos = streamPos.current;
       if (pos >= full.length) return;
       streamPos.current = pos + 1;
       setStreamingText(full.slice(0, streamPos.current));
-    }, 22);
+    }, 5);
 
-    // Chunks just feed into the ref
-    await callAIStream(apiMessages, systemPrompt, 1024, chunk => {
+    // Use tool-enabled stream
+    const result = await callAIStreamWithTools(apiMessages, systemPrompt, 2048, COPILOT_TOOLS, chunk => {
       streamFull.current += chunk;
     });
+
+    // Execute any tool calls
+    const toolResults: string[] = [];
+    if (result.toolCalls.length > 0) {
+      for (const tc of result.toolCalls) {
+        const res = executeTool(tc.name, tc.input);
+        toolResults.push(res);
+      }
+      // Append tool results summary to the streamed text
+      if (result.text && toolResults.length > 0) {
+        const summary = "\n\n✅ " + toolResults.join("\n✅ ");
+        streamFull.current += summary;
+      } else if (!result.text && toolResults.length > 0) {
+        // Model only used tools with no text — show results
+        const summary = "✅ " + toolResults.join("\n✅ ");
+        streamFull.current = summary;
+      }
+    }
 
     // Stream done — wait for reveal to finish
     await new Promise<void>(resolve => {
@@ -8718,6 +9981,7 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
     { text:"/next-steps", desc:"What should I do next?" },
     { text:"/review-campaigns", desc:"Analyze all campaigns" },
     { text:"/compare-personas", desc:"Check persona coverage" },
+    { text:"/import-form", desc:"Import implementation form" },
   ];
 
   const displayMsgs = [
@@ -8809,17 +10073,95 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                 {msg.role === "user"
                   ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap" }}>{msg.content}</span>
                   : msg.id === "_streaming"
-                    ? <span style={{ fontFamily:body, whiteSpace:"pre-wrap", display:"inline" }}>
-                        {(msg.content || "").split("").map((ch, i) => (
-                          <span key={i} style={{ display:"inline-block",
-                            animation:`obLetterIn .4s cubic-bezier(0.16, 1, 0.3, 1) both`,
-                            ...(ch === " " ? { width:"0.25em" } : {}) }}>{ch === " " ? "\u00A0" : ch}</span>
-                        ))}
-                      </span>
+                    ? <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>
                     : <div style={{ fontFamily:body }}>{renderOutputContent(msg.content)}</div>}
               </div>
             </div>
           ))}
+
+          {/* Proposed Changes Diff Card */}
+          {pendingChanges && !pendingChanges.appliedAt && (
+            <div style={{ margin:"8px 0", padding:12, borderRadius:12, border:`1px solid ${C2.accent}33`, background:`${C2.accent}06` }}>
+              <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:8 }}>
+                Proposed Changes ({pendingChanges.changes.filter(c=>c.status!=="same").length} fields)
+              </div>
+              <div style={{ maxHeight:280, overflowY:"auto", marginBottom:10 }}>
+                {(() => {
+                  const sections = [...new Set(pendingChanges.changes.map(c=>c.section))];
+                  return sections.map(sec => (
+                    <div key={sec}>
+                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, margin:"8px 0 4px", textTransform:"uppercase" as const }}>{sec}</div>
+                      {pendingChanges.changes.filter(c=>c.section===sec).map((c, ci) => (
+                        <div key={ci} style={{ display:"flex", alignItems:"flex-start", gap:8, padding:"5px 0", borderBottom:`1px solid ${C2.border}22` }}>
+                          <input type="checkbox" checked={c.approved} onChange={()=>{
+                            setPendingChanges(prev => prev ? { ...prev, changes: prev.changes.map((x,i2) => {
+                              const idx = prev.changes.filter(cc=>cc.section===sec).indexOf(c);
+                              return x === c ? { ...x, approved: !x.approved } : x;
+                            })} : prev);
+                          }} style={{ marginTop:3, accentColor:C2.accent }} />
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+                              <span style={{ fontSize:11, fontWeight:600, fontFamily:head, color:C2.text }}>{c.label}</span>
+                              <span style={{ fontSize:8, fontFamily:mono, fontWeight:700, padding:"1px 5px", borderRadius:4,
+                                background: c.status==="new" ? "#eaf5f0" : "#fef4e3",
+                                color: c.status==="new" ? "#1e6b45" : "#9a5a00" }}>
+                                {c.status==="new" ? "NEW" : "CHANGED"}
+                              </span>
+                            </div>
+                            {c.status==="conflict" && c.oldVal && (
+                              <div style={{ fontSize:10, fontFamily:mono, color:"#c0392b", background:"#fdf2f1", padding:"2px 6px", borderRadius:4, marginBottom:2, wordBreak:"break-word" }}>
+                                − {c.oldVal.length > 80 ? c.oldVal.slice(0,80)+"…" : c.oldVal}
+                              </div>
+                            )}
+                            <div style={{ fontSize:10, fontFamily:mono, color:"#1e6b45", background:"#eaf5f0", padding:"2px 6px", borderRadius:4, wordBreak:"break-word" }}>
+                              + {c.newVal.length > 80 ? c.newVal.slice(0,80)+"…" : c.newVal}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ));
+                })()}
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={()=>{
+                  setPendingChanges(prev => prev ? { ...prev, changes: prev.changes.map(c=>({...c, approved:true})) } : prev);
+                }} style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  Select All
+                </button>
+                <button onClick={()=>{
+                  setPendingChanges(prev => prev ? { ...prev, changes: prev.changes.map(c=>({...c, approved:c.status==="new"})) } : prev);
+                }} style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  New Only
+                </button>
+                <div style={{ flex:1 }} />
+                <button onClick={()=>setPendingChanges(null)}
+                  style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.muted, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  Dismiss
+                </button>
+                <button onClick={()=>{
+                  const approved = pendingChanges.changes.filter(c=>c.approved);
+                  if (!approved.length) { onToast({ title:"Nothing selected", status:"info", message:"Check the fields you want to apply" }); return; }
+                  const patch: Record<string,string> = {};
+                  for (const c of approved) patch[c.field] = c.newVal;
+                  onUpdateCompany((prev:any) => ({ ...prev, ...patch }));
+                  setPendingChanges(prev => prev ? { ...prev, appliedAt: Date.now() } : prev);
+                  onToast({ title:`${approved.length} fields updated`, status:"success", message: approved.map(c=>c.label).slice(0,5).join(", ") + (approved.length > 5 ? ` +${approved.length-5} more` : "") });
+                }}
+                  style={{ padding:"5px 16px", borderRadius:6, border:"none", background:C2.accent, color:"#fff", fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                  Apply {pendingChanges.changes.filter(c=>c.approved).length} Changes
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Applied confirmation */}
+          {pendingChanges?.appliedAt && (
+            <div style={{ margin:"8px 0", padding:10, borderRadius:10, background:"#eaf5f0", border:"1px solid #9fd5b8", fontSize:11, color:"#1e6b45", fontFamily:body, display:"flex", alignItems:"center", gap:8 }}>
+              <span>✓</span> Changes applied successfully
+              <button onClick={()=>setPendingChanges(null)} style={{ marginLeft:"auto", background:"none", border:"none", color:"#1e6b45", fontSize:10, cursor:"pointer", fontFamily:mono }}>Dismiss</button>
+            </div>
+          )}
         </div>
 
         {/* Input */}
@@ -8836,7 +10178,7 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
                 fontSize:13, fontFamily:body, resize:"none", lineHeight:"20px", outline:"none", maxHeight:100, overflow:"auto",
                 height:20 }}
               onInput={e=>{const t=e.currentTarget; t.style.height="20px"; t.style.height=Math.min(t.scrollHeight,100)+"px";}} />
-            <button onClick={sendMessage} disabled={!input.trim()||isStreaming}
+            <button data-copilot-send onClick={sendMessage} disabled={!input.trim()||isStreaming}
               style={{ width:28, height:28, borderRadius:8, border:"none", flexShrink:0,
                 background: input.trim()&&!isStreaming ? C2.accent : "transparent",
                 color: input.trim()&&!isStreaming ? "#fff" : C2.muted,
@@ -11159,6 +12501,31 @@ function AppMain() {
   const [addPopPos,      setAddPopPos]      = useState<{top:number;left:number}|null>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [showQS,         setShowQS]         = useState(false);
+  const [showPasteForm,  setShowPasteForm]  = useState(false);
+  const [pasteFormText,  setPasteFormText]  = useState("");
+  const [welcomeExiting, setWelcomeExiting] = useState(false);
+  const [setupExiting,   setSetupExiting]   = useState(false);
+  const qsProgressRef = useRef<any>(null);
+  const setShowQSAnimated = (show: boolean) => {
+    if (show) {
+      setWelcomeExiting(true);
+      setTimeout(() => { setShowQS(true); setWelcomeExiting(false); }, 500);
+    } else {
+      setWelcomeExiting(true);
+      setTimeout(() => { setShowQS(false); setWelcomeExiting(false); }, 500);
+    }
+  };
+  const setQsProgressAnimated = (step: number, results: Record<string,string>) => {
+    if (!qsProgress && !setupExiting) {
+      // First progress update — trigger exit animation on setup form
+      setSetupExiting(true);
+      qsProgressRef.current = { step, results };
+      setTimeout(() => { setQsProgress(qsProgressRef.current); setSetupExiting(false); }, 500);
+    } else {
+      // Subsequent updates — just update directly
+      setQsProgress({ step, results });
+    }
+  };
   const [qsProgress,     setQsProgress]     = useState<{step:number;results:Record<string,string>}|null>(null);
   const [qsBrief,        setQsBrief]        = useState<{coFields:any;coConf:any;context:string;brief:any;phaseAResults?:Record<string,string>}|null>(null);
   // Register global so toast action button can open progress page
@@ -11193,6 +12560,18 @@ function AppMain() {
   const [strategy,       setStrategy]       = useState<any>(null);
   const [strategyGen,    setStrategyGen]    = useState<{running:boolean;step:number}>({running:false,step:0});
   const [campaigns,      setCampaigns]      = useState<any[]>([]);
+  const [playbooks,      setPlaybooks]      = useState<any[]>([]);
+  const [contentAssets,  setContentAssets]  = useState<any[]>([]);
+  const [battlecards,    setBattlecards]    = useState<any[]>([]);
+  const [dfySetup,       setDfySetup]       = useState<any>({
+    tlds: [".com"], domainCount: 67, mailboxCount: 201, customAmount: false,
+    forwardingDomain: "", forwardingVerified: null as boolean|null,
+    mailboxNames: [] as { firstName: string; lastName: string; allocation: number }[],
+    suggestedDomains: [] as { domain: string; available: boolean|null; checking: boolean }[],
+    approvedDomains: [] as string[],
+  });
+  const [dfyProgress, setDfyProgress] = useState<{ running: boolean; phase: string; found: number; needed: number; checked: number; total: number } | null>(null);
+  const [callRecords, setCallRecords] = useState<any[]>([]);
 
   const addToast  = useCallback((t: Omit<Toast,"id">) => {
     const id = uid();
@@ -11305,6 +12684,11 @@ function AppMain() {
     setOffers(saved?.offers ?? []);
     setStrategy(saved?.strategy ?? null);
     setCampaigns(saved?.campaigns ?? []);
+    setPlaybooks(Array.isArray(saved?.playbooks) ? saved.playbooks.filter((p:any) => p && p.id && p.productId) : []);
+    setContentAssets(saved?.contentAssets ?? []);
+    setBattlecards(saved?.battlecards ?? []);
+    setDfySetup(saved?.dfySetup ?? { tlds:[".com"], domainCount:67, mailboxCount:201, customAmount:false, forwardingDomain:"", forwardingVerified:null, mailboxNames:[], suggestedDomains:[], approvedDomains:[] });
+    setCallRecords(saved?.callRecords ?? []);
     // Load file blobs from IndexedDB async
     if (rawFiles.length && activeWorkspace) {
       loadWorkspaceFiles(activeWorkspace.id, rawFiles).then(loaded => setWsFiles(loaded.map((f:any) => ({ ...f, _loading: false }))));
@@ -11312,7 +12696,7 @@ function AppMain() {
     const savedConf = saved?.companyConf ?? {};
     setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
     // Don't override onboarding view — it was intentionally set for new/empty workspaces
-    setView(prev => prev === "onboarding" ? "onboarding" : "company");
+    setView(prev => prev === "onboarding" || prev === "welcome" ? prev : "company");
     setEditingId(null);
     // Allow save effects to fire after state settles
     requestAnimationFrame(() => { loadingRef.current = false; });
@@ -11321,7 +12705,7 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords });
     // Sync co_name and co_industry back to ClientRecord so admin panel + sidebar stay current
     const cd = companyData as Record<string,string>;
     const cls = loadClients();
@@ -11337,7 +12721,7 @@ function AppMain() {
         if (patch.name) setActiveWorkspace((prev: any) => prev ? { ...prev, name: patch.name } : prev);
       }
     }
-  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns]);
+  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords]);
 
   // sync keys into global + localStorage
   useEffect(() => {
@@ -11390,7 +12774,7 @@ function AppMain() {
   }, [showAddPop]);
 
   const icpsWithOutputs = icps.filter(i=>i.outputs).length;
-  const companyPct = Math.round(COMPANY_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/COMPANY_FIELDS.length*100);
+  const companyPct = Math.round(ALL_COMPANY_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/ALL_COMPANY_FIELDS.length*100);
   const prefsPct = Math.round(PREFERENCES_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/PREFERENCES_FIELDS.length*100);
   const editingICP = icps.find(i=>i.id===editingId) ?? null;
 
@@ -11523,6 +12907,18 @@ Raw JSON only.`, "", 1400);
     setIcps(prev => [...prev, ...result.icps]); // append, don't replace existing personas
     if (result.products?.length) setProducts(prev => [...prev, ...result.products]);
     if (result.offers?.length) setOffers(prev => [...prev, ...result.offers]);
+    if (result.battlecards?.length) setBattlecards(prev => [...prev, ...result.battlecards]);
+    if (result.playbooks?.length) setPlaybooks(prev => [...prev, ...result.playbooks]);
+    // Auto-create links from QS source URLs + any AI-generated content assets
+    const autoLinks = (result.sourceUrls || []).map((s: any) => ({
+      ...EMPTY_CONTENT_ASSET(), title: s.name, url: s.url, description: s.description, type: "other",
+    }));
+    const aiLinks = result.contentAssets || [];
+    if (autoLinks.length || aiLinks.length) setContentAssets(prev => {
+      const existingUrls = new Set(prev.map((c:any) => c.url?.toLowerCase()));
+      const newLinks = [...autoLinks, ...aiLinks].filter((c:any) => c.url && !existingUrls.has(c.url.toLowerCase()));
+      return [...prev, ...newLinks];
+    });
     setShowQS(false);
     // Keep progress screen open until user clicks "Go to Dashboard"
     setView("company");
@@ -11740,13 +13136,13 @@ Raw JSON only.`, "", 1400);
               {/* + New */}
               {/* Get Started — shows for empty workspaces at the very top */}
               {activeWorkspace && !(companyData as any)?.co_name && !(icps as any[]).length && !(products as any[]).length && (
-                <button onClick={()=>setView("onboarding")}
+                <button onClick={()=>setView("welcome")}
                   style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"11px 14px",
-                    borderRadius:12, border:`1.5px dashed ${view==="onboarding"?C2.accent:C2.accent+"66"}`,
-                    background: view==="onboarding" ? `${C2.accent}14` : `${C2.accent}06`,
+                    borderRadius:12, border:`1.5px dashed ${(view==="welcome"||view==="welcome")?C2.accent:C2.accent+"66"}`,
+                    background: (view==="welcome"||view==="welcome") ? `${C2.accent}14` : `${C2.accent}06`,
                     cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:8 }}
                   onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C2.accent;(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}14`;}}
-                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=view==="onboarding"?C2.accent:C2.accent+"66";(e.currentTarget as HTMLButtonElement).style.background=view==="onboarding"?`${C2.accent}14`:`${C2.accent}06`;}}>
+                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=(view==="welcome"||view==="welcome")?C2.accent:C2.accent+"66";(e.currentTarget as HTMLButtonElement).style.background=(view==="welcome"||view==="welcome")?`${C2.accent}14`:`${C2.accent}06`;}}>
                   <span style={{ fontSize:16 }}>🚀</span>
                   <span style={{ fontSize:13, fontFamily:head, fontWeight:700, color:C2.accent }}>Get Started</span>
                 </button>
@@ -11781,7 +13177,7 @@ Raw JSON only.`, "", 1400);
                       onMouseEnter={e=>{ if(view!=="products")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                       onMouseLeave={e=>{ if(view!=="products")(e.currentTarget as HTMLButtonElement).style.background=view==="products"?`${C2.accent}14`:"transparent"; }}>
                       <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="products"?C2.accent:C2.muted }}>◆</span>
-                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="products"?700:500, color:view==="products"?C2.text:C2.textSoft }}>Products</span>
+                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="products"?700:500, color:view==="products"?C2.text:C2.textSoft }}>Products / Services</span>
                     </button>
                   )}
 
@@ -11802,43 +13198,31 @@ Raw JSON only.`, "", 1400);
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
                     padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>PLANNING</div>
 
-                  {/* Preferences */}
-                  <button onClick={()=>guardedNav(()=>setView("preferences"))}
-                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
-                      borderRadius:12, border:"none",
-                      background: view==="preferences" ? `${C2.accent}14` : "transparent",
-                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                    onMouseEnter={e=>{ if(view!=="preferences")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                    onMouseLeave={e=>{ if(view!=="preferences")(e.currentTarget as HTMLButtonElement).style.background=view==="preferences"?`${C2.accent}14`:"transparent"; }}>
-                    <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="preferences"?C2.accent:C2.muted }}>⚙</span>
-                    <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="preferences"?700:500, color:view==="preferences"?C2.text:C2.textSoft }}>Preferences</span>
-                  </button>
-
-                  {/* Coverage Matrix */}
-                  {(
-                    <button onClick={()=>guardedNav(()=>setView("matrix"))}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
-                        borderRadius:12, border:"none",
-                        background: view==="matrix" ? `${C2.accent}14` : "transparent",
-                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(view!=="matrix")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(view!=="matrix")(e.currentTarget as HTMLButtonElement).style.background=view==="matrix"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="matrix"?C2.accent:C2.muted }}>▦</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="matrix"?700:500, color:view==="matrix"?C2.text:C2.textSoft }}>Coverage</span>
-                    </button>
-                  )}
-
                   {/* Strategy */}
                   {(
                     <button onClick={()=>guardedNav(()=>setView("strategy"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
-                        background: view==="strategy" ? `${C2.accent}14` : "transparent",
+                        background: (view==="strategy"||view==="matrix") ? `${C2.accent}14` : "transparent",
                         cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(view!=="strategy")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(view!=="strategy")(e.currentTarget as HTMLButtonElement).style.background=view==="strategy"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="strategy"?C2.accent:C2.muted }}>◎</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="strategy"?700:500, color:view==="strategy"?C2.text:C2.textSoft }}>Strategy</span>
+                      onMouseEnter={e=>{ if(view!=="strategy"&&view!=="matrix")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="strategy"&&view!=="matrix")(e.currentTarget as HTMLButtonElement).style.background=(view==="strategy"||view==="matrix")?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:(view==="strategy"||view==="matrix")?C2.accent:C2.muted }}>◎</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:(view==="strategy"||view==="matrix")?700:500, color:(view==="strategy"||view==="matrix")?C2.text:C2.textSoft }}>Strategy</span>
+                    </button>
+                  )}
+
+                  {/* DFY Setup */}
+                  {(
+                    <button onClick={()=>guardedNav(()=>setView("dfySetup"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="dfySetup" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="dfySetup")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="dfySetup")(e.currentTarget as HTMLButtonElement).style.background=view==="dfySetup"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="dfySetup"?C2.accent:C2.muted }}>⊕</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="dfySetup"?700:500, color:view==="dfySetup"?C2.text:C2.textSoft }}>DFY Setup</span>
                     </button>
                   )}
 
@@ -11880,17 +13264,31 @@ Raw JSON only.`, "", 1400);
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
                     padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>RESOURCES</div>
 
-                  {/* My Files */}
+                  {/* Knowledge Center (Files + Content) */}
                   {(
-                    <button onClick={()=>guardedNav(()=>setView("files"))}
+                    <button onClick={()=>guardedNav(()=>setView("knowledge"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
                         borderRadius:12, border:"none",
-                        background: view==="files" ? `${C2.accent}14` : "transparent",
+                        background: view==="knowledge" ? `${C2.accent}14` : "transparent",
                         cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
-                      onMouseEnter={e=>{ if(view!=="files")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(view!=="files")(e.currentTarget as HTMLButtonElement).style.background=view==="files"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="files"?C2.accent:C2.muted }}>◇</span>
-                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="files"?700:500, color:view==="files"?C2.text:C2.textSoft }}>Files</span>
+                      onMouseEnter={e=>{ if(view!=="knowledge")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="knowledge")(e.currentTarget as HTMLButtonElement).style.background=view==="knowledge"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="knowledge"?C2.accent:C2.muted }}>◇</span>
+                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="knowledge"?700:500, color:view==="knowledge"?C2.text:C2.textSoft }}>Knowledge Center</span>
+                    </button>
+                  )}
+
+                  {/* Call Analyzer */}
+                  {(
+                    <button onClick={()=>guardedNav(()=>setView("calls"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="calls" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
+                      onMouseEnter={e=>{ if(view!=="calls")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="calls")(e.currentTarget as HTMLButtonElement).style.background=view==="calls"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="calls"?C2.accent:C2.muted }}>🎙</span>
+                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="calls"?700:500, color:view==="calls"?C2.text:C2.textSoft }}>Call Analyzer</span>
                     </button>
                   )}
                 </>
@@ -12048,7 +13446,7 @@ Raw JSON only.`, "", 1400);
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix","preferences","onboarding"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix","preferences","onboarding"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix","preferences","onboarding"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -12143,7 +13541,7 @@ Raw JSON only.`, "", 1400);
                       const wsReady = wsIcps.filter(i => i.outputs).length;
                       return (
                         <div key={c.id}
-                          onClick={()=>{ setActiveWorkspace(c); const ws = loadWorkspaceData(c.id); const isEmpty = !ws || (!ws.companyData?.co_name && !(ws.icps||[]).length && !(ws.products||[]).length); setView(isEmpty ? "onboarding" : "company"); }}
+                          onClick={()=>{ setActiveWorkspace(c); const ws = loadWorkspaceData(c.id); const isEmpty = !ws || (!ws.companyData?.co_name && !(ws.icps||[]).length && !(ws.products||[]).length); setView(isEmpty ? "welcome" : "company"); }}
                           style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px 60px",
                             padding:"13px 20px", gap:12, alignItems:"center", cursor:"pointer",
                             borderBottom: idx < filteredAccts.length-1 ? `1px solid ${C.border}` : "none",
@@ -12213,8 +13611,249 @@ Raw JSON only.`, "", 1400);
           {view !== "accounts" && activeWorkspace && (
           <div style={{ maxWidth:"100%" }}>
 
+            {/* ── WELCOME SCREEN ── */}
+            {view==="welcome" && !qsProgress && (!showQS || welcomeExiting) && !showPasteForm && (
+              <div style={{ position:"absolute", inset:0, display:"flex",
+                animation: welcomeExiting
+                  ? "welcomePhaseOut .5s cubic-bezier(0.4, 0, 1, 1) forwards"
+                  : "welcomePhaseIn .8s cubic-bezier(0.16, 1, 0.3, 1) both" }}>
+                <WelcomeScreen companyName={activeWorkspace?.name}
+                  onQuickStart={()=>{ setShowQSAnimated(true); }}
+                  onManual={()=>setView("company")}
+                  onPasteForm={()=>{ setShowPasteForm(true); }}
+                  onImport={()=>{
+                    const input = document.createElement("input"); input.type="file"; input.accept=".json";
+                    input.onchange = async (e:any) => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      try {
+                        const result = await importWorkspaceBundle(file, loggedInUser?.id||null);
+                        if (result) { addToast({ title:"Imported", status:"success", message:result.clientName }); setView("company"); }
+                      } catch { addToast({ title:"Import failed", status:"error", message:"Invalid file" }); }
+                    }; input.click();
+                  }} />
+              </div>
+            )}
+
+            {/* ── PASTE IMPLEMENTATION FORM ── */}
+            {view==="welcome" && showPasteForm && (
+              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+                animation:"welcomePhaseIn .8s cubic-bezier(0.16, 1, 0.3, 1) both" }}>
+                <div style={{ width:"100%", maxWidth:620, padding:"0 24px" }}>
+                  <div style={{ textAlign:"center", marginBottom:32 }}>
+                    <div style={{ fontSize:32, marginBottom:12 }}>📋</div>
+                    <h2 style={{ fontSize:26, fontWeight:700, fontFamily:head, color:C2.text, margin:"0 0 6px" }}>Paste Implementation Form</h2>
+                    <p style={{ fontSize:14, color:C2.muted, fontFamily:body, margin:0 }}>Paste the completed form below — AI will map it to all workspace fields for your review.</p>
+                  </div>
+                  <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:16, padding:24, boxShadow:"0 4px 24px rgba(13,15,26,.06)" }}>
+                    <textarea value={pasteFormText} onChange={e=>setPasteFormText(e.target.value)}
+                      placeholder="Paste the entire completed implementation form here...&#10;&#10;First Name&#10;John&#10;Last Name&#10;Smith&#10;Company Name&#10;Acme Corp&#10;..."
+                      rows={12}
+                      style={{ width:"100%", padding:"14px 16px", borderRadius:10, border:`1px solid ${C2.border}`, background:C2.faint,
+                        color:C2.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none", lineHeight:1.6 }} />
+                    <div style={{ display:"flex", gap:10, marginTop:16 }}>
+                      <button onClick={async ()=>{
+                        if (!pasteFormText.trim()) { addToast({ title:"Paste the form first", status:"error", message:"The text area is empty" }); return; }
+                        // Open copilot and send the form text
+                        setShowPasteForm(false);
+                        setShowCopilot(true);
+                        // Inject the form into copilot as a message
+                        const chatId = uid();
+                        setChats(prev => [{ id: chatId, title: "Implementation Form Import", createdAt: Date.now(), messages: [] }, ...prev]);
+                        // Small delay so copilot mounts
+                        setTimeout(() => {
+                          const formMsg = `Here is the completed implementation form. Please parse it and use the propose_form_changes tool to show me what fields would be updated. Do NOT apply any changes directly.\n\n${pasteFormText}`;
+                          // Set copilot input and trigger send
+                          (window as any).__copilotInject = { chatId, text: formMsg };
+                          // Force copilot to pick it up
+                          setChats(p => [...p]);
+                        }, 500);
+                        setPasteFormText("");
+                        setView("company");
+                      }}
+                        disabled={!pasteFormText.trim()}
+                        style={{ flex:1, padding:"12px", borderRadius:10, border:"none",
+                          background: pasteFormText.trim() ? C2.accent : C2.faint,
+                          color: pasteFormText.trim() ? "#fff" : C2.muted,
+                          fontSize:14, fontFamily:head, fontWeight:700, cursor: pasteFormText.trim() ? "pointer" : "default" }}>
+                        Parse & Review Changes
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ textAlign:"center", marginTop:16 }}>
+                    <button onClick={()=>setShowPasteForm(false)}
+                      style={{ padding:"8px 20px", borderRadius:8, border:`1px solid ${C2.border}`, background:"transparent",
+                        color:C2.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                      ← Back
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── QUICK START SETUP (inline, replaces welcome) ── */}
+            {view==="welcome" && showQS && (!qsProgress || setupExiting) && (
+              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+                animation: (welcomeExiting || setupExiting)
+                  ? "welcomePhaseOut .5s cubic-bezier(0.4, 0, 1, 1) forwards"
+                  : "welcomePhaseIn .8s cubic-bezier(0.16, 1, 0.3, 1) both" }}>
+                <div style={{ width:"100%", maxWidth:560, padding:"0 24px" }}>
+                  <div style={{ textAlign:"center", marginBottom:32 }}>
+                    <div style={{ fontSize:32, marginBottom:12 }}>⚡</div>
+                    <h2 style={{ fontSize:26, fontWeight:700, fontFamily:head, color:C2.text, margin:"0 0 6px" }}>Quick Start</h2>
+                    <p style={{ fontSize:14, color:C2.muted, fontFamily:body, margin:0 }}>Give us a website, docs, or notes — AI builds your entire workspace.</p>
+                  </div>
+                  <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:16, padding:24,
+                    boxShadow:"0 4px 24px rgba(13,15,26,.06)" }}>
+                    <QuickStartModal
+                      onComplete={handleQSComplete}
+                      onClose={()=>setShowQSAnimated(false)}
+                      addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
+                      onProgress={(step: number, results: Record<string,string>) => setQsProgressAnimated(step, results)}
+                      onBriefReady={(coFields: any, coConf: any, ctx: string, brief: any, phaseAResults?: Record<string,string>) => { setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: phaseAResults || {} }); setQsProgress(null); }}
+                      inline={true} />
+                  </div>
+                  <div style={{ textAlign:"center", marginTop:16 }}>
+                    <button onClick={()=>setShowQSAnimated(false)}
+                      style={{ padding:"8px 20px", borderRadius:8, border:`1px solid ${C2.border}`, background:"transparent",
+                        color:C2.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                      ← Back
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── QUICK START PROGRESS (replaces welcome/setup) ── */}
+            {view==="welcome" && qsProgress && (() => {
+              const total = QS_STEPS.length;
+              const step = qsProgress.step;
+              const pct = Math.round((step / total) * 100);
+              const done = step >= total;
+              const activeStep = QS_STEPS[Math.min(step, total-1)];
+              const activeColor = activeStep?.color || C2.accent;
+              const results = qsProgress.results || {};
+              return (
+                <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+                  animation:"welcomePhaseIn .8s cubic-bezier(0.16, 1, 0.3, 1) both" }}>
+                  <style>{`
+                    @keyframes qsOrbitLg{0%{transform:rotate(0deg) translateX(var(--r,40px)) rotate(0deg)}100%{transform:rotate(360deg) translateX(var(--r,40px)) rotate(-360deg)}}
+                    @keyframes qsGlowLg{0%,100%{box-shadow:0 0 12px ${activeColor}22}50%{box-shadow:0 0 36px ${activeColor}44}}
+                    @keyframes qsPulse{0%,100%{opacity:1}50%{opacity:.4}}
+                  `}</style>
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:"100%", maxWidth:500 }}>
+                    {/* Animated orb */}
+                    <div style={{ position:"relative", width:120, height:120, marginBottom:28 }}>
+                      {!done && [0,1,2,3,4].map(i => (
+                        <div key={i} style={{ position:"absolute", top:"50%", left:"50%", marginTop:-(3+i), marginLeft:-(3+i),
+                          width:6+i*2, height:6+i*2, borderRadius:"50%",
+                          background:activeColor, opacity:0.15+i*0.12,
+                          // @ts-ignore
+                          "--r": `${30+i*10}px`,
+                          animation:`qsOrbitLg ${3+i*0.6}s linear infinite`,
+                          animationDelay:`${i*0.3}s` } as any} />
+                      ))}
+                      <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
+                        width:52, height:52, borderRadius:16,
+                        background: done ? `linear-gradient(135deg, ${C2.green}, #00B894)` : `linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        animation: done ? undefined : `qsGlowLg 2s ease-in-out infinite`,
+                        boxShadow:`0 8px 32px ${done ? C2.green : activeColor}33` }}>
+                        <span style={{ fontSize:done?22:20, color:"#fff" }}>{done ? "✓" : activeStep?.icon || "◎"}</span>
+                      </div>
+                    </div>
+                    {/* Title */}
+                    <div style={{ fontSize: done ? 28 : 22, fontWeight:700, fontFamily:head, color: done ? C2.accent : C2.text, marginBottom: done ? 8 : 4, textAlign:"center",
+                      animation: done ? "welcomePhaseIn .6s cubic-bezier(0.16, 1, 0.3, 1) both" : undefined }}>
+                      {done ? "You're all set!" : activeStep?.label || "Processing…"}
+                    </div>
+                    <div style={{ fontSize: done ? 15 : 13, color:C2.muted, fontFamily:body, marginBottom:24, textAlign:"center",
+                      animation: done ? "welcomePhaseIn .6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both" : undefined }}>
+                      {done ? "Your workspace has been built — company, products, personas, playbooks, and more." : activeStep?.desc || ""}
+                    </div>
+                    {/* Progress bar */}
+                    <div style={{ width:"100%", maxWidth:320, marginBottom:28 }}>
+                      <div style={{ height:4, borderRadius:2, background:C2.faint, overflow:"hidden" }}>
+                        <div style={{ height:"100%", borderRadius:2,
+                          background:`linear-gradient(90deg, ${activeColor}, ${activeColor}88)`,
+                          width:`${done ? 100 : pct}%`, transition:"width 1s ease-in-out" }} />
+                      </div>
+                      <div style={{ fontSize:10, fontFamily:mono, color:C2.muted, textAlign:"center", marginTop:6 }}>
+                        Step {done ? total : step + 1} of {total}
+                      </div>
+                    </div>
+                    {/* Step list */}
+                    <div style={{ width:"100%", maxWidth:360 }}>
+                      {QS_STEPS.map((s, i) => {
+                        const isActive = i === step && !done;
+                        const isDone = i < step || done;
+                        const isPending = i > step && !done;
+                        const result = results[s.id] || "";
+                        return (
+                          <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"6px 0",
+                            opacity:isPending?0.3:1, transition:"opacity .3s" }}>
+                            <span style={{ fontSize:12, width:20, textAlign:"center", fontFamily:mono, fontWeight:700,
+                              color: isDone ? s.color : isActive ? s.color : C2.muted,
+                              animation: isActive ? "qsPulse 1.5s ease-in-out infinite" : undefined }}>
+                              {isDone ? "✓" : i + 1}
+                            </span>
+                            <span style={{ flex:1, fontSize:13, fontWeight:isActive?700:isDone?500:400, fontFamily:head,
+                              color: isActive ? s.color : isDone ? C2.text : C2.muted }}>{s.label}</span>
+                            {isDone && result && (
+                              <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:s.color, background:`${s.color}15`,
+                                padding:"2px 8px", borderRadius:4 }}>{result.match(/^(\d+)/)?.[1] || result}</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Done — show confetti celebration */}
+                    {done && (
+                      <>
+                        <button onClick={()=>{ setQsProgress(null); setView("company"); }}
+                          style={{ marginTop:24, padding:"14px 36px", borderRadius:14, border:"none",
+                            background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`, color:"#fff",
+                            fontSize:15, fontFamily:head, fontWeight:700, cursor:"pointer",
+                            boxShadow:`0 4px 16px ${C2.accent}44`,
+                            animation:"welcomePhaseIn .6s cubic-bezier(0.34, 1.3, 0.64, 1) 0.3s both" }}>
+                          View Results →
+                        </button>
+                        {/* Confetti */}
+                        <style>{`
+                          @keyframes confettiFall {
+                            0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+                            70% { opacity: 1; }
+                            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+                          }
+                          @keyframes confettiWave {
+                            0%, 100% { margin-left: -15px; }
+                            50% { margin-left: 15px; }
+                          }
+                        `}</style>
+                        {Array.from({length:60}).map((_,i) => {
+                          const colors = ["#6C5CE7","#00D68F","#FF6B6B","#FFC048","#54A0FF","#E84393","#00CEC9","#FDCB6E"];
+                          const size = 6 + Math.random() * 8;
+                          const left = Math.random() * 100;
+                          const delay = Math.random() * 0.8;
+                          const duration = 2.5 + Math.random() * 2;
+                          const color = colors[i % colors.length];
+                          const isCircle = Math.random() > 0.5;
+                          // Repeat every 4 seconds
+                          return <div key={i} style={{
+                            position:"fixed", top:0, left:`${left}%`, width:size, height: isCircle ? size : size * 0.6,
+                            borderRadius: isCircle ? "50%" : "2px",
+                            background:color, zIndex:9999, pointerEvents:"none",
+                            animation:`confettiFall ${duration}s ease-in ${delay}s infinite, confettiWave ${0.5+Math.random()*1}s ease-in-out ${delay}s infinite alternate`,
+                          }} />;
+                        })}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ── ONBOARDING WIZARD ── */}
-            {view==="onboarding" && (
+            {view==="welcome" && false && (
               <div style={{ padding:"0 clamp(20px, 5vw, 80px)", display:"flex", flexDirection:"column",
                 alignItems:"center", justifyContent:"center",
                 position:"absolute" as const, inset:0 }}>
@@ -12443,7 +14082,7 @@ Raw JSON only.`, "", 1400);
                     onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=C.canvas}>
                     View ICPs
                   </button>
-                  <button onClick={()=>{ setView("onboarding"); setShowQS(true); }} style={{ padding:"10px 18px", borderRadius:8, border:"none",
+                  <button onClick={()=>{ setView("welcome"); setShowQS(true); }} style={{ padding:"10px 18px", borderRadius:8, border:"none",
                     background:C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer",
                     boxShadow:`0 2px 10px ${C.accent}40` }}>
                     ⚡ Quick Start
@@ -12465,9 +14104,9 @@ Raw JSON only.`, "", 1400);
               <div style={{ position:"absolute" as const, inset:0, textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ padding:"20px 0 16px", flexShrink:0 }}>
-                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Company Profile</h2>
+                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Company</h2>
                   <p style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.5, margin:"0 0 14px" }}>
-                    Who is this client and what do they sell? This context feeds into every AI generation.
+                    Client profile, business details, campaign preferences, scheduling, and benchmarks.
                   </p>
                   <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                     <div style={{ flex:1, height:6, borderRadius:3, background:C2.faint, overflow:"hidden" }}>
@@ -12489,29 +14128,7 @@ Raw JSON only.`, "", 1400);
               </div>
             )}
 
-            {view==="preferences" && (
-              <div style={{ position:"absolute" as const, inset:0, textAlign:"left", display:"flex", flexDirection:"column", overflow:"hidden", padding:"0 clamp(20px, 3vw, 48px)",
-                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                <div style={{ padding:"20px 0 16px", flexShrink:0 }}>
-                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Preferences</h2>
-                  <p style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.5, margin:"0 0 14px" }}>
-                    Campaign configuration, scheduling, messaging guardrails, and benchmarks.
-                  </p>
-                  <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                    <div style={{ flex:1, height:6, borderRadius:3, background:C2.faint, overflow:"hidden" }}>
-                      <div style={{ height:"100%", borderRadius:3, width:`${prefsPct}%`,
-                        background:`linear-gradient(90deg, ${C2.accent}, ${C2.accentHi})`,
-                        transition:"width .6s ease", boxShadow:`0 0 8px ${C2.accent}33` }} />
-                    </div>
-                    <span style={{ fontSize:12, color:prefsPct===100?C2.green:C2.accent, fontFamily:mono, fontWeight:700,
-                      background:prefsPct===100?C2.greenLo:`${C2.accent}11`, padding:"3px 10px", borderRadius:8 }}>{prefsPct}%</span>
-                  </div>
-                </div>
-                <div style={{ flex:1, minHeight:0, marginBottom:16, overflow:"hidden" }}>
-                  <PreferencesPanel data={companyData} onChange={setCompanyData} />
-                </div>
-              </div>
-            )}
+            {/* Preferences merged into Company */}
 
             {view==="products" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
@@ -12524,38 +14141,54 @@ Raw JSON only.`, "", 1400);
             )}
 
 
-            {view==="strategy" && (
+            {(view==="strategy" || view==="matrix") && (() => {
+              const stratTab = (window as any).__stratTab || (view==="matrix"?"coverage":"roadmap");
+              const setStratTab = (v:string) => { (window as any).__stratTab = v; setStrategy((p:any) => p ? {...p} : p); };
+              // Sync tab when navigating directly to matrix
+              if (view==="matrix" && stratTab!=="coverage") { (window as any).__stratTab = "coverage"; }
+              return (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
-                  <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
-                    companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast}
-                    genState={strategyGen} onGenStateChange={setStrategyGen} />
+                <div style={{ padding:"20px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 12px" }}>Strategy</h2>
+                  <div style={{ display:"flex", gap:4, padding:4, background:C2.faint, borderRadius:8, marginBottom:12, width:"fit-content" }}>
+                    {[["roadmap","Roadmap"],["coverage","Coverage Matrix"]].map(([id,label])=>(
+                      <button key={id} onClick={()=>setStratTab(id)}
+                        style={{ padding:"6px 16px", borderRadius:6, border:"none", background:stratTab===id?C2.canvas:"transparent",
+                          color:stratTab===id?C2.text:C2.muted, fontSize:11, fontFamily:head, fontWeight:stratTab===id?700:500,
+                          cursor:"pointer", boxShadow:stratTab===id?"0 1px 3px rgba(0,0,0,0.06)":"none", transition:"all .25s" }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-
-            {view==="matrix" && (
-              <div style={{ position:"absolute" as const, inset:0, overflow:"hidden",
-                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-                <CoverageMatrix products={products} personas={icps} offers={offers} campaigns={campaigns} v2={true}
-                  onCreateCampaign={(productId, personaId) => {
-                    const c = EMPTY_CAMPAIGN();
-                    c.productId = productId;
-                    c.personaIds = [personaId];
-                    const persona = icps.find((i:any)=>i.id===personaId);
-                    const product = products.find((p:any)=>p.id===productId);
-                    c.name = `${persona?.name||"Persona"} × ${product?.name||"Product"}`;
-                    setCampaigns(prev => [...prev, c]);
-                    setView("campaigns");
-                    addToast({ title:"Campaign created", status:"success", message:c.name });
-                  }}
-                  onViewCampaign={(campaignId) => {
-                    setView("campaigns");
-                  }}
-                />
-              </div>
-            )}
+                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
+                  {stratTab==="roadmap" && (
+                    <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
+                      companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast}
+                      genState={strategyGen} onGenStateChange={setStrategyGen} />
+                  )}
+                  {stratTab==="coverage" && (
+                    <CoverageMatrix products={products} personas={icps} offers={offers} campaigns={campaigns} v2={true}
+                      onCreateCampaign={(productId: string, personaId: string) => {
+                        const c = EMPTY_CAMPAIGN();
+                        c.productId = productId;
+                        c.personaIds = [personaId];
+                        const persona = icps.find((i:any)=>i.id===personaId);
+                        const product = products.find((p:any)=>p.id===productId);
+                        c.name = `${persona?.name||"Persona"} × ${product?.name||"Product"}`;
+                        setCampaigns(prev => [...prev, c]);
+                        setView("campaigns");
+                        addToast({ title:"Campaign created", status:"success", message:c.name });
+                      }}
+                      onViewCampaign={(_campaignId: string) => {
+                        setView("campaigns");
+                      }}
+                    />
+                  )}
+                </div>
+              </div>);
+            })()}
 
             {view==="campaigns" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
@@ -12914,11 +14547,1717 @@ Raw JSON only.`, "", 1400);
 
             {/* Copilot chat panel removed from here — now renders as floating overlay below */}
 
+            {/* Standalone battlecards/playbooks removed — now in Knowledge Center */}
+            {false && (() => {
+              const _C = C2;
+              return (
+              <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", overflow:"hidden", animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ padding:"24px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+                  <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>INTELLIGENCE</div>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+                    <h2 style={{ fontSize:22, fontWeight:700, fontFamily:head, color:_C.text, margin:0 }}>Competitive Battlecards</h2>
+                    <button onClick={()=>setBattlecards(p=>[...p, EMPTY_BATTLECARD()])}
+                      style={{ padding:"8px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>+ Add Competitor</button>
+                  </div>
+                </div>
+                <div style={{ flex:1, overflowY:"auto", padding:"0 clamp(20px, 3vw, 48px) 36px" }}>
+                  {!battlecards.length && <div style={{ textAlign:"center", padding:"60px 0", color:_C.muted, fontSize:13 }}>No battlecards yet. Add a competitor to get started.</div>}
+                  {battlecards.map((bc: any, idx: number) => (
+                    <div key={bc.id} style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:24, marginBottom:16 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                        <input value={bc.competitorName} onChange={e=>{const v=e.target.value; setBattlecards(p=>p.map((b:any)=>b.id===bc.id?{...b,competitorName:v}:b));}}
+                          placeholder="Competitor name" style={{ fontSize:18, fontWeight:700, fontFamily:head, color:_C.text, border:"none", background:"transparent", outline:"none", width:"60%" }} />
+                        <button onClick={()=>setBattlecards(p=>p.filter((b:any)=>b.id!==bc.id))}
+                          style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:11, fontFamily:mono, cursor:"pointer" }}>Delete</button>
+                      </div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                        {[
+                          ["website","Website","https://competitor.com"],
+                          ["overview","Overview","What they do, who they serve, market position"],
+                          ["strengths","Their Strengths","What they do well — be honest"],
+                          ["weaknesses","Their Weaknesses","Where they fall short — your opportunity"],
+                          ["pricing","Pricing Intel","What we know about their pricing model"],
+                          ["idealFor","They Win When...","Scenarios where they're the better fit — avoid these"],
+                          ["landmines","Landmines to Avoid","Don't mention X, don't compare on Y"],
+                          ["displacementAngles","Displacement Angles","How to position against them — not bashing, highlighting gaps"],
+                          ["winLossNotes","Win/Loss Notes","Why we've won or lost against them"],
+                        ].map(([key, label, ph]) => (
+                          <div key={key} style={{ ...(key==="overview"||key==="displacementAngles"||key==="winLossNotes"?{gridColumn:"1/-1"}:{}) }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:4, textTransform:"uppercase" as const }}>{label}</div>
+                            <textarea value={bc[key]||""} onChange={e=>{const v=e.target.value; setBattlecards(p=>p.map((b:any)=>b.id===bc.id?{...b,[key]:v}:b));}}
+                              placeholder={ph} rows={key==="website"?1:3}
+                              style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none" }} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>);
+            })()}
+
+            {false && (() => {
+              const _C = C2;
+              const [expandedPb, setExpandedPb] = [null as string|null, (v:any) => {}]; // use local ref pattern
+              return (
+              <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", overflow:"hidden", animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ padding:"24px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+                  <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>INTELLIGENCE</div>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                    <h2 style={{ fontSize:22, fontWeight:700, fontFamily:head, color:_C.text, margin:0 }}>Playbooks</h2>
+                    <div style={{ display:"flex", gap:8 }}>
+                      {products.length > 0 && icps.length > 0 && (
+                        <button onClick={()=>{
+                          // Generate playbooks for all combos that don't have one
+                          const existing = new Set(playbooks.map((pb:any) => `${pb.productId}__${pb.personaId}`));
+                          const newPbs: any[] = [];
+                          for (const prod of products) {
+                            for (const icp of icps) {
+                              if (!existing.has(`${prod.id}__${icp.id}`)) {
+                                newPbs.push(EMPTY_PLAYBOOK(prod.id, icp.id));
+                              }
+                            }
+                          }
+                          if (newPbs.length) setPlaybooks(p => [...p, ...newPbs]);
+                          else addToast({ title:"All covered", status:"info", message:"Every product × persona combo already has a playbook" });
+                        }}
+                          style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                          Generate All Combos
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p style={{ fontSize:12, color:_C.muted, fontFamily:body, margin:"0 0 16px" }}>
+                    Each playbook is specific to a product × persona combination — discovery questions, objections, signals, and process tailored to that exact buyer.
+                  </p>
+                </div>
+                <div style={{ flex:1, overflowY:"auto", padding:"0 clamp(20px, 3vw, 48px) 36px" }}>
+                  {!playbooks.length && (
+                    <div style={{ textAlign:"center", padding:"60px 0", color:_C.muted, fontSize:13 }}>
+                      {products.length === 0 || icps.length === 0
+                        ? "Add products and personas first, then generate playbooks for each combination."
+                        : "No playbooks yet. Click 'Generate All Combos' to create a playbook for each product × persona."}
+                    </div>
+                  )}
+                  {playbooks.map((pb: any) => {
+                    const prod = products.find((p:any) => p.id === pb.productId);
+                    const pers = icps.find((i:any) => i.id === pb.personaId);
+                    const isOpen = (window as any).__openPb === pb.id;
+                    const toggle = () => { (window as any).__openPb = isOpen ? null : pb.id; setPlaybooks(p => [...p]); };
+                    const updateField = (key: string, val: any) => setPlaybooks(p => p.map((x:any) => x.id === pb.id ? { ...x, [key]: val } : x));
+                    const processFields: [string,string,string,number][] = [
+                      ["discoveryQuestions","Discovery Questions","Questions to ask this persona about their specific pains, needs, and situation",4],
+                      ["demoTalkingPoints","Demo Talking Points","Key features to show this persona, in order of what matters to them",4],
+                      ["qualificationCriteria","Qualification Criteria","What makes this persona qualified for this product — budget, authority, need, timeline",3],
+                      ["meetingAgenda","Meeting Agenda","Standard agenda for first call with this persona about this product",3],
+                      ["handoffProcess","Handoff Process","What context the AE needs when this persona books a demo for this product",3],
+                      ["pricingGuidance","Pricing Guidance","How to frame pricing for this persona — what matters to them (ROI, cost savings, etc.)",3],
+                      ["closingTechniques","Closing Techniques","What works for this persona — urgency, social proof, trial close, direct ask",3],
+                      ["followUpCadence","Follow-Up Cadence","After demo: timing, content, and escalation specific to this persona",3],
+                      ["commonScenarios","Common Scenarios","Scenario-specific plays: they go dark, loop in boss, ask for competitor comparison, etc.",4],
+                      ["escalationPath","Escalation Path","When to escalate, to whom, and what triggers it for this deal type",2],
+                      ["notes","Notes","Anything else specific to selling this product to this persona",2],
+                    ];
+                    return (
+                      <div key={pb.id} style={{ background:_C.canvas, border:`1px solid ${isOpen ? _C.accent+"44" : _C.border}`, borderRadius:14, marginBottom:12, overflow:"hidden", transition:"border-color .2s" }}>
+                        {/* Header */}
+                        <div onClick={toggle} style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14, cursor:"pointer" }}>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:_C.text }}>
+                              {prod?.name || "No product"} <span style={{ color:_C.muted, fontWeight:400 }}>×</span> {pers?.name || "No persona"}
+                            </div>
+                            <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
+                              {pb.objections?.length||0} objections · {pb.signals?.length||0} signals · {processFields.filter(([k])=>pb[k]?.trim()).length}/{processFields.length} fields
+                            </div>
+                          </div>
+                          <button onClick={e=>{e.stopPropagation(); setPlaybooks(p=>p.filter((x:any)=>x.id!==pb.id));}}
+                            style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:11, fontFamily:mono, cursor:"pointer" }}>Delete</button>
+                          <span style={{ fontSize:11, color:_C.muted, transition:"transform .2s", transform:isOpen?"rotate(180deg)":"rotate(0)" }}>▼</span>
+                        </div>
+                        {/* Expanded content */}
+                        {isOpen && (
+                          <div style={{ padding:"0 20px 20px", borderTop:`1px solid ${_C.border}` }}>
+                            {/* Process fields */}
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, margin:"16px 0 10px", textTransform:"uppercase" as const }}>PROCESS</div>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                              {processFields.map(([key,label,ph,rows]) => (
+                                <div key={key} style={{ ...(key==="commonScenarios"?{gridColumn:"1/-1"}:{}) }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:4, textTransform:"uppercase" as const }}>{label}</div>
+                                  <textarea value={pb[key]||""} onChange={e=>updateField(key, e.target.value)}
+                                    placeholder={ph} rows={rows}
+                                    style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none" }} />
+                                </div>
+                              ))}
+                            </div>
+                            {/* Objections */}
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", margin:"20px 0 10px" }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, textTransform:"uppercase" as const }}>OBJECTIONS</div>
+                              <button onClick={()=>updateField("objections", [...(pb.objections||[]), EMPTY_OBJECTION()])}
+                                style={{ padding:"3px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>+ Add</button>
+                            </div>
+                            {(pb.objections||[]).map((obj:any, oi:number) => (
+                              <div key={obj.id} style={{ background:_C.faint, borderRadius:10, padding:14, marginBottom:8, border:`1px solid ${_C.border}` }}>
+                                <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+                                  <select value={obj.category||"pricing"} onChange={e=>{const objs=[...(pb.objections||[])]; objs[oi]={...objs[oi],category:e.target.value}; updateField("objections",objs);}}
+                                    style={{ padding:"4px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:10, fontFamily:mono }}>
+                                    {OBJECTION_CATEGORIES.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
+                                  </select>
+                                  <select value={obj.severity||"common"} onChange={e=>{const objs=[...(pb.objections||[])]; objs[oi]={...objs[oi],severity:e.target.value}; updateField("objections",objs);}}
+                                    style={{ padding:"4px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:10, fontFamily:mono }}>
+                                    <option value="critical">Critical</option><option value="common">Common</option><option value="occasional">Occasional</option>
+                                  </select>
+                                  <div style={{ flex:1 }} />
+                                  <button onClick={()=>{const objs=(pb.objections||[]).filter((_:any,i:number)=>i!==oi); updateField("objections",objs);}}
+                                    style={{ padding:"2px 8px", borderRadius:4, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, cursor:"pointer" }}>✕</button>
+                                </div>
+                                {[["objection","Objection",1],["rebuttal","Rebuttal",2],["talkTrack","Talk Track",2]].map(([k,l,r])=>(
+                                  <textarea key={k as string} value={obj[k as string]||""} placeholder={l as string} rows={r as number}
+                                    onChange={e=>{const objs=[...(pb.objections||[])]; objs[oi]={...objs[oi],[k as string]:e.target.value}; updateField("objections",objs);}}
+                                    style={{ width:"100%", padding:"6px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:12, fontFamily:body, resize:"vertical", outline:"none", marginBottom:6 }} />
+                                ))}
+                              </div>
+                            ))}
+                            {/* Signals */}
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", margin:"20px 0 10px" }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, textTransform:"uppercase" as const }}>BUYING SIGNALS</div>
+                              <button onClick={()=>updateField("signals", [...(pb.signals||[]), EMPTY_SIGNAL()])}
+                                style={{ padding:"3px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>+ Add</button>
+                            </div>
+                            {(pb.signals||[]).map((sig:any, si:number) => (
+                              <div key={sig.id} style={{ display:"flex", gap:10, alignItems:"center", background:_C.faint, borderRadius:8, padding:"8px 12px", marginBottom:6, border:`1px solid ${_C.border}` }}>
+                                <select value={sig.signalType||"other"} onChange={e=>{const sigs=[...(pb.signals||[])]; sigs[si]={...sigs[si],signalType:e.target.value}; updateField("signals",sigs);}}
+                                  style={{ padding:"4px 6px", borderRadius:5, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:10, fontFamily:mono, flexShrink:0 }}>
+                                  {SIGNAL_TYPES.map(t=><option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+                                </select>
+                                <input value={sig.detail||""} placeholder="Signal detail" onChange={e=>{const sigs=[...(pb.signals||[])]; sigs[si]={...sigs[si],detail:e.target.value}; updateField("signals",sigs);}}
+                                  style={{ flex:1, padding:"4px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:12, fontFamily:body, outline:"none" }} />
+                                <input value={sig.suggestedAction||""} placeholder="Action" onChange={e=>{const sigs=[...(pb.signals||[])]; sigs[si]={...sigs[si],suggestedAction:e.target.value}; updateField("signals",sigs);}}
+                                  style={{ flex:1, padding:"4px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:12, fontFamily:body, outline:"none" }} />
+                                <button onClick={()=>{const sigs=(pb.signals||[]).filter((_:any,i:number)=>i!==si); updateField("signals",sigs);}}
+                                  style={{ padding:"2px 8px", borderRadius:4, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, cursor:"pointer" }}>✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>);
+            })()}
+
+            {/* ── DFY SETUP ── */}
+            {view==="dfySetup" && (() => {
+              const _C = C2;
+              const dfy = dfySetup;
+              const upd = (patch: any) => setDfySetup((p: any) => ({ ...p, ...patch }));
+              // Ranked by cold outreach deliverability and trust (best first)
+              // .com/.net/.org = highest trust, best deliverability, lowest spam filtering
+              // .co/.io = good, widely recognized in B2B/tech
+              // .us/.biz/.info = decent for outreach, cheap, less trust
+              // .dev/.tech/.ai = niche, can trigger spam filters on some ESPs
+              const TLD_OPTIONS = [".com",".net",".org",".co",".io",".us",".biz",".info"];
+              const TLD_RANK: Record<string,number> = {".com":1,".net":2,".org":3,".co":4,".io":5,".us":6,".biz":7,".info":8};
+              const PACKAGES = [
+                { domains:67, mailboxes:201, label:"Large (67 domains / 201 mailboxes)" },
+                { domains:34, mailboxes:102, label:"Medium (34 domains / 102 mailboxes)" },
+                { domains:15, mailboxes:45,  label:"Small (15 domains / 45 mailboxes)" },
+              ];
+
+              // Check domain availability via RapidAPI
+              const checkDomain = async (domain: string, tlds: string[]) => {
+                try {
+                  const r = await fetch("https://domain-checker30.p.rapidapi.com/checkdomain", {
+                    method: "POST",
+                    headers: {
+                      "x-rapidapi-key": "ca85116eedmsh09b32c4f0f5fb4bp15cb3bjsn07b3d73f24cb",
+                      "x-rapidapi-host": "domain-checker30.p.rapidapi.com",
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ domain, tlds: tlds.map(t => t.replace(".", "")) }),
+                  });
+                  const json = await r.json();
+                  console.log(`[DFY] ${domain}:`, JSON.stringify(json).slice(0, 300));
+                  return json;
+                } catch (e) { console.warn(`[DFY] ${domain} failed:`, e); return null; }
+              };
+
+              // Verify forwarding domain
+              const verifyForwarding = async () => {
+                if (!dfy.forwardingDomain) return;
+                upd({ forwardingVerified: "checking" });
+                const raw = dfy.forwardingDomain.trim().replace(/\/+$/, "");
+                // Build candidate URLs to try
+                const candidates: string[] = [];
+                if (/^https?:\/\//i.test(raw)) {
+                  candidates.push(raw);
+                } else {
+                  candidates.push(`https://${raw}`, `https://www.${raw}`, `http://${raw}`);
+                }
+
+                // Multiple CORS proxies to try
+                const proxies = [
+                  (u:string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+                  (u:string) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}`,
+                  (u:string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+                ];
+
+                for (const url of candidates) {
+                  for (const makeProxy of proxies) {
+                    try {
+                      const r = await fetch(makeProxy(url), { signal: AbortSignal.timeout(8000) });
+                      if (r.ok) {
+                        const text = await r.text();
+                        // Valid if we got substantial HTML content
+                        if (text.length > 100 && (text.includes("<") || text.includes("html"))) {
+                          const lower = text.toLowerCase();
+                          // Reject obvious error pages
+                          if (lower.includes("<title>404") || lower.includes("page not found") || lower.includes("domain for sale") || lower.includes("this domain is parked")) continue;
+                          upd({ forwardingDomain: url, forwardingVerified: true });
+                          return;
+                        }
+                      }
+                    } catch {}
+                  }
+                }
+                // Final fallback: just check if DNS resolves via a simple fetch (opaque response is fine)
+                for (const url of candidates) {
+                  try {
+                    const r = await fetch(url, { method: "HEAD", mode: "no-cors", signal: AbortSignal.timeout(6000) });
+                    // no-cors returns opaque response — if it doesn't throw, the server exists
+                    upd({ forwardingDomain: url, forwardingVerified: true });
+                    return;
+                  } catch {}
+                }
+                upd({ forwardingVerified: false });
+              };
+
+              // AI generate domain suggestions
+              const generateDomains = async () => {
+                const cd = companyData as any;
+                const locked = dfy.lockedDomains || [];
+                const needed = locked.length > 0 ? dfy.domainCount - locked.length : dfy.domainCount;
+                // Always check ALL TLDs for maximum hit rate — ranking/preference happens in the response parser
+                const tlds = Object.keys(TLD_RANK).map(t => t.replace(".", ""));
+                const available: { domain: string; available: true }[] = [];
+                let totalChecked = 0;
+
+                // Preserve locked domains from previous run
+                if (locked.length > 0) {
+                  upd({ suggestedDomains: locked.map((d:string) => ({ domain: d, available: true })) });
+                }
+
+                setDfyProgress({ running: true, phase: locked.length > 0 ? `Finding ${needed} more domains...` : "Generating variations...", found: locked.length, needed: dfy.domainCount, checked: 0, total: 0 });
+
+                // Step 1: Extract the primary brand name — smart detection
+                const rawName = (cd.co_name||"").toLowerCase();
+                const stopWords = new Set(["the","and","for","inc","llc","ltd","corp","group","company","services","solutions","consulting","enterprises","international","partners","associates"]);
+                const nameWords = rawName.split(/[\s,.\-&]+/).filter((w:string) => w.length >= 2 && !stopWords.has(w));
+                const fwdStem = (dfy.forwardingDomain||"").replace(/https?:\/\//,"").replace(/\/.*/,"").replace(/^www\./,"").split(".")[0]?.toLowerCase().replace(/[^a-z0-9]/g,"")||"";
+                const nameJoined = nameWords.join("");
+
+                // Smart brand detection:
+                // 1. If forwarding domain stem is short (≤14 chars), use it as-is — it IS the brand (e.g. "fipprinting")
+                // 2. If it matches the company name words joined, it's the natural brand
+                // 3. Only fall back to splitting into words if the stem is too long
+                let brandPrimary: string;
+                let brandStrong: string;
+
+                if (fwdStem && fwdStem.length <= 14) {
+                  // Short stem — use as-is (e.g. "fipprinting", "bebop", "acmecorp")
+                  brandPrimary = fwdStem;
+                  brandStrong = fwdStem;
+                } else if (nameJoined && nameJoined.length <= 14) {
+                  // Company name words joined is short enough (e.g. "fipprinting" from "FIP Printing")
+                  brandPrimary = nameJoined;
+                  brandStrong = nameJoined;
+                } else if (fwdStem && fwdStem.length <= 18) {
+                  // Medium stem — use it but also generate shorter variants
+                  brandPrimary = fwdStem;
+                  brandStrong = fwdStem;
+                } else {
+                  // Long name — use first word or first two words
+                  brandPrimary = nameWords[0] || fwdStem.slice(0, 12) || "company";
+                  brandStrong = nameWords.length >= 2 && (nameWords[0] + nameWords[1]).length <= 16
+                    ? nameWords[0] + nameWords[1]
+                    : brandPrimary;
+                }
+
+                // Also extract individual words for additional combos (if brand is multi-word)
+                const brandWords = nameWords.filter(w => w.length >= 3);
+                // Detect acronyms: if any word is ≤4 chars and all caps in original, it's likely an acronym
+                const originalWords = (cd.co_name||"").split(/[\s,.\-&]+/);
+                const acronyms = originalWords.filter(w => w.length >= 2 && w.length <= 5 && w === w.toUpperCase() && /^[A-Z]+$/.test(w)).map(w => w.toLowerCase());
+                // If brand contains an acronym, add combos with just the acronym too
+                const brandVariants = [brandPrimary];
+                if (brandStrong !== brandPrimary) brandVariants.push(brandStrong);
+                for (const acr of acronyms) {
+                  if (acr.length >= 2 && !brandVariants.includes(acr)) brandVariants.push(acr);
+                  // acronym + each other word (e.g. "fip" + "printing" = "fipprinting", already have; "fip" + "hq" = "fiphq")
+                  for (const w of brandWords) {
+                    if (w !== acr && (acr + w).length <= 16) brandVariants.push(acr + w);
+                  }
+                }
+
+                const prefixes = ["get","try","go","hey","hi","my","the","with","meet","join","use","run","via","hello","ask","our","your","at","on","by","to","all","top","best","fast","new","pro","we","its","be"];
+                const suffixes = ["hq","app","team","co","hub","labs","pro","now","up","biz","group","mail","crm","digital","online","direct","global","works","cloud","send","reach","zone","spot","base","desk","box","way","line","edge","plus","one","dev","io","ly","center","media","corp","world","studio","agency","daily","live","net","web","fast","first","peak","core","flow","shift","link","path","force","mind","key","ace","top"];
+
+                const candidates = new Set<string>();
+                const addBoth = (a: string, b: string) => {
+                  const joined = a + b;
+                  const hyphen = a + "-" + b;
+                  if (joined.length >= 5 && joined.length <= 28) candidates.add(joined);
+                  if (hyphen.length >= 6 && hyphen.length <= 30) candidates.add(hyphen);
+                };
+
+                // Tier 0: The brand itself (different TLD)
+                for (const bv of brandVariants) {
+                  if (bv.length >= 4 && bv.length <= 16) candidates.add(bv);
+                }
+
+                // Tier 1: Each brand variant + prefix/suffix
+                for (const bv of brandVariants) {
+                  if (bv.length > 22) continue;
+                  for (const p of prefixes) addBoth(p, bv);
+                  for (const s of suffixes) addBoth(bv, s);
+                }
+
+                // Tier 2: Brand + other company words
+                for (const w of brandWords) {
+                  if (w === brandPrimary || brandPrimary.includes(w)) continue;
+                  addBoth(brandPrimary, w);
+                  addBoth(w, brandPrimary);
+                  if (brandPrimary.length + w.slice(0,3).length <= 16) candidates.add(brandPrimary + w.slice(0, 3));
+                }
+
+                // Tier 3: Brand + industry/product keywords
+                const contextWords = [
+                  ...(cd.co_industry||"").toLowerCase().split(/[\s,.\-&/]+/).filter((w:string) => w.length >= 3 && w.length <= 10),
+                  ...products.map((p:any) => (p.name||"").toLowerCase().split(/[\s,.\-&/]+/)).flat().filter((w:string) => w.length >= 3 && w.length <= 10).slice(0, 8),
+                ].filter((w:string) => !nameWords.includes(w) && !brandPrimary.includes(w));
+                for (const kw of [...new Set(contextWords)]) {
+                  for (const bv of brandVariants) {
+                    if (bv.length + kw.length <= 26) { addBoth(bv, kw); addBoth(kw, bv); }
+                  }
+                }
+
+                // Tier 4: Truncated brand + suffix (e.g. "fipprint" from "fipprinting")
+                if (brandPrimary.length >= 8) {
+                  const truncations = [brandPrimary.slice(0,-3), brandPrimary.slice(0,-2), brandPrimary.slice(0,-1)];
+                  for (const trunc of truncations) {
+                    if (trunc.length >= 5) {
+                      candidates.add(trunc);
+                      for (const s of suffixes) addBoth(trunc, s);
+                      for (const p of prefixes.slice(0,8)) addBoth(p, trunc); // top prefixes only
+                    }
+                  }
+                }
+
+                // Tier 5: Double-word combos (prefix + brand + suffix for short brands)
+                for (const bv of brandVariants) {
+                  if (bv.length <= 8) {
+                    for (const p of prefixes.slice(0,6)) {
+                      for (const s of suffixes.slice(0,6)) {
+                        const triple = p + bv + s;
+                        if (triple.length >= 7 && triple.length <= 18) candidates.add(triple);
+                      }
+                    }
+                  }
+                }
+
+                // Tier 6: Repeated/emphasized brand (e.g. "fipfip", "printfip")
+                for (const bv of brandVariants) {
+                  if (bv.length <= 6) {
+                    candidates.add(bv + bv); // double up short brands
+                    for (const bv2 of brandVariants) {
+                      if (bv2 !== bv && (bv + bv2).length <= 16) candidates.add(bv + bv2);
+                    }
+                  }
+                }
+
+                // Filter: remove exact forwarding domain, ensure at least one brand variant is present
+                const allCandidates = [...candidates].filter(d => {
+                  const clean = d.replace(/-/g,"");
+                  if (clean.length < 5 || d.length > 30) return false;
+                  if (clean === fwdStem) return false;
+                  return brandVariants.some(bv => clean.includes(bv));
+                });
+                // Shuffle for variety
+                for (let i = allCandidates.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [allCandidates[i], allCandidates[j]] = [allCandidates[j], allCandidates[i]]; }
+
+                const toCheck = allCandidates.slice(0, Math.max(needed * 5, 200));
+                setDfyProgress(p => p ? { ...p, phase: "Checking availability...", total: toCheck.length } : p);
+
+                // Step 2: Check in parallel batches of 15
+                for (let i = 0; i < toCheck.length && available.length < needed; i += 15) {
+                  const batch = toCheck.slice(i, i + 15);
+                  const batchResults = await Promise.allSettled(batch.map(async (domain) => {
+                    try {
+                      const res = await checkDomain(domain, tlds);
+                      if (!res) return { domain, avail: false };
+                      // API returns: { requested_domains: [{ domain: "name.tld", available: true/false, error?: "..." }] }
+                      const entries = res.requested_domains || res.results || (Array.isArray(res) ? res : [res]);
+                      // Check ALL TLDs in response (not just selected) — prefer selected, but accept any
+                      const selectedTlds = (dfy.tlds||[".com"]);
+                      const allTldsSorted = Object.keys(TLD_RANK).sort((a,b) => (TLD_RANK[a]||99) - (TLD_RANK[b]||99));
+                      let matchedTld = "";
+                      let bestRank = 999;
+                      for (const tld of allTldsSorted) {
+                        const tldStr = tld.replace(".", "");
+                        const match = entries.find((t:any) => t.domain && t.domain.endsWith("." + tldStr));
+                        if (!match) continue;
+                        // Explicitly available with no error = best
+                        if (match.available === true && !match.error) {
+                          const price = match.price ?? match.registrationPrice ?? match.cost ?? null;
+                          if (price != null) { const n = typeof price === "string" ? parseFloat(price.replace(/[^0-9.]/g,"")) : Number(price); if (!isNaN(n) && n > 15) continue; }
+                          // Prefer selected TLDs (lower rank), but accept unselected too (rank + 50)
+                          const rank = (TLD_RANK[tld] || 99) + (selectedTlds.includes(tld) ? 0 : 50);
+                          if (rank < bestRank) { bestRank = rank; matchedTld = tld; }
+                        }
+                        // Accept timeouts as likely available for .com and .net only
+                        if (!matchedTld && match.error && match.error.includes("timeout") && (tld === ".com" || tld === ".net")) {
+                          const rank = (TLD_RANK[tld] || 99) + (selectedTlds.includes(tld) ? 0 : 50);
+                          if (rank < bestRank) { bestRank = rank; matchedTld = tld; }
+                        }
+                      }
+                      return { domain, avail: !!matchedTld, tld: matchedTld };
+                    } catch { return { domain, avail: false }; }
+                  }));
+                  for (const r of batchResults) {
+                    totalChecked++;
+                    if (r.status === "fulfilled" && r.value.avail) available.push({ domain: r.value.domain, available: true, tld: r.value.tld || selectedTlds[0] });
+                  }
+                  upd({ suggestedDomains: [...available] });
+                  setDfyProgress(p => p ? { ...p, found: available.length, checked: totalChecked, total: toCheck.length } : p);
+                }
+
+                // Step 3: If we still need more, keep asking AI for names until we hit the target
+                let aiRound = 0;
+                const allTriedNames = new Set(allCandidates);
+                while (available.length < needed && aiRound < 8) {
+                  aiRound++;
+                  setDfyProgress(p => p ? { ...p, phase: `AI generating more names (round ${aiRound})...` } : p);
+                  try {
+                    const still = needed - available.length;
+                    const raw = await callAI(
+                      `Generate ${Math.max(still * 6, 60)} domain name stems for cold email outreach. Names MUST contain one of these brand words: ${brandVariants.join(", ")}.\n\nCompany: ${cd.co_name||""} (${cd.co_industry||""}). Products: ${products.map((p:any)=>p.name).join(", ")||"general"}.\n\nAlready tried (DO NOT repeat): ${[...allTriedNames].slice(-80).join(",")}\n\nBe CREATIVE — use unexpected word combos, industry terms, action words, descriptive words. Try: brand+action (fipgo), brand+place (fipzone), truncated brand (fipprint), brand+descriptor (fipfast), reversed combos (printfip).\nCan use hyphens (get-fip). 5-25 chars. Longer is fine if the keywords are relevant and readable.\nReturn ONLY JSON array: ["name1","name2",...]`,
+                      "", 1500
+                    );
+                    const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+                    if (!Array.isArray(parsed)) break;
+                    const aiNames = parsed.map((d:string) => d.toLowerCase().replace(/[^a-z0-9]/g,""))
+                      .filter((d:string) => d.length >= 5 && d.length <= 28 && brandVariants.some(bv => d.includes(bv)) && !allTriedNames.has(d));
+                    if (!aiNames.length) break;
+                    aiNames.forEach((n:string) => allTriedNames.add(n));
+
+                    setDfyProgress(p => p ? { ...p, phase: `Checking ${aiNames.length} AI suggestions...` } : p);
+                    for (let i = 0; i < aiNames.length && available.length < needed; i += 15) {
+                      const batch = aiNames.slice(i, i + 15);
+                      const results = await Promise.allSettled(batch.map(async (domain: string) => {
+                        try {
+                          const res = await checkDomain(domain, tlds);
+                          if (!res) return { domain, avail: false };
+                          const entries = res.requested_domains || res.results || (Array.isArray(res) ? res : [res]);
+                          let mTld = ""; let mRank = 999;
+                          const selectedTlds = (dfy.tlds||[".com"]);
+                          for (const tld of Object.keys(TLD_RANK).sort((a,b)=>(TLD_RANK[a]||99)-(TLD_RANK[b]||99))) {
+                            const tldStr = tld.replace(".", "");
+                            const match = entries.find((t:any) => t.domain && t.domain.endsWith("." + tldStr));
+                            if (!match) continue;
+                            const rank = (TLD_RANK[tld]||99) + (selectedTlds.includes(tld)?0:50);
+                            if (match.available === true && !match.error && rank < mRank) { mTld = tld; mRank = rank; }
+                            if (!mTld && match.error?.includes("timeout") && (tld===".com"||tld===".net") && rank < mRank) { mTld = tld; mRank = rank; }
+                          }
+                          return { domain, avail: !!mTld, tld: mTld };
+                        } catch { return { domain, avail: false }; }
+                      }));
+                      for (const r of results) { totalChecked++; if (r.status==="fulfilled"&&r.value.avail) available.push({domain:r.value.domain,available:true}); }
+                      upd({ suggestedDomains: [...available] });
+                      setDfyProgress(p => p ? { ...p, found: available.length, checked: totalChecked } : p);
+                    }
+                  } catch { break; }
+                }
+
+                // Step 4: Rank available domains — one quick pass if surplus, skip if at/below target
+                let confirmed: { domain: string; available: true; score?: number; tld?: string }[] = [];
+
+                if (available.length <= needed) {
+                  // Accept all — no filtering needed
+                  confirmed = available.map(d => ({ ...d, score: 7 }));
+                } else {
+                  // Surplus — one AI ranking pass to pick the best N
+                  setDfyProgress(p => p ? { ...p, phase: `Ranking ${available.length} domains...` } : p);
+                  try {
+                    const raw = await callAI(
+                      `Rank these ${available.length} domains for cold email outreach. Company: "${cd.co_name||""}" (${cd.co_industry||""}).\nBrand: "${brandPrimary}"\n\nDomains:\n${available.map((d:any)=>`${d.domain}${d.tld||""}`).join("\n")}\n\nScore each 1-10 on: brand fit, readability, professionalism, length.\nReturn ONLY JSON array sorted best first: [{"domain":"name","score":9},...]`,
+                      "", 2000
+                    );
+                    const scored = JSON.parse(raw.replace(/```json|```/g,"").trim());
+                    if (Array.isArray(scored)) {
+                      // Map scores back to available domains, take top N
+                      for (const s of scored) {
+                        const match = available.find(d => d.domain === (s.domain||"").toLowerCase().replace(/\..+$/,""));
+                        if (match && !confirmed.some(c => c.domain === match.domain)) {
+                          confirmed.push({ ...match, score: s.score || 5 });
+                        }
+                        if (confirmed.length >= needed) break;
+                      }
+                      // If AI missed some, add remaining unscored
+                      for (const d of available) {
+                        if (!confirmed.some(c => c.domain === d.domain)) confirmed.push({ ...d, score: 5 });
+                        if (confirmed.length >= needed) break;
+                      }
+                    } else {
+                      confirmed = available.slice(0, needed).map(d => ({ ...d, score: 5 }));
+                    }
+                  } catch {
+                    confirmed = available.slice(0, needed).map(d => ({ ...d, score: 5 }));
+                  }
+                }
+
+                confirmed.sort((a, b) => (b.score || 0) - (a.score || 0));
+                const allSoFar = [...locked, ...confirmed.map(c=>c.domain)];
+                upd({ suggestedDomains: [...locked.map((d:string)=>({domain:d,available:true as const,score:10})), ...confirmed], approvedDomains: allSoFar.slice(0, dfy.domainCount) });
+                setDfyProgress(p => p ? { ...p, found: confirmed.length + locked.length } : p);
+
+                // Merge locked domains (from previous run) + newly confirmed
+                const lockedEntries = locked.map((d:string) => ({ domain: d, available: true as const, score: 10 }));
+                const allFinal = [...lockedEntries, ...confirmed.filter(c => !locked.includes(c.domain))];
+                upd({ suggestedDomains: allFinal, lockedDomains: [], approvedDomains: allFinal.map((d:any) => d.domain).slice(0, dfy.domainCount) });
+                setDfyProgress(null);
+                addToast({ title:"Domains ready", status:"success", message:`${allFinal.length} quality domains found${locked.length ? ` (${locked.length} locked + ${allFinal.length - locked.length} new)` : ""}` });
+              };
+
+              // Build mailbox preview
+              const previewMailboxes = () => {
+                const names = dfy.mailboxNames || [];
+                const approved = dfy.approvedDomains || [];
+                if (!names.length || !approved.length) return [];
+                const mailboxes: string[] = [];
+                for (const d of approved) {
+                  for (const n of names) {
+                    const first = (n.firstName||"").toLowerCase().replace(/[^a-z]/g,"");
+                    const last = (n.lastName||"").toLowerCase().replace(/[^a-z]/g,"");
+                    if (first) mailboxes.push(`${first}@${d}`);
+                    if (last) mailboxes.push(`${last}@${d}`);
+                    if (first && last) mailboxes.push(`${first}.${last}@${d}`);
+                  }
+                }
+                return mailboxes;
+              };
+
+              return (
+              <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", overflow:"hidden", animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <style>{`
+                  @keyframes dfySpin { to { transform: rotate(360deg); } }
+                  @keyframes dfyPulse { 0%,100% { opacity:0.4; } 50% { opacity:1; } }
+                  @keyframes dfyOrbit { 0% { transform: rotate(0deg) translateX(28px) rotate(0deg); } 100% { transform: rotate(360deg) translateX(28px) rotate(-360deg); } }
+                `}</style>
+                <div style={{ padding:"24px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+                  <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>PLANNING</div>
+                  <h2 style={{ fontSize:22, fontWeight:700, fontFamily:head, color:_C.text, margin:"0 0 4px" }}>DFY Setup</h2>
+                  <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:"0 0 20px" }}>Configure domains and mailboxes for cold outreach infrastructure.</p>
+                </div>
+                <div style={{ flex:1, overflowY:"auto", padding:"0 clamp(20px, 3vw, 48px) 36px" }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:24 }}>
+
+                    {/* Forwarding Domain */}
+                    <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:12, textTransform:"uppercase" as const }}>Forwarding Domain</div>
+                      <p style={{ fontSize:11, color:_C.muted, fontFamily:body, marginBottom:10 }}>The client's real website that outreach domains forward to.</p>
+                      <div style={{ display:"flex", gap:8 }}>
+                        <input value={dfy.forwardingDomain||""} onChange={e=>upd({ forwardingDomain:e.target.value, forwardingVerified:null })}
+                          placeholder="e.g. bebop.com" style={{ flex:1, padding:"9px 12px", borderRadius:8, border:`1px solid ${dfy.forwardingVerified===true?_C.green:dfy.forwardingVerified===false?"#c0392b":_C.border}`, background:_C.faint, fontSize:13, fontFamily:mono, outline:"none", transition:"border-color .3s" }} />
+                        <button onClick={verifyForwarding} disabled={!dfy.forwardingDomain || dfy.forwardingVerified==="checking"}
+                          style={{ padding:"9px 18px", borderRadius:8, border:"none",
+                            background: dfy.forwardingVerified==="checking" ? _C.muted : !dfy.forwardingDomain ? _C.border : _C.accent,
+                            color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
+                            cursor: dfy.forwardingDomain && dfy.forwardingVerified!=="checking" ? "pointer" : "default",
+                            minWidth:100, transition:"background .3s" }}>
+                          {dfy.forwardingVerified==="checking" ? "Verifying..." : "Verify"}
+                        </button>
+                      </div>
+                      <div style={{ marginTop:10, minHeight:20 }}>
+                        {dfy.forwardingVerified === "checking" && (
+                          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                            <span style={{ fontSize:12, color:_C.muted, fontFamily:body, fontWeight:500 }}>Checking if site is live and has real content...</span>
+                          </div>
+                        )}
+                        {dfy.forwardingVerified === true && (
+                          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderRadius:8, background:"#eaf5f0", border:"1px solid #9fd5b8" }}>
+                            <span style={{ fontSize:14 }}>✓</span>
+                            <span style={{ fontSize:12, color:"#1e6b45", fontFamily:body, fontWeight:500 }}>Verified — site is live and returning content</span>
+                          </div>
+                        )}
+                        {dfy.forwardingVerified === false && (
+                          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderRadius:8, background:"#fdf2f1", border:"1px solid #f0a9a0" }}>
+                            <span style={{ fontSize:14 }}>✗</span>
+                            <span style={{ fontSize:12, color:"#c0392b", fontFamily:body, fontWeight:500 }}>Could not verify — site returned an error or 404</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Mailbox Names */}
+                    <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:12, textTransform:"uppercase" as const }}>Mailbox Names & Allocation</div>
+                      <p style={{ fontSize:11, color:_C.muted, fontFamily:body, marginBottom:10 }}>Each name creates 3 mailboxes per domain: first@, last@, first.last@</p>
+                      {(dfy.mailboxNames||[]).map((n: any, i: number) => (
+                        <div key={i} style={{ display:"flex", gap:8, marginBottom:8, alignItems:"center" }}>
+                          <input value={n.firstName} onChange={e=>{ const names=[...(dfy.mailboxNames||[])]; names[i]={...names[i],firstName:e.target.value}; upd({ mailboxNames:names }); }}
+                            placeholder="First name" style={{ flex:1, padding:"7px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                          <input value={n.lastName} onChange={e=>{ const names=[...(dfy.mailboxNames||[])]; names[i]={...names[i],lastName:e.target.value}; upd({ mailboxNames:names }); }}
+                            placeholder="Last name" style={{ flex:1, padding:"7px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                          <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                            <input type="number" min={1} max={100} value={n.allocation} onChange={e=>{ const names=[...(dfy.mailboxNames||[])]; names[i]={...names[i],allocation:parseInt(e.target.value)||0}; upd({ mailboxNames:names }); }}
+                              style={{ width:50, padding:"7px 6px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono, textAlign:"center" }} />
+                            <span style={{ fontSize:11, color:_C.muted }}>%</span>
+                          </div>
+                          <button onClick={()=>{ const names=(dfy.mailboxNames||[]).filter((_:any,j:number)=>j!==i); upd({ mailboxNames:names }); }}
+                            style={{ padding:"4px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, cursor:"pointer" }}>✕</button>
+                        </div>
+                      ))}
+                      <div style={{ display:"flex", gap:8 }}>
+                        {[
+                          { label:"1 name (100%)", count:1, allocs:[100] },
+                          { label:"2 names (50/50)", count:2, allocs:[50,50] },
+                          { label:"3 names (33/33/34)", count:3, allocs:[33,33,34] },
+                        ].map(preset => (
+                          <button key={preset.count} onClick={()=>{
+                            const names = Array.from({length:preset.count},(_,i)=>({ firstName:"", lastName:"", allocation:preset.allocs[i] }));
+                            upd({ mailboxNames:names });
+                          }}
+                            style={{ padding:"6px 12px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.textSoft, fontSize:10, fontFamily:mono, fontWeight:600, cursor:"pointer" }}>
+                            {preset.label}
+                          </button>
+                        ))}
+                        <button onClick={()=>upd({ mailboxNames:[...(dfy.mailboxNames||[]), { firstName:"", lastName:"", allocation:0 }] })}
+                          style={{ padding:"6px 12px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
+                          + Custom
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* TLD Selection */}
+                    <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:12, textTransform:"uppercase" as const }}>Domain Type</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                        {TLD_OPTIONS.map(tld => {
+                          const on = (dfy.tlds||[]).includes(tld);
+                          return (
+                            <button key={tld} onClick={()=>{ upd({ tlds: on ? dfy.tlds.filter((t:string)=>t!==tld) : [...(dfy.tlds||[]), tld] }); }}
+                              style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${on?_C.accent:_C.border}`,
+                                background:on?`${_C.accent}14`:_C.canvas, color:on?_C.accent:_C.textSoft,
+                                fontSize:13, fontFamily:mono, fontWeight:on?700:500, cursor:"pointer", transition:"all .15s" }}>
+                              {tld}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Package Selection */}
+                    <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:12, textTransform:"uppercase" as const }}>Domains & Mailboxes</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        {PACKAGES.map(pkg => {
+                          const on = !dfy.customAmount && dfy.domainCount === pkg.domains;
+                          return (
+                            <button key={pkg.domains} onClick={()=>upd({ domainCount:pkg.domains, mailboxCount:pkg.mailboxes, customAmount:false })}
+                              style={{ padding:"10px 14px", borderRadius:8, border:`1px solid ${on?_C.accent:_C.border}`,
+                                background:on?`${_C.accent}14`:_C.canvas, color:on?_C.accent:_C.text,
+                                fontSize:13, fontFamily:body, fontWeight:on?700:500, cursor:"pointer", textAlign:"left", transition:"all .15s" }}>
+                              {pkg.label}
+                            </button>
+                          );
+                        })}
+                        <button onClick={()=>upd({ customAmount:true })}
+                          style={{ padding:"10px 14px", borderRadius:8, border:`1px solid ${dfy.customAmount?_C.accent:_C.border}`,
+                            background:dfy.customAmount?`${_C.accent}14`:_C.canvas, color:dfy.customAmount?_C.accent:_C.text,
+                            fontSize:13, fontFamily:body, fontWeight:dfy.customAmount?700:500, cursor:"pointer", textAlign:"left" }}>
+                          Custom amount
+                        </button>
+                        {dfy.customAmount && (
+                          <div style={{ display:"flex", gap:10, alignItems:"center", marginTop:4 }}>
+                            <div>
+                              <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:3 }}>DOMAINS</div>
+                              <input type="number" min={1} value={dfy.domainCount} onChange={e=>{const v=Math.max(1,parseInt(e.target.value)||1); upd({ domainCount:v, mailboxCount:v*3 });}}
+                                style={{ width:80, padding:"7px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:13, fontFamily:mono, textAlign:"center" }} />
+                            </div>
+                            <span style={{ fontSize:11, color:_C.muted, marginTop:16 }}>=</span>
+                            <div>
+                              <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:3 }}>MAILBOXES</div>
+                              <div style={{ padding:"7px 10px", borderRadius:6, background:_C.faint, border:`1px solid ${_C.border}`, fontSize:13, fontFamily:mono, textAlign:"center", color:_C.text, width:80 }}>
+                                {dfy.domainCount * 3}
+                              </div>
+                            </div>
+                            <span style={{ fontSize:10, color:_C.muted, marginTop:16, fontFamily:body }}>1:3 ratio</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* In-page progress animation */}
+                  {dfyProgress?.running && view === "dfySetup" && (
+                    <div style={{ background:_C.canvas, border:`1px solid ${_C.accent}22`, borderRadius:14, padding:28, marginBottom:24,
+                      display:"flex", flexDirection:"column", alignItems:"center", gap:20, animation:"pageFade .4s ease" }}>
+                      {/* Animated spinner */}
+                      <div style={{ position:"relative", width:80, height:80 }}>
+                        <div style={{ position:"absolute", inset:0, borderRadius:"50%", border:`3px solid ${_C.accent}15` }} />
+                        <div style={{ position:"absolute", inset:0, borderRadius:"50%", border:`3px solid transparent`, borderTopColor:_C.accent, animation:"dfySpin 1.2s linear infinite" }} />
+                        <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+                          fontSize:22, fontWeight:700, fontFamily:mono, color:_C.accent }}>
+                          {dfyProgress.found}
+                        </div>
+                      </div>
+                      {/* Status text */}
+                      <div style={{ textAlign:"center" }}>
+                        <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:6 }}>
+                          {dfyProgress.phase}
+                        </div>
+                        <div style={{ fontSize:13, color:_C.muted, fontFamily:body }}>
+                          {dfyProgress.found} of {dfyProgress.needed} available domains found
+                          {dfyProgress.checked > 0 && <span style={{ color:_C.textSoft }}> · {dfyProgress.checked} checked</span>}
+                        </div>
+                      </div>
+                      {/* Progress bar */}
+                      <div style={{ width:"100%", maxWidth:360 }}>
+                        <div style={{ height:6, borderRadius:3, background:_C.faint, overflow:"hidden" }}>
+                          <div style={{ height:"100%", borderRadius:3, transition:"width .4s ease",
+                            width:`${Math.min(100, Math.round(dfyProgress.found / dfyProgress.needed * 100))}%`,
+                            background:`linear-gradient(90deg, ${_C.accent}, ${_C.accentHi})` }} />
+                        </div>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:10, fontFamily:mono, color:_C.muted }}>
+                          <span>{Math.round(dfyProgress.found / dfyProgress.needed * 100)}%</span>
+                          <span>{dfyProgress.found}/{dfyProgress.needed} domains</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Domain Suggestions */}
+                  <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:20, marginBottom:24 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                      <div>
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, textTransform:"uppercase" as const }}>Domain Suggestions</div>
+                        <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:4 }}>
+                          AI generates domain names based on the company, products, and industry. Check availability, then approve the ones you want.
+                        </div>
+                      </div>
+                      <button onClick={generateDomains}
+                        style={{ padding:"8px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                        {dfy.suggestedDomains?.length > 0 ? "Regenerate" : "Find Available Domains"}
+                      </button>
+                    </div>
+
+                    {(!dfy.suggestedDomains || dfy.suggestedDomains.length === 0) && (
+                      <div style={{ textAlign:"center", padding:"32px 0", color:_C.muted, fontSize:13 }}>
+                        Click "Find Available Domains" to get domain suggestions, or "Test API" to verify the API is working.
+                      </div>
+                    )}
+
+                    {dfy.suggestedDomains?.length > 0 && (
+                      <>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                            <div style={{ fontSize:11, color:_C.muted, fontFamily:body }}>
+                              <span style={{ fontWeight:700, color:_C.text }}>{dfy.suggestedDomains.length}</span> available domains found
+                            </div>
+                            <button onClick={()=>{
+                              const all = dfy.suggestedDomains.map((d:any) => d.domain);
+                              const current = dfy.approvedDomains || [];
+                              const allSelected = all.every((d:string) => current.includes(d));
+                              upd({ approvedDomains: allSelected ? [] : all });
+                            }}
+                              style={{ padding:"4px 12px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.textSoft, fontSize:10, fontFamily:mono, fontWeight:600, cursor:"pointer" }}>
+                              {(dfy.approvedDomains||[]).length === dfy.suggestedDomains.length ? "Deselect All" : "Select All"}
+                            </button>
+                          </div>
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            {(dfy.approvedDomains||[]).length > 0 && (() => {
+                              const isLocked = (dfy.lockedDomains||[]).length > 0;
+                              const remaining = dfy.domainCount - (dfy.approvedDomains||[]).length;
+                              return (
+                                <button onClick={()=>{
+                                  if (isLocked) {
+                                    upd({ lockedDomains: [] });
+                                    addToast({ title:"Domains unlocked", status:"info", message:"Domains are no longer locked" });
+                                  } else {
+                                    upd({ lockedDomains: dfy.approvedDomains || [] });
+                                    addToast({ title:`${(dfy.approvedDomains||[]).length} domains locked`, status:"success", message: remaining > 0 ? `Click "Find Available Domains" to find ${remaining} more` : "All domains locked" });
+                                  }
+                                }}
+                                  style={{ padding:"5px 14px", borderRadius:7,
+                                    border:`1px solid ${isLocked ? _C.green : _C.accent}`,
+                                    background: isLocked ? _C.greenLo : `${_C.accent}08`,
+                                    color: isLocked ? _C.green : _C.accent,
+                                    fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                  {isLocked
+                                    ? `Unlock ${(dfy.lockedDomains||[]).length} domains`
+                                    : remaining > 0
+                                      ? `Lock ${(dfy.approvedDomains||[]).length} & find ${remaining} more`
+                                      : `Lock all ${(dfy.approvedDomains||[]).length}`}
+                                </button>
+                              );
+                            })()}
+                            {(dfy.approvedDomains||[]).length > 0 && (
+                              <button onClick={async ()=>{
+                                const domainsToCheck = dfy.suggestedDomains || [];
+                                if (!domainsToCheck.length) return;
+                                addToast({ title:"Rechecking...", status:"loading", message:`Verifying ${domainsToCheck.length} domains` });
+                                const stillAvailable: any[] = [];
+                                const unavailable: string[] = [];
+                                for (let i = 0; i < domainsToCheck.length; i += 15) {
+                                  const batch = domainsToCheck.slice(i, i+15);
+                                  const results = await Promise.allSettled(batch.map(async (d:any) => {
+                                    const tldStr = (d.tld||".com").replace(".","");
+                                    const res = await checkDomain(d.domain, [tldStr]);
+                                    if (!res) return { domain: d.domain, avail: false };
+                                    const entries = res.requested_domains || [res];
+                                    const match = entries.find((t:any) => t.domain && t.domain.endsWith("." + tldStr));
+                                    const avail = match ? (match.available === true || (match.error?.includes("timeout") && (d.tld===".com"||d.tld===".net"))) : false;
+                                    return { domain: d.domain, avail };
+                                  }));
+                                  for (const r of results) {
+                                    const d = domainsToCheck.find((x:any) => x.domain === (r.status==="fulfilled"?r.value.domain:""));
+                                    if (r.status==="fulfilled" && r.value.avail && d) stillAvailable.push(d);
+                                    else if (r.status==="fulfilled") unavailable.push(r.value.domain);
+                                  }
+                                }
+                                upd({
+                                  suggestedDomains: stillAvailable,
+                                  approvedDomains: (dfy.approvedDomains||[]).filter((d:string) => stillAvailable.some((s:any)=>s.domain===d)),
+                                  lockedDomains: (dfy.lockedDomains||[]).filter((d:string) => stillAvailable.some((s:any)=>s.domain===d)),
+                                });
+                                addToast({ title:"Recheck complete", status: unavailable.length ? "info" : "success",
+                                  message: unavailable.length ? `${unavailable.length} domain${unavailable.length!==1?"s":""} no longer available — removed` : "All domains still available" });
+                              }}
+                                style={{ padding:"5px 14px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                                Recheck availability
+                              </button>
+                            )}
+                            <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:(dfy.approvedDomains||[]).length >= dfy.domainCount ? _C.green : _C.accent,
+                              background:(dfy.approvedDomains||[]).length >= dfy.domainCount ? _C.greenLo : `${_C.accent}11`,
+                              padding:"4px 12px", borderRadius:8 }}>
+                              {(dfy.approvedDomains||[]).length} / {dfy.domainCount} selected
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:8 }}>
+                          {[...dfy.suggestedDomains].sort((a:any,b:any) => {
+                            const ra = TLD_RANK[a.tld] || 99; const rb = TLD_RANK[b.tld] || 99;
+                            if (ra !== rb) return ra - rb;
+                            return (b.score||0) - (a.score||0);
+                          }).map((d: any, i: number) => {
+                            const approved = (dfy.approvedDomains||[]).includes(d.domain);
+                            const isLocked = (dfy.lockedDomains||[]).includes(d.domain);
+                            const tldList = (dfy.tlds||[".com"]);
+                            return (
+                              <div key={i}
+                                onClick={()=>{
+                                  const list = dfy.approvedDomains || [];
+                                  if (approved) upd({ approvedDomains: list.filter((x:string)=>x!==d.domain) });
+                                  else if (list.length < dfy.domainCount) upd({ approvedDomains: [...list, d.domain] });
+                                  else addToast({ title:"Limit reached", status:"info", message:`You've selected ${dfy.domainCount} domains already` });
+                                }}
+                                style={{
+                                  display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderRadius:10,
+                                  cursor:"pointer", transition:"all .15s",
+                                  border:`1.5px solid ${approved ? _C.accent : _C.border}`,
+                                  background: approved ? `${_C.accent}08` : _C.canvas,
+                                }}
+                                onMouseEnter={e=>{if(!approved)(e.currentTarget as HTMLElement).style.borderColor=_C.accent+"66";(e.currentTarget as HTMLElement).style.background=approved?`${_C.accent}10`:_C.faint;}}
+                                onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=approved?_C.accent:_C.border;(e.currentTarget as HTMLElement).style.background=approved?`${_C.accent}08`:_C.canvas;}}>
+                                {/* Checkbox */}
+                                <div style={{ width:20, height:20, borderRadius:6, border:`2px solid ${approved ? _C.accent : _C.border}`,
+                                  background: approved ? _C.accent : "transparent", display:"flex", alignItems:"center", justifyContent:"center",
+                                  flexShrink:0, transition:"all .15s" }}>
+                                  {approved && <span style={{ color:"#fff", fontSize:12, fontWeight:700, lineHeight:1 }}>✓</span>}
+                                </div>
+                                {/* Domain name */}
+                                <div style={{ flex:1, minWidth:0, fontSize:14, fontWeight:600, fontFamily:mono, color:approved?_C.accent:_C.text, letterSpacing:"-0.01em" }}>
+                                  {d.domain}{d.tld || tldList[0]}
+                                </div>
+                                {/* Status badge */}
+                                <span style={{ fontSize:9, fontWeight:700, fontFamily:mono, padding:"3px 8px", borderRadius:6,
+                                  background: isLocked ? _C.greenLo : approved ? `${_C.accent}14` : "#eaf5f0",
+                                  color: isLocked ? _C.green : approved ? _C.accent : "#1e6b45",
+                                  flexShrink:0, textTransform:"uppercase" as const, letterSpacing:".04em" }}>
+                                  {isLocked ? "Locked" : approved ? "Selected" : "Available"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Mailbox Preview */}
+                  {(dfy.approvedDomains||[]).length > 0 && (dfy.mailboxNames||[]).some((n:any) => n.firstName || n.lastName) && (
+                    <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:20, marginBottom:24 }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:12, textTransform:"uppercase" as const }}>
+                        Mailbox Preview ({previewMailboxes().length} mailboxes)
+                      </div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:6, maxHeight:200, overflowY:"auto" }}>
+                        {previewMailboxes().slice(0, 100).map((mb, i) => (
+                          <span key={i} style={{ padding:"4px 10px", borderRadius:6, background:_C.faint, border:`1px solid ${_C.border}`,
+                            fontSize:11, fontFamily:mono, color:_C.textSoft }}>{mb}</span>
+                        ))}
+                        {previewMailboxes().length > 100 && (
+                          <span style={{ padding:"4px 10px", fontSize:11, color:_C.muted, fontFamily:mono }}>+{previewMailboxes().length - 100} more</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              </div>);
+            })()}
+
+            {/* ── KNOWLEDGE CENTER (Files + Content) ── */}
+            {view==="knowledge" && (() => {
+              const _C = C2;
+              const kcTabKey = "__kcTab";
+              const kcTab = (window as any)[kcTabKey] || "files";
+              const setKcTab = (v: string) => {
+                (window as any)[kcTabKey] = v;
+                // Force re-render by updating a state that's in the dependency chain
+                setPlaybooks(p => p ? [...p] : []);
+              };
+              return (
+              <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", overflow:"hidden", animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ padding:"24px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+                  <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>RESOURCES</div>
+                  <h2 style={{ fontSize:22, fontWeight:700, fontFamily:head, color:_C.text, margin:"0 0 16px" }}>Knowledge Center</h2>
+                  <div style={{ display:"flex", gap:4, padding:4, background:_C.faint, borderRadius:8, marginBottom:16, width:"fit-content" }}>
+                    {[["files","Files",`${wsFiles.length}`],["links","Links",`${wsLinks.length + contentAssets.length}`],["playbooks","Playbooks",`${playbooks.length}`],["battlecards","Battlecards",`${battlecards.length}`]].map(([id,label,count])=>(
+                      <button key={id} onClick={()=>setKcTab(id)}
+                        style={{ padding:"6px 16px", borderRadius:6, border:"none", background:kcTab===id?_C.canvas:"transparent",
+                          color:kcTab===id?_C.text:_C.muted, fontSize:11, fontFamily:head, fontWeight:kcTab===id?700:500,
+                          cursor:"pointer", boxShadow:kcTab===id?"0 1px 3px rgba(0,0,0,0.06)":"none", transition:"all .25s" }}>
+                        {label} ({count})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ flex:1, overflowY:"auto", padding:"0 clamp(20px, 3vw, 48px) 36px" }}>
+                  {kcTab === "files" && <FilesPanel files={wsFiles} onFilesChange={setWsFiles} links={wsLinks} onLinksChange={setWsLinks} onUploadFiles={handleUploadFiles} />}
+                  {kcTab === "links" && (
+                    <>
+                      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginBottom:16 }}>
+                        <button onClick={()=>setContentAssets(p=>[...p, EMPTY_CONTENT_ASSET()])}
+                          style={{ padding:"8px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>+ Add Link</button>
+                      </div>
+                      {!contentAssets.length && <div style={{ textAlign:"center", padding:"40px 0", color:_C.muted, fontSize:13 }}>No links yet.</div>}
+
+                      {/* Links */}
+                      {contentAssets.map((ca: any) => (
+                        <div key={ca.id} style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:10, padding:14, marginBottom:8 }}>
+                          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
+                            <input value={ca.title||""} onChange={e=>{const v=e.target.value; setContentAssets(p=>p.map((c:any)=>c.id===ca.id?{...c,title:v}:c));}}
+                              placeholder="Title" style={{ flex:1, padding:"7px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:13, fontFamily:head, fontWeight:600 }} />
+                            <button onClick={()=>setContentAssets(p=>p.filter((c:any)=>c.id!==ca.id))}
+                              style={{ padding:"4px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, cursor:"pointer" }}>✕</button>
+                          </div>
+                          <div style={{ display:"flex", gap:8 }}>
+                            <input value={ca.url||""} onChange={e=>{const v=e.target.value; setContentAssets(p=>p.map((c:any)=>c.id===ca.id?{...c,url:v}:c));}}
+                              placeholder="URL" style={{ flex:1, padding:"6px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }} />
+                            <input value={ca.description||""} onChange={e=>{const v=e.target.value; setContentAssets(p=>p.map((c:any)=>c.id===ca.id?{...c,description:v}:c));}}
+                              placeholder="Description — when should AI reference this?" style={{ flex:2, padding:"6px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {kcTab === "playbooks" && (
+                    <>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                        <p style={{ fontSize:12, color:_C.muted, fontFamily:body, margin:0 }}>
+                          Sales playbooks per product × persona — discovery, objections, signals, and process.
+                        </p>
+                        {(() => {
+                          const pbMenuOpen = (window as any).__pbMenuOpen || false;
+                          const setPbMenu = (v: boolean) => { (window as any).__pbMenuOpen = v; setPlaybooks(p => p ? [...p] : []); };
+                          return (
+                            <div style={{ position:"relative" }}>
+                              <button onClick={()=>setPbMenu(!pbMenuOpen)}
+                                style={{ padding:"8px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                                Create Playbook <span style={{ fontSize:14, marginLeft:2, transition:"transform .2s", transform:pbMenuOpen?"rotate(180deg)":"rotate(0)" }}>▾</span>
+                              </button>
+                              {pbMenuOpen && (
+                                <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`, boxShadow:"0 8px 32px rgba(0,0,0,0.12)", padding:6, minWidth:240, zIndex:20, animation:"welcomeDropIn .15s ease" }}>
+                                  {/* Manual */}
+                                  <button onClick={()=>{
+                                    setPbMenu(false);
+                                    if (!products.length || !icps.length) { addToast({ title:"Need products & personas first", status:"error", message:"Add at least one product and one persona before creating a playbook" }); return; }
+                                    // Create a blank playbook for first product × first persona
+                                    const pb = EMPTY_PLAYBOOK(products[0].id, icps[0].id);
+                                    setPlaybooks(p => [...(p||[]).filter((x:any)=>x&&x.id&&x.productId), pb]);
+                                    (window as any).__openPb = pb.id; // auto-expand it
+                                    addToast({ title:"Blank playbook created", status:"success", message:"Fill in the fields manually" });
+                                  }}
+                                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px", borderRadius:8, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
+                                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
+                                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                    <span style={{ fontSize:16, width:24, textAlign:"center" }}>✏️</span>
+                                    <div>
+                                      <div style={{ fontSize:13, fontWeight:600, color:_C.text }}>Create Blank</div>
+                                      <div style={{ fontSize:10, color:_C.muted }}>Pick a product × persona and fill manually</div>
+                                    </div>
+                                  </button>
+                                  {/* AI Generate */}
+                                  <button onClick={async ()=>{
+                                    setPbMenu(false);
+                                    if (!products.length || !icps.length) { addToast({ title:"Need products & personas first", status:"error", message:"Add at least one product and one persona" }); return; }
+                                    const combos = products.flatMap((p:any) => icps.map((pe:any) => ({ prodId:p.id, persId:pe.id, prodName:p.name, persName:pe.name, pain:pe.data?.pain1||"", buyer:pe.data?.buyer||"" })));
+                                    const existing = new Set((playbooks||[]).map((pb:any) => `${pb.productId}__${pb.personaId}`));
+                                    const missing = combos.filter(c => !existing.has(`${c.prodId}__${c.persId}`));
+                                    if (!missing.length) { addToast({ title:"All combos covered", status:"info", message:"Every product × persona already has a playbook" }); return; }
+                                    addToast({ title:"Generating playbooks...", status:"loading", message:`AI building ${missing.length} playbooks` });
+                                    try {
+                                      const cd = companyData as any;
+                                      const raw = await callAI(
+                                        `Generate sales playbooks for each product × persona combo.\n\nCompany: ${cd.co_name||""} (${cd.co_industry||""})\nCombos:\n${missing.map((c,i)=>`${i}: ${c.prodName} × ${c.persName} (buyer: ${c.buyer}, pain: ${c.pain})`).join("\n")}\n\nFor EACH combo return: discoveryQuestions, demoTalkingPoints, qualificationCriteria, handoffProcess, pricingGuidance, closingTechniques, followUpCadence, commonScenarios, objections (array of {objection,category,severity,rebuttal,talkTrack}), signals (array of {signalType,detail,suggestedAction}).\n\nReturn ONLY JSON array: [{"comboIndex":0,"discoveryQuestions":"","demoTalkingPoints":"",..."objections":[...],"signals":[...]},...]`,
+                                        "", 4000
+                                      );
+                                      const parsed = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                                      if (Array.isArray(parsed)) {
+                                        const newPbs = parsed.map((pb:any) => {
+                                          const combo = missing[pb.comboIndex] || missing[0];
+                                          const objs = (pb.objections||[]).map((o:any) => ({ ...EMPTY_OBJECTION(), ...o }));
+                                          const sigs = (pb.signals||[]).map((s:any) => ({ ...EMPTY_SIGNAL(), ...s }));
+                                          return { ...EMPTY_PLAYBOOK(combo.prodId, combo.persId), ...pb, objections: objs, signals: sigs, comboIndex: undefined };
+                                        });
+                                        setPlaybooks(p => [...(p||[]).filter((x:any)=>x&&x.id&&x.productId), ...newPbs]);
+                                        addToast({ title:`${newPbs.length} playbooks generated`, status:"success", message:"AI-filled with discovery, objections, signals, and process" });
+                                      }
+                                    } catch { addToast({ title:"Generation failed", status:"error", message:"Try again" }); }
+                                  }}
+                                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px", borderRadius:8, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
+                                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
+                                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                    <span style={{ fontSize:16, width:24, textAlign:"center" }}>⚡</span>
+                                    <div>
+                                      <div style={{ fontSize:13, fontWeight:600, color:_C.text }}>Generate with AI</div>
+                                      <div style={{ fontSize:10, color:_C.muted }}>AI fills discovery, objections, signals, and process</div>
+                                    </div>
+                                  </button>
+                                  {/* All combos */}
+                                  <button onClick={()=>{
+                                    setPbMenu(false);
+                                    if (!products.length || !icps.length) { addToast({ title:"Need products & personas first", status:"error", message:"Add at least one product and one persona" }); return; }
+                                    const existing = new Set((playbooks||[]).map((pb:any) => `${pb.productId}__${pb.personaId}`));
+                                    const newPbs: any[] = [];
+                                    for (const prod of products) { for (const icp of icps) { if (!existing.has(`${prod.id}__${icp.id}`)) newPbs.push(EMPTY_PLAYBOOK(prod.id, icp.id)); } }
+                                    if (newPbs.length) {
+                                      setPlaybooks(p => [...(p||[]).filter((x:any)=>x&&x.id&&x.productId), ...newPbs]);
+                                      addToast({ title:`${newPbs.length} blank playbooks created`, status:"success", message:`${products.length} products × ${icps.length} personas` });
+                                    } else {
+                                      addToast({ title:"All covered", status:"info", message:"Every combo already has a playbook" });
+                                    }
+                                  }}
+                                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px", borderRadius:8, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
+                                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
+                                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                    <span style={{ fontSize:16, width:24, textAlign:"center" }}>📋</span>
+                                    <div>
+                                      <div style={{ fontSize:13, fontWeight:600, color:_C.text }}>All Combinations</div>
+                                      <div style={{ fontSize:10, color:_C.muted }}>Create blank playbooks for every product × persona</div>
+                                    </div>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      {!playbooks.length && <div style={{ textAlign:"center", padding:"40px 0", color:_C.muted, fontSize:13 }}>
+                        {products.length===0||icps.length===0?"Add products and personas first.":"Click '+ Create Playbook' to get started."}
+                      </div>}
+                      {(playbooks||[]).map((pb: any) => {
+                        if (!pb || !pb.id) return null;
+                        const prod = products.find((p:any) => p.id === pb.productId);
+                        const pers = icps.find((i:any) => i.id === pb.personaId);
+                        const isOpen = (window as any).__openPb === pb.id;
+                        const toggle = () => { (window as any).__openPb = isOpen ? null : pb.id; setPlaybooks(p => p ? [...p] : []); };
+                        const updateField = (key: string, val: any) => setPlaybooks(p => p.map((x:any) => x.id === pb.id ? { ...x, [key]: val } : x));
+                        const processFields: [string,string,string,number][] = [
+                          ["discoveryQuestions","Discovery Questions","Questions specific to this persona's pains and needs",3],
+                          ["demoTalkingPoints","Demo Talking Points","Features to show this persona, in priority order",3],
+                          ["qualificationCriteria","Qualification","What makes this persona qualified for this product",2],
+                          ["handoffProcess","Handoff","Context the AE needs for this combo",2],
+                          ["pricingGuidance","Pricing","How to frame pricing for this persona",2],
+                          ["closingTechniques","Closing","What closing approach works for this persona",2],
+                          ["followUpCadence","Follow-Up","Post-demo timing and content for this persona",2],
+                          ["commonScenarios","Scenarios","Specific plays: they go dark, loop in boss, etc.",3],
+                        ];
+                        return (
+                          <div key={pb.id} style={{ background:_C.canvas, border:`1px solid ${isOpen?_C.accent+"44":_C.border}`, borderRadius:14, marginBottom:10, overflow:"hidden" }}>
+                            <div onClick={toggle} style={{ padding:"14px 18px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>
+                                  {prod?.name||"?"} <span style={{ color:_C.muted, fontWeight:400 }}>×</span> {pers?.name||"?"}
+                                </div>
+                                <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, marginTop:2 }}>
+                                  {pb.objections?.length||0} objections · {pb.signals?.length||0} signals · {processFields.filter(([k])=>pb[k]?.trim()).length}/{processFields.length} fields
+                                </div>
+                              </div>
+                              <button onClick={e=>{e.stopPropagation(); setPlaybooks(p=>p.filter((x:any)=>x.id!==pb.id));}}
+                                style={{ padding:"3px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Delete</button>
+                              <span style={{ fontSize:10, color:_C.muted, transform:isOpen?"rotate(180deg)":"rotate(0)", transition:"transform .2s" }}>▼</span>
+                            </div>
+                            {isOpen && (
+                              <div style={{ padding:"0 18px 18px", borderTop:`1px solid ${_C.border}` }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, margin:"14px 0 8px", textTransform:"uppercase" as const }}>PROCESS</div>
+                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                                  {processFields.map(([key,label,ph,rows]) => (
+                                    <div key={key} style={{ ...(key==="commonScenarios"?{gridColumn:"1/-1"}:{}) }}>
+                                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:3, textTransform:"uppercase" as const }}>{label}</div>
+                                      <textarea value={pb[key]||""} onChange={e=>updateField(key, e.target.value)} placeholder={ph} rows={rows}
+                                        style={{ width:"100%", padding:"7px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:12, fontFamily:body, resize:"vertical", outline:"none" }} />
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", margin:"16px 0 8px" }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, textTransform:"uppercase" as const }}>OBJECTIONS</div>
+                                  <button onClick={()=>updateField("objections", [...(pb.objections||[]), EMPTY_OBJECTION()])}
+                                    style={{ padding:"2px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:9, fontFamily:mono, cursor:"pointer" }}>+ Add</button>
+                                </div>
+                                {(pb.objections||[]).map((obj:any, oi:number) => (
+                                  <div key={obj.id} style={{ background:_C.faint, borderRadius:8, padding:10, marginBottom:6, border:`1px solid ${_C.border}` }}>
+                                    <div style={{ display:"flex", gap:6, marginBottom:6 }}>
+                                      <select value={obj.category||"pricing"} onChange={e=>{const o=[...(pb.objections||[])]; o[oi]={...o[oi],category:e.target.value}; updateField("objections",o);}}
+                                        style={{ padding:"3px 6px", borderRadius:4, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:9, fontFamily:mono }}>
+                                        {OBJECTION_CATEGORIES.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
+                                      </select>
+                                      <div style={{ flex:1 }} />
+                                      <button onClick={()=>updateField("objections",(pb.objections||[]).filter((_:any,i:number)=>i!==oi))}
+                                        style={{ padding:"1px 6px", borderRadius:3, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:9, cursor:"pointer" }}>✕</button>
+                                    </div>
+                                    {[["objection","Objection",1],["rebuttal","Rebuttal",2],["talkTrack","Talk Track",2]].map(([k,l,r])=>(
+                                      <textarea key={k as string} value={obj[k as string]||""} placeholder={l as string} rows={r as number}
+                                        onChange={e=>{const o=[...(pb.objections||[])]; o[oi]={...o[oi],[k as string]:e.target.value}; updateField("objections",o);}}
+                                        style={{ width:"100%", padding:"5px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:11, fontFamily:body, resize:"vertical", outline:"none", marginBottom:4 }} />
+                                    ))}
+                                  </div>
+                                ))}
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", margin:"16px 0 8px" }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, textTransform:"uppercase" as const }}>BUYING SIGNALS</div>
+                                  <button onClick={()=>updateField("signals", [...(pb.signals||[]), EMPTY_SIGNAL()])}
+                                    style={{ padding:"2px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:9, fontFamily:mono, cursor:"pointer" }}>+ Add</button>
+                                </div>
+                                {(pb.signals||[]).map((sig:any, si:number) => (
+                                  <div key={sig.id} style={{ display:"flex", gap:8, alignItems:"center", background:_C.faint, borderRadius:6, padding:"6px 10px", marginBottom:4, border:`1px solid ${_C.border}` }}>
+                                    <select value={sig.signalType||"other"} onChange={e=>{const s=[...(pb.signals||[])]; s[si]={...s[si],signalType:e.target.value}; updateField("signals",s);}}
+                                      style={{ padding:"3px 5px", borderRadius:4, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:9, fontFamily:mono, flexShrink:0 }}>
+                                      {SIGNAL_TYPES.map(t=><option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+                                    </select>
+                                    <input value={sig.detail||""} placeholder="Signal" onChange={e=>{const s=[...(pb.signals||[])]; s[si]={...s[si],detail:e.target.value}; updateField("signals",s);}}
+                                      style={{ flex:1, padding:"3px 7px", borderRadius:4, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:11, fontFamily:body, outline:"none" }} />
+                                    <input value={sig.suggestedAction||""} placeholder="Action" onChange={e=>{const s=[...(pb.signals||[])]; s[si]={...s[si],suggestedAction:e.target.value}; updateField("signals",s);}}
+                                      style={{ flex:1, padding:"3px 7px", borderRadius:4, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:11, fontFamily:body, outline:"none" }} />
+                                    <button onClick={()=>updateField("signals",(pb.signals||[]).filter((_:any,i:number)=>i!==si))}
+                                      style={{ padding:"1px 6px", borderRadius:3, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:9, cursor:"pointer" }}>✕</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                  {kcTab === "battlecards" && (
+                    <>
+                      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:16 }}>
+                        {(() => {
+                          const bcMenuOpen = (window as any).__bcMenuOpen || false;
+                          const setBcMenu = (v: boolean) => { (window as any).__bcMenuOpen = v; setBattlecards(p => p ? [...p] : []); };
+                          return (
+                            <div style={{ position:"relative" }}>
+                              <button onClick={()=>setBcMenu(!bcMenuOpen)}
+                                style={{ padding:"8px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                                Create Battlecard <span style={{ fontSize:14, marginLeft:2, transition:"transform .2s", transform:bcMenuOpen?"rotate(180deg)":"rotate(0)" }}>▾</span>
+                              </button>
+                              {bcMenuOpen && (
+                                <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`, boxShadow:"0 8px 32px rgba(0,0,0,0.12)", padding:6, minWidth:240, zIndex:20, animation:"welcomeDropIn .15s ease" }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, padding:"8px 14px 4px", letterSpacing:.4, textTransform:"uppercase" as const }}>Create Blank</div>
+                                  {BATTLECARD_TYPES.map(t => (
+                                    <button key={t.id} onClick={()=>{
+                                      setBcMenu(false);
+                                      setBattlecards(p=>[...(p||[]), EMPTY_BATTLECARD(t.id)]);
+                                      addToast({ title:`${t.label} battlecard created`, status:"success", message:"Fill in the details" });
+                                    }}
+                                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"8px 14px", borderRadius:8, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
+                                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
+                                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                      <span style={{ fontSize:14, width:20, textAlign:"center" }}>{t.icon}</span>
+                                      <div style={{ fontSize:12, fontWeight:500, color:_C.text }}>{t.label}</div>
+                                    </button>
+                                  ))}
+                                  <div style={{ height:1, background:_C.border, margin:"6px 8px" }} />
+                                  <button onClick={async ()=>{
+                                    setBcMenu(false);
+                                    addToast({ title:"Generating battlecards...", status:"loading", message:"AI analyzing competitors" });
+                                    try {
+                                      const cd = companyData as any;
+                                      const existingNames = (battlecards||[]).map((b:any)=>b.competitorName).filter(Boolean).join(", ");
+                                      const raw = await callAI(
+                                        `Identify the top 3-5 competitors for this company and create detailed battlecards.\n\nCompany: ${cd.co_name||""} (${cd.co_industry||""})\nProducts: ${products.map((p:any)=>p.name).join(", ")||"general"}\nKnown competitors: ${cd.co_competitors||"unknown"}\n${existingNames ? `Already have battlecards for (skip these): ${existingNames}` : ""}\n\nFor EACH competitor return: competitorName, website, overview, strengths, weaknesses, pricing, idealFor, landmines, displacementAngles, winLossNotes.\n\nReturn ONLY JSON array: [{"competitorName":"",..."winLossNotes":""},...]`,
+                                        "", 3000
+                                      );
+                                      const parsed = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                                      if (Array.isArray(parsed)) {
+                                        const newBcs = parsed.map((bc:any) => ({ ...EMPTY_BATTLECARD(), ...bc }));
+                                        setBattlecards(p => [...(p||[]), ...newBcs]);
+                                        addToast({ title:`${newBcs.length} battlecards generated`, status:"success", message:newBcs.map((b:any)=>b.competitorName).join(", ") });
+                                      }
+                                    } catch { addToast({ title:"Generation failed", status:"error", message:"Try again" }); }
+                                  }}
+                                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px", borderRadius:8, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
+                                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
+                                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                    <span style={{ fontSize:16, width:24, textAlign:"center" }}>⚡</span>
+                                    <div>
+                                      <div style={{ fontSize:13, fontWeight:600, color:_C.text }}>Generate with AI</div>
+                                      <div style={{ fontSize:10, color:_C.muted }}>AI identifies competitors and fills all fields</div>
+                                    </div>
+                                  </button>
+                                  <button onClick={async ()=>{
+                                    setBcMenu(false);
+                                    const cd = companyData as any;
+                                    const competitors = (cd.co_competitors||"").split(/[,;\n]+/).map((s:string)=>s.trim()).filter((s:string)=>s.length>2);
+                                    if (!competitors.length) { addToast({ title:"No competitors found", status:"info", message:"Add competitors in Company Profile first, or use 'Generate with AI'" }); return; }
+                                    const existing = new Set((battlecards||[]).map((b:any)=>b.competitorName?.toLowerCase()));
+                                    const newBcs = competitors.filter(c => !existing.has(c.toLowerCase())).map(c => ({ ...EMPTY_BATTLECARD(), competitorName: c }));
+                                    if (newBcs.length) {
+                                      setBattlecards(p => [...(p||[]), ...newBcs]);
+                                      addToast({ title:`${newBcs.length} blank battlecards created`, status:"success", message:"From your company profile competitors list" });
+                                    } else {
+                                      addToast({ title:"All competitors covered", status:"info", message:"Battlecards already exist for all listed competitors" });
+                                    }
+                                  }}
+                                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px", borderRadius:8, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
+                                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=_C.faint}
+                                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                    <span style={{ fontSize:16, width:24, textAlign:"center" }}>📋</span>
+                                    <div>
+                                      <div style={{ fontSize:13, fontWeight:600, color:_C.text }}>From Company Profile</div>
+                                      <div style={{ fontSize:10, color:_C.muted }}>Create blanks from your listed competitors</div>
+                                    </div>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      {!battlecards.length && <div style={{ textAlign:"center", padding:"40px 0", color:_C.muted, fontSize:13 }}>No battlecards yet. Click 'Create Battlecard' to get started.</div>}
+                      {battlecards.map((bc: any) => {
+                        const bcType = bc.bcType || "competitor";
+                        const typeInfo = BATTLECARD_TYPES.find(t=>t.id===bcType) || BATTLECARD_TYPES[0];
+                        const fields = BATTLECARD_FIELDS[bcType] || BATTLECARD_FIELDS.competitor;
+                        const titleField = fields[0];
+                        const bodyFields = fields.slice(1);
+                        return (
+                          <div key={bc.id} style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:20, marginBottom:14 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, gap:10 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:10, flex:1 }}>
+                                <span style={{ fontSize:16 }}>{typeInfo.icon}</span>
+                                <input value={bc[titleField[0] as string]||""} onChange={e=>{const v=e.target.value; setBattlecards(p=>p.map((b:any)=>b.id===bc.id?{...b,[titleField[0]]:v}:b));}}
+                                  placeholder={titleField[2] as string} style={{ flex:1, fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, border:"none", background:"transparent", outline:"none" }} />
+                              </div>
+                              <select value={bcType} onChange={e=>{const v=e.target.value; setBattlecards(p=>p.map((b:any)=>b.id===bc.id?{...b,bcType:v}:b));}}
+                                style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:10, fontFamily:mono, color:_C.textSoft }}>
+                                {BATTLECARD_TYPES.map(t=><option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+                              </select>
+                              <button onClick={()=>setBattlecards(p=>p.filter((b:any)=>b.id!==bc.id))}
+                                style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:11, fontFamily:mono, cursor:"pointer" }}>Delete</button>
+                            </div>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                              {bodyFields.map(([key, label, ph, rows]) => (
+                                <div key={key as string} style={{ ...(bodyFields.indexOf([key,label,ph,rows] as any)===0||rows as number>=3?{gridColumn:"1/-1"}:{}) }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:3, textTransform:"uppercase" as const }}>{label as string}</div>
+                                  <textarea value={bc[key as string]||""} onChange={e=>{const v=e.target.value; setBattlecards(p=>p.map((b:any)=>b.id===bc.id?{...b,[key as string]:v}:b));}}
+                                    placeholder={ph as string} rows={rows as number}
+                                    style={{ width:"100%", padding:"7px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:12, fontFamily:body, resize:"vertical", outline:"none" }} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              </div>);
+            })()}
+
             {view==="files" && (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
               <FilesPanel files={wsFiles} onFilesChange={setWsFiles} links={wsLinks} onLinksChange={setWsLinks} onUploadFiles={handleUploadFiles} />
               </div>
             )}
+
+            {/* Old iframe call analyzer — kept as fallback */}
+            {view==="callAnalyzer" && (
+              <div style={{ position:"absolute", inset:0, animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <iframe src="/call-analyzer.html" style={{ width:"100%", height:"100%", border:"none" }} title="Call Analyzer" />
+              </div>
+            )}
+
+            {/* ── NATIVE CALL ANALYZER ── */}
+            {view==="calls" && (() => {
+              const _C = C2;
+              const cd = companyData as any;
+              const [callTab, setCallTab] = [(window as any).__callTab || "records", (v:string)=>{(window as any).__callTab=v; setCallRecords(p=>p?[...p]:[]);}];
+              const [scoring, setScoring] = [(window as any).__callScoring || false, (v:boolean)=>{(window as any).__callScoring=v; setCallRecords(p=>p?[...p]:[]);}];
+
+              const scoreCall = async (transcript: string, callType: string, clientName: string, csmName: string, callDate: string) => {
+                setScoring(true);
+                addToast({ title:"Scoring call...", status:"loading", message:"AI analyzing transcript" });
+                try {
+                  const raw = await callAI(
+                    `You are an expert B2B call quality evaluator. Score this ${callType} call transcript.
+
+COMPANY CONTEXT:
+Company: ${cd.co_name||""}
+Industry: ${cd.co_industry||""}
+Products: ${products.map((p:any)=>p.name).join(", ")||"unknown"}
+Personas: ${icps.map((p:any)=>p.name+": "+((p.data||{}).buyer||"")).join("; ")||"unknown"}
+Value Prop: ${cd.co_pitch||""}
+
+TRANSCRIPT:
+${transcript.slice(0, 12000)}
+
+Score each section 0-100 and provide specific feedback. Identify:
+1. What was done well (with transcript evidence)
+2. What was missed or done poorly
+3. Knockout criteria failures (critical misses)
+4. Overall score and grade
+
+Return ONLY JSON:
+{
+  "overallScore": 0,
+  "grade": "Elite|Strong|Developing|At Risk|Intervention Needed",
+  "sections": [
+    {"name":"","score":0,"weight":0,"feedback":"","strengths":[""],"weaknesses":[""],"knockouts":[""]}
+  ],
+  "summary": "",
+  "coachingActions": [""],
+  "keyMoments": [{"timestamp":"","type":"positive|negative|knockout","description":""}]
+}
+
+SCORING RUBRIC for ${callType}:
+${callType === "onboarding" ? `
+- Pre-call preparation (20%): Research, handoff review, hypotheses ready
+- Expectation setting & ramp education (25%): Warmup timeline, milestones, outcomes defined
+- Audience methodology & ICP discovery (30%): Data types explained, portfolio approach, ICP questions asked
+- Call structure & expert posture (15%): Agent led, confidence, next call booked
+- Post-call commitments (10%): Agent/client actions set, summary committed
+` : `
+- Pre-call preparation (20%): Performance data pulled, scores calculated, recommendations ready
+- Call structure & expert posture (15%): Owned agenda, context frame, expert language
+- Audience management quality (30%): Performance interpreted, reweighting, intent refresh, decision tree
+- Commercial outcomes focus (20%): Demos stated, positive replies actioned, trajectory framed
+- Client relationship & escalation (15%): Sentiment read, escalation triggers checked, ramp managed
+`}`,
+                    "", 3000
+                  );
+                  const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+
+                  // Step 2: Generate workspace sync recommendations
+                  let syncRecs: any = null;
+                  try {
+                    const ctx = buildClientContext(companyData, icps, perfLogs, products, campaigns, strategy, playbooks, battlecards, contentAssets, dfySetup, callRecords);
+                    const syncRaw = await callAI(
+                      `You are a workspace data quality auditor. Compare this call transcript against the current workspace data and identify misalignments, missing data, and new information that should be captured.
+
+CURRENT WORKSPACE DATA:
+${ctx.slice(0, 8000)}
+
+CALL TRANSCRIPT (${callType}):
+${transcript.slice(0, 6000)}
+
+CALL SCORE RESULT:
+${JSON.stringify(result).slice(0, 2000)}
+
+Identify ALL of the following:
+1. NEW DATA: Information mentioned in the call that doesn't exist anywhere in the workspace (new products, new personas, new competitors, new pain points, new stakeholders)
+2. CONFLICTS: Things said on the call that contradict what's in the workspace (different value prop, changed goals, shifted priorities, updated pricing)
+3. MISSING FIELDS: Workspace fields that are empty but the call provides the answer
+4. RISK FLAGS: Client concerns, frustrations, or signals that need attention (churn risk, dissatisfaction, competitor evaluation, budget issues)
+5. ACTION ITEMS: Specific things that should be done based on this call (update a field, create a battlecard, add an objection to a playbook, etc.)
+
+Return ONLY JSON:
+{
+  "newData": [{"type":"product|persona|competitor|objection|contact|other","description":"","suggestedAction":""}],
+  "conflicts": [{"field":"","currentValue":"","callValue":"","recommendation":""}],
+  "missingFields": [{"field":"","fieldLabel":"","value":"","source":"direct quote or inference from call"}],
+  "riskFlags": [{"severity":"high|medium|low","description":"","recommendation":""}],
+  "actionItems": [{"priority":"urgent|high|medium","action":"","reason":""}]
+}
+
+Be specific. Reference exact transcript moments. Only flag things that are genuinely actionable.`,
+                      "", 2500
+                    );
+                    syncRecs = JSON.parse(syncRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                  } catch (e) { console.warn("Sync recommendations failed:", e); }
+
+                  const record = {
+                    id: uid(), callType, clientName: clientName || cd.co_name || "", csmName, callDate: callDate || new Date().toISOString().slice(0,10),
+                    transcript, result, syncRecs, scoredAt: new Date().toISOString(),
+                  };
+                  setCallRecords(p => [record, ...(p||[])]);
+                  setScoring(false);
+                  const flagCount = (syncRecs?.riskFlags?.length||0) + (syncRecs?.conflicts?.length||0);
+                  addToast({ title:`Score: ${result.overallScore}/100 — ${result.grade}`, status:"success",
+                    message: flagCount > 0 ? `${flagCount} items need attention — expand the call to review` : result.summary?.slice(0,80) });
+                  return record;
+                } catch (e) { setScoring(false); addToast({ title:"Scoring failed", status:"error", message:"Try again" }); return null; }
+              };
+
+              return (
+              <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", overflow:"hidden", animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ padding:"24px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+                  <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>RESOURCES</div>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                    <h2 style={{ fontSize:22, fontWeight:700, fontFamily:head, color:_C.text, margin:0 }}>Call Analyzer</h2>
+                    <span style={{ fontSize:11, fontFamily:mono, color:_C.muted }}>{(callRecords||[]).length} scored calls</span>
+                  </div>
+                </div>
+                <div style={{ flex:1, overflowY:"auto", padding:"0 clamp(20px, 3vw, 48px) 36px" }}>
+
+                  {/* Score New Call */}
+                  <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:24, marginBottom:20 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:14, textTransform:"uppercase" as const }}>Score a Call</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:10, marginBottom:12 }}>
+                      <div>
+                        <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CLIENT</div>
+                        <input id="ca-client" placeholder={cd.co_name||"Client name"} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CSM / REP</div>
+                        <input id="ca-csm" placeholder="Agent name" style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CALL DATE</div>
+                        <input id="ca-date" type="date" defaultValue={new Date().toISOString().slice(0,10)} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>TYPE</div>
+                        <select id="ca-type" style={{ padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }}>
+                          <option value="onboarding">Onboarding</option>
+                          <option value="followup">Follow-up</option>
+                        </select>
+                      </div>
+                    </div>
+                    <textarea id="ca-transcript" placeholder="Paste the call transcript here..." rows={6}
+                      style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none", lineHeight:1.6, marginBottom:12 }} />
+                    <button disabled={scoring} onClick={async ()=>{
+                      const transcript = (document.getElementById("ca-transcript") as HTMLTextAreaElement)?.value || "";
+                      if (!transcript.trim()) { addToast({ title:"Paste a transcript first", status:"error", message:"" }); return; }
+                      const callType = (document.getElementById("ca-type") as HTMLSelectElement)?.value || "onboarding";
+                      const clientName = (document.getElementById("ca-client") as HTMLInputElement)?.value || "";
+                      const csmName = (document.getElementById("ca-csm") as HTMLInputElement)?.value || "";
+                      const callDate = (document.getElementById("ca-date") as HTMLInputElement)?.value || "";
+                      await scoreCall(transcript, callType, clientName, csmName, callDate);
+                      (document.getElementById("ca-transcript") as HTMLTextAreaElement).value = "";
+                    }}
+                      style={{ padding:"10px 24px", borderRadius:8, border:"none", background: scoring ? _C.muted : _C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor: scoring ? "default" : "pointer" }}>
+                      {scoring ? "Scoring..." : "Score Call"}
+                    </button>
+                  </div>
+
+                  {/* Call Records */}
+                  {!(callRecords||[]).length && <div style={{ textAlign:"center", padding:"40px 0", color:_C.muted, fontSize:13 }}>No scored calls yet. Paste a transcript above to get started.</div>}
+                  {(callRecords||[]).map((rec: any) => {
+                    const r = rec.result || {};
+                    const isOpen = (window as any).__openCall === rec.id;
+                    const toggle = () => { (window as any).__openCall = isOpen ? null : rec.id; setCallRecords(p => p ? [...p] : []); };
+                    const gradeColor = r.overallScore >= 90 ? "#1e6b45" : r.overallScore >= 75 ? "#2a7a50" : r.overallScore >= 60 ? "#9a5a00" : r.overallScore >= 45 ? "#c07030" : "#c0392b";
+                    const gradeBg = r.overallScore >= 90 ? "#eaf5f0" : r.overallScore >= 75 ? "#eaf5f0" : r.overallScore >= 60 ? "#fef4e3" : r.overallScore >= 45 ? "#fef4e3" : "#fdf2f1";
+                    return (
+                      <div key={rec.id} style={{ background:_C.canvas, border:`1px solid ${isOpen ? _C.accent+"44" : _C.border}`, borderRadius:14, marginBottom:12, overflow:"hidden" }}>
+                        <div onClick={toggle} style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:16, cursor:"pointer" }}>
+                          {/* Score ring */}
+                          <div style={{ position:"relative", width:52, height:52, flexShrink:0 }}>
+                            <svg viewBox="0 0 52 52" style={{ width:52, height:52, transform:"rotate(-90deg)" }}>
+                              <circle cx="26" cy="26" r="22" fill="none" stroke={_C.faint} strokeWidth="4" />
+                              <circle cx="26" cy="26" r="22" fill="none" stroke={gradeColor} strokeWidth="4" strokeLinecap="round"
+                                strokeDasharray={`${(r.overallScore||0)/100 * 138.2} 138.2`} />
+                            </svg>
+                            <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+                              fontSize:16, fontWeight:700, fontFamily:mono, color:gradeColor }}>{r.overallScore||"—"}</div>
+                          </div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:_C.text }}>{rec.clientName || "Unnamed"}</div>
+                            <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>{rec.csmName || "Unknown"} · {rec.callDate || "No date"} · {rec.callType === "onboarding" ? "Onboarding" : "Follow-up"}</div>
+                          </div>
+                          <span style={{ fontSize:11, fontWeight:700, fontFamily:mono, padding:"4px 12px", borderRadius:8, background:gradeBg, color:gradeColor }}>{r.grade || "Unscored"}</span>
+                          <button onClick={e=>{e.stopPropagation(); setCallRecords(p=>(p||[]).filter(x=>x.id!==rec.id));}}
+                            style={{ padding:"4px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, cursor:"pointer" }}>✕</button>
+                        </div>
+                        {isOpen && r.sections && (
+                          <div style={{ padding:"0 20px 20px", borderTop:`1px solid ${_C.border}` }}>
+                            {/* Summary */}
+                            {r.summary && (
+                              <div style={{ padding:"12px 14px", borderRadius:8, background:gradeBg, border:`1px solid ${gradeColor}33`, margin:"14px 0", fontSize:12, lineHeight:1.6, color:_C.text, fontFamily:body }}>
+                                {r.summary}
+                              </div>
+                            )}
+                            {/* Section scores */}
+                            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, margin:"14px 0 8px", textTransform:"uppercase" as const }}>SECTION SCORES</div>
+                            {(r.sections||[]).map((sec:any, si:number) => (
+                              <div key={si} style={{ marginBottom:12 }}>
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                                  <span style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text }}>{sec.name}</span>
+                                  <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:sec.score>=70?"#1e6b45":sec.score>=45?"#9a5a00":"#c0392b" }}>{sec.score}%</span>
+                                </div>
+                                <div style={{ height:5, borderRadius:3, background:_C.faint, overflow:"hidden", marginBottom:6 }}>
+                                  <div style={{ height:"100%", borderRadius:3, width:`${sec.score}%`, background:sec.score>=70?"#1e6b45":sec.score>=45?"#e8a020":"#c0392b", transition:"width .5s" }} />
+                                </div>
+                                {sec.feedback && <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, lineHeight:1.5 }}>{sec.feedback}</div>}
+                              </div>
+                            ))}
+                            {/* Coaching actions */}
+                            {r.coachingActions?.length > 0 && (
+                              <>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, margin:"14px 0 8px", textTransform:"uppercase" as const }}>COACHING ACTIONS</div>
+                                {r.coachingActions.map((a:string, ai:number) => (
+                                  <div key={ai} style={{ display:"flex", gap:8, alignItems:"flex-start", padding:"6px 10px", borderRadius:6, background:_C.faint, marginBottom:4, fontSize:11, fontFamily:body, color:_C.text }}>
+                                    <span style={{ color:_C.accent, fontWeight:700, flexShrink:0 }}>{ai+1}.</span>
+                                    <span>{a}</span>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+                            {/* Key moments */}
+                            {r.keyMoments?.length > 0 && (
+                              <>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, margin:"14px 0 8px", textTransform:"uppercase" as const }}>KEY MOMENTS</div>
+                                {r.keyMoments.map((m:any, mi:number) => (
+                                  <div key={mi} style={{ display:"flex", gap:8, alignItems:"center", padding:"5px 10px", borderRadius:6, marginBottom:3,
+                                    background: m.type==="positive"?"#eaf5f0":m.type==="knockout"?"#fdf2f1":"#fef4e3",
+                                    border:`1px solid ${m.type==="positive"?"#9fd5b8":m.type==="knockout"?"#f0a9a0":"#f5c97a"}` }}>
+                                    <span style={{ fontSize:10, fontFamily:mono, color:_C.muted, flexShrink:0 }}>{m.timestamp||""}</span>
+                                    <span style={{ fontSize:10, fontWeight:600, color:m.type==="positive"?"#1e6b45":m.type==="knockout"?"#c0392b":"#9a5a00" }}>
+                                      {m.type==="positive"?"✓":m.type==="knockout"?"⚠":"◑"}
+                                    </span>
+                                    <span style={{ fontSize:11, fontFamily:body, color:_C.text }}>{m.description}</span>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+
+                            {/* Workspace Sync Recommendations */}
+                            {rec.syncRecs && (
+                              <>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, margin:"18px 0 10px", textTransform:"uppercase" as const }}>WORKSPACE SYNC</div>
+
+                                {/* Risk Flags */}
+                                {rec.syncRecs.riskFlags?.length > 0 && (
+                                  <div style={{ marginBottom:12 }}>
+                                    <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:"#c0392b", marginBottom:6 }}>Risk Flags</div>
+                                    {rec.syncRecs.riskFlags.map((f:any, fi:number) => (
+                                      <div key={fi} style={{ display:"flex", gap:8, padding:"8px 10px", borderRadius:7, marginBottom:4,
+                                        background: f.severity==="high"?"#fdf2f1":f.severity==="medium"?"#fef4e3":"#f8f8fa",
+                                        border:`1px solid ${f.severity==="high"?"#f0a9a0":f.severity==="medium"?"#f5c97a":_C.border}` }}>
+                                        <span style={{ fontSize:10, fontWeight:700, padding:"1px 6px", borderRadius:4, flexShrink:0,
+                                          background:f.severity==="high"?"#c0392b":f.severity==="medium"?"#9a5a00":_C.muted, color:"#fff" }}>
+                                          {f.severity?.toUpperCase()}
+                                        </span>
+                                        <div>
+                                          <div style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5 }}>{f.description}</div>
+                                          {f.recommendation && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:3 }}>→ {f.recommendation}</div>}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Conflicts */}
+                                {rec.syncRecs.conflicts?.length > 0 && (
+                                  <div style={{ marginBottom:12 }}>
+                                    <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:"#9a5a00", marginBottom:6 }}>Data Conflicts</div>
+                                    {rec.syncRecs.conflicts.map((c:any, ci:number) => (
+                                      <div key={ci} style={{ padding:"8px 10px", borderRadius:7, marginBottom:4, background:"#fef4e3", border:"1px solid #f5c97a" }}>
+                                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:"#9a5a00", marginBottom:3 }}>{c.field || "Field"}</div>
+                                        <div style={{ fontSize:10, fontFamily:mono, color:"#c0392b", background:"#fdf2f1", padding:"2px 6px", borderRadius:3, marginBottom:2 }}>Current: {c.currentValue?.slice(0,80)}</div>
+                                        <div style={{ fontSize:10, fontFamily:mono, color:"#1e6b45", background:"#eaf5f0", padding:"2px 6px", borderRadius:3, marginBottom:2 }}>Call: {c.callValue?.slice(0,80)}</div>
+                                        {c.recommendation && <div style={{ fontSize:10, color:"#9a5a00", fontFamily:body, marginTop:2 }}>→ {c.recommendation}</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* New Data */}
+                                {rec.syncRecs.newData?.length > 0 && (
+                                  <div style={{ marginBottom:12 }}>
+                                    <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:"#1e6b45", marginBottom:6 }}>New Information Discovered</div>
+                                    {rec.syncRecs.newData.map((d:any, di:number) => (
+                                      <div key={di} style={{ display:"flex", gap:8, padding:"6px 10px", borderRadius:7, marginBottom:3, background:"#eaf5f0", border:"1px solid #9fd5b8" }}>
+                                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:"#1e6b45", background:"#d4f0e3", padding:"1px 6px", borderRadius:3, flexShrink:0 }}>{d.type?.toUpperCase()}</span>
+                                        <div>
+                                          <div style={{ fontSize:11, fontFamily:body, color:_C.text }}>{d.description}</div>
+                                          {d.suggestedAction && <div style={{ fontSize:10, color:"#1e6b45", fontFamily:body, marginTop:2 }}>→ {d.suggestedAction}</div>}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Missing Fields */}
+                                {rec.syncRecs.missingFields?.length > 0 && (
+                                  <div style={{ marginBottom:12 }}>
+                                    <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:_C.accent, marginBottom:6 }}>Fields to Fill</div>
+                                    {rec.syncRecs.missingFields.map((f:any, fi:number) => (
+                                      <div key={fi} style={{ display:"flex", gap:8, alignItems:"center", padding:"6px 10px", borderRadius:7, marginBottom:3, background:`${_C.accent}08`, border:`1px solid ${_C.accent}22` }}>
+                                        <span style={{ fontSize:10, fontWeight:600, fontFamily:mono, color:_C.accent, flexShrink:0 }}>{f.fieldLabel||f.field}</span>
+                                        <span style={{ fontSize:11, fontFamily:body, color:_C.text, flex:1 }}>{f.value?.slice(0,80)}</span>
+                                        <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{f.source?.slice(0,30)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Action Items */}
+                                {rec.syncRecs.actionItems?.length > 0 && (
+                                  <div style={{ marginBottom:12 }}>
+                                    <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:6 }}>Action Items</div>
+                                    {rec.syncRecs.actionItems.map((a:any, ai:number) => (
+                                      <div key={ai} style={{ display:"flex", gap:8, alignItems:"flex-start", padding:"6px 10px", borderRadius:7, marginBottom:3, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"1px 6px", borderRadius:3, flexShrink:0,
+                                          background:a.priority==="urgent"?"#c0392b":a.priority==="high"?"#9a5a00":_C.accent, color:"#fff" }}>
+                                          {a.priority?.toUpperCase()}
+                                        </span>
+                                        <div>
+                                          <div style={{ fontSize:11, fontFamily:body, color:_C.text }}>{a.action}</div>
+                                          {a.reason && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>{a.reason}</div>}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* No issues */}
+                                {!rec.syncRecs.riskFlags?.length && !rec.syncRecs.conflicts?.length && !rec.syncRecs.newData?.length && !rec.syncRecs.missingFields?.length && !rec.syncRecs.actionItems?.length && (
+                                  <div style={{ padding:"12px", borderRadius:8, background:"#eaf5f0", border:"1px solid #9fd5b8", fontSize:11, color:"#1e6b45", fontFamily:body }}>
+                                    ✓ Workspace data is aligned with this call — no updates needed.
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>);
+            })()}
           </div>
           )}
 
@@ -12945,7 +16284,8 @@ Raw JSON only.`, "", 1400);
           addToast={addToast} updateToast={updateToast} fileContext={buildFileContext(wsFiles)} v2={true}
           products={products} offers={offers} />
       )}
-      {showQS && <QuickStartModal onComplete={handleQSComplete} onClose={()=>{ setShowQS(false); setView("onboarding"); }} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
+      {/* QuickStartModal rendered inline on welcome page — portal only when triggered from elsewhere */}
+      {showQS && view !== "welcome" && <QuickStartModal onComplete={handleQSComplete} onClose={()=>{ setShowQS(false); }} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
         onProgress={(step, results) => setQsProgress({ step, results })}
         onBriefReady={(coFields, coConf, ctx, brief, phaseAResults) => { setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: phaseAResults || {} }); setQsProgress(null); }} />}
 
@@ -12991,21 +16331,40 @@ Raw JSON only.`, "", 1400);
             };
             prog(3, "review", `${selProds.length + selPers.length}`);
 
-            // Step 5: Create products
+            // ══ STEP 5+6: Products + Personas in PARALLEL ══
             prog(4);
-            const prodResults = await Promise.allSettled(selProds.map(async (i: number) => {
-              const p = brief.products[i];
-              try {
-                const prodRaw = await callAI(
-                  `Create a COMPLETE product profile. Fill EVERY field.\n\n${NAMING_RULES.product}\n\nProduct: ${p.name}\nDescription: ${p.description||""}\nReasoning: ${p.reasoning||""}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","problemsSolved":"","valueProposition":"","idealCustomer":"","pricingRange":"","dealCycle":"","competitors":"","switchTriggers":"","proofPoints":"","caseStudies":"","socialProof":""}`,
-                  "", 1200
-                );
-                const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
-                return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
-              } catch {
-                return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
-              }
-            }));
+            // Build all persona context from the brief so each parallel call has full dedup info
+            const allBriefPersonas = selPers.map((i:number) => brief.personas[i]);
+            const personaDedup = allBriefPersonas.map((pe:any) => `${pe.name}: ${pe.buyerTitles||""}, ${pe.industries||""}, pain=${pe.primaryPain||""}`).join("\n");
+
+            const [prodResults, personaResults] = await Promise.all([
+              // Products — all in parallel (already were)
+              Promise.allSettled(selProds.map(async (i: number) => {
+                const p = brief.products[i];
+                try {
+                  const prodRaw = await callAI(
+                    `Create a COMPLETE product profile. Fill EVERY field — no empty values. Be specific and actionable.\n\n${NAMING_RULES.product}\n\nProduct: ${p.name}\nDescription: ${p.description||""}\nReasoning: ${p.reasoning||""}\nDeal size hint: ${p.dealSize||""}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"Established category — buyers know what this is|Emerging category — some education needed|New category — significant education required|Replacing an existing behavior (not a tool)","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both — recurring and one-time options","acv":"","mrr":"","contractLength":"Month-to-month|Quarterly|6 months|Annual|Multi-year|Custom","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}\n\nunsolvedImpact: what happens if the customer does nothing — lost revenue, competitive disadvantage, scaling limits.\n\nIMPORTANT for dealType: Infer from context whether this is recurring (SaaS, subscription, retainer) or one-time (project, purchase, implementation). Fill the relevant commercial fields accordingly — leave recurring fields empty for one-time deals and vice versa. Fill shared fields (avgDaysToClose, closeRateByStage, etc.) for both types.`,
+                    "", 2500
+                  );
+                  const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
+                  return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
+                } catch {
+                  return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
+                }
+              })),
+              // Personas — all in parallel (brief provides dedup context)
+              Promise.allSettled(allBriefPersonas.map(async (pe: any, idx: number) => {
+                try {
+                  const raw = await callAI(
+                    `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\n\nALL PERSONAS being created (ensure yours is DISTINCT from each — different industries, titles, pains, messaging):\n${personaDedup}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}`,
+                    "", 2500
+                  );
+                  const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+                  return { parsed, pe, idx };
+                } catch { return { parsed: null, pe, idx }; }
+              })),
+            ]);
+
             const products = prodResults.map(r => r.status === "fulfilled" ? r.value : EMPTY_PRODUCT());
             for (const prod of products) {
               const keys = Object.keys(prod).filter(k=>prod[k]&&String(prod[k]).trim()&&typeof prod[k]==="string"&&k!=="id"&&k!=="createdAt");
@@ -13013,48 +16372,115 @@ Raw JSON only.`, "", 1400);
             }
             prog(5, "products", `${_tf}`);
 
-            // Step 6: Create personas — sequential so each knows about the others
             const personas: any[] = [];
-            for (let idx = 0; idx < selPers.length; idx++) {
-              const i = selPers[idx];
-              const pe = brief.personas[i];
-              const existingPersonaNames = personas.map(p => p.name).filter(Boolean).join(", ");
-              try {
-                const raw = await callAI(
-                  `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\nProducts: ${products.map((p:any)=>`${p.name}: ${p.problemsSolved||""}`).join("; ")}${existingPersonaNames ? `\nOther personas already created (DO NOT overlap with these): ${existingPersonaNames}` : ""}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}`,
-                  "", 3000
-                );
-                const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+            for (const r of personaResults) {
+              if (r.status === "fulfilled" && r.value.parsed) {
+                const { parsed, pe, idx } = r.value;
                 const persona = newICP(idx, parsed.fields||{}, parsed.name||pe.name, parsed.confidence||{});
                 persona.linkedProductIds = products.map((p:any) => p.id);
                 const fc = Object.keys(parsed.fields||{}).filter(k=>(parsed.fields||{})[k]&&String((parsed.fields||{})[k]).trim()).length;
                 _tf += fc; _ts += fc * 120;
                 personas.push(persona);
-              } catch { personas.push(newICP(idx, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {})); _tf += 3; _ts += 300; }
+              } else if (r.status === "fulfilled") {
+                const { pe, idx } = r.value;
+                personas.push(newICP(idx, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {})); _tf += 3; _ts += 300;
+              }
             }
             prog(6, "personas", `${_tf}`);
 
-            // Step 7: Create offers — sequential so each builds on previous
-            let offers: any[] = [];
-            for (const prod of products) {
-              for (const pers of personas) {
+            // ══ STEP 7+8+9: Offers + Intelligence + Guardrails in PARALLEL ══
+            prog(7);
+            const combos = products.flatMap((p:any) => personas.map((pe:any) => ({ prodName:p.name, prodId:p.id, persName:pe.name, persId:pe.id, pain:pe.data?.pain1||"", buyer:pe.data?.buyer||"" })));
+
+            const [offersResult, intelResult, guardrailsResult] = await Promise.all([
+              // Offers — all combos in parallel
+              Promise.allSettled(combos.map(async (combo: any) => {
                 try {
-                  const existingOfferNames = offers.map(o => `${o.name} (${o.tier})`).slice(-6).join(", ");
+                  const prod = products.find((p:any)=>p.id===combo.prodId);
+                  const pers = personas.find((p:any)=>p.id===combo.persId);
                   const offerRaw = await callAI(
-                    `Generate 3 offer tiers (soft/medium/hard) for: ${prod.name} × ${pers.name}.\nCompany: ${coFields.co_name||""}\nProduct: ${prod.description||""}\nPersona pain: ${pers.data?.pain1||""}\n${existingOfferNames ? `Existing offers (vary from these): ${existingOfferNames}` : ""}\nReturn ONLY JSON array: [{tier:"soft",name,ctaText,whatTheyGet,frictionReduction},...]`,
-                    "", 800
+                    `Generate 3 offer tiers (soft/medium/hard) for: ${combo.prodName} × ${combo.persName}.\nCompany: ${coFields.co_name||""}\nProduct: ${prod?.description||""}\nPersona pain: ${combo.pain||""}\nReturn ONLY JSON array: [{"tier":"soft","name":"","ctaText":"","whatTheyGet":"","frictionReduction":""},...]`,
+                    "", 600
                   );
                   const parsed = JSON.parse(offerRaw.replace(/```json|```/g,"").trim());
                   if (Array.isArray(parsed)) {
-                    const newOffers = parsed.map((o:any) => ({ ...EMPTY_OFFER(prod.id, o.tier||"soft", pers.id, "cold_outreach"), name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"" }));
-                    offers.push(...newOffers);
-                    _tf += newOffers.length * 4; _ts += newOffers.length * 240;
+                    return parsed.map((o:any) => ({ ...EMPTY_OFFER(combo.prodId, o.tier||"soft", combo.persId, "cold_outreach"), name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"" }));
                   }
-                } catch {}
-              }
-            }
+                  return [];
+                } catch { return []; }
+              })),
+              // Intelligence — single call
+              (async () => {
+                try {
+                  const intelRaw = await callAI(
+                    `You are a senior B2B strategist. Generate competitive intelligence and per-combo sales playbooks.\n\nCOMPANY: ${coFields.co_name||""} (${coFields.co_industry||""})\nVALUE PROP: ${coFields.co_pitch||""}\nCOMPETITORS: ${coFields.co_competitors||""}\nPRODUCT × PERSONA COMBOS:\n${combos.map((c:any,i:number)=>`${i}: ${c.prodName} × ${c.persName} (buyer: ${c.buyer}, pain: ${c.pain})`).join("\n")}\n\nReturn ONLY valid JSON:\n{"battlecards":[{"competitorName":"","overview":"","strengths":"","weaknesses":"","pricing":"","landmines":"","displacementAngles":"","winLossNotes":""}],"playbooks":[{"comboIndex":0,"discoveryQuestions":"","demoTalkingPoints":"","qualificationCriteria":"","handoffProcess":"","pricingGuidance":"","closingTechniques":"","followUpCadence":"","commonScenarios":"","objections":[{"objection":"","category":"pricing","severity":"common","rebuttal":"","talkTrack":""}],"signals":[{"signalType":"funding","detail":"","suggestedAction":""}]}],"contentAssets":[{"title":"","type":"blog_post|case_study|webinar|one_pager","description":"","funnelStage":"awareness|consideration|decision"}]}\n\nRULES: battlecards 2-4, playbooks ONE per combo (${combos.length}), contentAssets 4-6. Be specific.\nRaw JSON only.`,
+                    "", 5000
+                  );
+                  return JSON.parse(intelRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                } catch { return null; }
+              })(),
+              // Guardrails — only needs names
+              (async () => {
+                try {
+                  const salesRaw = await callAI(
+                    `Set sales and messaging guardrails for cold outreach.\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nProducts: ${products.map((p:any)=>p.name).join(", ")}\nPersonas: ${personas.map((p:any)=>p.name).join(", ")}\nCompetitors: ${coFields.co_competitors||""}\nCustomers: ${coFields.co_customers||""}\n\nReturn ONLY JSON: {"co_exclude":"domains/companies to never contact","co_avoid":"topics and phrases to avoid"}`,
+                    "", 400
+                  );
+                  return JSON.parse(salesRaw.replace(/```json|```/g,"").trim());
+                } catch { return null; }
+              })(),
+            ]);
 
+            // Process results sequentially for visual progress
+            let offers: any[] = [];
+            let newBattlecards: any[] = [], newPlaybooks: any[] = [], newContentAssets: any[] = [];
+
+            try {
+              // Process offers
+              for (const r of offersResult) {
+                if (r.status === "fulfilled" && Array.isArray(r.value)) offers.push(...r.value);
+              }
+              _tf += offers.length * 4; _ts += offers.length * 240;
+            } catch {}
             prog(7, "offers", `${offers.length}`);
+            await new Promise(ok => setTimeout(ok, 300)); // brief pause for visual step
+
+            try {
+              // Process intelligence
+              const intel = intelResult;
+              if (intel) {
+                if (intel.battlecards?.length) {
+                  newBattlecards = intel.battlecards.map((bc:any) => ({ ...EMPTY_BATTLECARD(), ...bc }));
+                  _tf += newBattlecards.length * 8; _ts += newBattlecards.length * 600;
+                }
+                if (intel.playbooks?.length) {
+                  newPlaybooks = intel.playbooks.map((pb:any) => {
+                    const combo = combos[pb.comboIndex] || combos[0];
+                    const objs = (pb.objections||[]).map((o:any) => ({ ...EMPTY_OBJECTION(), ...o }));
+                    const sigs = (pb.signals||[]).map((s:any) => ({ ...EMPTY_SIGNAL(), ...s }));
+                    return { ...EMPTY_PLAYBOOK(combo?.prodId||"", combo?.persId||""), ...pb, objections: objs, signals: sigs, comboIndex: undefined };
+                  });
+                  _tf += newPlaybooks.length * 10; _ts += newPlaybooks.length * 900;
+                }
+                if (intel.contentAssets?.length) {
+                  newContentAssets = intel.contentAssets.map((ca:any) => ({ ...EMPTY_CONTENT_ASSET(), ...ca }));
+                  _tf += newContentAssets.length * 4; _ts += newContentAssets.length * 180;
+                }
+              }
+            } catch (e) { console.warn("Intelligence processing failed:", e); }
+            prog(8, "intelligence", `${newBattlecards.length + newPlaybooks.length}`);
+            await new Promise(ok => setTimeout(ok, 300));
+
+            // Process guardrails
+            try {
+              if (guardrailsResult) {
+                for (const [k, v] of Object.entries(guardrailsResult)) {
+                  if (v && String(v).trim()) coFields[k] = v;
+                }
+              }
+            } catch {}
+            prog(9, "guardrails", `✓`);
+            await new Promise(ok => setTimeout(ok, 300));
 
             // Apply everything
             setCompanyData((prev:any) => { const m = {...prev}; for (const [k,v] of Object.entries(coFields)) { if (v && String(v).trim()) m[k]=v; } return m; });
@@ -13062,23 +16488,49 @@ Raw JSON only.`, "", 1400);
             setProducts((prev:any) => [...prev, ...products]);
             setOffers((prev:any) => [...prev, ...offers]);
             setIcps((prev:any) => [...prev, ...personas]);
+            if (newBattlecards.length) setBattlecards((prev:any) => [...prev, ...newBattlecards]);
+            if (newPlaybooks.length) setPlaybooks((prev:any) => [...prev, ...newPlaybooks]);
+            if (newContentAssets.length) setContentAssets((prev:any) => [...prev, ...newContentAssets]);
 
-            // Step 8: Guardrails (already set via company profile)
-            prog(8, "guardrails", `✓`);
-
-            // Step 9: Finalize
-            prog(9, "validate", `${_tf}`);
-            setView("company");
+            // Step 10: Finalize
+            prog(10, "validate", `${_tf}`);
           }} />,
         document.body
       )}
 
-      {/* Quick Start Progress Toast — only when NOT on onboarding */}
-      {qsProgress && view !== "onboarding" && createPortal(
+      {/* Quick Start Progress Toast — only when NOT on welcome page (full-screen animation shows there) */}
+      {qsProgress && view !== "welcome" && createPortal(
         <QuickStartProgress
           currentStep={qsProgress.step}
           stepResults={qsProgress.results}
           onBack={()=>setQsProgress(null)} />,
+        document.body
+      )}
+
+      {/* DFY Progress Toast — only when NOT on dfySetup page */}
+      {dfyProgress?.running && view !== "dfySetup" && createPortal(
+        <div style={{ position:"fixed", bottom:24, left:24, zIndex:2147483645, width:280,
+          background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`,
+          boxShadow:`0 12px 48px rgba(13,15,26,0.2), 0 0 0 1px ${C2.accent}0A`,
+          animation:"copilotPopUp .3s cubic-bezier(0.16, 1, 0.3, 1)", overflow:"hidden", cursor:"pointer" }}
+          onClick={()=>setView("dfySetup")}>
+          <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", gap:12 }}>
+            <div style={{ position:"relative", width:36, height:36, flexShrink:0 }}>
+              <div style={{ position:"absolute", inset:0, borderRadius:"50%", border:`2px solid ${C2.accent}22` }} />
+              <div style={{ position:"absolute", inset:0, borderRadius:"50%", border:`2px solid transparent`, borderTopColor:C2.accent, animation:"dfySpin 1.2s linear infinite" }} />
+              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:13, fontWeight:700, fontFamily:mono, color:C2.accent }}>{dfyProgress.found}</div>
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:2 }}>Finding domains...</div>
+              <div style={{ fontSize:10, color:C2.muted, fontFamily:mono }}>{dfyProgress.found}/{dfyProgress.needed} available</div>
+            </div>
+          </div>
+          <div style={{ height:3, background:C2.faint }}>
+            <div style={{ height:"100%", background:C2.accent, transition:"width .4s ease",
+              width:`${Math.min(100, Math.round(dfyProgress.found / dfyProgress.needed * 100))}%` }} />
+          </div>
+        </div>,
         document.body
       )}
 
@@ -13239,7 +16691,7 @@ Raw JSON only.`, "", 1400);
                 setNewAcctName("");
                 setNewAcctIndustry("");
                 setActiveWorkspace(newClient);
-                setView("onboarding");
+                setView("welcome");
               }}
                 style={{ flex:2, padding:"10px", borderRadius:8, border:"none",
                   background:newAcctName.trim()?C.accent:C.border,
@@ -13415,6 +16867,25 @@ Raw JSON only.`, "", 1400);
           currentView={view}
           onNavigate={(v:string)=>{ setView(v); }}
           onClose={()=>setShowCopilot(false)}
+          onUpdateCompany={setCompanyData}
+          onUpdateIcps={setIcps}
+          onUpdateProducts={setProducts}
+          onUpdateCampaigns={setCampaigns}
+          onUpdateStrategy={setStrategy}
+          onToast={addToast}
+          onUpdateOffers={setOffers}
+          onUpdatePerfLogs={setPerfLogs}
+          onUpdateRoiConfig={setRoiConfig}
+          onUpdateLinks={setWsLinks}
+          onUpdatePlaybooks={setPlaybooks}
+          onUpdateBattlecards={setBattlecards}
+          onUpdateContentAssets={setContentAssets}
+          onUpdateDfySetup={setDfySetup}
+          playbooks={playbooks}
+          battlecards={battlecards}
+          contentAssets={contentAssets}
+          dfySetup={dfySetup}
+          callRecords={callRecords}
         />
       )}
     </>
