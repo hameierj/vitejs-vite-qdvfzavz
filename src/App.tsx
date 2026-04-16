@@ -13151,6 +13151,18 @@ Raw JSON only.`, "", 1400);
               {/* Nav items — grouped */}
               {activeWorkspace && (
                 <>
+                  {/* ── HOME ── */}
+                  <button onClick={()=>guardedNav(()=>setView("home"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="home" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
+                    onMouseEnter={e=>{ if(view!=="home")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="home")(e.currentTarget as HTMLButtonElement).style.background=view==="home"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="home"?C2.accent:C2.muted }}>⌂</span>
+                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="home"?700:500, color:view==="home"?C2.text:C2.textSoft }}>Home</span>
+                  </button>
+
                   {/* ── RESEARCH ── */}
                   <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
@@ -13446,7 +13458,7 @@ Raw JSON only.`, "", 1400);
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -13541,7 +13553,7 @@ Raw JSON only.`, "", 1400);
                       const wsReady = wsIcps.filter(i => i.outputs).length;
                       return (
                         <div key={c.id}
-                          onClick={()=>{ setActiveWorkspace(c); const ws = loadWorkspaceData(c.id); const isEmpty = !ws || (!ws.companyData?.co_name && !(ws.icps||[]).length && !(ws.products||[]).length); setView(isEmpty ? "welcome" : "company"); }}
+                          onClick={()=>{ setActiveWorkspace(c); const ws = loadWorkspaceData(c.id); const isEmpty = !ws || (!ws.companyData?.co_name && !(ws.icps||[]).length && !(ws.products||[]).length); setView(isEmpty ? "welcome" : "home"); }}
                           style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px 60px",
                             padding:"13px 20px", gap:12, alignItems:"center", cursor:"pointer",
                             borderBottom: idx < filteredAccts.length-1 ? `1px solid ${C.border}` : "none",
@@ -14098,6 +14110,363 @@ Raw JSON only.`, "", 1400);
                 </div>
               </div>
             )}
+
+            {/* ═══ HOME DASHBOARD ═══ */}
+            {view==="home" && (() => {
+              const cd = companyData as any;
+              const allCamps: any[] = campaigns || [];
+              const allIcps: any[] = icps || [];
+              const allProds: any[] = products || [];
+
+              // Campaign stats
+              const testing = allCamps.filter(c => c.lifecycleStatus === "testing");
+              const scaling = allCamps.filter(c => c.lifecycleStatus === "scaling");
+              const killed = allCamps.filter(c => c.lifecycleStatus === "killed");
+              const paused = allCamps.filter(c => c.lifecycleStatus === "paused");
+              const active = allCamps.filter(c => c.lifecycleStatus === "testing" || c.lifecycleStatus === "scaling");
+
+              // Attention items
+              const _dA = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+              const attention: {camp:any, reason:string, action:string, actionView:string}[] = [];
+              for (const c of allCamps) {
+                if (c.lifecycleStatus === "killed" || c.lifecycleStatus === "archived" || c.lifecycleStatus === "paused") continue;
+                const iters: any[] = c.testIterations || [];
+                const lastIter = iters[iters.length - 1];
+                const dr = c.startDate ? _dA(c.startDate) : -1;
+                if (!c.startDate && c.lifecycleStatus === "testing") {
+                  attention.push({ camp: c, reason: "No start date set", action: "Set start date", actionView: "campaigns" });
+                } else if (dr > 3 && iters.length === 0) {
+                  attention.push({ camp: c, reason: `${dr} days with no iteration logged`, action: "Log first iteration", actionView: "campaigns" });
+                } else if (lastIter?.result === "Winner ✓" && c.lifecycleStatus !== "scaling") {
+                  attention.push({ camp: c, reason: "Benchmarks met — ready to scale", action: "Scale campaign", actionView: "campaigns" });
+                } else if (iters.length >= 3 && lastIter?.result !== "Winner ✓" && lastIter?.result !== "—" && lastIter?.result !== "Continuing →") {
+                  attention.push({ camp: c, reason: "3 iterations, no winner", action: "Kill or pivot", actionView: "campaigns" });
+                }
+              }
+
+              // Setup completeness
+              const sections = [
+                { label: "Company Profile", done: !!cd.co_name && !!cd.co_pitch, view: "company" },
+                { label: "Products / Services", done: allProds.length > 0, view: "products" },
+                { label: "Personas", done: allIcps.length > 0, view: "icps" },
+                { label: "Strategy", done: !!strategy?.phases?.length, view: "strategy" },
+                { label: "Sending Accounts", done: (parseInt(cd.co_mailbox_count || "0") || 0) > 0 || (parseInt(cd.co_linkedin_accounts || "0") || 0) > 0, view: "sendingAccts" },
+              ];
+              const setupDone = sections.filter(s => s.done).length;
+              const setupTotal = sections.length;
+
+              // Iterations this week
+              const weekAgo = Date.now() - 7 * 86400000;
+              const recentIters = allCamps.reduce((n: number, c: any) => n + (c.testIterations || []).filter((it: any) => it.date && new Date(it.date).getTime() > weekAgo).length, 0);
+
+              // Channel breakdown
+              const channelCounts: Record<string, number> = {};
+              for (const c of active) { channelCounts[c.type || "cold_email"] = (channelCounts[c.type || "cold_email"] || 0) + 1; }
+              const chLabels: Record<string, string> = { cold_email: "Email", linkedin_connection: "LinkedIn", linkedin_message: "LinkedIn Msg", rts_calling: "RTS Calling", retargeting: "Retargeting" };
+
+              return (
+              <div style={{ position:"absolute" as const, inset:0, overflow:"auto",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                <div style={{ maxWidth:960, margin:"0 auto", padding:"28px clamp(20px, 3vw, 48px) 48px" }}>
+
+                  {/* Header */}
+                  <div style={{ marginBottom:28 }}>
+                    <h2 style={{ fontSize:24, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>
+                      {activeWorkspace?.name || cd.co_name || "Dashboard"}
+                    </h2>
+                    <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0 }}>
+                      {cd.co_industry ? `${cd.co_industry}` : "Client overview"}{cd.co_hq ? ` · ${cd.co_hq}` : ""}
+                    </p>
+                  </div>
+
+                  {/* Setup progress (only show if not fully complete) */}
+                  {setupDone < setupTotal && (
+                    <div style={{ background:C2.card, border:`1px solid ${C2.border}`, borderRadius:14, padding:"18px 22px", marginBottom:20 }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                        <span style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head }}>Setup Progress</span>
+                        <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C2.accent }}>{setupDone}/{setupTotal}</span>
+                      </div>
+                      <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+                        {sections.map((s, i) => (
+                          <div key={i} style={{ flex:1, height:4, borderRadius:2, background: s.done ? C2.green : C2.faint, transition:"background .3s" }} />
+                        ))}
+                      </div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                        {sections.filter(s => !s.done).map((s, i) => (
+                          <button key={i} onClick={()=>setView(s.view)}
+                            style={{ padding:"5px 12px", borderRadius:6, border:`1px dashed ${C2.border}`,
+                              background:"transparent", color:C2.muted, fontSize:11, fontFamily:head, fontWeight:600,
+                              cursor:"pointer", transition:"all .15s" }}
+                            onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.color=C2.accent;(e.currentTarget as HTMLButtonElement).style.borderColor=C2.accent;}}
+                            onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.color=C2.muted;(e.currentTarget as HTMLButtonElement).style.borderColor=C2.border;}}>
+                            + {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Metric cards */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:14, marginBottom:24 }}>
+                    {[
+                      { label: "Active Campaigns", value: active.length, sub: `${testing.length} testing · ${scaling.length} scaling`, color: C2.accent },
+                      { label: "Needs Attention", value: attention.length, sub: attention.length ? "Action required" : "All clear", color: attention.length ? C2.amber : C2.green },
+                      { label: "Performing", value: scaling.length, sub: scaling.length ? scaling.map(c=>c.name).slice(0,2).join(", ") : "None yet", color: C2.green },
+                      { label: "Iterations This Week", value: recentIters, sub: `${killed.length} killed · ${paused.length} paused`, color: C2.blue },
+                    ].map((m, i) => (
+                      <div key={i} style={{ background:C2.card, border:`1px solid ${C2.border}`, borderRadius:14, padding:"18px 20px" }}>
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, textTransform:"uppercase" as const, letterSpacing:.5, marginBottom:8 }}>{m.label}</div>
+                        <div style={{ fontSize:28, fontWeight:800, color:m.color, fontFamily:head, lineHeight:1 }}>{m.value}</div>
+                        <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:6, lineHeight:1.3,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Two-column layout: Attention + Pipeline */}
+                  <div style={{ display:"grid", gridTemplateColumns: attention.length ? "1fr 1fr" : "1fr", gap:18, marginBottom:24 }}>
+
+                    {/* Needs Attention */}
+                    {attention.length > 0 && (
+                      <div style={{ background:C2.card, border:`1px solid ${C2.border}`, borderRadius:14, padding:"18px 22px" }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:14, display:"flex", alignItems:"center", gap:8 }}>
+                          <span style={{ width:8, height:8, borderRadius:4, background:C2.amber }} />
+                          Needs Attention
+                        </div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          {attention.slice(0, 5).map((a, i) => (
+                            <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px",
+                              borderRadius:10, background:C2.faint, cursor:"pointer", transition:"background .15s" }}
+                              onClick={()=>setView(a.actionView)}
+                              onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.background=`${C2.amber}12`}
+                              onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.background=C2.faint}>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:12, fontWeight:600, color:C2.text, fontFamily:head,
+                                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{a.camp.name || "Untitled"}</div>
+                                <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:2 }}>{a.reason}</div>
+                              </div>
+                              <span style={{ fontSize:10, fontFamily:head, fontWeight:600, color:C2.amber,
+                                padding:"3px 10px", borderRadius:6, background:`${C2.amber}15`, whiteSpace:"nowrap", flexShrink:0 }}>{a.action}</span>
+                            </div>
+                          ))}
+                          {attention.length > 5 && (
+                            <button onClick={()=>setView("campaigns")}
+                              style={{ background:"none", border:"none", color:C2.accent, fontSize:11, fontFamily:head,
+                                fontWeight:600, cursor:"pointer", padding:"4px 0", textAlign:"left" }}>
+                              +{attention.length - 5} more →
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pipeline Summary */}
+                    <div style={{ background:C2.card, border:`1px solid ${C2.border}`, borderRadius:14, padding:"18px 22px" }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                        <span style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head }}>Pipeline</span>
+                        <button onClick={()=>{ (window as any).__stratTab = "pipeline"; setView("strategy"); }}
+                          style={{ background:"none", border:"none", color:C2.accent, fontSize:11, fontFamily:head,
+                            fontWeight:600, cursor:"pointer" }}>View Pipeline →</button>
+                      </div>
+                      {/* Pipeline bar */}
+                      {allCamps.length > 0 ? (
+                        <>
+                          <div style={{ display:"flex", gap:2, height:20, borderRadius:6, overflow:"hidden", marginBottom:14 }}>
+                            {scaling.length > 0 && <div style={{ flex: scaling.length, background: C2.green, transition:"flex .4s" }} title={`${scaling.length} Performing`} />}
+                            {testing.length > 0 && <div style={{ flex: testing.length, background: C2.blue, transition:"flex .4s" }} title={`${testing.length} Testing`} />}
+                            {killed.length > 0 && <div style={{ flex: killed.length, background: `${C2.red}88`, transition:"flex .4s" }} title={`${killed.length} Killed`} />}
+                            {paused.length > 0 && <div style={{ flex: paused.length, background: C2.muted, transition:"flex .4s" }} title={`${paused.length} Paused`} />}
+                          </div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:14 }}>
+                            {[
+                              { label: "Performing", count: scaling.length, color: C2.green },
+                              { label: "Testing", count: testing.length, color: C2.blue },
+                              { label: "Killed", count: killed.length, color: C2.red },
+                              { label: "Paused", count: paused.length, color: C2.muted },
+                            ].filter(r => r.count > 0).map((r, i) => (
+                              <div key={i} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                <span style={{ width:8, height:8, borderRadius:2, background:r.color }} />
+                                <span style={{ fontSize:11, color:C2.textSoft, fontFamily:body }}>{r.count} {r.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize:12, color:C2.muted, fontFamily:body, padding:"16px 0", textAlign:"center" }}>
+                          No campaigns yet.{" "}
+                          <button onClick={()=>setView("campaigns")} style={{ background:"none", border:"none", color:C2.accent, fontFamily:head, fontWeight:600, cursor:"pointer", fontSize:12 }}>
+                            Create one →
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Channel breakdown */}
+                      {Object.keys(channelCounts).length > 0 && (
+                        <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${C2.border}` }}>
+                          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, textTransform:"uppercase" as const, letterSpacing:.5, marginBottom:8 }}>Active by Channel</div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                            {Object.entries(channelCounts).map(([ch, count]) => (
+                              <span key={ch} style={{ fontSize:11, fontFamily:head, fontWeight:600, color:C2.textSoft,
+                                padding:"4px 10px", borderRadius:6, background:C2.faint }}>
+                                {chLabels[ch] || ch} <span style={{ color:C2.accent, fontFamily:mono }}>{count}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Recommendations ── */}
+                  {(() => {
+                    const recs: {icon:string; title:string; desc:string; color:string; action:string; view:string; priority:number}[] = [];
+                    const pri = strategy?.matrixPriorities || {};
+
+                    // --- Setup recs ---
+                    if (!cd.co_name || !cd.co_pitch) recs.push({ icon:"◉", title:"Complete company profile", desc:"Add company name, pitch, and key details so the AI can generate better campaign sequences.", color:C2.amber, action:"Go to Company →", view:"company", priority:1 });
+                    if (allProds.length === 0) recs.push({ icon:"◆", title:"Add products or services", desc:"Define what you're selling so campaigns can be targeted to the right audience with the right messaging.", color:C2.amber, action:"Go to Products →", view:"products", priority:1 });
+                    if (allIcps.length === 0) recs.push({ icon:"◑", title:"Create target personas", desc:"Define who you're going after — industry, titles, company size, pain points.", color:C2.amber, action:"Go to Personas →", view:"icps", priority:1 });
+                    if (!strategy?.phases?.length) recs.push({ icon:"◎", title:"Generate strategy", desc:"Build a phased strategy roadmap to share with the client and guide your campaign plan.", color:C2.amber, action:"Go to Strategy →", view:"strategy", priority:2 });
+                    const mailboxes = parseInt(cd.co_mailbox_count||"0")||0;
+                    const liAccts = parseInt(cd.co_linkedin_accounts||"0")||0;
+                    if (mailboxes === 0 && liAccts === 0) recs.push({ icon:"◈", title:"Configure sending accounts", desc:"Set up mailbox and LinkedIn account counts so volume capacity is reflected in the strategy.", color:C2.amber, action:"Go to Accounts →", view:"sendingAccts", priority:2 });
+
+                    // --- Campaign launch recs ---
+                    const highPriUntried: {persName:string;prodName:string;channels:string[]}[] = [];
+                    for (const pers of allIcps) { for (const prod of allProds) {
+                      const pk = `${(pers as any).id}_${(prod as any).id}`;
+                      const p = pri[pk];
+                      if (p !== "high") continue;
+                      const untriedCh: string[] = [];
+                      for (const ct of CAMPAIGN_TYPES) {
+                        if (!allCamps.some((c:any) => (c.personaIds||[])[0]===(pers as any).id && c.productId===(prod as any).id && c.type===ct.id))
+                          untriedCh.push(ct.label);
+                      }
+                      if (untriedCh.length > 0) highPriUntried.push({ persName:(pers as any).name||"?", prodName:(prod as any).name||"?", channels:untriedCh });
+                    }}
+                    if (highPriUntried.length > 0) {
+                      const top = highPriUntried[0];
+                      recs.push({ icon:"⊕", title:`Launch high-priority: ${top.persName} × ${top.prodName}`, desc:`${top.channels.slice(0,3).join(", ")} channel${top.channels.length!==1?"s":""} untried. This is a high-priority combo in your matrix — get it testing.`, color:C2.green, action:"Open Pipeline →", view:"strategy", priority:3 });
+                      if (highPriUntried.length > 1) {
+                        const t2 = highPriUntried[1];
+                        recs.push({ icon:"⊕", title:`Launch: ${t2.persName} × ${t2.prodName}`, desc:`${t2.channels.length} channel${t2.channels.length!==1?"s":""} available. High-priority persona-product combo not yet in the pipeline.`, color:C2.green, action:"Open Pipeline →", view:"strategy", priority:4 });
+                      }
+                    }
+
+                    if (allCamps.length === 0 && allIcps.length > 0 && allProds.length > 0) {
+                      recs.push({ icon:"⊕", title:"Launch your first campaign", desc:`You have ${allIcps.length} persona${allIcps.length!==1?"s":""} and ${allProds.length} product${allProds.length!==1?"s":""}. Head to the Pipeline to see recommended combos and start testing.`, color:C2.accent, action:"Open Pipeline →", view:"strategy", priority:2 });
+                    }
+
+                    // --- Scaling / diversification recs ---
+                    if (active.length >= 2) {
+                      const types = new Set(active.map((c:any) => c.type || "cold_email"));
+                      if (types.size === 1) {
+                        const onlyCh = chLabels[active[0].type||"cold_email"] || "one channel";
+                        recs.push({ icon:"↻", title:`Diversify beyond ${onlyCh}`, desc:`All ${active.length} active campaigns use ${onlyCh}. Adding a second channel increases coverage and reduces single-channel risk.`, color:C2.blue, action:"Open Pipeline →", view:"strategy", priority:5 });
+                      }
+                    }
+
+                    for (const sc of scaling.slice(0, 2)) {
+                      const pers = allIcps.find((p:any) => (sc.personaIds||[])[0] === (p as any).id);
+                      if (!pers) continue;
+                      const persOtherCh = CAMPAIGN_TYPES.filter(ct => ct.id !== sc.type && !allCamps.some((c:any) => (c.personaIds||[])[0]===(pers as any).id && c.productId===sc.productId && c.type===ct.id));
+                      if (persOtherCh.length > 0) {
+                        recs.push({ icon:"↑", title:`Expand "${sc.name}" to ${persOtherCh[0].label}`, desc:`This campaign is performing well. Try reaching the same audience through ${persOtherCh[0].label} to compound results.`, color:C2.green, action:"Open Pipeline →", view:"strategy", priority:4 });
+                      }
+                    }
+
+                    // --- Stale campaigns ---
+                    const twoWeeksAgo = Date.now() - 14*86400000;
+                    for (const c of testing.slice(0, 3)) {
+                      const iters: any[] = c.testIterations || [];
+                      const lastDate = iters.length > 0 ? new Date(iters[iters.length-1].date||0).getTime() : (c.startDate ? new Date(c.startDate).getTime() : 0);
+                      if (lastDate > 0 && lastDate < twoWeeksAgo) {
+                        recs.push({ icon:"⏱", title:`"${c.name}" is stale`, desc:`No iteration logged in over 2 weeks. Check results and log an iteration or kill it to free up pipeline bandwidth.`, color:C2.red, action:"Go to Campaigns →", view:"campaigns", priority:3 });
+                      }
+                    }
+
+                    // --- Strategy recs ---
+                    if (strategy?.generatedAt) {
+                      const stratAge = Math.floor((Date.now() - new Date(strategy.generatedAt).getTime()) / 86400000);
+                      if (stratAge > 30) recs.push({ icon:"◎", title:"Refresh your strategy", desc:`Strategy was generated ${stratAge} days ago. Regenerate it to reflect current pipeline progress and learnings.`, color:C2.blue, action:"Go to Strategy →", view:"strategy", priority:6 });
+                    }
+
+                    // --- Persona recs ---
+                    const persWithoutCamps = allIcps.filter((p:any) => !allCamps.some((c:any) => (c.personaIds||[])[0] === p.id));
+                    if (persWithoutCamps.length > 0 && allCamps.length > 0) {
+                      const names = persWithoutCamps.slice(0,2).map((p:any) => p.name).join(", ");
+                      recs.push({ icon:"◑", title:`Untested persona${persWithoutCamps.length!==1?"s":""}: ${names}`, desc:`${persWithoutCamps.length} persona${persWithoutCamps.length!==1?"s have":" has"} zero campaigns. Consider launching test campaigns or marking them as skip in the matrix.`, color:C2.blue, action:"Open Pipeline →", view:"strategy", priority:5 });
+                    }
+
+                    // --- Capacity recs ---
+                    if (mailboxes > 0 && active.filter((c:any) => c.type === "cold_email").length === 0) {
+                      recs.push({ icon:"✉", title:"Mailboxes idle — no email campaigns active", desc:`${mailboxes} mailbox${mailboxes!==1?"es":""} configured but no cold email campaigns running. Launch one to start utilizing capacity.`, color:C2.amber, action:"Open Pipeline →", view:"strategy", priority:4 });
+                    }
+                    if (liAccts > 0 && active.filter((c:any) => c.type === "linkedin_connection" || c.type === "linkedin_message").length === 0) {
+                      recs.push({ icon:"◈", title:"LinkedIn accounts idle — no LinkedIn campaigns active", desc:`${liAccts} LinkedIn account${liAccts!==1?"s":""} configured but no LinkedIn campaigns running.`, color:C2.amber, action:"Open Pipeline →", view:"strategy", priority:4 });
+                    }
+
+                    recs.sort((a,b) => a.priority - b.priority);
+                    const topRecs = recs.slice(0, 6);
+
+                    if (topRecs.length === 0) return null;
+
+                    return (
+                      <div style={{ background:C2.card, border:`1px solid ${C2.border}`, borderRadius:14, padding:"18px 22px", marginBottom:24 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:14, display:"flex", alignItems:"center", gap:8 }}>
+                          <span style={{ fontSize:14, color:C2.accent }}>✦</span>
+                          Recommendations
+                        </div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          {topRecs.map((r, i) => (
+                            <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:14, padding:"12px 16px",
+                              borderRadius:10, background:C2.faint, cursor:"pointer", transition:"all .15s" }}
+                              onClick={()=>{ if(r.view==="strategy"){(window as any).__stratTab="pipeline";} setView(r.view); }}
+                              onMouseEnter={e=>{(e.currentTarget as HTMLDivElement).style.background=`${r.color}10`;(e.currentTarget as HTMLDivElement).style.borderColor=`${r.color}30`;}}
+                              onMouseLeave={e=>{(e.currentTarget as HTMLDivElement).style.background=C2.faint;(e.currentTarget as HTMLDivElement).style.borderColor="transparent";}}>
+                              <span style={{ fontSize:16, width:22, textAlign:"center", flexShrink:0, marginTop:1, color:r.color }}>{r.icon}</span>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:12, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:3 }}>{r.title}</div>
+                                <div style={{ fontSize:11, color:C2.muted, fontFamily:body, lineHeight:1.45 }}>{r.desc}</div>
+                              </div>
+                              <span style={{ fontSize:10, fontFamily:head, fontWeight:600, color:r.color,
+                                padding:"4px 10px", borderRadius:6, background:`${r.color}12`, whiteSpace:"nowrap", flexShrink:0, marginTop:1 }}>{r.action}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Quick Nav */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:12 }}>
+                    {[
+                      { icon:"⊕", label:"Campaigns", desc:"Manage active campaigns and testing", view:"campaigns" },
+                      { icon:"◎", label:"Strategy", desc:"Client-facing roadmap and plan", view:"strategy" },
+                      { icon:"◑", label:"Personas", desc:`${allIcps.length} persona${allIcps.length!==1?"s":""}`, view:"icps" },
+                      { icon:"◆", label:"Products", desc:`${allProds.length} product${allProds.length!==1?"s":""}`, view:"products" },
+                      { icon:"◉", label:"Company", desc:"Profile and business details", view:"company" },
+                      { icon:"⊙", label:"Analytics", desc:"Performance and ROI metrics", view:"analytics" },
+                    ].map((q, i) => (
+                      <button key={i} onClick={()=>setView(q.view)}
+                        style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 18px", borderRadius:12,
+                          border:`1px solid ${C2.border}`, background:C2.card, cursor:"pointer", textAlign:"left",
+                          transition:"all .15s" }}
+                        onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C2.accent;(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}08`;}}
+                        onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C2.border;(e.currentTarget as HTMLButtonElement).style.background=C2.card;}}>
+                        <span style={{ fontSize:18, color:C2.accent, width:24, textAlign:"center" }}>{q.icon}</span>
+                        <div>
+                          <div style={{ fontSize:12, fontWeight:700, color:C2.text, fontFamily:head }}>{q.label}</div>
+                          <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:1 }}>{q.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                </div>
+              </div>
+              );
+            })()}
 
             {view==="company" && (
               /* ═══ V2 Company View ═══ */
