@@ -13596,7 +13596,7 @@ Raw JSON only.`, "", 1400);
                   )}
 
                   {/* Admin Panel */}
-                  {currentRole === "team" && IS_LOCALHOST && (
+                  {currentRole === "team" && (
                     <button onClick={()=>{ setProfileMenuOpen(false); setAppMode("admin"); }}
                       style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
                         borderRadius:7, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
