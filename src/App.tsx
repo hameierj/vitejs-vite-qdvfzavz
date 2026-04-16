@@ -929,6 +929,140 @@ function getApiKey() {
   return window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || import.meta.env.VITE_API_KEY || "";
 }
 
+// ─── SLACK INTEGRATION ──────────────────────────────────────────────────────
+const SLACK_PROXY_URL = `${SUPABASE_URL}/functions/v1/slack-proxy`;
+
+async function slackApiFetch(endpoint: string, params: Record<string, string> = {}): Promise<any> {
+  const token = getSlackToken();
+  console.log("[SlackAPI]", endpoint, "token:", token ? `${token.slice(0,10)}...` : "MISSING", "proxy:", SLACK_PROXY_URL);
+  if (!token) return { ok: false, error: "No Slack token" };
+  // Always route through Supabase Edge Function to avoid CORS
+  const resp = await fetch(SLACK_PROXY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-slack-token": token,
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify({ endpoint, params }),
+  });
+  return resp.json();
+}
+
+function getSlackToken() {
+  return localStorage.getItem("b2br_slack_token") || "";
+}
+function setSlackToken(token: string) {
+  localStorage.setItem("b2br_slack_token", token);
+}
+
+async function fetchSlackMessages(channelId: string, oldest?: string): Promise<{ok:boolean; messages:any[]; error?:string}> {
+  if (!getSlackToken()) return { ok: false, messages: [], error: "No Slack token configured" };
+  if (!channelId) return { ok: false, messages: [], error: "No channel ID" };
+  const allMessages: any[] = [];
+  let cursor = "";
+  let pages = 0;
+  const errMap: Record<string, string> = {
+    not_in_channel: "Bot is not in this channel. In Slack, go to the channel and type: /invite @CX Tool Sync",
+    channel_not_found: "Channel not found. Check the channel ID or make sure the bot has access.",
+    invalid_auth: "Invalid Slack bot token. Check your token in Profile → API Keys.",
+    missing_scope: "Bot is missing permissions. Add channels:history scope in your Slack app settings.",
+    account_inactive: "Slack token has been revoked or the bot was removed.",
+    token_revoked: "Slack token has been revoked. Generate a new one in your Slack app settings.",
+  };
+  try {
+    do {
+      const params: Record<string, string> = { channel: channelId, limit: "200" };
+      if (oldest) params.oldest = oldest;
+      if (cursor) params.cursor = cursor;
+      const data = await slackApiFetch("conversations.history", params);
+      if (!data.ok) return { ok: false, messages: [], error: errMap[data.error] || `Slack error: ${data.error}` };
+      allMessages.push(...(data.messages || []));
+      cursor = data.response_metadata?.next_cursor || "";
+      pages++;
+    } while (cursor && pages < 20);
+    return { ok: true, messages: allMessages };
+  } catch (e: any) {
+    return { ok: false, messages: [], error: e.message || "Network error" };
+  }
+}
+
+async function fetchSlackUsers(): Promise<Record<string, string>> {
+  if (!getSlackToken()) return {};
+  try {
+    const data = await slackApiFetch("users.list", { limit: "200" });
+    if (!data.ok) return {};
+    const map: Record<string, string> = {};
+    for (const u of (data.members || [])) {
+      map[u.id] = u.real_name || u.name || u.id;
+    }
+    return map;
+  } catch { return {}; }
+}
+
+async function resolveSlackUser(userId: string): Promise<{name:string; isWorkspaceMember:boolean}> {
+  try {
+    const data = await slackApiFetch("users.info", { user: userId });
+    if (data.ok && data.user) {
+      return { name: data.user.real_name || data.user.name || userId, isWorkspaceMember: !data.user.is_stranger };
+    }
+    return { name: userId, isWorkspaceMember: false };
+  } catch { return { name: userId, isWorkspaceMember: false }; }
+}
+
+async function resolveAllUsers(messages: any[], knownMap: Record<string, string>): Promise<Record<string, {name:string; isCX:boolean}>> {
+  const result: Record<string, {name:string; isCX:boolean}> = {};
+  // Add known workspace users as CX
+  for (const [id, name] of Object.entries(knownMap)) {
+    result[id] = { name, isCX: true };
+  }
+  console.log("[Slack] Known workspace users:", Object.keys(knownMap).length);
+  // Collect unknown user IDs from messages
+  const unknownIds = new Set<string>();
+  for (const m of messages) {
+    if (m.user && !result[m.user]) unknownIds.add(m.user);
+  }
+  console.log("[Slack] Unknown user IDs to resolve:", unknownIds.size, Array.from(unknownIds));
+  // Resolve unknown users individually (max 20)
+  const toResolve = Array.from(unknownIds).slice(0, 20);
+  for (const id of toResolve) {
+    const r = await resolveSlackUser(id);
+    console.log("[Slack] Resolved", id, "→", r.name, "isWorkspace:", r.isWorkspaceMember);
+    result[id] = { name: r.name, isCX: r.isWorkspaceMember };
+  }
+  // Cache resolved users in localStorage for future syncs
+  try {
+    const cache = JSON.parse(localStorage.getItem("b2br_slack_user_cache") || "{}");
+    for (const [id, info] of Object.entries(result)) { cache[id] = info; }
+    localStorage.setItem("b2br_slack_user_cache", JSON.stringify(cache));
+  } catch {}
+  return result;
+}
+
+async function fetchSlackChannels(): Promise<{id:string;name:string;error?:string}[]> {
+  if (!getSlackToken()) return [];
+  try {
+    const all: {id:string;name:string}[] = [];
+    let cursor = "";
+    do {
+      const params: Record<string, string> = { types: "public_channel,private_channel", limit: "200", exclude_archived: "true" };
+      if (cursor) params.cursor = cursor;
+      const data = await slackApiFetch("conversations.list", params);
+      if (!data.ok) {
+        // Return a sentinel entry with the error so the UI can show it
+        return [{ id: "__error__", name: "", error: data.error || "Unknown Slack error" } as any];
+      }
+      for (const ch of (data.channels || [])) all.push({ id: ch.id, name: ch.name });
+      cursor = data.response_metadata?.next_cursor || "";
+    } while (cursor);
+    return all.sort((a,b) => a.name.localeCompare(b.name));
+  } catch (e: any) {
+    console.warn("fetchSlackChannels error:", e);
+    return [{ id: "__error__", name: "", error: e.message || "Network error" } as any];
+  }
+}
+
 // ─── API USAGE LOGGING ───────────────────────────────────────────────────────
 // Claude Sonnet 4 pricing: $3/M input, $15/M output
 const COST_PER_INPUT_TOKEN = 3 / 1_000_000;
@@ -6652,7 +6786,24 @@ COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"$5K-2
 PRODUCTS: ${prodList||"general"}.
 PERSONAS: ${persList||"general"}.
 INFRA: ${cd.co_mailbox_count||200} mailboxes (${warmupDaysLeft>0?warmupDaysLeft+" days warmup left":"ready"}). LinkedIn+RTS: ready now. Retargeting lists: ${hasLists?"yes":"no"}.
-
+${(() => {
+  const intel: string[] = [];
+  const _pi = (window as any)[`__pitchAnalysis_${activeWorkspace?.id||""}`]?.result;
+  const _ci = (window as any)[`__clientIntel_${activeWorkspace?.id||""}`]?.result;
+  const _se = (window as any)[`__sentAnalysis_${activeWorkspace?.id||""}`]?.result;
+  const _sa = (window as any)[`__stratAnalysis_${activeWorkspace?.id||""}`]?.result;
+  if (_ci?.decisionMaking) intel.push(`CLIENT DECISION STYLE: ${_ci.decisionMaking.style} — ${_ci.decisionMaking.description}`);
+  if (_ci?.objections?.length) intel.push(`KNOWN OBJECTIONS: ${_ci.objections.map((o:any)=>`${o.objection} (${o.status})`).join("; ")}`);
+  if (_pi?.rewrittenPitch) intel.push(`OPTIMIZED PITCH: ${_pi.rewrittenPitch}`);
+  if (_pi?.talkingPoints?.length) intel.push(`KEY TALKING POINTS: ${_pi.talkingPoints.join("; ")}`);
+  if (_pi?.avoidList?.length) intel.push(`MESSAGING TO AVOID: ${_pi.avoidList.join("; ")}`);
+  if (_se?.overallSentiment) intel.push(`CLIENT SENTIMENT: ${_se.overallSentiment.score}/10 (${_se.overallSentiment.label}), trend: ${_se.overallSentiment.trend}`);
+  if (_se?.riskSignals?.length) intel.push(`RISK SIGNALS: ${_se.riskSignals.map((r:any)=>r.signal).join("; ")}`);
+  if (_sa?.positioning) intel.push(`POSITIONING: ${_sa.positioning.score}/10 — ${_sa.positioning.assessment}`);
+  if (_sa?.strategicPivots?.length) intel.push(`SUGGESTED PIVOTS: ${_sa.strategicPivots.map((p:any)=>p.title).join("; ")}`);
+  if (_sa?.whatDoesnt?.rootCauses?.length) intel.push(`ROOT CAUSES OF FAILURE: ${_sa.whatDoesnt.rootCauses.join("; ")}`);
+  return intel.length ? `\nCLIENT INTELLIGENCE (from calls, Slack, emails):\n${intel.join("\n")}\nUse this intelligence to shape the strategy — adjust messaging, channel priorities, offer escalation, and campaign sequencing based on what we know about this client.\n` : "";
+})()}
 METHODOLOGY — follow this exact playbook:
 
 MONTHS 1-3 (AGGRESSIVE — most critical, user retention depends on early results):
@@ -7148,6 +7299,17 @@ PERSONA: ${persona?.name || "General"} — Titles: ${persona?.data?.buyer || "?"
 COMPETITOR: Currently using: ${persona?.data?.current_solutions || "unknown"}. Displacement: ${persona?.data?.displacement_messaging || "N/A"}
 TONE: ${persona?.data?.tone || "Consultative"}
 ${cd.co_notes ? `\nIMPORTANT CONTEXT: ${cd.co_notes}` : ""}${cd.co_avoid ? `\nAVOID IN COPY: ${cd.co_avoid}` : ""}${product?.prod_notes ? `\nPRODUCT NOTES: ${product.prod_notes}` : ""}${persona?.data?.persona_notes ? `\nPERSONA NOTES: ${persona.data.persona_notes}` : ""}
+${(() => {
+  const ci: string[] = [];
+  const _pi = (window as any)[`__pitchAnalysis_${activeWorkspace?.id||""}`]?.result;
+  const _ci = (window as any)[`__clientIntel_${activeWorkspace?.id||""}`]?.result;
+  if (_pi?.rewrittenPitch) ci.push(`OPTIMIZED PITCH (use this as the foundation): ${_pi.rewrittenPitch}`);
+  if (_pi?.talkingPoints?.length) ci.push(`PROVEN TALKING POINTS (weave these in): ${_pi.talkingPoints.join("; ")}`);
+  if (_pi?.avoidList?.length) ci.push(`DO NOT USE (tested and failed): ${_pi.avoidList.join("; ")}`);
+  if (_ci?.objections?.length) ci.push(`KNOWN OBJECTIONS TO PREEMPT: ${_ci.objections.filter((o:any)=>o.status==="recurring").map((o:any)=>`${o.objection} → ${o.bestResponse}`).join("; ")}`);
+  if (_ci?.priorities?.whatTheyCareMostAbout?.length) ci.push(`CLIENT PRIORITIES: ${_ci.priorities.whatTheyCareMostAbout.join(", ")}`);
+  return ci.length ? `\nCLIENT INTELLIGENCE (from real conversations — use this to write better copy):\n${ci.join("\n")}` : "";
+})()}
 
 ${channelRules}
 
@@ -8925,6 +9087,15 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
     });
     const avgScore = Math.round(callRecords.reduce((a:number,r:any)=>a+(r.result?.overallScore||0),0)/callRecords.length);
     lines.push(`Average score: ${avgScore}/100`);
+    // Include sentiment data
+    const sentCalls = callRecords.filter((r:any) => r.result?.sentiment);
+    if (sentCalls.length) {
+      const avgSent = Math.round(sentCalls.reduce((a:number,r:any)=>a+(r.result.sentiment.score||0),0)/sentCalls.length*10)/10;
+      const latest = sentCalls[0]?.result?.sentiment;
+      lines.push(`\nClient sentiment: avg ${avgSent}/10, latest: ${latest?.label||"?"} (churn risk: ${latest?.churnRisk||"?"})`);
+      if (latest?.frustrations?.length) lines.push(`Frustrations: ${latest.frustrations.join("; ")}`);
+      if (latest?.positives?.length) lines.push(`Positives: ${latest.positives.join("; ")}`);
+    }
   }
 
   return lines.join("\n");
@@ -9868,9 +10039,59 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
     const apiMessages: { role: string; content: any }[] = [...historyMsgs, { role: "user", content: userText }];
 
     const ctx = buildClientContext(companyData, icps, perfLogs, products, campaigns, strategy, playbooks, battlecards, contentAssets, dfySetup, callRecords);
-    const systemPrompt = `You are Copilot, the AI assistant for ${clientName || "this client"}'s outreach platform. You have complete visibility into every part of their workspace — company profile, products, personas, campaigns, sequences, strategy, preferences, and analytics.
 
-${ctx}${fileContext ? `\n${fileContext}` : ""}
+    // Add Client Intelligence data to Copilot context
+    const ciExtra: string[] = [];
+    // Slack/Email comms summary
+    if (slackComms.length > 0) {
+      ciExtra.push(`\n## CLIENT COMMUNICATIONS\n${slackComms.length} conversations (Slack/Email)`);
+      slackComms.slice(0, 10).forEach((c: any) => {
+        const clean = (c.content||"").replace(/\[(?:(?:CX|CLIENT):)?.*?\]\s*/g,"").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").slice(0,200);
+        ciExtra.push(`- [${c.type}] ${c.date}: ${clean}...`);
+      });
+    }
+    // Sentiment analysis
+    const sentResult = (window as any)[`__sentAnalysis_${activeWorkspace?.id||""}`]?.result;
+    if (sentResult) {
+      ciExtra.push(`\n## SENTIMENT ANALYSIS\nOverall: ${sentResult.overallSentiment?.score}/10 (${sentResult.overallSentiment?.label}), Trend: ${sentResult.overallSentiment?.trend}`);
+      ciExtra.push(sentResult.overallSentiment?.summary || "");
+      if (sentResult.riskSignals?.length) ciExtra.push(`Risk signals: ${sentResult.riskSignals.map((r:any)=>`[${r.severity}] ${r.signal}`).join("; ")}`);
+      if (sentResult.recommendations?.length) ciExtra.push(`Recommendations: ${sentResult.recommendations.map((r:any)=>`[${r.priority}] ${r.action}`).join("; ")}`);
+    }
+    // Pitch analysis
+    const pitchResult = (window as any)[`__pitchAnalysis_${activeWorkspace?.id||""}`]?.result;
+    if (pitchResult) {
+      ciExtra.push(`\n## PITCH ANALYSIS\nScore: ${pitchResult.overallScore}/100 (${pitchResult.grade})`);
+      if (pitchResult.rewrittenPitch) ciExtra.push(`Optimized pitch: ${pitchResult.rewrittenPitch}`);
+      if (pitchResult.talkingPoints?.length) ciExtra.push(`Talking points: ${pitchResult.talkingPoints.join("; ")}`);
+      if (pitchResult.avoidList?.length) ciExtra.push(`Stop saying: ${pitchResult.avoidList.join("; ")}`);
+    }
+    // Client intel
+    const intelResult = (window as any)[`__clientIntel_${activeWorkspace?.id||""}`]?.result;
+    if (intelResult) {
+      ciExtra.push(`\n## CLIENT INTEL PROFILE`);
+      if (intelResult.quickReference) ciExtra.push(`One-liner: ${intelResult.quickReference.oneLiner}\nGolden rule: ${intelResult.quickReference.goldenRule}\nNever: ${intelResult.quickReference.avoid}`);
+      if (intelResult.decisionMaking) ciExtra.push(`Decision style: ${intelResult.decisionMaking.style} — ${intelResult.decisionMaking.description}`);
+      if (intelResult.objections?.length) ciExtra.push(`Objections: ${intelResult.objections.map((o:any)=>`${o.objection} (${o.status})`).join("; ")}`);
+    }
+    // CSM coaching
+    const coachResult = (window as any)[`__csmCoaching_${activeWorkspace?.id||""}`]?.result;
+    if (coachResult) {
+      ciExtra.push(`\n## CSM COACHING\n${coachResult.overallAssessment || ""}`);
+      if (coachResult.criticalFixes?.length) ciExtra.push(`Critical fixes: ${coachResult.criticalFixes.map((f:any)=>f.issue).join("; ")}`);
+    }
+    // Strategic analysis
+    const stratAnalysis = (window as any)[`__stratAnalysis_${activeWorkspace?.id||""}`]?.result;
+    if (stratAnalysis) {
+      ciExtra.push(`\n## STRATEGIC ANALYSIS\nHealth: ${stratAnalysis.overallHealth?.score}/10 — ${stratAnalysis.overallHealth?.oneLiner}`);
+      if (stratAnalysis.positioning) ciExtra.push(`Positioning: ${stratAnalysis.positioning.score}/10 — ${stratAnalysis.positioning.assessment}`);
+      if (stratAnalysis.strategicPivots?.length) ciExtra.push(`Pivots: ${stratAnalysis.strategicPivots.map((p:any)=>p.title).join("; ")}`);
+    }
+    const fullCtx = ctx + ciExtra.join("\n");
+
+    const systemPrompt = `You are Copilot, the AI assistant for ${clientName || "this client"}'s outreach platform. You have complete visibility into every part of their workspace — company profile, products, personas, campaigns, sequences, strategy, preferences, analytics, client communications, sentiment analysis, pitch analysis, client intelligence, and coaching data.
+
+${fullCtx}${fileContext ? `\n${fileContext}` : ""}
 
 YOUR ROLE:
 You are a hands-on strategist who knows every field in this workspace AND can directly modify any data. When the user asks to change, update, set, or create anything — USE YOUR TOOLS to make the change immediately. Do not just suggest changes; execute them.
@@ -12539,6 +12760,7 @@ function AppMain() {
   const [apiKey,         setApiKey]         = useState(() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } });
   const [openaiKey,      setOpenaiKey]      = useState(() => { try { return localStorage.getItem("b2br_openai_key") || ""; } catch { return ""; } });
   const [geminiKey,      setGeminiKey]      = useState(() => { try { return localStorage.getItem("b2br_gemini_key") || ""; } catch { return ""; } });
+  const [slackKey,       setSlackKey]       = useState(() => { try { return localStorage.getItem("b2br_slack_token") || ""; } catch { return ""; } });
   const [showKeyInput,   setShowKeyInput]   = useState(false);
   const [keyDraft,       setKeyDraft]       = useState("");
   const [confirmSignOut,   setConfirmSignOut]  = useState(false);
@@ -12572,6 +12794,7 @@ function AppMain() {
   });
   const [dfyProgress, setDfyProgress] = useState<{ running: boolean; phase: string; found: number; needed: number; checked: number; total: number } | null>(null);
   const [callRecords, setCallRecords] = useState<any[]>([]);
+  const [slackComms, setSlackComms] = useState<any[]>([]);
 
   const addToast  = useCallback((t: Omit<Toast,"id">) => {
     const id = uid();
@@ -12689,6 +12912,7 @@ function AppMain() {
     setBattlecards(saved?.battlecards ?? []);
     setDfySetup(saved?.dfySetup ?? { tlds:[".com"], domainCount:67, mailboxCount:201, customAmount:false, forwardingDomain:"", forwardingVerified:null, mailboxNames:[], suggestedDomains:[], approvedDomains:[] });
     setCallRecords(saved?.callRecords ?? []);
+    setSlackComms(saved?.slackComms ?? []);
     // Load file blobs from IndexedDB async
     if (rawFiles.length && activeWorkspace) {
       loadWorkspaceFiles(activeWorkspace.id, rawFiles).then(loaded => setWsFiles(loaded.map((f:any) => ({ ...f, _loading: false }))));
@@ -12705,7 +12929,7 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords, slackComms });
     // Sync co_name and co_industry back to ClientRecord so admin panel + sidebar stay current
     const cd = companyData as Record<string,string>;
     const cls = loadClients();
@@ -13300,7 +13524,7 @@ Raw JSON only.`, "", 1400);
                       onMouseEnter={e=>{ if(view!=="calls")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                       onMouseLeave={e=>{ if(view!=="calls")(e.currentTarget as HTMLButtonElement).style.background=view==="calls"?`${C2.accent}14`:"transparent"; }}>
                       <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="calls"?C2.accent:C2.muted }}>🎙</span>
-                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="calls"?700:500, color:view==="calls"?C2.text:C2.textSoft }}>Call Analyzer</span>
+                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="calls"?700:500, color:view==="calls"?C2.text:C2.textSoft }}>Client Intel</span>
                     </button>
                   )}
                 </>
@@ -13404,6 +13628,7 @@ Raw JSON only.`, "", 1400);
                         { label:"Anthropic (Claude)", ph:"sk-ant-api03-…", val:apiKey, set:setApiKey, hint:"Required for core AI" },
                         { label:"OpenAI (GPT-4o)", ph:"sk-…", val:openaiKey, set:setOpenaiKey, hint:"AI Council" },
                         { label:"Google (Gemini)", ph:"AIza…", val:geminiKey, set:setGeminiKey, hint:"AI Council" },
+                        { label:"Slack Bot Token", ph:"xoxb-…", val:slackKey, set:(v:string)=>{setSlackKey(v);setSlackToken(v);}, hint:"Client Intel — auto-sync Slack messages" },
                       ].map(k => (
                         <div key={k.label}>
                           <div style={{ fontSize:9, color:C.muted, fontFamily:mono, marginBottom:3 }}>{k.label}</div>
@@ -14170,7 +14395,7 @@ Raw JSON only.`, "", 1400);
                 <div style={{ maxWidth:960, margin:"0 auto", padding:"28px clamp(20px, 3vw, 48px) 48px" }}>
 
                   {/* Header */}
-                  <div style={{ marginBottom:28 }}>
+                  <div style={{ marginBottom:20 }}>
                     <h2 style={{ fontSize:24, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>
                       {activeWorkspace?.name || cd.co_name || "Dashboard"}
                     </h2>
@@ -14178,6 +14403,26 @@ Raw JSON only.`, "", 1400);
                       {cd.co_industry ? `${cd.co_industry}` : "Client overview"}{cd.co_hq ? ` · ${cd.co_hq}` : ""}
                     </p>
                   </div>
+
+                  {/* Tab toggle */}
+                  {(() => {
+                    const homeTab: string = (window as any).__homeTab || "overview";
+                    const setHomeTab = (t: string) => { (window as any).__homeTab = t; setCompanyData((p:any)=>({...p})); };
+                    return (
+                      <div style={{ display:"flex", gap:4, padding:3, background:C2.faint, borderRadius:8, marginBottom:20, width:"fit-content" }}>
+                        {[["overview","Overview"],["timeline","Timeline"]].map(([id,label])=>(
+                          <button key={id} onClick={()=>setHomeTab(id)}
+                            style={{ padding:"6px 18px", borderRadius:6, border:"none", background:homeTab===id?C2.canvas:"transparent",
+                              color:homeTab===id?C2.text:C2.muted, fontSize:11, fontFamily:head, fontWeight:homeTab===id?700:500,
+                              cursor:"pointer", boxShadow:homeTab===id?"0 1px 3px rgba(0,0,0,0.06)":"none", transition:"all .25s" }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {((window as any).__homeTab || "overview") === "overview" && (<>
 
                   {/* Setup progress (only show if not fully complete) */}
                   {setupDone < setupTotal && (
@@ -14317,6 +14562,76 @@ Raw JSON only.`, "", 1400);
                     </div>
                   </div>
 
+                  {/* ── Call Sentiment ── */}
+                  {(callRecords||[]).length > 0 && (() => {
+                    const sorted = [...(callRecords||[])].sort((a:any,b:any) => new Date(b.callDate||b.scoredAt).getTime() - new Date(a.callDate||a.scoredAt).getTime());
+                    const withSentiment = sorted.filter((r:any) => r.result?.sentiment?.score);
+                    if (withSentiment.length === 0) return null;
+                    const latest = withSentiment[0];
+                    const ls = latest.result.sentiment;
+                    const avgScore = Math.round(withSentiment.reduce((s:number, r:any) => s + (r.result.sentiment.score||0), 0) / withSentiment.length * 10) / 10;
+                    const highRisk = withSentiment.filter((r:any) => r.result.sentiment.churnRisk === "high");
+                    return (
+                      <div style={{ background:C2.card, border:`1px solid ${C2.border}`, borderRadius:14, padding:"18px 22px", marginBottom:24 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <span style={{ fontSize:14, color: avgScore >= 7 ? C2.green : avgScore >= 4 ? C2.amber : C2.red }}>◉</span>
+                            <span style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head }}>Client Sentiment</span>
+                            <span style={{ fontSize:11, color:C2.muted, fontFamily:body }}>from {withSentiment.length} call{withSentiment.length !== 1 ? "s" : ""}</span>
+                          </div>
+                          <button onClick={()=>setView("calls")} style={{ background:"none", border:"none", color:C2.accent, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                            View Calls →
+                          </button>
+                        </div>
+                        <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:18, alignItems:"start" }}>
+                          {/* Score + status */}
+                          <div style={{ textAlign:"center", padding:"12px 20px", borderRadius:10,
+                            background: avgScore >= 7 ? `${C2.green}08` : avgScore >= 4 ? `${C2.amber}08` : `${C2.red}08`,
+                            border: `1px solid ${avgScore >= 7 ? C2.green : avgScore >= 4 ? C2.amber : C2.red}20` }}>
+                            <div style={{ fontSize:32, fontWeight:800, fontFamily:head, color: avgScore >= 7 ? C2.green : avgScore >= 4 ? C2.amber : C2.red, lineHeight:1 }}>
+                              {avgScore}
+                            </div>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, marginTop:4 }}>AVG SCORE</div>
+                            {ls.trajectory && ls.trajectory !== "unknown" && (
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, marginTop:6,
+                                color: ls.trajectory === "improving" ? C2.green : ls.trajectory === "declining" ? C2.red : C2.muted }}>
+                                {ls.trajectory === "improving" ? "↑" : ls.trajectory === "declining" ? "↓" : "→"} {ls.trajectory}
+                              </div>
+                            )}
+                          </div>
+                          {/* Trend dots + latest insights */}
+                          <div>
+                            {/* Sentiment timeline */}
+                            <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:12 }}>
+                              {withSentiment.slice(0, 8).reverse().map((r:any, ri:number) => {
+                                const s = r.result.sentiment.score;
+                                return (
+                                  <div key={ri} title={`${r.callDate}: ${s}/10`} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                                    <div style={{ width:10, height:10, borderRadius:5,
+                                      background: s >= 7 ? C2.green : s >= 4 ? C2.amber : C2.red,
+                                      opacity: ri === withSentiment.slice(0,8).length - 1 ? 1 : 0.5 + ri * 0.07 }} />
+                                    <span style={{ fontSize:8, fontFamily:mono, color:C2.muted }}>{(r.callDate||"").slice(5)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {/* Latest call insight */}
+                            <div style={{ fontSize:11, fontFamily:body, color:C2.textSoft, lineHeight:1.5, marginBottom:8 }}>
+                              <strong style={{ fontFamily:head, color:C2.text }}>Latest ({latest.callDate}):</strong> {ls.label}
+                              {ls.frustrations?.length > 0 && <span style={{ color:C2.red }}> — {ls.frustrations[0]}</span>}
+                              {ls.positives?.length > 0 && !ls.frustrations?.length && <span style={{ color:C2.green }}> — {ls.positives[0]}</span>}
+                            </div>
+                            {highRisk.length > 0 && (
+                              <div style={{ fontSize:11, fontFamily:head, fontWeight:600, color:C2.red, padding:"6px 10px", borderRadius:6, background:`${C2.red}08`, border:`1px solid ${C2.red}15` }}>
+                                ⚠ {highRisk.length} call{highRisk.length !== 1 ? "s" : ""} flagged high churn risk
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* ── Recommendations ── */}
                   {(() => {
                     const recs: {icon:string; title:string; desc:string; color:string; action:string; view:string; priority:number}[] = [];
@@ -14438,6 +14753,253 @@ Raw JSON only.`, "", 1400);
                     );
                   })()}
 
+                  {/* ── Strategic Analysis ── */}
+                  {(() => {
+                    const saKey = `__stratAnalysis_${activeWorkspace?.id||""}`;
+                    const sa: any = (window as any)[saKey] || null;
+                    const saRunning = (window as any).__saRunning || false;
+
+                    const runAnalysis = async () => {
+                      (window as any).__saRunning = true;
+                      setCompanyData((p:any)=>({...p}));
+                      addToast({ title:"Running strategic analysis...", status:"loading", message:"AI analyzing your full workspace" });
+                      try {
+                        const allCampsLocal: any[] = campaigns || [];
+                        const killedLocal = allCampsLocal.filter((c:any) => c.lifecycleStatus === "killed");
+                        const scalingLocal = allCampsLocal.filter((c:any) => c.lifecycleStatus === "scaling");
+                        const testingLocal = allCampsLocal.filter((c:any) => c.lifecycleStatus === "testing");
+
+                        const campSummary = allCampsLocal.map((c:any) => {
+                          const iters: any[] = c.testIterations || [];
+                          return `- ${c.name||"Untitled"} (${c.type||"email"}, ${c.lifecycleStatus||"testing"}, ${iters.length} iterations${c.killedReason ? `, killed: ${c.killedReason}` : ""}${c.learnings ? `, learnings: ${c.learnings}` : ""})`;
+                        }).join("\n");
+
+                        const sentimentSummary = (callRecords||[])
+                          .filter((r:any) => r.result?.sentiment)
+                          .slice(0, 5)
+                          .map((r:any) => {
+                            const s = r.result.sentiment;
+                            return `- ${r.callDate}: score ${s.score}/10, ${s.label}, churn risk: ${s.churnRisk}${s.frustrations?.length ? `, frustrations: ${s.frustrations.join("; ")}` : ""}${s.positives?.length ? `, positives: ${s.positives.join("; ")}` : ""}`;
+                          }).join("\n");
+
+                        const raw = await callAI(
+                          `You are a senior GTM strategist reviewing a client's entire outreach program. Analyze everything below and provide strategic recommendations. Think like a fractional VP of Sales — don't just optimize campaigns, question the FUNDAMENTALS: positioning, ICP fit, product-market fit, messaging, and go-to-market approach.
+
+COMPANY:
+Name: ${cd.co_name || "Unknown"}
+Industry: ${cd.co_industry || "Unknown"}
+Pitch: ${cd.co_pitch || "Not set"}
+Value Prop: ${cd.co_diff || "Not set"}
+Key Selling Points: ${cd.co_ksp || "Not set"}
+Category: ${cd.co_category || "Not set"}
+Competitors: ${cd.co_competitors || "Not set"}
+
+PRODUCTS (${(products||[]).length}):
+${(products||[]).map((p:any) => `- ${p.name}: ${p.valueProposition || p.description || "no description"}`).join("\n") || "None defined"}
+
+PERSONAS (${(icps||[]).length}):
+${(icps||[]).map((p:any) => `- ${p.name}: titles=${(p.data||{}).buyer||"?"}, pains=${(p.data||{}).pain1||"?"}, industries=${(p.data||{}).industries||"?"}`).join("\n") || "None defined"}
+
+CAMPAIGNS (${allCampsLocal.length} total, ${scalingLocal.length} performing, ${testingLocal.length} testing, ${killedLocal.length} killed):
+${campSummary || "No campaigns yet"}
+
+CLIENT SENTIMENT FROM CALLS:
+${sentimentSummary || "No call recordings analyzed yet"}
+
+STRATEGY STATUS: ${strategy?.phases?.length ? `${strategy.phases.length} phases generated` : "No strategy generated"}
+
+Analyze and return ONLY JSON:
+{
+  "positioning": {
+    "score": 1-10,
+    "assessment": "1-2 sentence assessment of their market positioning",
+    "risks": ["specific positioning risks"],
+    "pivotSuggestions": ["specific repositioning ideas like 'SEO → AI SEO' or 'generic consulting → niche vertical'"]
+  },
+  "icpFit": {
+    "score": 1-10,
+    "assessment": "are they targeting the right people?",
+    "strongFit": ["personas that make sense and why"],
+    "weakFit": ["personas that may be wrong and why"],
+    "missingPersonas": ["audiences they should consider targeting"]
+  },
+  "whatWorks": {
+    "patterns": ["patterns from performing/scaling campaigns"],
+    "doMoreOf": ["specific things to double down on"]
+  },
+  "whatDoesnt": {
+    "patterns": ["patterns from killed/struggling campaigns"],
+    "rootCauses": ["is it messaging? targeting? timing? product-market fit?"],
+    "stopDoing": ["specific things to stop"]
+  },
+  "strategicPivots": [
+    {"title": "short title", "description": "specific actionable pivot recommendation with reasoning", "impact": "high|medium", "effort": "low|medium|high"}
+  ],
+  "nextActions": [
+    {"action": "specific thing to do this week", "why": "reason", "priority": "urgent|high|medium"}
+  ],
+  "overallHealth": {
+    "score": 1-10,
+    "oneLiner": "one sentence summary of the account health"
+  }
+}
+
+Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, say so. Give specific, actionable recommendations — not generic advice.`,
+                          "", 3000
+                        );
+                        const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        (window as any)[saKey] = { result, generatedAt: new Date().toISOString() };
+                        (window as any).__saRunning = false;
+                        setCompanyData((p:any)=>({...p}));
+                        addToast({ title:`Analysis complete — Health: ${result.overallHealth?.score||"?"}/10`, status:"success", message: result.overallHealth?.oneLiner || "" });
+                      } catch (e) {
+                        (window as any).__saRunning = false;
+                        setCompanyData((p:any)=>({...p}));
+                        addToast({ title:"Analysis failed", status:"error", message:"Try again" });
+                      }
+                    };
+
+                    const r = sa?.result;
+                    const expanded = (window as any).__saExpanded ?? (r ? true : false);
+                    const setExpanded = (v: boolean) => { (window as any).__saExpanded = v; setCompanyData((p:any)=>({...p})); };
+
+                    return (
+                      <div style={{ background:C2.card, border:`1px solid ${r ? C2.accent+"30" : C2.border}`, borderRadius:14, padding:"18px 22px", marginBottom:24 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: expanded && r ? 16 : 0 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, cursor: r ? "pointer" : "default" }} onClick={()=>r && setExpanded(!expanded)}>
+                            <span style={{ fontSize:14, color:C2.accent }}>◎</span>
+                            <span style={{ fontSize:13, fontWeight:700, color:C2.text, fontFamily:head }}>Strategic Analysis</span>
+                            {r && !expanded && (
+                              <span style={{ fontSize:11, color:C2.muted, fontFamily:body, marginLeft:4 }}>
+                                Health: {r.overallHealth?.score}/10 — {r.overallHealth?.oneLiner}
+                              </span>
+                            )}
+                            {r && <span style={{ fontSize:12, color:C2.muted, transition:"transform .2s", transform: expanded ? "rotate(180deg)" : "rotate(0)", marginLeft:4 }}>▾</span>}
+                          </div>
+                          <button disabled={saRunning} onClick={runAnalysis}
+                            style={{ padding:"6px 16px", borderRadius:7, border:"none",
+                              background: saRunning ? C2.muted : C2.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700,
+                              cursor: saRunning ? "default" : "pointer", transition:"all .15s" }}>
+                            {saRunning ? "Analyzing..." : r ? "Refresh Analysis" : "Run Analysis"}
+                          </button>
+                        </div>
+
+                        {r && expanded && (
+                          <div>
+                            {/* Overall health */}
+                            <div style={{ display:"grid", gridTemplateColumns:"auto 1fr 1fr", gap:14, marginBottom:18 }}>
+                              <div style={{ textAlign:"center", padding:"14px 20px", borderRadius:10,
+                                background: r.overallHealth?.score >= 7 ? `${C2.green}08` : r.overallHealth?.score >= 4 ? `${C2.amber}08` : `${C2.red}08`,
+                                border: `1px solid ${r.overallHealth?.score >= 7 ? C2.green : r.overallHealth?.score >= 4 ? C2.amber : C2.red}20` }}>
+                                <div style={{ fontSize:32, fontWeight:800, fontFamily:head, lineHeight:1,
+                                  color: r.overallHealth?.score >= 7 ? C2.green : r.overallHealth?.score >= 4 ? C2.amber : C2.red }}>
+                                  {r.overallHealth?.score}<span style={{ fontSize:14 }}>/10</span>
+                                </div>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginTop:4 }}>HEALTH</div>
+                              </div>
+                              <div style={{ padding:"12px 16px", borderRadius:10, background:`${C2.accent}06`, border:`1px solid ${C2.accent}15` }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.accent, marginBottom:6 }}>POSITIONING {r.positioning?.score}/10</div>
+                                <div style={{ fontSize:11, fontFamily:body, color:C2.text, lineHeight:1.5 }}>{r.positioning?.assessment}</div>
+                              </div>
+                              <div style={{ padding:"12px 16px", borderRadius:10, background:`${C2.blue}06`, border:`1px solid ${C2.blue}15` }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.blue, marginBottom:6 }}>ICP FIT {r.icpFit?.score}/10</div>
+                                <div style={{ fontSize:11, fontFamily:body, color:C2.text, lineHeight:1.5 }}>{r.icpFit?.assessment}</div>
+                              </div>
+                            </div>
+
+                            {/* What works + What doesn't */}
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:18 }}>
+                              {r.whatWorks?.patterns?.length > 0 && (
+                                <div style={{ padding:"14px 16px", borderRadius:10, background:`${C2.green}06`, border:`1px solid ${C2.green}15` }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.green, marginBottom:8 }}>WHAT'S WORKING</div>
+                                  {r.whatWorks.patterns.map((p:string, pi:number) => (
+                                    <div key={pi} style={{ fontSize:11, fontFamily:body, color:C2.text, lineHeight:1.5, marginBottom:4 }}>• {p}</div>
+                                  ))}
+                                  {r.whatWorks.doMoreOf?.length > 0 && (
+                                    <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C2.green}15` }}>
+                                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.green, marginBottom:4 }}>DO MORE OF</div>
+                                      {r.whatWorks.doMoreOf.map((d:string, di:number) => (
+                                        <div key={di} style={{ fontSize:11, fontFamily:body, color:C2.text, lineHeight:1.5, marginBottom:2 }}>→ {d}</div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {r.whatDoesnt?.patterns?.length > 0 && (
+                                <div style={{ padding:"14px 16px", borderRadius:10, background:`${C2.red}06`, border:`1px solid ${C2.red}15` }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.red, marginBottom:8 }}>WHAT'S NOT WORKING</div>
+                                  {r.whatDoesnt.patterns.map((p:string, pi:number) => (
+                                    <div key={pi} style={{ fontSize:11, fontFamily:body, color:C2.text, lineHeight:1.5, marginBottom:4 }}>• {p}</div>
+                                  ))}
+                                  {r.whatDoesnt.rootCauses?.length > 0 && (
+                                    <div style={{ marginTop:8, paddingTop:8, borderTop:`1px solid ${C2.red}15` }}>
+                                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.red, marginBottom:4 }}>ROOT CAUSES</div>
+                                      {r.whatDoesnt.rootCauses.map((rc:string, ri:number) => (
+                                        <div key={ri} style={{ fontSize:11, fontFamily:body, color:C2.text, lineHeight:1.5, marginBottom:2 }}>→ {rc}</div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Strategic Pivots */}
+                            {r.strategicPivots?.length > 0 && (
+                              <div style={{ marginBottom:18 }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>STRATEGIC PIVOTS</div>
+                                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                                  {r.strategicPivots.map((p:any, pi:number) => (
+                                    <div key={pi} style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"12px 14px", borderRadius:10, background:C2.faint }}>
+                                      <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"3px 8px", borderRadius:5, flexShrink:0,
+                                        background: p.impact === "high" ? `${C2.accent}15` : `${C2.blue}15`,
+                                        color: p.impact === "high" ? C2.accent : C2.blue }}>
+                                        {p.impact?.toUpperCase()}
+                                      </span>
+                                      <div style={{ flex:1, minWidth:0 }}>
+                                        <div style={{ fontSize:12, fontWeight:700, color:C2.text, fontFamily:head }}>{p.title}</div>
+                                        <div style={{ fontSize:11, color:C2.muted, fontFamily:body, lineHeight:1.5, marginTop:3 }}>{p.description}</div>
+                                      </div>
+                                      <span style={{ fontSize:9, fontFamily:mono, color:C2.muted, flexShrink:0 }}>
+                                        {p.effort} effort
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Next Actions */}
+                            {r.nextActions?.length > 0 && (
+                              <div>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>THIS WEEK</div>
+                                {r.nextActions.map((a:any, ai:number) => (
+                                  <div key={ai} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"8px 12px", borderRadius:8, background:C2.faint, marginBottom:4 }}>
+                                    <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, flexShrink:0,
+                                      background: a.priority === "urgent" ? `${C2.red}15` : a.priority === "high" ? `${C2.amber}15` : `${C2.blue}10`,
+                                      color: a.priority === "urgent" ? C2.red : a.priority === "high" ? C2.amber : C2.blue }}>
+                                      {a.priority?.toUpperCase()}
+                                    </span>
+                                    <div>
+                                      <div style={{ fontSize:11, fontWeight:600, color:C2.text, fontFamily:head }}>{a.action}</div>
+                                      <div style={{ fontSize:10, color:C2.muted, fontFamily:body, marginTop:1 }}>{a.why}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Timestamp */}
+                            {sa?.generatedAt && (
+                              <div style={{ fontSize:10, color:C2.muted, fontFamily:mono, marginTop:14, textAlign:"right" }}>
+                                Generated {new Date(sa.generatedAt).toLocaleDateString("en-US", { month:"short", day:"numeric" })} at {new Date(sa.generatedAt).toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit" })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* Quick Nav */}
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:12 }}>
                     {[
@@ -14463,6 +15025,254 @@ Raw JSON only.`, "", 1400);
                     ))}
                   </div>
 
+                  </>)}
+
+                  {/* ═══ TIMELINE TAB ═══ */}
+                  {((window as any).__homeTab) === "timeline" && (() => {
+                    // Assemble events from all data sources
+                    type TLEvent = { date: string; ts: number; type: string; icon: string; color: string; title: string; desc: string; sentiment?: number; meta?: string };
+                    const events: TLEvent[] = [];
+
+                    const fmtDate = (d: string) => { try { return new Date(d).toISOString().slice(0,10); } catch { return ""; } };
+
+                    // -- Calls --
+                    for (const rec of (callRecords || [])) {
+                      const s = rec.result?.sentiment;
+                      const sentLabel = s ? ` — Sentiment: ${s.score}/10 (${s.label})` : "";
+                      const churnWarn = s?.churnRisk === "high" ? " ⚠ High churn risk" : "";
+                      events.push({
+                        date: rec.callDate || fmtDate(rec.scoredAt), ts: new Date(rec.callDate || rec.scoredAt).getTime(),
+                        type: "call", icon: "🎙", color: s?.score >= 7 ? C2.green : s?.score >= 4 ? C2.amber : s ? C2.red : C2.muted,
+                        title: `${rec.callType === "onboarding" ? "Onboarding" : "Follow-up"} call scored ${rec.result?.overallScore || "?"}/100`,
+                        desc: `${rec.result?.grade || ""} — ${rec.csmName || "Unknown CSM"}${sentLabel}${churnWarn}`,
+                        sentiment: s?.score,
+                        meta: s?.frustrations?.length ? `Client frustration: ${s.frustrations[0]}` : s?.positives?.length ? `Client positive: ${s.positives[0]}` : rec.result?.summary?.slice(0, 120) || ""
+                      });
+                    }
+
+                    // -- Campaigns created --
+                    for (const c of allCamps) {
+                      if (c.createdAt) {
+                        const typeObj = CAMPAIGN_TYPES.find((t:any) => t.id === c.type) || CAMPAIGN_TYPES[0];
+                        events.push({
+                          date: fmtDate(c.createdAt), ts: new Date(c.createdAt).getTime(),
+                          type: "campaign_created", icon: "⊕", color: C2.accent,
+                          title: `Campaign launched: ${c.name || "Untitled"}`,
+                          desc: `${typeObj.label} · ${c.lifecycleStatus || "testing"}`,
+                          meta: ""
+                        });
+                      }
+
+                      // -- Iterations --
+                      for (const iter of (c.testIterations || [])) {
+                        if (iter.date) {
+                          const resultLabel = iter.result === "Winner ✓" ? "Winner!" : iter.result === "Continuing →" ? "Continuing" : iter.result || "In progress";
+                          events.push({
+                            date: fmtDate(iter.date), ts: new Date(iter.date).getTime(),
+                            type: "iteration", icon: "↻", color: iter.result === "Winner ✓" ? C2.green : C2.blue,
+                            title: `Iteration ${(c.testIterations||[]).indexOf(iter)+1} on "${c.name || "Untitled"}"`,
+                            desc: `Focus: ${iter.focus || "—"} · Result: ${resultLabel}`,
+                            meta: iter.hypothesis ? `Hypothesis: ${iter.hypothesis}` : ""
+                          });
+                        }
+                      }
+
+                      // -- Campaign scaled --
+                      if (c.lifecycleStatus === "scaling" && c.startDate) {
+                        events.push({
+                          date: fmtDate(c.startDate), ts: new Date(c.startDate).getTime() + 86400000 * 30, // approximate
+                          type: "campaign_scaled", icon: "↑", color: C2.green,
+                          title: `Campaign scaled: ${c.name || "Untitled"}`,
+                          desc: `Benchmarks met — now performing`,
+                          meta: ""
+                        });
+                      }
+
+                      // -- Campaign killed --
+                      if (c.lifecycleStatus === "killed") {
+                        const iters: any[] = c.testIterations || [];
+                        const lastIterDate = iters.length > 0 && iters[iters.length-1].date ? iters[iters.length-1].date : c.createdAt;
+                        events.push({
+                          date: fmtDate(lastIterDate || c.createdAt), ts: new Date(lastIterDate || c.createdAt).getTime() + 1,
+                          type: "campaign_killed", icon: "✗", color: C2.red,
+                          title: `Campaign killed: ${c.name || "Untitled"}`,
+                          desc: c.killedReason || "No reason logged",
+                          meta: c.learnings ? `Learning: ${c.learnings}` : ""
+                        });
+                      }
+                    }
+
+                    // -- Strategy generated --
+                    if (strategy?.generatedAt) {
+                      events.push({
+                        date: fmtDate(strategy.generatedAt), ts: new Date(strategy.generatedAt).getTime(),
+                        type: "strategy", icon: "◎", color: C2.accent,
+                        title: `Strategy roadmap generated`,
+                        desc: `${strategy.phases?.length || 0} phases · ${strategy.status || "draft"}`,
+                        meta: ""
+                      });
+                    }
+
+                    // -- Strategic analysis --
+                    const saKey = `__stratAnalysis_${activeWorkspace?.id||""}`;
+                    const saData = (window as any)[saKey];
+                    if (saData?.generatedAt && saData?.result) {
+                      const sr = saData.result;
+                      events.push({
+                        date: fmtDate(saData.generatedAt), ts: new Date(saData.generatedAt).getTime(),
+                        type: "analysis", icon: "✦", color: C2.accent,
+                        title: `Strategic analysis: Health ${sr.overallHealth?.score || "?"}/10`,
+                        desc: sr.overallHealth?.oneLiner || "",
+                        meta: sr.strategicPivots?.[0] ? `Top pivot: ${sr.strategicPivots[0].title}` : ""
+                      });
+                    }
+
+                    // -- Personas created (approximate from id order) --
+                    for (const p of allIcps) {
+                      if ((p as any).createdAt) {
+                        events.push({
+                          date: fmtDate((p as any).createdAt), ts: new Date((p as any).createdAt).getTime(),
+                          type: "persona", icon: "◑", color: C2.blue,
+                          title: `Persona created: ${(p as any).name || "Untitled"}`,
+                          desc: `${(p as any).data?.buyer || ""} · ${(p as any).data?.industries || ""}`.trim(),
+                          meta: ""
+                        });
+                      }
+                    }
+
+                    // -- Products created --
+                    for (const p of allProds) {
+                      if ((p as any).createdAt) {
+                        events.push({
+                          date: fmtDate((p as any).createdAt), ts: new Date((p as any).createdAt).getTime(),
+                          type: "product", icon: "◆", color: C2.accent,
+                          title: `Product added: ${(p as any).name || "Untitled"}`,
+                          desc: (p as any).valueProposition || (p as any).description || "",
+                          meta: ""
+                        });
+                      }
+                    }
+
+                    // Sort newest first
+                    events.sort((a, b) => b.ts - a.ts);
+
+                    // Group by month
+                    const months: { label: string; events: TLEvent[] }[] = [];
+                    for (const ev of events) {
+                      if (!ev.date) continue;
+                      const d = new Date(ev.ts);
+                      const mLabel = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                      let group = months.find(m => m.label === mLabel);
+                      if (!group) { group = { label: mLabel, events: [] }; months.push(group); }
+                      group.events.push(ev);
+                    }
+
+                    if (events.length === 0) {
+                      return (
+                        <div style={{ textAlign:"center", padding:"60px 0", color:C2.muted }}>
+                          <div style={{ fontSize:32, marginBottom:12 }}>◎</div>
+                          <div style={{ fontSize:14, fontFamily:head, fontWeight:600, marginBottom:4 }}>No timeline events yet</div>
+                          <div style={{ fontSize:12, fontFamily:body }}>Events will appear as you add calls, launch campaigns, and generate strategies.</div>
+                        </div>
+                      );
+                    }
+
+                    // Sentiment trend line data
+                    const sentimentEvents = events.filter(e => e.sentiment !== undefined).sort((a,b) => a.ts - b.ts);
+
+                    return (
+                      <>
+                        {/* Sentiment trend bar (if calls exist) */}
+                        {sentimentEvents.length >= 2 && (
+                          <div style={{ background:C2.card, border:`1px solid ${C2.border}`, borderRadius:14, padding:"16px 22px", marginBottom:20 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, marginBottom:10, textTransform:"uppercase" as const }}>Sentiment Over Time</div>
+                            <div style={{ display:"flex", alignItems:"end", gap:3, height:48 }}>
+                              {sentimentEvents.map((ev, ei) => (
+                                <div key={ei} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+                                  <div style={{ width:"100%", maxWidth:32, borderRadius:"3px 3px 0 0",
+                                    height: `${(ev.sentiment||5) * 4.5}px`,
+                                    background: (ev.sentiment||5) >= 7 ? C2.green : (ev.sentiment||5) >= 4 ? C2.amber : C2.red,
+                                    opacity: 0.4 + ei * (0.6 / Math.max(sentimentEvents.length - 1, 1)),
+                                    transition:"height .4s" }}
+                                    title={`${ev.date}: ${ev.sentiment}/10`} />
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
+                              <span style={{ fontSize:9, fontFamily:mono, color:C2.muted }}>{sentimentEvents[0]?.date?.slice(5)}</span>
+                              <span style={{ fontSize:9, fontFamily:mono, color:C2.muted }}>{sentimentEvents[sentimentEvents.length-1]?.date?.slice(5)}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Timeline */}
+                        {months.map((month, mi) => (
+                          <div key={mi} style={{ marginBottom:24 }}>
+                            {/* Month header */}
+                            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+                              <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text }}>{month.label}</span>
+                              <div style={{ flex:1, height:1, background:C2.border }} />
+                              <span style={{ fontSize:10, fontFamily:mono, color:C2.muted }}>{month.events.length} event{month.events.length !== 1 ? "s" : ""}</span>
+                            </div>
+                            {/* Events */}
+                            <div style={{ position:"relative", paddingLeft:28 }}>
+                              {/* Vertical line */}
+                              <div style={{ position:"absolute", left:10, top:4, bottom:4, width:2, background:C2.border, borderRadius:1 }} />
+                              {month.events.map((ev, ei) => (
+                                <div key={ei} style={{ position:"relative", marginBottom:12 }}>
+                                  {/* Dot */}
+                                  <div style={{ position:"absolute", left:-22, top:6, width:10, height:10, borderRadius:5,
+                                    background:ev.color, border:`2px solid ${C2.card}`, boxShadow:`0 0 0 2px ${ev.color}30` }} />
+                                  {/* Card */}
+                                  <div style={{ padding:"12px 16px", borderRadius:10, background:C2.card,
+                                    border:`1px solid ${C2.border}`, borderLeft:`3px solid ${ev.color}` }}>
+                                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginBottom:4 }}>
+                                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                        <span style={{ fontSize:13 }}>{ev.icon}</span>
+                                        <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:C2.text }}>{ev.title}</span>
+                                      </div>
+                                      <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                                        {ev.sentiment !== undefined && (
+                                          <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4,
+                                            background: ev.sentiment >= 7 ? `${C2.green}12` : ev.sentiment >= 4 ? `${C2.amber}12` : `${C2.red}12`,
+                                            color: ev.sentiment >= 7 ? C2.green : ev.sentiment >= 4 ? C2.amber : C2.red }}>
+                                            {ev.sentiment}/10
+                                          </span>
+                                        )}
+                                        <span style={{ fontSize:10, fontFamily:mono, color:C2.muted }}>{ev.date}</span>
+                                      </div>
+                                    </div>
+                                    <div style={{ fontSize:11, fontFamily:body, color:C2.textSoft, lineHeight:1.5 }}>{ev.desc}</div>
+                                    {ev.meta && (
+                                      <div style={{ fontSize:11, fontFamily:body, color:C2.muted, marginTop:4, fontStyle:"italic", lineHeight:1.4 }}>{ev.meta}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Summary stats at bottom */}
+                        <div style={{ display:"flex", gap:12, flexWrap:"wrap", padding:"16px 0" }}>
+                          {[
+                            { label: "Total Events", value: events.length, color: C2.muted },
+                            { label: "Calls Scored", value: (callRecords||[]).length, color: C2.blue },
+                            { label: "Campaigns", value: allCamps.length, color: C2.accent },
+                            { label: "Iterations", value: allCamps.reduce((n:number, c:any) => n + (c.testIterations||[]).length, 0), color: C2.amber },
+                            { label: "Killed", value: killed.length, color: C2.red },
+                            { label: "Performing", value: scaling.length, color: C2.green },
+                          ].map((s, si) => (
+                            <div key={si} style={{ padding:"8px 14px", borderRadius:8, background:C2.faint, display:"flex", alignItems:"center", gap:8 }}>
+                              <span style={{ fontSize:16, fontWeight:800, fontFamily:head, color:s.color }}>{s.value}</span>
+                              <span style={{ fontSize:10, fontFamily:mono, color:C2.muted }}>{s.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
+
                 </div>
               </div>
               );
@@ -14487,6 +15297,41 @@ Raw JSON only.`, "", 1400);
                       background:companyPct===100?C2.greenLo:`${C2.accent}11`, padding:"3px 10px", borderRadius:8 }}>{companyPct}%</span>
                   </div>
                 </div>
+                {/* Sync recommendations from calls */}
+                {(() => {
+                  const allSyncRecs = (callRecords||[]).flatMap((r:any) => {
+                    const recs = r.syncRecs?.missingFields || [];
+                    return recs.map((f:any) => ({ ...f, callDate: r.callDate }));
+                  });
+                  const pendingRecs = allSyncRecs.filter((f:any) => f.field && f.value && !(companyData as any)[f.field]);
+                  if (pendingRecs.length === 0) return null;
+                  return (
+                    <div style={{ padding:"12px 16px", borderRadius:10, background:`${C2.accent}06`, border:`1px solid ${C2.accent}20`, marginBottom:12 }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                        <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent }}>SUGGESTED FROM CALLS — {pendingRecs.length} field{pendingRecs.length!==1?"s":""}</span>
+                        <button onClick={()=>{
+                          const updates: any = {};
+                          for (const rec of pendingRecs) { if (rec.field && rec.value) updates[rec.field] = rec.value; }
+                          setCompanyData((p:any)=>({...p, ...updates}));
+                          addToast({ title:`Applied ${Object.keys(updates).length} fields`, status:"success", message:"From call transcripts" });
+                        }}
+                          style={{ padding:"4px 12px", borderRadius:6, border:"none", background:C2.accent, color:"#fff", fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                          Apply All
+                        </button>
+                      </div>
+                      {pendingRecs.slice(0,5).map((f:any,fi:number) => (
+                        <div key={fi} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 0", borderTop:fi>0?`1px solid ${C2.accent}10`:"none" }}>
+                          <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.accent, minWidth:100 }}>{f.fieldLabel||f.field}</span>
+                          <span style={{ fontSize:11, fontFamily:body, color:C2.text, flex:1 }}>{(f.value||"").slice(0,80)}</span>
+                          <button onClick={()=>{setCompanyData((p:any)=>({...p, [f.field]:f.value})); addToast({title:`Set ${f.fieldLabel||f.field}`,status:"success",message:""});}}
+                            style={{ padding:"2px 8px", borderRadius:4, border:`1px solid ${C2.accent}30`, background:"transparent", color:C2.accent, fontSize:9, fontFamily:mono, cursor:"pointer" }}>
+                            Apply
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 <div style={{ flex:1, minHeight:0, marginBottom:16 }}>
                   <CompanyPanelV2 data={companyData} confidence={companyConf} confLocked={companyConfLocked}
                     onChange={setCompanyData}
@@ -16316,8 +17161,25 @@ Return ONLY JSON:
   ],
   "summary": "",
   "coachingActions": [""],
-  "keyMoments": [{"timestamp":"","type":"positive|negative|knockout","description":""}]
+  "keyMoments": [{"timestamp":"","type":"positive|negative|knockout","description":""}],
+  "sentiment": {
+    "score": 1-10,
+    "label": "Very Negative|Negative|Cautious|Neutral|Cautiously Positive|Positive|Very Positive",
+    "churnRisk": "high|medium|low|none",
+    "frustrations": ["specific client frustrations expressed"],
+    "positives": ["things client is happy about"],
+    "keyQuotes": ["direct quotes showing strongest sentiment signals"],
+    "trajectory": "improving|stable|declining|unknown"
+  }
 }
+
+CLIENT SENTIMENT ANALYSIS:
+In the "sentiment" field, analyze the CLIENT's emotional state (not the CSM). Look for:
+- Explicit frustration, disappointment, or complaints → lower score
+- Mentions of competitors, "not seeing results", "considering options" → high churn risk
+- Enthusiasm, gratitude, "this is working" → higher score
+- Silence, short answers, disengagement → cautious/declining
+- Score 1=furious 5=neutral 10=thrilled. Use direct quotes as evidence.
 
 SCORING RUBRIC for ${callType}:
 ${callType === "onboarding" ? `
@@ -16388,61 +17250,963 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                 } catch (e) { setScoring(false); addToast({ title:"Scoring failed", status:"error", message:"Try again" }); return null; }
               };
 
+              // Communications state (Slack/Email alongside calls) — persisted via React state
+              const comms: any[] = slackComms;
+              const addComm = (c: any) => { setSlackComms(p => [c, ...p]); };
+              const removeComm = (id: string) => { setSlackComms(p => p.filter((c:any) => c.id !== id)); };
+
+              // All conversations for AI context
+              const allConvos = [
+                ...(callRecords||[]).map((r:any) => ({ ...r, commType: "call" })),
+                ...comms.map((c:any) => ({ ...c, commType: c.type }))
+              ].sort((a:any,b:any) => new Date(b.callDate||b.date||b.scoredAt).getTime() - new Date(a.callDate||a.date||a.scoredAt).getTime());
+
+              // Build full conversation context for AI tabs
+              const convoContext = allConvos.slice(0, 10).map((c:any) => {
+                if (c.commType === "call") return `[CALL ${c.callDate||""} — ${c.callType||""}] Score:${c.result?.overallScore||"?"}/100, Sentiment:${c.result?.sentiment?.score||"?"}/10\n${(c.transcript||"").slice(0,2000)}`;
+                return `[${(c.type||"").toUpperCase()} ${c.date||""}]\n${(c.content||"").slice(0,1500)}`;
+              }).join("\n\n---\n\n");
+
               return (
               <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", overflow:"hidden", animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
                 <div style={{ padding:"24px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
                   <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>RESOURCES</div>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-                    <h2 style={{ fontSize:22, fontWeight:700, fontFamily:head, color:_C.text, margin:0 }}>Call Analyzer</h2>
-                    <span style={{ fontSize:11, fontFamily:mono, color:_C.muted }}>{(callRecords||[]).length} scored calls</span>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                    <h2 style={{ fontSize:22, fontWeight:700, fontFamily:head, color:_C.text, margin:0 }}>Client Intelligence</h2>
+                    <span style={{ fontSize:11, fontFamily:mono, color:_C.muted }}>{(callRecords||[]).length} calls · {comms.length} comms</span>
+                  </div>
+                  {/* Tabs */}
+                  <div style={{ display:"flex", gap:4, padding:3, background:_C.faint, borderRadius:8, marginBottom:0, width:"fit-content" }}>
+                    {[["records","Conversations"],["sentiment","Sentiment"],["pitch","Pitch Analysis"],["coaching","CSM Coaching"],["intel","Client Intel"]].map(([id,label])=>(
+                      <button key={id} onClick={()=>setCallTab(id)}
+                        style={{ padding:"6px 16px", borderRadius:6, border:"none", background:callTab===id?_C.canvas:"transparent",
+                          color:callTab===id?_C.text:_C.muted, fontSize:11, fontFamily:head, fontWeight:callTab===id?700:500,
+                          cursor:"pointer", boxShadow:callTab===id?"0 1px 3px rgba(0,0,0,0.06)":"none", transition:"all .25s" }}>
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 <div style={{ flex:1, overflowY:"auto", padding:"0 clamp(20px, 3vw, 48px) 36px" }}>
 
-                  {/* Score New Call */}
-                  <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:24, marginBottom:20 }}>
-                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:14, textTransform:"uppercase" as const }}>Score a Call</div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:10, marginBottom:12 }}>
-                      <div>
-                        <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CLIENT</div>
-                        <input id="ca-client" placeholder={cd.co_name||"Client name"} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CSM / REP</div>
-                        <input id="ca-csm" placeholder="Agent name" style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CALL DATE</div>
-                        <input id="ca-date" type="date" defaultValue={new Date().toISOString().slice(0,10)} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>TYPE</div>
-                        <select id="ca-type" style={{ padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }}>
-                          <option value="onboarding">Onboarding</option>
-                          <option value="followup">Follow-up</option>
-                        </select>
-                      </div>
-                    </div>
-                    <textarea id="ca-transcript" placeholder="Paste the call transcript here..." rows={6}
-                      style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none", lineHeight:1.6, marginBottom:12 }} />
-                    <button disabled={scoring} onClick={async ()=>{
-                      const transcript = (document.getElementById("ca-transcript") as HTMLTextAreaElement)?.value || "";
-                      if (!transcript.trim()) { addToast({ title:"Paste a transcript first", status:"error", message:"" }); return; }
-                      const callType = (document.getElementById("ca-type") as HTMLSelectElement)?.value || "onboarding";
-                      const clientName = (document.getElementById("ca-client") as HTMLInputElement)?.value || "";
-                      const csmName = (document.getElementById("ca-csm") as HTMLInputElement)?.value || "";
-                      const callDate = (document.getElementById("ca-date") as HTMLInputElement)?.value || "";
-                      await scoreCall(transcript, callType, clientName, csmName, callDate);
-                      (document.getElementById("ca-transcript") as HTMLTextAreaElement).value = "";
-                    }}
-                      style={{ padding:"10px 24px", borderRadius:8, border:"none", background: scoring ? _C.muted : _C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor: scoring ? "default" : "pointer" }}>
-                      {scoring ? "Scoring..." : "Score Call"}
-                    </button>
-                  </div>
+                  {callTab === "records" && (<>
 
-                  {/* Call Records */}
-                  {!(callRecords||[]).length && <div style={{ textAlign:"center", padding:"40px 0", color:_C.muted, fontSize:13 }}>No scored calls yet. Paste a transcript above to get started.</div>}
-                  {(callRecords||[]).map((rec: any) => {
+                  {/* Slack Sync — moved to inline button next to input type toggle */}
+                  {false && (() => {
+                    const slackToken = getSlackToken();
+                    const channelId = cd.co_slack_channel || "";
+                    const syncing = (window as any).__slackSyncing || false;
+                    const setSyncing = (v: boolean) => { (window as any).__slackSyncing = v; setCallRecords(p=>p?[...p]:[]); };
+                    const configOpen = (window as any).__slackConfigOpen || false;
+                    const setConfigOpen = (v: boolean) => { (window as any).__slackConfigOpen = v; setCallRecords(p=>p?[...p]:[]); };
+                    const channels: any[] = (window as any).__slackChannels || [];
+
+                    const syncSlack = async () => {
+                      if (!slackToken) { setConfigOpen(true); return; }
+                      if (!channelId) { addToast({ title:"Set a Slack channel first", status:"error", message:"Click Configure to select a channel" }); setConfigOpen(true); return; }
+                      setSyncing(true);
+                      addToast({ title:"Syncing Slack...", status:"loading", message:"Fetching messages" });
+                      try {
+                        const userMap = await fetchSlackUsers();
+                        // Only fetch messages newer than last sync
+                        const lastSync = cd.co_slack_last_sync || "";
+                        const oldest = lastSync ? String(new Date(lastSync).getTime() / 1000) : undefined;
+                        const result = await fetchSlackMessages(channelId, oldest);
+                        if (!result.ok) { addToast({ title:"Slack sync failed", status:"error", message:result.error||"" }); setSyncing(false); return; }
+                        // Convert to comms, skip bot messages and joins/leaves
+                        const msgs = result.messages
+                          .filter((m:any) => m.type === "message" && !m.subtype && m.text)
+                          .reverse(); // oldest first
+                        if (msgs.length === 0) { addToast({ title:"No new messages", status:"info", message:"Slack channel is up to date" }); setSyncing(false); return; }
+                        // Group messages into daily chunks
+                        const byDay: Record<string, any[]> = {};
+                        for (const m of msgs) {
+                          const day = new Date(parseFloat(m.ts) * 1000).toISOString().slice(0,10);
+                          if (!byDay[day]) byDay[day] = [];
+                          const userName = userMap[m.user] || m.user || "Unknown";
+                          byDay[day].push(`[${userName}] ${m.text}`);
+                        }
+                        // Add each day as a comm
+                        let added = 0;
+                        for (const [day, dayMsgs] of Object.entries(byDay)) {
+                          // Skip if we already have a slack comm for this day
+                          if (comms.some((c:any) => c.type === "slack" && c.date === day && c.channel === channelId)) continue;
+                          addComm({
+                            id: uid(),
+                            type: "slack",
+                            channel: `#${channels.find((c:any)=>c.id===channelId)?.name || channelId}`,
+                            date: day,
+                            content: dayMsgs.join("\n"),
+                            messageCount: dayMsgs.length,
+                            autoSynced: true
+                          });
+                          added++;
+                        }
+                        // Update last sync timestamp
+                        setCompanyData((p:any) => ({ ...p, co_slack_last_sync: new Date().toISOString() }));
+                        setSyncing(false);
+                        addToast({ title:`Synced ${msgs.length} messages`, status:"success", message:`${added} day${added!==1?"s":""} added from Slack` });
+                      } catch (e: any) {
+                        setSyncing(false);
+                        addToast({ title:"Slack sync failed", status:"error", message:e.message || "Unknown error" });
+                      }
+                    };
+
+                    const loadChannels = async () => {
+                      const chs = await fetchSlackChannels();
+                      (window as any).__slackChannels = chs;
+                      setCallRecords(p=>p?[...p]:[]);
+                    };
+
+                    return (
+                      <div style={{ background:_C.canvas, border:`1px solid ${slackToken && channelId ? _C.green+"30" : _C.border}`, borderRadius:14, padding:"16px 20px", marginBottom:16, marginTop:16 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                            <span style={{ fontSize:16 }}>💬</span>
+                            <div>
+                              <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>Slack Integration</div>
+                              <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>
+                                {slackToken && channelId ? `Connected · ${cd.co_slack_last_sync ? `Last sync: ${new Date(cd.co_slack_last_sync).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}` : "Never synced"}` : slackToken ? "Token set — select a channel" : "Not configured"}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", gap:8 }}>
+                            <button onClick={()=>setConfigOpen(!configOpen)}
+                              style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${_C.border}`, background:"transparent", color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                              {configOpen ? "Close" : "Configure"}
+                            </button>
+                            {slackToken && channelId && (
+                              <button disabled={syncing} onClick={syncSlack}
+                                style={{ padding:"6px 16px", borderRadius:7, border:"none", background:syncing?_C.muted:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:syncing?"default":"pointer" }}>
+                                {syncing ? "Syncing..." : "Sync Now"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {configOpen && (
+                          <div style={{ marginTop:14, paddingTop:14, borderTop:`1px solid ${_C.border}` }}>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                              <div>
+                                <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:4 }}>SLACK BOT TOKEN</div>
+                                <input type="password" defaultValue={slackToken} placeholder="xoxb-..."
+                                  onChange={e => { setSlackToken(e.target.value); setCallRecords(p=>p?[...p]:[]); }}
+                                  style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }} />
+                              </div>
+                              <div>
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                                  <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>SLACK CHANNEL</span>
+                                  {slackToken && <button onClick={loadChannels} style={{ padding:"1px 8px", borderRadius:4, border:`1px solid ${_C.border}`, background:"transparent", color:_C.accent, fontSize:9, fontFamily:mono, cursor:"pointer" }}>Load Channels</button>}
+                                </div>
+                                {channels.length > 0 ? (
+                                  <select value={channelId} onChange={e => setCompanyData((p:any)=>({...p, co_slack_channel:e.target.value}))}
+                                    style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }}>
+                                    <option value="">Select a channel...</option>
+                                    {channels.map((ch:any) => <option key={ch.id} value={ch.id}>#{ch.name}</option>)}
+                                  </select>
+                                ) : (
+                                  <input value={channelId} placeholder="Channel ID (e.g. C05ABC123)"
+                                    onChange={e => setCompanyData((p:any)=>({...p, co_slack_channel:e.target.value}))}
+                                    style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }} />
+                                )}
+                              </div>
+                            </div>
+                            <div style={{ fontSize:10, color:_C.muted, fontFamily:body, lineHeight:1.5 }}>
+                              Paste your bot token (xoxb-...) and select the client's Slack channel. The bot must be invited to the channel first (/invite @CX Tool Sync).
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Sub-tab bar */}
+                  {(() => {
+                    const commInputType = (window as any).__commInputType || "all";
+                    return (
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16, marginTop:16 }}>
+                      <div style={{ display:"flex", gap:4, padding:3, background:_C.faint, borderRadius:8, width:"fit-content" }}>
+                        {[["all","All Activity"],["call","Call Transcript"],["slack","Slack Messages"],["email","Email Thread"]].map(([id,label])=>(
+                          <button key={id} onClick={()=>{(window as any).__commInputType=id; setCallRecords(p=>p?[...p]:[]);}}
+                            style={{ padding:"5px 14px", borderRadius:6, border:"none", background:commInputType===id?_C.canvas:"transparent",
+                              color:commInputType===id?_C.text:_C.muted, fontSize:10, fontFamily:head, fontWeight:commInputType===id?700:500,
+                              cursor:"pointer", boxShadow:commInputType===id?"0 1px 2px rgba(0,0,0,0.05)":"none" }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>);
+                  })()}
+
+                  {/* ── All Activity Timeline ── */}
+                  {((window as any).__commInputType || "all") === "all" && (() => {
+                    // Merge all conversations into one sorted timeline
+                    const items: {id:string; date:string; ts:number; type:string; icon:string; color:string; title:string; subtitle:string; preview:string; sentiment?:number; score?:number}[] = [];
+
+                    for (const rec of (callRecords||[])) {
+                      const r = rec.result || {};
+                      const s = r.sentiment;
+                      items.push({
+                        id: rec.id, date: rec.callDate || rec.scoredAt?.slice(0,10) || "",
+                        ts: new Date(rec.callDate || rec.scoredAt).getTime(),
+                        type: "call", icon: "🎙",
+                        color: r.overallScore >= 75 ? _C.green : r.overallScore >= 50 ? _C.amber : r.overallScore ? _C.red : _C.muted,
+                        title: `${rec.callType === "onboarding" ? "Onboarding" : "Follow-up"} Call`,
+                        subtitle: `${rec.csmName || "Unknown"} · Score: ${r.overallScore || "?"}/${r.grade || "?"}${s ? ` · Sentiment: ${s.score}/10` : ""}`,
+                        preview: r.summary?.slice(0, 150) || rec.transcript?.slice(0, 150) || "",
+                        sentiment: s?.score, score: r.overallScore
+                      });
+                    }
+                    const _cleanSlack = (s:string) => s.replace(/\[(?:CX|CLIENT):.*?\]\s*/g,"").replace(/\[.*?\]\s*/g,"").replace(/<@[A-Z0-9]+>/g,"@mention").replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/g,"$2").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/:\w+:/g,"").replace(/\*([^*]+)\*/g,"$1").trim();
+                    for (const c of comms) {
+                      // Extract unique names from messages
+                      const nameMatches = (c.content||"").match(/\[(?:(?:CX|CLIENT):)?([^\]]+)\]/g) || [];
+                      const names = [...new Set(nameMatches.map((n:string) => n.replace(/\[(?:(?:CX|CLIENT):)?/, "").replace("]","")).filter((n:string) => !/^U[A-Z0-9]{8,}$/.test(n)))];
+                      const channelName = c.channel && !c.channel.startsWith("#C") ? c.channel : c.type === "email" ? (c.subject || "Email") : "Slack";
+                      const firstLine = _cleanSlack((c.content||"").split("\n").find((l:string)=>l.trim())||"");
+                      items.push({
+                        id: c.id, date: c.date || "",
+                        ts: new Date(c.date).getTime(),
+                        type: c.type, icon: c.type === "slack" ? "💬" : "✉",
+                        color: c.type === "slack" ? "#6C5CE7" : _C.blue,
+                        title: channelName,
+                        subtitle: `${c.messageCount || 0} messages${names.length ? ` · ${names.slice(0,3).join(", ")}` : ""}`,
+                        preview: firstLine.slice(0, 150),
+                      });
+                    }
+                    items.sort((a, b) => b.ts - a.ts);
+
+                    // Group by month
+                    const months: {label:string; items:typeof items}[] = [];
+                    for (const item of items) {
+                      if (!item.date) continue;
+                      const mLabel = new Date(item.ts).toLocaleDateString("en-US", { month:"long", year:"numeric" });
+                      let g = months.find(m => m.label === mLabel);
+                      if (!g) { g = { label: mLabel, items: [] }; months.push(g); }
+                      g.items.push(item);
+                    }
+
+                    if (items.length === 0) return (
+                      <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted }}>
+                        <div style={{ fontSize:28, marginBottom:8 }}>◎</div>
+                        <div style={{ fontSize:13, fontFamily:head, fontWeight:600 }}>No activity yet</div>
+                        <div style={{ fontSize:12, fontFamily:body, marginTop:4 }}>Add calls, Slack messages, or emails using the tabs above.</div>
+                      </div>
+                    );
+
+                    // Expand/collapse state
+                    const allExpanded = (window as any).__allActivityExpanded ?? true;
+                    const setAllExpanded = (v: boolean) => { (window as any).__allActivityExpanded = v; setCallRecords(p=>p?[...p]:[]); };
+                    const isItemOpen = (id: string) => allExpanded || (window as any)[`__actOpen_${id}`];
+                    const toggleItem = (id: string) => { (window as any)[`__actOpen_${id}`] = !(window as any)[`__actOpen_${id}`]; setCallRecords(p=>p?[...p]:[]); };
+
+                    // Helper to render slack/email messages inline
+                    const renderMessages = (content: string) => {
+                      const lines = (content||"").split("\n").filter((l:string) => l.trim());
+                      const parsed = lines.map((line:string) => {
+                        const m = line.match(/^\[(?:(?:CX|CLIENT):)?(.+?)\]\s*(.*)/);
+                        const user = m ? m[1] : "";
+                        const text = m ? m[2] : line;
+                        const displayUser = /^U[A-Z0-9]{8,}$/.test(user) ? "" : user;
+                        const clean = text.replace(/<@[A-Z0-9]+>/g,"@mention").replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/g,"$2").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/:\w+:/g,"").replace(/\*([^*]+)\*/g,"$1").trim();
+                        return { user: displayUser, text: clean };
+                      }).filter(m => m.text);
+                      // Group consecutive
+                      const groups: {user:string; msgs:string[]}[] = [];
+                      for (const m of parsed) {
+                        if (groups.length > 0 && groups[groups.length-1].user === m.user) groups[groups.length-1].msgs.push(m.text);
+                        else groups.push({ user:m.user, msgs:[m.text] });
+                      }
+                      const palette = [_C.accent, _C.green, _C.blue, _C.amber, "#E91E63", "#00BCD4"];
+                      const uc: Record<string,string> = {}; let ci2 = 0;
+                      for (const g of groups) { if (g.user && !uc[g.user]) { uc[g.user] = palette[ci2 % palette.length]; ci2++; } }
+                      return groups.map((g, gi) => (
+                        <div key={gi} style={{ marginBottom:6 }}>
+                          {g.user && <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:uc[g.user]||_C.muted, marginBottom:2 }}>{g.user}</div>}
+                          {g.msgs.map((msg, mi) => (
+                            <div key={mi} style={{ padding:"4px 10px", borderRadius:6, borderLeft:`2px solid ${(uc[g.user]||_C.muted)}20`, background:_C.faint, marginBottom:1,
+                              fontSize:12, fontFamily:body, color:_C.text, lineHeight:1.6 }}>{msg}</div>
+                          ))}
+                        </div>
+                      ));
+                    };
+
+                    return (
+                      <div>
+                        {/* Summary bar */}
+                        <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:16 }}>
+                          {[
+                            { label:"Calls", count:(callRecords||[]).length, icon:"🎙", color:_C.green },
+                            { label:"Slack", count:comms.filter((c:any)=>c.type==="slack").length, icon:"💬", color:"#6C5CE7" },
+                            { label:"Emails", count:comms.filter((c:any)=>c.type==="email").length, icon:"✉", color:_C.blue },
+                          ].filter(s=>s.count>0).map((s,si)=>(
+                            <div key={si} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, background:_C.faint }}>
+                              <span style={{ fontSize:12 }}>{s.icon}</span>
+                              <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:s.color }}>{s.count}</span>
+                              <span style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{s.label}</span>
+                            </div>
+                          ))}
+                          <div style={{ flex:1 }} />
+                          <button onClick={()=>setAllExpanded(!allExpanded)}
+                            style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent",
+                              color:_C.muted, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                            {allExpanded ? "Collapse All" : "Expand All"}
+                          </button>
+                          <span style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{items.length} total</span>
+                        </div>
+
+                        {/* Timeline */}
+                        {months.map((month, mi) => (
+                          <div key={mi} style={{ marginBottom:24 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+                              <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{month.label}</span>
+                              <div style={{ flex:1, height:1, background:_C.border }} />
+                              <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{month.items.length}</span>
+                            </div>
+                            {month.items.map((item) => {
+                              const open = isItemOpen(item.id);
+                              // Find the raw data for this item
+                              const rawComm = comms.find((c:any) => c.id === item.id);
+                              const rawCall = (callRecords||[]).find((r:any) => r.id === item.id);
+                              return (
+                              <div key={item.id} style={{ marginBottom:10, borderRadius:12, background:_C.canvas,
+                                border:`1px solid ${open ? item.color+"30" : _C.border}`, overflow:"hidden" }}>
+                                {/* Header — always visible, clickable */}
+                                <div onClick={()=>toggleItem(item.id)} style={{ padding:"10px 14px", display:"flex", alignItems:"center", gap:10, cursor:"pointer",
+                                  borderLeft:`3px solid ${item.color}` }}>
+                                  <span style={{ fontSize:13 }}>{item.icon}</span>
+                                  <div style={{ flex:1, minWidth:0 }}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                      <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{item.title}</span>
+                                      <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{item.subtitle}</span>
+                                    </div>
+                                    {!open && item.preview && <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.preview}</div>}
+                                  </div>
+                                  <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                                    {item.sentiment !== undefined && (
+                                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 6px", borderRadius:4,
+                                        background: item.sentiment >= 7 ? `${_C.green}12` : item.sentiment >= 4 ? `${_C.amber}12` : `${_C.red}12`,
+                                        color: item.sentiment >= 7 ? _C.green : item.sentiment >= 4 ? _C.amber : _C.red }}>
+                                        {item.sentiment}/10
+                                      </span>
+                                    )}
+                                    {item.score !== undefined && (
+                                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 6px", borderRadius:4,
+                                        background: item.score >= 75 ? `${_C.green}12` : item.score >= 50 ? `${_C.amber}12` : `${_C.red}12`,
+                                        color: item.score >= 75 ? _C.green : item.score >= 50 ? _C.amber : _C.red }}>
+                                        {item.score}/100
+                                      </span>
+                                    )}
+                                    <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{item.date}</span>
+                                    <span style={{ fontSize:10, color:_C.muted, transition:"transform .2s", transform:open?"rotate(180deg)":"rotate(0)" }}>▾</span>
+                                  </div>
+                                </div>
+                                {/* Expanded content */}
+                                {open && (
+                                  <div style={{ padding:"0 14px 12px", borderTop:`1px solid ${_C.border}`, borderLeft:`3px solid ${item.color}` }}>
+                                    {/* Slack/Email messages */}
+                                    {rawComm && (
+                                      <div style={{ paddingTop:10 }}>{renderMessages(rawComm.content)}</div>
+                                    )}
+                                    {/* Call transcript + summary */}
+                                    {rawCall && (
+                                      <div style={{ paddingTop:10 }}>
+                                        {rawCall.result?.summary && (
+                                          <div style={{ padding:"8px 12px", borderRadius:8, background:`${item.color}06`, border:`1px solid ${item.color}15`, marginBottom:10, fontSize:12, fontFamily:body, color:_C.text, lineHeight:1.6 }}>
+                                            {rawCall.result.summary}
+                                          </div>
+                                        )}
+                                        {rawCall.result?.sentiment && (
+                                          <div style={{ display:"flex", gap:12, marginBottom:10, flexWrap:"wrap" }}>
+                                            {rawCall.result.sentiment.frustrations?.map((f:string,fi:number) => (
+                                              <span key={fi} style={{ fontSize:10, padding:"3px 8px", borderRadius:5, background:`${_C.red}08`, color:_C.red, fontFamily:body }}>- {f}</span>
+                                            ))}
+                                            {rawCall.result.sentiment.positives?.map((p:string,pi:number) => (
+                                              <span key={pi} style={{ fontSize:10, padding:"3px 8px", borderRadius:5, background:`${_C.green}08`, color:_C.green, fontFamily:body }}>+ {p}</span>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {rawCall.result?.coachingActions?.length > 0 && (
+                                          <div style={{ marginBottom:8 }}>
+                                            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:4 }}>COACHING ACTIONS</div>
+                                            {rawCall.result.coachingActions.slice(0,3).map((a:string,ai:number) => (
+                                              <div key={ai} style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.5, marginBottom:2 }}>{ai+1}. {a}</div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {rawCall.transcript && (
+                                          <details style={{ marginTop:6 }}>
+                                            <summary style={{ fontSize:10, fontFamily:mono, color:_C.muted, cursor:"pointer" }}>View full transcript</summary>
+                                            <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.7, marginTop:8, maxHeight:300, overflowY:"auto", whiteSpace:"pre-wrap" as const }}>{rawCall.transcript}</div>
+                                          </details>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>);
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Add Conversation (hidden on All Activity tab) */}
+                  {((window as any).__commInputType || "all") !== "all" && (() => {
+                    const addOpen = (window as any).__addConvoOpen || false;
+                    const setAddOpen = (v: boolean) => { (window as any).__addConvoOpen = v; setCallRecords(p=>p?[...p]:[]); };
+                    const activeType = (window as any).__commInputType;
+                    return (<>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+                    <button onClick={()=>setAddOpen(!addOpen)}
+                      style={{ padding:"7px 16px", borderRadius:8, border:`1px solid ${addOpen ? _C.accent : _C.border}`,
+                        background: addOpen ? `${_C.accent}08` : "transparent", color: addOpen ? _C.accent : _C.textSoft,
+                        fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", transition:"all .15s",
+                        display:"flex", alignItems:"center", gap:6 }}>
+                      {addOpen ? "✕ Close" : `+ Add ${activeType === "call" ? "Call Transcript" : activeType === "slack" ? "Slack Messages" : "Email Thread"}`}
+                    </button>
+                    <div style={{ flex:1 }} />
+                      {/* Slack Sync — only on Slack Messages sub-tab */}
+                      {((window as any).__commInputType) === "slack" && (() => {
+                        const slackToken = slackKey || getSlackToken();
+                        const channelId = cd.co_slack_channel || "";
+                        const syncing = (window as any).__slackSyncing || false;
+                        const setSyncing = (v: boolean) => { (window as any).__slackSyncing = v; setCallRecords(p=>p?[...p]:[]); };
+                        const wizardOpen = (window as any).__slackWizardOpen || false;
+                        const setWizardOpen = (v: boolean) => { (window as any).__slackWizardOpen = v; setCallRecords(p=>p?[...p]:[]); };
+                        const channels: any[] = (window as any).__slackChannels || [];
+                        const wizardError = (window as any).__slackWizardError || "";
+                        const setWizardError = (v: string) => { (window as any).__slackWizardError = v; setCallRecords(p=>p?[...p]:[]); };
+                        const channelLoading = (window as any).__slackChLoading || false;
+                        const setChannelLoading = (v: boolean) => { (window as any).__slackChLoading = v; setCallRecords(p=>p?[...p]:[]); };
+                        const testResult: string = (window as any).__slackTestResult || "";
+                        const setTestResult = (v: string) => { (window as any).__slackTestResult = v; setCallRecords(p=>p?[...p]:[]); };
+
+                        // Which step is currently open (0 = auto, else user-selected)
+                        const openStep: number = (window as any).__slackOpenStep || 0;
+                        const setOpenStep = (s: number) => { (window as any).__slackOpenStep = s; setCallRecords(p=>p?[...p]:[]); };
+                        // Auto-detect the first incomplete step
+                        const autoStep = !slackToken ? 1 : !channelId ? 3 : testResult !== "ok" ? 4 : 5;
+                        const step = openStep || autoStep;
+                        const isConnected = slackToken && channelId && (cd.co_slack_last_sync || testResult === "ok");
+
+                        const loadChannels = async () => {
+                          setChannelLoading(true); setWizardError("");
+                          const chs = await fetchSlackChannels();
+                          // Check for error sentinel
+                          if (chs.length === 1 && (chs[0] as any).id === "__error__") {
+                            const slackErr = (chs[0] as any).error || "Unknown error";
+                            const errMap: Record<string,string> = {
+                              invalid_auth: "Invalid bot token. Check your token in Profile → API Keys.",
+                              missing_scope: "Bot needs channels:read permission. Add it in your Slack app settings.",
+                              token_revoked: "Token was revoked. Generate a new one in your Slack app.",
+                              account_inactive: "Bot account is inactive or was removed.",
+                              not_authed: "No auth token provided. Add your Slack bot token in Profile → API Keys.",
+                            };
+                            setWizardError(errMap[slackErr] || `Slack error: ${slackErr}`);
+                            (window as any).__slackChannels = [];
+                            setChannelLoading(false);
+                            return;
+                          }
+                          (window as any).__slackChannels = chs;
+                          setChannelLoading(false);
+                          if (chs.length === 0) setWizardError("No channels found. The bot may not be a member of any channels yet.");
+                        };
+
+                        const testConnection = async () => {
+                          setSyncing(true); setWizardError(""); setTestResult("");
+                          const result = await fetchSlackMessages(channelId);
+                          setSyncing(false);
+                          if (result.ok) { setTestResult("ok"); }
+                          else { setWizardError(result.error || "Connection test failed"); setTestResult("fail"); }
+                        };
+
+                        const syncSlack = async () => {
+                          setSyncing(true); setWizardError("");
+                          addToast({ title:"Syncing Slack...", status:"loading", message:"Fetching messages" });
+                          try {
+                            // Fetch messages first (fast), user names in parallel (can be slow)
+                            const lastSync = cd.co_slack_last_sync || "";
+                            const oldest = lastSync ? String(new Date(lastSync).getTime() / 1000) : undefined;
+                            console.log("[Slack] Starting sync, channelId:", channelId, "oldest:", oldest);
+                            const [result, baseUserMap] = await Promise.all([
+                              fetchSlackMessages(channelId, oldest),
+                              fetchSlackUsers().catch(() => ({} as Record<string,string>))
+                            ]);
+                            console.log("[Slack] Messages result:", result.ok, "count:", result.messages?.length, "error:", result.error);
+                            if (!result.ok) { addToast({ title:"Slack sync failed", status:"error", message:result.error||"" }); setWizardError(result.error||""); setSyncing(false); return; }
+                            // Load cached user names, then resolve any new ones
+                            let cachedUsers: Record<string, string> = {};
+                            try { const c = JSON.parse(localStorage.getItem("b2br_slack_user_cache") || "{}"); for (const [id, info] of Object.entries(c)) { cachedUsers[id] = (info as any).name || id; } } catch {}
+                            const mergedKnown = { ...cachedUsers, ...baseUserMap };
+                            const allUserInfo = await resolveAllUsers(result.messages, mergedKnown);
+                            console.log("[Slack] Users resolved:", Object.keys(allUserInfo).length);
+                            const msgs = result.messages.filter((m:any) => m.type === "message" && !m.subtype && m.text).reverse();
+                            console.log("[Slack] After filter:", msgs.length, "messages (from", result.messages.length, "raw)");
+                            if (msgs.length === 0) {
+                              // If we had an oldest filter and got 0 results, try without it
+                              if (oldest) {
+                                console.log("[Slack] No new messages since last sync, retrying full fetch...");
+                                const fullResult = await fetchSlackMessages(channelId);
+                                if (fullResult.ok) {
+                                  const fullMsgs = fullResult.messages.filter((m:any) => m.type === "message" && !m.subtype && m.text).reverse();
+                                  console.log("[Slack] Full fetch:", fullMsgs.length, "messages");
+                                  if (fullMsgs.length === 0) { addToast({ title:"No messages in channel", status:"info", message:"The channel appears to be empty" }); setSyncing(false); return; }
+                                  // Re-resolve users for the full message set
+                                  const fullUserInfo = await resolveAllUsers(fullResult.messages, mergedKnown);
+                                  console.log("[Slack] Full fetch users resolved:", Object.keys(fullUserInfo).length);
+                                  const byDay2: Record<string, string[]> = {};
+                                  for (const m of fullMsgs) {
+                                    const day = new Date(parseFloat(m.ts) * 1000).toISOString().slice(0,10);
+                                    if (!byDay2[day]) byDay2[day] = [];
+                                    const uI2 = fullUserInfo[m.user] || { name: m.user || "?", isCX: false };
+                                    byDay2[day].push(`[${uI2.name}] ${m.text}`);
+                                  }
+                                  let added2 = 0;
+                                  for (const [day, dayMsgs] of Object.entries(byDay2)) {
+                                    if (comms.some((c:any) => c.type === "slack" && c.date === day && c.autoSynced)) continue;
+                                    addComm({ id:uid(), type:"slack", channel:`#${channels.find((c:any)=>c.id===channelId)?.name || channelId}`, date:day, content:dayMsgs.join("\n"), messageCount:dayMsgs.length, autoSynced:true });
+                                    added2++;
+                                  }
+                                  setCompanyData((p:any) => ({ ...p, co_slack_last_sync: new Date().toISOString() }));
+                                  setSyncing(false);
+                                  addToast({ title: added2 > 0 ? `Synced ${fullMsgs.length} messages` : "Already up to date", status: added2 > 0 ? "success" : "info", message: added2 > 0 ? `${added2} day${added2!==1?"s":""} added` : "All messages already synced" });
+                                  return;
+                                }
+                              }
+                              addToast({ title:"No new messages", status:"info", message:"Channel is up to date" }); setSyncing(false); return;
+                            }
+                            const byDay: Record<string, string[]> = {};
+                            for (const m of msgs) {
+                              const day = new Date(parseFloat(m.ts) * 1000).toISOString().slice(0,10);
+                              if (!byDay[day]) byDay[day] = [];
+                              const uInfo = allUserInfo[m.user];
+                              const uName = uInfo?.name || m.user || "?";
+                              byDay[day].push(`[${uName}] ${m.text}`);
+                            }
+                            let added = 0;
+                            for (const [day, dayMsgs] of Object.entries(byDay)) {
+                              if (comms.some((c:any) => c.type === "slack" && c.date === day && c.autoSynced)) continue;
+                              addComm({ id:uid(), type:"slack", channel:`#${channels.find((c:any)=>c.id===channelId)?.name || channelId}`, date:day, content:dayMsgs.join("\n"), messageCount:dayMsgs.length, autoSynced:true });
+                              added++;
+                            }
+                            setCompanyData((p:any) => ({ ...p, co_slack_last_sync: new Date().toISOString() }));
+                            setSyncing(false);
+                            setWizardOpen(false);
+                            addToast({ title:`Synced ${msgs.length} messages`, status:"success", message:`${added} day${added!==1?"s":""} added` });
+                          } catch (e: any) { setSyncing(false); addToast({ title:"Sync failed", status:"error", message:e.message||"" }); }
+                        };
+
+                        const isOpen = (s: number) => s === step;
+                        const isDone = (s: number) => (s === 1 && !!slackToken) || (s === 2 && channels.length > 0) || (s === 3 && !!channelId) || (s === 4 && testResult === "ok") || (s === 5 && !!cd.co_slack_last_sync);
+                        const stepStyle = (s: number): any => ({
+                          padding:"14px 16px", borderRadius:10, cursor:"pointer",
+                          border:`1px solid ${isOpen(s) ? _C.accent+"30" : isDone(s) ? _C.green+"30" : _C.border}`,
+                          background: isOpen(s) ? `${_C.accent}05` : isDone(s) ? `${_C.green}05` : _C.faint,
+                          marginBottom:10, transition:"all .15s"
+                        });
+                        const onStepClick = (s: number, e: any) => {
+                          const tag = e.target?.tagName?.toLowerCase();
+                          if (tag === "input" || tag === "select" || tag === "button" || tag === "option" || tag === "textarea") return;
+                          setOpenStep(isOpen(s) ? 0 : s);
+                        };
+                        const stepNum = (s: number) => (
+                          <div style={{ width:22, height:22, borderRadius:11, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
+                            background: isDone(s) ? _C.green : isOpen(s) ? _C.accent : _C.muted+"40",
+                            color:"#fff", fontSize:10, fontWeight:700, fontFamily:mono }}>
+                            {isDone(s) ? "✓" : s}
+                          </div>
+                        );
+                        const stepEdit = (_s: number) => null;
+
+                        return (
+                          <div style={{ position:"relative" }}>
+                            <div style={{ display:"flex", gap:6 }}>
+                              {isConnected && (
+                                <button disabled={syncing} onClick={syncSlack}
+                                  style={{ padding:"5px 14px", borderRadius:6, border:"none", background:syncing?_C.muted:_C.accent, color:"#fff",
+                                    fontSize:10, fontFamily:head, fontWeight:700, cursor:syncing?"default":"pointer", display:"flex", alignItems:"center", gap:5 }}>
+                                  💬 {syncing ? "Syncing..." : "Sync Slack"}
+                                </button>
+                              )}
+                              <button onClick={()=>{setWizardOpen(!wizardOpen); setOpenStep(0);}}
+                                style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${isConnected ? _C.green+"40" : _C.border}`,
+                                  background:"transparent", color:isConnected ? _C.green : _C.muted,
+                                  fontSize:10, fontFamily:mono, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
+                                {isConnected ? "●" : "○"} Slack
+                              </button>
+                            </div>
+
+                            {wizardOpen && (
+                              <>
+                                <div onClick={()=>{setWizardOpen(false); setOpenStep(0);}} style={{ position:"fixed", inset:0, zIndex:999 }} />
+                                <div style={{ position:"absolute", right:0, top:"100%", marginTop:6, width:380, zIndex:1000,
+                                  background:_C.surface, border:`1px solid ${_C.border}`, borderRadius:12, padding:"18px 20px",
+                                  boxShadow:"0 12px 40px rgba(0,0,0,.18)" }}>
+                                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                                    <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>Slack Setup</span>
+                                    <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                                      <button onClick={()=>{
+                                        if (!confirm("Reset Slack setup and clear all synced messages for this client?")) return;
+                                        setCompanyData((p:any)=>{ const n={...p}; delete n.co_slack_channel; delete n.co_slack_last_sync; return n; });
+                                        (window as any).__slackChannels = [];
+                                        (window as any).__slackTestResult = "";
+                                        (window as any).__slackOpenStep = 0;
+                                        // Remove all auto-synced slack comms
+                                        const kept = comms.filter((c:any) => !(c.type === "slack" && c.autoSynced));
+                                        setSlackComms(kept);
+                                        setWizardError("");
+                                        setCallRecords(p=>p?[...p]:[]);
+                                        addToast({ title:"Slack reset", status:"success", message:"Channel, sync history, and auto-synced messages cleared" });
+                                      }} style={{ background:"none", border:"none", color:_C.red, fontSize:10, fontFamily:mono, cursor:"pointer", opacity:0.7 }}>
+                                        Reset
+                                      </button>
+                                      <button onClick={()=>setWizardOpen(false)} style={{ background:"none", border:"none", color:_C.muted, fontSize:14, cursor:"pointer" }}>✕</button>
+                                    </div>
+                                  </div>
+
+                                  {/* Step 1: Bot Token */}
+                                  <div style={stepStyle(1)} onClick={e=>onStepClick(1,e)}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: isOpen(1) ? 10 : 0 }}>
+                                      {stepNum(1)}
+                                      <div style={{ flex:1 }}>
+                                        <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>Add bot token</div>
+                                        <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>
+                                          {slackToken ? "Token saved ✓" : "Profile menu → API Keys → Slack Bot Token"}
+                                        </div>
+                                      </div>
+                                      {stepEdit(1)}
+                                    </div>
+                                    {isOpen(1) && (
+                                      <div style={{ marginLeft:32 }}>
+                                        <div style={{ fontSize:10, color:_C.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:8 }}>
+                                          Go to <strong>api.slack.com/apps</strong> → your app → <strong>OAuth & Permissions</strong> → copy the <strong>Bot User OAuth Token</strong> (starts with xoxb-)
+                                        </div>
+                                        <input type="password" placeholder="xoxb-..." defaultValue={slackToken}
+                                          onChange={e=>setSlackToken(e.target.value)}
+                                          style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:11, fontFamily:mono, marginBottom:6 }} />
+                                        <div style={{ fontSize:9, color:_C.muted, fontFamily:body }}>Stored locally in your browser only.</div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Step 2: Load Channels */}
+                                  <div style={stepStyle(2)} onClick={e=>onStepClick(2,e)}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: isOpen(2) ? 10 : 0 }}>
+                                      {stepNum(2)}
+                                      <div style={{ flex:1 }}>
+                                        <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>Load channels</div>
+                                        <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>
+                                          {channels.length > 0 ? `${channels.length} channels loaded ✓` : "Fetch the list of channels your bot can see"}
+                                        </div>
+                                      </div>
+                                      {stepEdit(2)}
+                                    </div>
+                                    {isOpen(2) && (
+                                      <div style={{ marginLeft:32 }}>
+                                        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                                          <button disabled={channelLoading} onClick={loadChannels}
+                                            style={{ padding:"7px 16px", borderRadius:6, border:"none", background:channelLoading?_C.muted:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:channelLoading?"default":"pointer" }}>
+                                            {channelLoading ? "Loading..." : "Load Channels"}
+                                          </button>
+                                          <button onClick={()=>setOpenStep(3)}
+                                            style={{ padding:"7px 16px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                                            Skip — I'll paste the ID
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Step 3: Select Channel */}
+                                  <div style={stepStyle(3)} onClick={e=>onStepClick(3,e)}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: isOpen(3) ? 10 : 0 }}>
+                                      {stepNum(3)}
+                                      <div style={{ flex:1 }}>
+                                        <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>Select channel for {cd.co_name || "this client"}</div>
+                                        <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>
+                                          {channelId ? `#${channels.find((c:any)=>c.id===channelId)?.name || channelId} ✓` : "Pick the Slack channel for this client"}
+                                        </div>
+                                      </div>
+                                      {stepEdit(3)}
+                                    </div>
+                                    {isOpen(3) && (
+                                      <div style={{ marginLeft:32 }}>
+                                        {channels.length > 0 ? (
+                                          <select value={channelId} onChange={e=>setCompanyData((p:any)=>({...p, co_slack_channel:e.target.value}))}
+                                            style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:11, fontFamily:mono }}>
+                                            <option value="">Select a channel...</option>
+                                            {channels.map((ch:any) => <option key={ch.id} value={ch.id}>#{ch.name}</option>)}
+                                          </select>
+                                        ) : (
+                                          <input value={channelId} placeholder="Paste Channel ID (e.g. C09GADWC9A8)"
+                                            onChange={e=>setCompanyData((p:any)=>({...p, co_slack_channel:e.target.value}))}
+                                            style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:11, fontFamily:mono }} />
+                                        )}
+                                        <div style={{ fontSize:9, color:_C.muted, fontFamily:body, marginTop:6, lineHeight:1.5 }}>
+                                          {channels.length > 0 ? "Don't see the channel? Make sure the bot is invited." : "Right-click the channel in Slack → View channel details → copy the Channel ID at the bottom."}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Step 4: Test Connection */}
+                                  <div style={stepStyle(4)} onClick={e=>onStepClick(4,e)}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: isOpen(4) ? 10 : 0 }}>
+                                      {stepNum(4)}
+                                      <div style={{ flex:1 }}>
+                                        <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>Test connection</div>
+                                        <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>
+                                          {testResult === "ok" ? "Connection successful ✓" : "Verify the bot can read this channel"}
+                                        </div>
+                                      </div>
+                                      {stepEdit(4)}
+                                    </div>
+                                    {isOpen(4) && (
+                                      <div style={{ marginLeft:32 }}>
+                                        <div style={{ fontSize:10, color:_C.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:8 }}>
+                                          Make sure the bot is in the channel. In Slack, go to <strong>#{channels.find((c:any)=>c.id===channelId)?.name || "the channel"}</strong> and type:{" "}
+                                          <span onClick={e=>{e.stopPropagation(); navigator.clipboard.writeText("/invite @CX Tool Sync"); addToast({title:"Copied!",status:"success",message:"/invite @CX Tool Sync"});}}
+                                            style={{ background:_C.accent+"15", color:_C.accent, padding:"2px 8px", borderRadius:4, cursor:"pointer", fontFamily:mono, fontWeight:700 }}>/invite @CX Tool Sync</span>
+                                        </div>
+                                        <button disabled={syncing} onClick={testConnection}
+                                          style={{ padding:"7px 16px", borderRadius:6, border:"none", background:syncing?_C.muted:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:syncing?"default":"pointer" }}>
+                                          {syncing ? "Testing..." : "Test Connection"}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Step 5: Sync */}
+                                  <div style={stepStyle(5)} onClick={e=>onStepClick(5,e)}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: isOpen(5) ? 10 : 0 }}>
+                                      {stepNum(5)}
+                                      <div style={{ flex:1 }}>
+                                        <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>Sync messages</div>
+                                        <div style={{ fontSize:10, color:_C.muted, fontFamily:body }}>
+                                          {cd.co_slack_last_sync ? `Last sync: ${new Date(cd.co_slack_last_sync).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}` : "Pull all messages from this channel"}
+                                        </div>
+                                      </div>
+                                      {stepEdit(5)}
+                                    </div>
+                                    {isOpen(5) && (
+                                      <div style={{ marginLeft:32 }}>
+                                        <button disabled={syncing} onClick={syncSlack}
+                                          style={{ width:"100%", padding:"8px 0", borderRadius:6, border:"none", background:syncing?_C.muted:_C.green, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:syncing?"default":"pointer" }}>
+                                          {syncing ? "Syncing..." : cd.co_slack_last_sync ? "Sync New Messages" : "Pull All Messages"}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Error display */}
+                                  {wizardError && (
+                                    <div style={{ padding:"10px 14px", borderRadius:8, background:`${_C.red}08`, border:`1px solid ${_C.red}20`, marginTop:4 }}>
+                                      <div style={{ fontSize:11, fontFamily:body, color:_C.red, lineHeight:1.5 }}>{wizardError}</div>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {addOpen && ((window as any).__commInputType || "call") === "call" && (<>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:10, marginBottom:12 }}>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CLIENT</div>
+                          <input id="ca-client" placeholder={cd.co_name||"Client name"} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CSM / REP</div>
+                          <input id="ca-csm" placeholder="Agent name" style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CALL DATE</div>
+                          <input id="ca-date" type="date" defaultValue={new Date().toISOString().slice(0,10)} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>TYPE</div>
+                          <select id="ca-type" style={{ padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }}>
+                            <option value="onboarding">Onboarding</option>
+                            <option value="followup">Follow-up</option>
+                          </select>
+                        </div>
+                      </div>
+                      <textarea id="ca-transcript" placeholder="Paste the call transcript here..." rows={6}
+                        style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none", lineHeight:1.6, marginBottom:12 }} />
+                      <button disabled={scoring} onClick={async ()=>{
+                        const transcript = (document.getElementById("ca-transcript") as HTMLTextAreaElement)?.value || "";
+                        if (!transcript.trim()) { addToast({ title:"Paste a transcript first", status:"error", message:"" }); return; }
+                        const callType = (document.getElementById("ca-type") as HTMLSelectElement)?.value || "onboarding";
+                        const clientName = (document.getElementById("ca-client") as HTMLInputElement)?.value || "";
+                        const csmName = (document.getElementById("ca-csm") as HTMLInputElement)?.value || "";
+                        const callDate = (document.getElementById("ca-date") as HTMLInputElement)?.value || "";
+                        await scoreCall(transcript, callType, clientName, csmName, callDate);
+                        (document.getElementById("ca-transcript") as HTMLTextAreaElement).value = "";
+                      }}
+                        style={{ padding:"10px 24px", borderRadius:8, border:"none", background: scoring ? _C.muted : _C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor: scoring ? "default" : "pointer" }}>
+                        {scoring ? "Scoring..." : "Score Call"}
+                      </button>
+                    </>)}
+
+                    {addOpen && ((window as any).__commInputType) === "slack" && (<>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>CHANNEL / DM</div>
+                          <input id="comm-channel" placeholder="#client-name or DM" style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>DATE</div>
+                          <input id="comm-date" type="date" defaultValue={new Date().toISOString().slice(0,10)} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }} />
+                        </div>
+                      </div>
+                      <textarea id="comm-content" placeholder="Paste Slack messages here..." rows={6}
+                        style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none", lineHeight:1.6, marginBottom:12 }} />
+                      <button onClick={()=>{
+                        const content = (document.getElementById("comm-content") as HTMLTextAreaElement)?.value || "";
+                        if (!content.trim()) { addToast({ title:"Paste messages first", status:"error", message:"" }); return; }
+                        addComm({ id:uid(), type:"slack", channel:(document.getElementById("comm-channel") as HTMLInputElement)?.value||"", date:(document.getElementById("comm-date") as HTMLInputElement)?.value||new Date().toISOString().slice(0,10), content });
+                        (document.getElementById("comm-content") as HTMLTextAreaElement).value = "";
+                        addToast({ title:"Slack messages saved", status:"success", message:"" });
+                      }}
+                        style={{ padding:"10px 24px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                        Save Messages
+                      </button>
+                    </>)}
+
+                    {addOpen && ((window as any).__commInputType) === "email" && (<>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>SUBJECT</div>
+                          <input id="comm-subject" placeholder="Email subject" style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>PARTICIPANTS</div>
+                          <input id="comm-participants" placeholder="Names or emails" style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>DATE</div>
+                          <input id="comm-email-date" type="date" defaultValue={new Date().toISOString().slice(0,10)} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }} />
+                        </div>
+                      </div>
+                      <textarea id="comm-email-content" placeholder="Paste the email thread here..." rows={6}
+                        style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none", lineHeight:1.6, marginBottom:12 }} />
+                      <button onClick={()=>{
+                        const content = (document.getElementById("comm-email-content") as HTMLTextAreaElement)?.value || "";
+                        if (!content.trim()) { addToast({ title:"Paste email thread first", status:"error", message:"" }); return; }
+                        addComm({ id:uid(), type:"email", subject:(document.getElementById("comm-subject") as HTMLInputElement)?.value||"", participants:(document.getElementById("comm-participants") as HTMLInputElement)?.value||"", date:(document.getElementById("comm-email-date") as HTMLInputElement)?.value||new Date().toISOString().slice(0,10), content });
+                        (document.getElementById("comm-email-content") as HTMLTextAreaElement).value = "";
+                        addToast({ title:"Email thread saved", status:"success", message:"" });
+                      }}
+                        style={{ padding:"10px 24px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                        Save Email
+                      </button>
+                    </>)}
+                  </>);
+                  })()}
+
+                  {/* Records per sub-tab (hidden on All Activity) */}
+                  {((window as any).__commInputType || "all") !== "all" && (<>
+
+                  {/* Slack/Email Records — filtered by active sub-tab */}
+                  {(() => {
+                    const activeType = (window as any).__commInputType || "all";
+                    const filtered = comms.filter((c:any) => activeType === "slack" ? c.type === "slack" : activeType === "email" ? c.type === "email" : false);
+                    if (!filtered.length) return activeType !== "call" ? <div style={{ textAlign:"center", padding:"40px 0", color:_C.muted, fontSize:13 }}>No {activeType === "slack" ? "Slack messages" : "email threads"} yet.</div> : null;
+                    return (
+                    <div style={{ marginBottom:16 }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                        <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, textTransform:"uppercase" as const }}>{activeType === "slack" ? "Slack Messages" : "Email Threads"}</span>
+                        <span style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{filtered.length} {activeType === "slack" ? "day" : "thread"}{filtered.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      {filtered.map((c:any) => {
+                        const isExpanded = (window as any).__openComm === c.id;
+                        const toggleComm = () => { (window as any).__openComm = isExpanded ? null : c.id; setCallRecords(p=>p?[...p]:[]); };
+                        // Parse messages for better display
+                        const lines = (c.content || "").split("\n").filter((l:string) => l.trim());
+                        const msgCount = c.messageCount || lines.length;
+                        // Extract first message as preview
+                        const firstMsg = lines[0] || "";
+                        const displayName = c.channel && !c.channel.startsWith("#C") ? c.channel : c.type === "email" ? (c.subject || "Email") : "Slack";
+                        return (
+                        <div key={c.id} style={{ background:_C.canvas, border:`1px solid ${isExpanded ? _C.accent+"30" : _C.border}`, borderRadius:12, marginBottom:8, overflow:"hidden" }}>
+                          <div onClick={toggleComm} style={{ padding:"12px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
+                            <span style={{ fontSize:14 }}>{c.type==="slack"?"💬":"✉"}</span>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{displayName}</span>
+                                <span style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{c.date}</span>
+                                <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"2px 7px", borderRadius:4, background:`${_C.accent}10`, color:_C.accent }}>{msgCount} msg{msgCount!==1?"s":""}</span>
+                              </div>
+                              {!isExpanded && <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{firstMsg.replace(/^\[(CX|CLIENT):.*?\]\s*/, "").replace(/^\[.*?\]\s*/, "").replace(/<@[A-Z0-9]+>/g, "@mention").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/:([a-z_]+):/g, "")}</div>}
+                            </div>
+                            <button onClick={e=>{e.stopPropagation(); removeComm(c.id);}} style={{ padding:"3px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, cursor:"pointer" }}>✕</button>
+                          </div>
+                          {isExpanded && (
+                            <div style={{ padding:"0 16px 14px", borderTop:`1px solid ${_C.border}` }}>
+                              <div style={{ maxHeight:500, overflowY:"auto", padding:"12px 0" }}>
+                                {(() => {
+                                  // Parse all messages and group consecutive ones from same user
+                                  const parsed = lines.map((line:string) => {
+                                    const m = line.match(/^\[(?:(?:CX|CLIENT):)?(.+?)\]\s*(.*)/);
+                                    const user = m ? m[1] : "";
+                                    const text = m ? m[2] : line;
+                                    const displayUser = /^U[A-Z0-9]{8,}$/.test(user) ? "" : user;
+                                    const cleanText = text.replace(/<@[A-Z0-9]+>/g, "@mention").replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/g, "$2").replace(/<(https?:\/\/[^>]+)>/g, "$1").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/:\w+:/g, "").replace(/\*([^*]+)\*/g, "$1").trim();
+                                    return { user: displayUser, text: cleanText };
+                                  }).filter(m => m.text);
+
+                                  // Group consecutive messages from same user
+                                  const groups: {user:string; messages:string[]}[] = [];
+                                  for (const m of parsed) {
+                                    if (groups.length > 0 && groups[groups.length-1].user === m.user) {
+                                      groups[groups.length-1].messages.push(m.text);
+                                    } else {
+                                      groups.push({ user:m.user, messages:[m.text] });
+                                    }
+                                  }
+
+                                  // Assign colors per user
+                                  const userColors: Record<string,string> = {};
+                                  const palette = [_C.accent, _C.green, _C.blue, _C.amber, "#E91E63", "#00BCD4", "#FF5722"];
+                                  let ci = 0;
+                                  for (const g of groups) {
+                                    if (g.user && !userColors[g.user]) { userColors[g.user] = palette[ci % palette.length]; ci++; }
+                                  }
+
+                                  return groups.map((g, gi) => {
+                                    const color = userColors[g.user] || _C.muted;
+                                    return (
+                                      <div key={gi} style={{ marginBottom:10 }}>
+                                        {g.user && <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color, marginBottom:3 }}>{g.user}</div>}
+                                        {g.messages.map((msg, mi) => (
+                                          <div key={mi} style={{ padding:"6px 12px", borderRadius:8, borderLeft:`3px solid ${color}20`,
+                                            background:_C.faint, marginBottom:2,
+                                            fontSize:12, fontFamily:body, color:_C.text, lineHeight:1.6, wordBreak:"break-word" as const }}>
+                                            {msg}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                        </div>);
+                      })}
+                    </div>);
+                  })()}
+
+                  {/* Call Records — only on Call Transcript sub-tab */}
+                  {((window as any).__commInputType) === "call" && !(callRecords||[]).length && <div style={{ textAlign:"center", padding:"40px 0", color:_C.muted, fontSize:13 }}>No scored calls yet. Paste a transcript above to get started.</div>}
+                  {((window as any).__commInputType) === "call" && (callRecords||[]).length > 0 && <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>Scored Calls</div>}
+                  {((window as any).__commInputType) === "call" &&
+                  (callRecords||[]).map((rec: any) => {
                     const r = rec.result || {};
                     const isOpen = (window as any).__openCall === rec.id;
                     const toggle = () => { (window as any).__openCall = isOpen ? null : rec.id; setCallRecords(p => p ? [...p] : []); };
@@ -16466,6 +18230,13 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                             <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>{rec.csmName || "Unknown"} · {rec.callDate || "No date"} · {rec.callType === "onboarding" ? "Onboarding" : "Follow-up"}</div>
                           </div>
                           <span style={{ fontSize:11, fontWeight:700, fontFamily:mono, padding:"4px 12px", borderRadius:8, background:gradeBg, color:gradeColor }}>{r.grade || "Unscored"}</span>
+                          {r.sentiment && (
+                            <span style={{ fontSize:10, fontWeight:700, fontFamily:mono, padding:"4px 10px", borderRadius:8,
+                              background: r.sentiment.score >= 7 ? `${_C.green}12` : r.sentiment.score >= 4 ? `${_C.amber}12` : `${_C.red}12`,
+                              color: r.sentiment.score >= 7 ? _C.green : r.sentiment.score >= 4 ? _C.amber : _C.red }}>
+                              {r.sentiment.score}/10 {r.sentiment.churnRisk === "high" ? "⚠" : ""}
+                            </span>
+                          )}
                           <button onClick={e=>{e.stopPropagation(); setCallRecords(p=>(p||[]).filter(x=>x.id!==rec.id));}}
                             style={{ padding:"4px 8px", borderRadius:5, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, cursor:"pointer" }}>✕</button>
                         </div>
@@ -16477,6 +18248,60 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                                 {r.summary}
                               </div>
                             )}
+                            {/* Client Sentiment */}
+                            {r.sentiment && (
+                              <>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, margin:"14px 0 8px", textTransform:"uppercase" as const }}>CLIENT SENTIMENT</div>
+                                <div style={{ display:"grid", gridTemplateColumns:"auto 1fr auto", gap:14, alignItems:"center", padding:"12px 14px", borderRadius:10, marginBottom:12,
+                                  background: r.sentiment.score >= 7 ? `${_C.green}08` : r.sentiment.score >= 4 ? `${_C.amber}08` : `${_C.red}08`,
+                                  border: `1px solid ${r.sentiment.score >= 7 ? _C.green : r.sentiment.score >= 4 ? _C.amber : _C.red}20` }}>
+                                  <div style={{ fontSize:28, fontWeight:800, fontFamily:head, color: r.sentiment.score >= 7 ? _C.green : r.sentiment.score >= 4 ? _C.amber : _C.red, lineHeight:1 }}>
+                                    {r.sentiment.score}<span style={{ fontSize:14, fontWeight:600 }}>/10</span>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{r.sentiment.label}</div>
+                                    <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
+                                      Trajectory: <strong style={{ color: r.sentiment.trajectory === "improving" ? _C.green : r.sentiment.trajectory === "declining" ? _C.red : _C.muted }}>{r.sentiment.trajectory}</strong>
+                                    </div>
+                                  </div>
+                                  <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"4px 10px", borderRadius:6,
+                                    background: r.sentiment.churnRisk === "high" ? `${_C.red}15` : r.sentiment.churnRisk === "medium" ? `${_C.amber}15` : `${_C.green}15`,
+                                    color: r.sentiment.churnRisk === "high" ? _C.red : r.sentiment.churnRisk === "medium" ? _C.amber : _C.green }}>
+                                    {r.sentiment.churnRisk === "none" ? "No" : r.sentiment.churnRisk?.charAt(0).toUpperCase() + r.sentiment.churnRisk?.slice(1)} Churn Risk
+                                  </span>
+                                </div>
+                                {(r.sentiment.frustrations?.length > 0 || r.sentiment.positives?.length > 0) && (
+                                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                                    {r.sentiment.frustrations?.length > 0 && (
+                                      <div style={{ padding:"10px 12px", borderRadius:8, background:`${_C.red}06`, border:`1px solid ${_C.red}15` }}>
+                                        <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:6 }}>FRUSTRATIONS</div>
+                                        {r.sentiment.frustrations.map((f:string, fi:number) => (
+                                          <div key={fi} style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:3 }}>• {f}</div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {r.sentiment.positives?.length > 0 && (
+                                      <div style={{ padding:"10px 12px", borderRadius:8, background:`${_C.green}06`, border:`1px solid ${_C.green}15` }}>
+                                        <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:6 }}>POSITIVES</div>
+                                        {r.sentiment.positives.map((p:string, pi:number) => (
+                                          <div key={pi} style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:3 }}>• {p}</div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {r.sentiment.keyQuotes?.length > 0 && (
+                                  <div style={{ marginBottom:12 }}>
+                                    {r.sentiment.keyQuotes.map((q:string, qi:number) => (
+                                      <div key={qi} style={{ padding:"6px 12px", borderRadius:6, borderLeft:`3px solid ${_C.accent}`, background:_C.faint, marginBottom:4, fontSize:11, fontFamily:body, color:_C.textSoft, fontStyle:"italic", lineHeight:1.5 }}>
+                                        "{q}"
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+
                             {/* Section scores */}
                             <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, margin:"14px 0 8px", textTransform:"uppercase" as const }}>SECTION SCORES</div>
                             {(r.sections||[]).map((sec:any, si:number) => (
@@ -16624,6 +18449,685 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                       </div>
                     );
                   })}
+
+                  </>)}
+
+                  </>)}
+
+                  {/* ═══ SENTIMENT ANALYSIS TAB ═══ */}
+                  {callTab === "sentiment" && (() => {
+                    const saKey = `__sentAnalysis_${activeWorkspace?.id||""}`;
+                    const sa: any = (window as any)[saKey] || null;
+                    const saRunning = (window as any).__sentRunning || false;
+                    const runSentiment = async () => {
+                      if (!allConvos.length) { addToast({ title:"Add conversations first", status:"error", message:"" }); return; }
+                      (window as any).__sentRunning = true; setCallRecords(p=>p?[...p]:[]);
+                      addToast({ title:"Analyzing sentiment...", status:"loading", message:"Reading all communications" });
+                      try {
+                        const raw = await callAI(
+                          `You are an unbiased client relationship analyst. Analyze ALL communications below to assess how this client's sentiment has evolved over time. Be objective — don't sugarcoat or catastrophize. Base every assessment on specific evidence.
+
+COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"})
+${cd.co_sentiment_feedback ? `\nCSM FEEDBACK ON PREVIOUS ANALYSIS:\n"${cd.co_sentiment_feedback}"\nThe CSM disagrees with or wants to adjust the previous analysis. Carefully consider their perspective — they know this client. If their feedback is valid, adjust your scores and reasoning. If you disagree, explain why with evidence.\n` : ""}
+COMMUNICATIONS (${allConvos.length} total, chronological):
+${convoContext.slice(0, 18000)}
+
+Analyze sentiment trajectory and return ONLY JSON:
+{
+  "overallSentiment": {
+    "score": 1-10,
+    "label": "Very Negative|Negative|Cautious|Neutral|Cautiously Positive|Positive|Very Positive",
+    "trend": "improving|stable|declining|volatile",
+    "summary": "2-3 sentence unbiased assessment of the relationship health"
+  },
+  "timeline": [
+    {
+      "date": "YYYY-MM-DD",
+      "score": 1-10,
+      "event": "brief description of what happened",
+      "evidence": "direct quote or specific reference from the communication",
+      "impact": "positive|negative|neutral",
+      "source": "call|slack|email"
+    }
+  ],
+  "themes": {
+    "positive": [{"theme":"","frequency":"recurring|one-time","evidence":""}],
+    "negative": [{"theme":"","frequency":"recurring|one-time","evidence":""}],
+    "neutral": [{"theme":"","frequency":"recurring|one-time","evidence":""}]
+  },
+  "riskSignals": [
+    {"signal":"specific warning sign","severity":"high|medium|low","evidence":"","recommendation":""}
+  ],
+  "strengthSignals": [
+    {"signal":"specific positive indicator","evidence":""}
+  ],
+  "recommendations": [
+    {"priority":"urgent|high|medium","action":"specific actionable recommendation","reasoning":"why this will help","expectedOutcome":"what should improve"}
+  ],
+  "recoveryPlaybook": {
+    "needed": true/false,
+    "urgency": "critical|moderate|low",
+    "steps": [{"step":"","timing":"this week|next 2 weeks|this month","script":"exact words or approach to use"}]
+  },
+  "csmFeedbackResponse": ""
+}
+
+IMPORTANT:
+- Every score must be backed by specific evidence from the communications
+- Timeline entries should map to real events/conversations, not fabricated ones
+- Be brutally honest but constructive
+- If the relationship is fine, say so — don't manufacture problems
+- If there are issues, be specific about what and why`,
+                          "", 4000
+                        );
+                        const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        (window as any)[saKey] = { result, generatedAt: new Date().toISOString() };
+                        (window as any).__sentRunning = false; setCallRecords(p=>p?[...p]:[]);
+                        addToast({ title:`Sentiment: ${result.overallSentiment?.score}/10 — ${result.overallSentiment?.label}`, status:"success", message:"" });
+                      } catch { (window as any).__sentRunning = false; setCallRecords(p=>p?[...p]:[]); addToast({ title:"Analysis failed", status:"error", message:"Try again" }); }
+                    };
+
+                    const r = sa?.result;
+                    const tl = r?.timeline || [];
+
+                    return (
+                      <div style={{ marginTop:16 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                          <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>Unbiased analysis of client sentiment across all communications</div>
+                          <button disabled={saRunning} onClick={runSentiment}
+                            style={{ padding:"8px 20px", borderRadius:8, border:"none", background:saRunning?_C.muted:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:saRunning?"default":"pointer" }}>
+                            {saRunning ? "Analyzing..." : r ? "Refresh Analysis" : "Analyze Sentiment"}
+                          </button>
+                        </div>
+
+
+                        {r && (<>
+                          {/* Overall score + trend */}
+                          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:16, marginBottom:20 }}>
+                            <div style={{ textAlign:"center", padding:"20px 28px", borderRadius:14,
+                              background: r.overallSentiment?.score >= 7 ? `${_C.green}08` : r.overallSentiment?.score >= 4 ? `${_C.amber}08` : `${_C.red}08`,
+                              border: `1px solid ${r.overallSentiment?.score >= 7 ? _C.green : r.overallSentiment?.score >= 4 ? _C.amber : _C.red}20` }}>
+                              <div style={{ fontSize:40, fontWeight:800, fontFamily:head, lineHeight:1,
+                                color: r.overallSentiment?.score >= 7 ? _C.green : r.overallSentiment?.score >= 4 ? _C.amber : _C.red }}>
+                                {r.overallSentiment?.score}<span style={{ fontSize:16 }}>/10</span>
+                              </div>
+                              <div style={{ fontSize:11, fontFamily:head, fontWeight:600, color:_C.text, marginTop:6 }}>{r.overallSentiment?.label}</div>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, marginTop:4,
+                                color: r.overallSentiment?.trend === "improving" ? _C.green : r.overallSentiment?.trend === "declining" ? _C.red : _C.muted }}>
+                                {r.overallSentiment?.trend === "improving" ? "↑" : r.overallSentiment?.trend === "declining" ? "↓" : r.overallSentiment?.trend === "volatile" ? "↕" : "→"} {r.overallSentiment?.trend}
+                              </div>
+                            </div>
+                            <div style={{ padding:"16px 20px", borderRadius:14, background:_C.faint, display:"flex", flexDirection:"column", justifyContent:"center" }}>
+                              <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.7 }}>{r.overallSentiment?.summary}</div>
+                            </div>
+                          </div>
+
+                          {/* Sentiment Graph */}
+                          {tl.length >= 2 && (() => {
+                            const gW = 600, gH = 160, padL = 30, padR = 10, padT = 10, padB = 24;
+                            const plotW = gW - padL - padR, plotH = gH - padT - padB;
+                            const pts = tl.map((p:any, i:number) => ({
+                              x: padL + (tl.length === 1 ? plotW/2 : (i / (tl.length - 1)) * plotW),
+                              y: padT + ((10 - p.score) / 9) * plotH,
+                              ...p
+                            }));
+                            const linePoints = pts.map((p:any) => `${p.x},${p.y}`).join(" ");
+                            // Area fill under line
+                            const areaPoints = `${pts[0].x},${padT+plotH} ${linePoints} ${pts[pts.length-1].x},${padT+plotH}`;
+                            return (
+                            <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:"16px 20px", marginBottom:20 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, marginBottom:12 }}>SENTIMENT OVER TIME</div>
+                              <svg viewBox={`0 0 ${gW} ${gH}`} style={{ width:"100%", height:"auto" }}>
+                                {/* Zone backgrounds */}
+                                <rect x={padL} y={padT} width={plotW} height={plotH/3} fill={_C.green} opacity="0.05" rx="2" />
+                                <rect x={padL} y={padT+plotH/3} width={plotW} height={plotH/3} fill={_C.amber} opacity="0.05" rx="2" />
+                                <rect x={padL} y={padT+plotH*2/3} width={plotW} height={plotH/3} fill={_C.red} opacity="0.05" rx="2" />
+                                {/* Grid lines */}
+                                {[10,7,4,1].map(v => {
+                                  const gy = padT + ((10-v)/9)*plotH;
+                                  return <g key={v}><line x1={padL} y1={gy} x2={padL+plotW} y2={gy} stroke={_C.border} strokeWidth="0.5" /><text x={padL-4} y={gy+3} textAnchor="end" fontSize="9" fontFamily="monospace" fill={_C.muted}>{v}</text></g>;
+                                })}
+                                {/* Area fill */}
+                                <polygon points={areaPoints} fill={_C.accent} opacity="0.06" />
+                                {/* Line */}
+                                <polyline fill="none" stroke={_C.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={linePoints} />
+                                {/* Dots */}
+                                {pts.map((p:any, i:number) => {
+                                  const col = p.score >= 7 ? _C.green : p.score >= 4 ? _C.amber : _C.red;
+                                  return <g key={i}>
+                                    <circle cx={p.x} cy={p.y} r="7" fill={_C.canvas} stroke={col} strokeWidth="2" />
+                                    <circle cx={p.x} cy={p.y} r="3.5" fill={col} />
+                                    <text x={p.x} y={p.y - 12} textAnchor="middle" fontSize="9" fontWeight="700" fontFamily="monospace" fill={col}>{p.score}</text>
+                                    <title>{`${p.date}: ${p.score}/10 — ${p.event}`}</title>
+                                  </g>;
+                                })}
+                                {/* X-axis dates */}
+                                {pts.map((p:any, i:number) => (
+                                  <text key={i} x={p.x} y={gH-2} textAnchor="middle" fontSize="8" fontFamily="monospace" fill={_C.muted}>{p.date?.slice(5)}</text>
+                                ))}
+                                {/* Zone labels */}
+                                <text x={padL+plotW+4} y={padT+plotH/6+3} fontSize="7" fontFamily="monospace" fill={_C.green} opacity="0.6">Good</text>
+                                <text x={padL+plotW+4} y={padT+plotH/2+3} fontSize="7" fontFamily="monospace" fill={_C.amber} opacity="0.6">OK</text>
+                                <text x={padL+plotW+4} y={padT+plotH*5/6+3} fontSize="7" fontFamily="monospace" fill={_C.red} opacity="0.6">Risk</text>
+                              </svg>
+                            </div>);
+                          })()}
+
+                          {/* Timeline events with evidence */}
+                          {tl.length > 0 && (
+                            <div style={{ marginBottom:20 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, marginBottom:10 }}>SENTIMENT EVENTS</div>
+                              {tl.map((ev:any, ei:number) => (
+                                <div key={ei} style={{ display:"flex", gap:12, marginBottom:8, padding:"10px 14px", borderRadius:10, background:_C.faint,
+                                  borderLeft:`3px solid ${ev.impact==="positive"?_C.green:ev.impact==="negative"?_C.red:_C.amber}` }}>
+                                  <div style={{ textAlign:"center", flexShrink:0, minWidth:40 }}>
+                                    <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:ev.impact==="positive"?_C.green:ev.impact==="negative"?_C.red:_C.amber }}>{ev.score}</div>
+                                    <div style={{ fontSize:8, fontFamily:mono, color:_C.muted }}>{ev.date?.slice(5)}</div>
+                                  </div>
+                                  <div style={{ flex:1 }}>
+                                    <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, marginBottom:2 }}>
+                                      <span style={{ fontSize:9, fontFamily:mono, padding:"1px 5px", borderRadius:3, marginRight:6,
+                                        background: ev.source==="call"?`${_C.green}10`:ev.source==="slack"?"#6C5CE710":`${_C.blue}10`,
+                                        color: ev.source==="call"?_C.green:ev.source==="slack"?"#6C5CE7":_C.blue }}>
+                                        {ev.source}
+                                      </span>
+                                      {ev.event}
+                                    </div>
+                                    {ev.evidence && (
+                                      <div style={{ fontSize:11, fontFamily:body, color:_C.muted, fontStyle:"italic", lineHeight:1.5, marginTop:4,
+                                        padding:"4px 10px", borderRadius:6, borderLeft:`2px solid ${_C.accent}20`, background:`${_C.accent}04` }}>
+                                        "{ev.evidence}"
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Themes */}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
+                            {r.themes?.positive?.length > 0 && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.green}06`, border:`1px solid ${_C.green}15` }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:8 }}>POSITIVE THEMES</div>
+                                {r.themes.positive.map((t:any,ti:number) => (
+                                  <div key={ti} style={{ marginBottom:6 }}>
+                                    <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, display:"flex", alignItems:"center", gap:6 }}>
+                                      {t.theme}
+                                      <span style={{ fontSize:8, fontFamily:mono, padding:"1px 5px", borderRadius:3, background:`${_C.green}15`, color:_C.green }}>{t.frequency}</span>
+                                    </div>
+                                    {t.evidence && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>"{t.evidence}"</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {r.themes?.negative?.length > 0 && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.red}06`, border:`1px solid ${_C.red}15` }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:8 }}>NEGATIVE THEMES</div>
+                                {r.themes.negative.map((t:any,ti:number) => (
+                                  <div key={ti} style={{ marginBottom:6 }}>
+                                    <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, display:"flex", alignItems:"center", gap:6 }}>
+                                      {t.theme}
+                                      <span style={{ fontSize:8, fontFamily:mono, padding:"1px 5px", borderRadius:3, background:`${_C.red}15`, color:_C.red }}>{t.frequency}</span>
+                                    </div>
+                                    {t.evidence && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>"{t.evidence}"</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Risk + Strength signals */}
+                          {(r.riskSignals?.length > 0 || r.strengthSignals?.length > 0) && (
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
+                              {r.riskSignals?.length > 0 && (
+                                <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:8 }}>RISK SIGNALS</div>
+                                  {r.riskSignals.map((s:any,si:number) => (
+                                    <div key={si} style={{ marginBottom:8 }}>
+                                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+                                        <span style={{ fontSize:8, fontFamily:mono, fontWeight:700, padding:"1px 5px", borderRadius:3,
+                                          background:s.severity==="high"?`${_C.red}15`:s.severity==="medium"?`${_C.amber}15`:`${_C.blue}10`,
+                                          color:s.severity==="high"?_C.red:s.severity==="medium"?_C.amber:_C.blue }}>{s.severity}</span>
+                                        <span style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text }}>{s.signal}</span>
+                                      </div>
+                                      {s.evidence && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:2 }}>"{s.evidence}"</div>}
+                                      {s.recommendation && <div style={{ fontSize:10, color:_C.accent, fontFamily:body, fontWeight:600 }}>→ {s.recommendation}</div>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {r.strengthSignals?.length > 0 && (
+                                <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:8 }}>STRENGTH SIGNALS</div>
+                                  {r.strengthSignals.map((s:any,si:number) => (
+                                    <div key={si} style={{ marginBottom:6 }}>
+                                      <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text }}>{s.signal}</div>
+                                      {s.evidence && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>"{s.evidence}"</div>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Recommendations */}
+                          {r.recommendations?.length > 0 && (
+                            <div style={{ marginBottom:20 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, marginBottom:10 }}>RECOMMENDATIONS</div>
+                              {r.recommendations.map((rec:any,ri:number) => (
+                                <div key={ri} style={{ padding:"12px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:8 }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                                    <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4,
+                                      background:rec.priority==="urgent"?`${_C.red}15`:rec.priority==="high"?`${_C.amber}15`:`${_C.blue}10`,
+                                      color:rec.priority==="urgent"?_C.red:rec.priority==="high"?_C.amber:_C.blue }}>{rec.priority}</span>
+                                    <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{rec.action}</span>
+                                  </div>
+                                  <div style={{ fontSize:11, color:_C.muted, fontFamily:body, lineHeight:1.5 }}>{rec.reasoning}</div>
+                                  {rec.expectedOutcome && <div style={{ fontSize:10, color:_C.green, fontFamily:body, fontWeight:600, marginTop:4 }}>Expected: {rec.expectedOutcome}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Recovery Playbook */}
+                          {r.recoveryPlaybook?.needed && (
+                            <div style={{ padding:"18px 20px", borderRadius:14, background:`${_C.red}06`, border:`1px solid ${_C.red}20`, marginBottom:20 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+                                <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"3px 8px", borderRadius:5,
+                                  background:r.recoveryPlaybook.urgency==="critical"?`${_C.red}15`:`${_C.amber}15`,
+                                  color:r.recoveryPlaybook.urgency==="critical"?_C.red:_C.amber }}>{r.recoveryPlaybook.urgency?.toUpperCase()}</span>
+                                <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>Recovery Playbook</span>
+                              </div>
+                              {r.recoveryPlaybook.steps?.map((s:any,si:number) => (
+                                <div key={si} style={{ display:"flex", gap:12, marginBottom:10 }}>
+                                  <div style={{ width:24, height:24, borderRadius:12, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
+                                    background:_C.accent, color:"#fff", fontSize:10, fontWeight:700, fontFamily:mono }}>{si+1}</div>
+                                  <div style={{ flex:1 }}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
+                                      <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{s.step}</span>
+                                      <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{s.timing}</span>
+                                    </div>
+                                    {s.script && (
+                                      <div style={{ padding:"6px 10px", borderRadius:6, background:_C.canvas, border:`1px solid ${_C.border}`,
+                                        fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, fontStyle:"italic" }}>
+                                        "{s.script}"
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* CSM Feedback */}
+                          <div style={{ background:_C.faint, border:`1px solid ${_C.border}`, borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                              <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4 }}>DISAGREE WITH SOMETHING?</span>
+                              {cd.co_sentiment_feedback && (
+                                <button onClick={()=>{setCompanyData((p:any)=>({...p, co_sentiment_feedback:""})); addToast({title:"Feedback cleared",status:"info",message:""});}}
+                                  style={{ background:"none", border:"none", color:_C.muted, fontSize:9, fontFamily:mono, cursor:"pointer" }}>Clear</button>
+                              )}
+                            </div>
+                            <textarea value={cd.co_sentiment_feedback||""} onChange={e=>setCompanyData((p:any)=>({...p, co_sentiment_feedback:e.target.value}))}
+                              placeholder="Tell the AI what it's missing or getting wrong — e.g. 'The client sounds frustrated but they're actually just direct', 'You're overweighting the 04-08 call — it was an off day', 'The relationship is better than this shows because...'"
+                              rows={2} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:12, fontFamily:body, resize:"vertical", outline:"none", lineHeight:1.6 }} />
+                            {cd.co_sentiment_feedback && (
+                              <button onClick={runSentiment} disabled={saRunning}
+                                style={{ marginTop:8, padding:"7px 16px", borderRadius:7, border:"none", background:saRunning?_C.muted:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:saRunning?"default":"pointer" }}>
+                                {saRunning ? "Re-analyzing..." : "Re-analyze with feedback"}
+                              </button>
+                            )}
+                          </div>
+
+                          {sa?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right" }}>Generated {new Date(sa.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})} at {new Date(sa.generatedAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>}
+                        </>)}
+
+                        {!r && !saRunning && <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted, fontSize:13 }}>Click "Analyze Sentiment" to get an unbiased assessment of client sentiment across all communications.</div>}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ═══ PITCH ANALYSIS TAB ═══ */}
+                  {callTab === "pitch" && (() => {
+                    const paKey = `__pitchAnalysis_${activeWorkspace?.id||""}`;
+                    const pa: any = (window as any)[paKey] || null;
+                    const paRunning = (window as any).__paRunning || false;
+                    const runPitch = async () => {
+                      if (!allConvos.length) { addToast({ title:"Add conversations first", status:"error", message:"Upload calls, emails, or Slack messages in the Conversations tab." }); return; }
+                      (window as any).__paRunning = true; setCallRecords(p=>p?[...p]:[]);
+                      addToast({ title:"Analyzing pitch...", status:"loading", message:"" });
+                      try {
+                        const raw = await callAI(
+                          `You are an expert B2B sales pitch analyst. Analyze ALL conversations below to evaluate how the CSM team is pitching this company's products and services.
+
+COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"})
+PITCH: ${cd.co_pitch||"not set"}
+VALUE PROP: ${cd.co_diff||"not set"}
+KEY SELLING POINTS: ${cd.co_ksp||"not set"}
+PRODUCTS: ${(products||[]).map((p:any)=>`${p.name}: ${p.valueProposition||p.description||""}`).join("; ")||"none"}
+PERSONAS: ${(icps||[]).map((p:any)=>`${p.name}: ${(p.data||{}).buyer||""}`).join("; ")||"none"}
+
+CONVERSATIONS (${allConvos.length} total):
+${convoContext.slice(0, 15000)}
+
+Analyze and return ONLY JSON:
+{
+  "overallScore": 0-100,
+  "grade": "Elite|Strong|Developing|Weak|Critical",
+  "positioning": {
+    "score": 0-100,
+    "assessment": "how well is the company positioned in conversations?",
+    "whatsBeingSaid": ["actual phrases/angles being used"],
+    "whatsMissing": ["value props, differentiators, or angles not being communicated"],
+    "competitorHandling": "how are competitors being addressed?"
+  },
+  "messageConsistency": {
+    "score": 0-100,
+    "assessment": "is the messaging consistent across conversations?",
+    "inconsistencies": ["specific contradictions or mixed messages"],
+    "strongMessages": ["messages that land well — evidence from conversations"]
+  },
+  "productKnowledge": {
+    "score": 0-100,
+    "gaps": ["products or features not being discussed or poorly explained"],
+    "strengths": ["products discussed confidently with good framing"]
+  },
+  "callToAction": {
+    "score": 0-100,
+    "assessment": "how strong are the CTAs and next step asks?",
+    "examples": ["good and bad CTA examples from conversations"]
+  },
+  "rewrittenPitch": "a rewritten, optimized 3-4 sentence pitch based on what works and what's missing",
+  "talkingPoints": ["5-7 specific talking points the CSM should use, based on what resonates"],
+  "avoidList": ["things being said that should stop — with why"]
+}`,
+                          "", 3000
+                        );
+                        const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        (window as any)[paKey] = { result, generatedAt: new Date().toISOString() };
+                        (window as any).__paRunning = false; setCallRecords(p=>p?[...p]:[]);
+                        addToast({ title:`Pitch: ${result.overallScore}/100 — ${result.grade}`, status:"success", message:"" });
+                      } catch { (window as any).__paRunning = false; setCallRecords(p=>p?[...p]:[]); addToast({ title:"Analysis failed", status:"error", message:"Try again" }); }
+                    };
+                    const r = pa?.result;
+                    return (
+                      <div style={{ marginTop:16 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                          <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>Analyzes how you're pitching this client across all conversations</div>
+                          <button disabled={paRunning} onClick={runPitch} style={{ padding:"8px 20px", borderRadius:8, border:"none", background:paRunning?_C.muted:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:paRunning?"default":"pointer" }}>
+                            {paRunning ? "Analyzing..." : r ? "Refresh" : "Analyze Pitch"}
+                          </button>
+                        </div>
+                        {r && (<>
+                          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr 1fr 1fr 1fr", gap:12, marginBottom:20 }}>
+                            <div style={{ textAlign:"center", padding:"16px 22px", borderRadius:12, background:`${r.overallScore>=75?_C.green:r.overallScore>=50?_C.amber:_C.red}08`, border:`1px solid ${r.overallScore>=75?_C.green:r.overallScore>=50?_C.amber:_C.red}20` }}>
+                              <div style={{ fontSize:32, fontWeight:800, fontFamily:head, color:r.overallScore>=75?_C.green:r.overallScore>=50?_C.amber:_C.red, lineHeight:1 }}>{r.overallScore}</div>
+                              <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginTop:4 }}>{r.grade}</div>
+                            </div>
+                            {[{l:"Positioning",s:r.positioning?.score},{l:"Consistency",s:r.messageConsistency?.score},{l:"Product Knowledge",s:r.productKnowledge?.score},{l:"CTA Strength",s:r.callToAction?.score}].map((s,si)=>(
+                              <div key={si} style={{ padding:"12px 14px", borderRadius:10, background:_C.faint }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:4, textTransform:"uppercase" as const }}>{s.l}</div>
+                                <div style={{ fontSize:22, fontWeight:800, fontFamily:head, color:(s.s||0)>=75?_C.green:(s.s||0)>=50?_C.amber:_C.red }}>{s.s||"?"}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {r.rewrittenPitch && (
+                            <div style={{ padding:"16px 18px", borderRadius:12, background:`${_C.accent}06`, border:`1px solid ${_C.accent}20`, marginBottom:16 }}>
+                              <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8, textTransform:"uppercase" as const }}>OPTIMIZED PITCH</div>
+                              <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.7, fontStyle:"italic" }}>"{r.rewrittenPitch}"</div>
+                            </div>
+                          )}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
+                            {r.talkingPoints?.length > 0 && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.green}06`, border:`1px solid ${_C.green}15` }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:8 }}>USE THESE TALKING POINTS</div>
+                                {r.talkingPoints.map((t:string,ti:number) => <div key={ti} style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:4 }}>• {t}</div>)}
+                              </div>
+                            )}
+                            {r.avoidList?.length > 0 && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.red}06`, border:`1px solid ${_C.red}15` }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:8 }}>STOP SAYING</div>
+                                {r.avoidList.map((a:string,ai:number) => <div key={ai} style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:4 }}>• {a}</div>)}
+                              </div>
+                            )}
+                          </div>
+                          {pa?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right" }}>Generated {new Date(pa.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>}
+                        </>)}
+                        {!r && !paRunning && <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted, fontSize:13 }}>Click "Analyze Pitch" to evaluate how you're positioning this client across all conversations.</div>}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ═══ CSM COACHING TAB ═══ */}
+                  {callTab === "coaching" && (() => {
+                    const coKey = `__csmCoaching_${activeWorkspace?.id||""}`;
+                    const co: any = (window as any)[coKey] || null;
+                    const coRunning = (window as any).__coRunning || false;
+                    const runCoaching = async () => {
+                      if (!allConvos.length) { addToast({ title:"Add conversations first", status:"error", message:"" }); return; }
+                      (window as any).__coRunning = true; setCallRecords(p=>p?[...p]:[]);
+                      addToast({ title:"Generating coaching...", status:"loading", message:"" });
+                      try {
+                        const raw = await callAI(
+                          `You are a world-class B2B sales coach. Analyze ALL conversations below and create a personalized coaching plan for the CSM team managing this client.
+
+COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"})
+PRODUCTS: ${(products||[]).map((p:any)=>p.name).join(", ")||"none"}
+
+CONVERSATIONS (${allConvos.length} total):
+${convoContext.slice(0, 15000)}
+
+Analyze the CSM's performance across ALL conversations and return ONLY JSON:
+{
+  "overallAssessment": "2-3 sentence honest assessment",
+  "strengths": [{"skill":"","evidence":"specific example","keepDoing":""}],
+  "weaknesses": [{"skill":"","evidence":"specific example","howToImprove":"concrete advice","scriptExample":"exact words to say"}],
+  "criticalFixes": [{"issue":"","impact":"what this costs","fix":"what to do","before":"what they said","after":"what to say instead"}],
+  "conversationSkills": {"discovery":{"score":0-10,"note":""},"objectionHandling":{"score":0-10,"note":""},"closingAbility":{"score":0-10,"note":""},"rapportBuilding":{"score":0-10,"note":""},"productKnowledge":{"score":0-10,"note":""},"urgencyCreation":{"score":0-10,"note":""},"activeListening":{"score":0-10,"note":""}},
+  "weeklyFocus": [{"week":"Week 1","focus":"","drill":"specific exercise"}]
+}
+
+Be brutally honest but constructive. Use specific quotes as evidence.`,
+                          "", 3000
+                        );
+                        const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        (window as any)[coKey] = { result, generatedAt: new Date().toISOString() };
+                        (window as any).__coRunning = false; setCallRecords(p=>p?[...p]:[]);
+                        addToast({ title:"Coaching plan generated", status:"success", message:"" });
+                      } catch { (window as any).__coRunning = false; setCallRecords(p=>p?[...p]:[]); addToast({ title:"Failed", status:"error", message:"" }); }
+                    };
+                    const r = co?.result;
+                    const skills = r?.conversationSkills || {};
+                    return (
+                      <div style={{ marginTop:16 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                          <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>Personalized coaching based on real conversation performance</div>
+                          <button disabled={coRunning} onClick={runCoaching} style={{ padding:"8px 20px", borderRadius:8, border:"none", background:coRunning?_C.muted:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:coRunning?"default":"pointer" }}>
+                            {coRunning ? "Analyzing..." : r ? "Refresh" : "Generate Coaching Plan"}
+                          </button>
+                        </div>
+                        {r && (<>
+                          {r.overallAssessment && <div style={{ padding:"16px 18px", borderRadius:12, background:_C.faint, marginBottom:16, fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.6 }}>{r.overallAssessment}</div>}
+                          {Object.keys(skills).length > 0 && (
+                            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:10, marginBottom:20 }}>
+                              {Object.entries(skills).map(([k,v]:any) => (
+                                <div key={k} style={{ padding:"10px 12px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`, textAlign:"center" }}>
+                                  <div style={{ fontSize:22, fontWeight:800, fontFamily:head, color:v.score>=7?_C.green:v.score>=4?_C.amber:_C.red, lineHeight:1 }}>{v.score}</div>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginTop:4, textTransform:"uppercase" as const }}>{k.replace(/([A-Z])/g," $1").trim()}</div>
+                                  {v.note && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:4, lineHeight:1.3 }}>{v.note}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {r.criticalFixes?.length > 0 && (
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>CRITICAL FIXES</div>
+                              {r.criticalFixes.map((f:any,fi:number) => (
+                                <div key={fi} style={{ padding:"14px 16px", borderRadius:10, background:`${_C.red}06`, border:`1px solid ${_C.red}15`, marginBottom:8 }}>
+                                  <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>{f.issue}</div>
+                                  <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginBottom:6 }}>{f.impact}</div>
+                                  {f.before && <div style={{ padding:"6px 10px", borderRadius:6, background:`${_C.red}08`, marginBottom:4, fontSize:11, fontFamily:body }}><span style={{ color:_C.red, fontWeight:600 }}>Before:</span> <span style={{ color:_C.text }}>{f.before}</span></div>}
+                                  {f.after && <div style={{ padding:"6px 10px", borderRadius:6, background:`${_C.green}08`, marginBottom:4, fontSize:11, fontFamily:body }}><span style={{ color:_C.green, fontWeight:600 }}>After:</span> <span style={{ color:_C.text }}>{f.after}</span></div>}
+                                  <div style={{ fontSize:11, fontFamily:body, color:_C.accent, fontWeight:600, marginTop:4 }}>→ {f.fix}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
+                            {r.strengths?.length > 0 && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.green}06`, border:`1px solid ${_C.green}15` }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:8 }}>STRENGTHS</div>
+                                {r.strengths.map((s:any,si:number) => <div key={si} style={{ marginBottom:8 }}><div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{s.skill}</div><div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>{s.evidence}</div><div style={{ fontSize:10, color:_C.green, marginTop:2 }}>→ {s.keepDoing}</div></div>)}
+                              </div>
+                            )}
+                            {r.weaknesses?.length > 0 && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.amber}06`, border:`1px solid ${_C.amber}15` }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.amber, marginBottom:8 }}>AREAS TO IMPROVE</div>
+                                {r.weaknesses.map((w:any,wi:number) => <div key={wi} style={{ marginBottom:8 }}><div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{w.skill}</div><div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>{w.evidence}</div><div style={{ fontSize:10, color:_C.amber, fontWeight:600, marginTop:2 }}>→ {w.howToImprove}</div>{w.scriptExample && <div style={{ padding:"4px 8px", borderRadius:4, background:_C.faint, marginTop:4, fontSize:10, fontFamily:mono, color:_C.text }}>"{w.scriptExample}"</div>}</div>)}
+                              </div>
+                            )}
+                          </div>
+                          {r.weeklyFocus?.length > 0 && (
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>WEEKLY TRAINING PLAN</div>
+                              <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(r.weeklyFocus.length,4)},1fr)`, gap:10 }}>
+                                {r.weeklyFocus.map((w:any,wi:number) => <div key={wi} style={{ padding:"12px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}` }}><div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:4 }}>{w.week}</div><div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>{w.focus}</div><div style={{ fontSize:10, color:_C.muted, fontFamily:body, lineHeight:1.4 }}>{w.drill}</div></div>)}
+                              </div>
+                            </div>
+                          )}
+                          {co?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right" }}>Generated {new Date(co.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>}
+                        </>)}
+                        {!r && !coRunning && <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted, fontSize:13 }}>Click "Generate Coaching Plan" to get personalized coaching based on real conversations.</div>}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ═══ CLIENT INTEL TAB ═══ */}
+                  {callTab === "intel" && (() => {
+                    const ciKey = `__clientIntel_${activeWorkspace?.id||""}`;
+                    const ci: any = (window as any)[ciKey] || null;
+                    const ciRunning = (window as any).__ciRunning || false;
+                    const runIntel = async () => {
+                      if (!allConvos.length) { addToast({ title:"Add conversations first", status:"error", message:"" }); return; }
+                      (window as any).__ciRunning = true; setCallRecords(p=>p?[...p]:[]);
+                      addToast({ title:"Building client intel...", status:"loading", message:"" });
+                      try {
+                        const raw = await callAI(
+                          `You are a B2B client intelligence analyst. Analyze ALL conversations below to build a comprehensive profile of how this client thinks, makes decisions, and what drives them.
+
+COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"})
+PRODUCTS: ${(products||[]).map((p:any)=>p.name).join(", ")||"none"}
+
+CONVERSATIONS (${allConvos.length} total — calls, emails, Slack):
+${convoContext.slice(0, 15000)}
+
+Build a client intelligence profile. Return ONLY JSON:
+{
+  "decisionMaking": {"style":"consensus|top-down|data-driven|relationship-driven|committee|mixed","description":"how they decide","keyInfluencers":["who + role"],"triggers":["what causes action"]},
+  "communicationPreferences": {"doThis":["approaches that work"],"dontDoThis":["approaches that fail"]},
+  "objections": [{"objection":"","context":"","bestResponse":"","status":"resolved|recurring|new"}],
+  "priorities": {"whatTheyCareMostAbout":["in order"],"hiddenAgendas":["underlying motivations"]},
+  "personality": {"workingStyle":"","petPeeves":[""],"whatImpressesThem":[""],"trustLevel":"high|medium|low|building"},
+  "relationshipPlaybook": [{"situation":"","approach":"","why":""}],
+  "riskFactors": [{"risk":"","severity":"high|medium|low","mitigation":""}],
+  "quickReference": {"oneLiner":"","goldenRule":"single most important thing","avoid":"one thing that damages trust"}
+}
+
+Be specific and evidence-based. Reference actual conversation moments.`,
+                          "", 3500
+                        );
+                        const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        (window as any)[ciKey] = { result, generatedAt: new Date().toISOString() };
+                        (window as any).__ciRunning = false; setCallRecords(p=>p?[...p]:[]);
+                        addToast({ title:"Client intel profile built", status:"success", message:"" });
+                      } catch { (window as any).__ciRunning = false; setCallRecords(p=>p?[...p]:[]); addToast({ title:"Failed", status:"error", message:"" }); }
+                    };
+                    const r = ci?.result;
+                    return (
+                      <div style={{ marginTop:16 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                          <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>How this client thinks, decides, and what drives them</div>
+                          <button disabled={ciRunning} onClick={runIntel} style={{ padding:"8px 20px", borderRadius:8, border:"none", background:ciRunning?_C.muted:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:ciRunning?"default":"pointer" }}>
+                            {ciRunning ? "Analyzing..." : r ? "Refresh" : "Build Client Profile"}
+                          </button>
+                        </div>
+                        {r && (<>
+                          {r.quickReference && (
+                            <div style={{ padding:"18px 20px", borderRadius:14, background:`${_C.accent}06`, border:`1px solid ${_C.accent}20`, marginBottom:20 }}>
+                              <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:8 }}>{r.quickReference.oneLiner}</div>
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                                <div style={{ padding:"8px 12px", borderRadius:8, background:`${_C.green}08` }}><div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:3 }}>GOLDEN RULE</div><div style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5 }}>{r.quickReference.goldenRule}</div></div>
+                                <div style={{ padding:"8px 12px", borderRadius:8, background:`${_C.red}08` }}><div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:3 }}>NEVER DO THIS</div><div style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5 }}>{r.quickReference.avoid}</div></div>
+                              </div>
+                            </div>
+                          )}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
+                            {r.decisionMaking && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8 }}>DECISION MAKING — <span style={{ textTransform:"uppercase" as const }}>{r.decisionMaking.style}</span></div>
+                                <div style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:6 }}>{r.decisionMaking.description}</div>
+                                {r.decisionMaking.keyInfluencers?.length > 0 && <div style={{ fontSize:10, color:_C.muted, marginBottom:4 }}>Influencers: {r.decisionMaking.keyInfluencers.join(", ")}</div>}
+                                {r.decisionMaking.triggers?.length > 0 && <div style={{ marginTop:4 }}>{r.decisionMaking.triggers.map((t:string,ti:number) => <div key={ti} style={{ fontSize:10, color:_C.green, marginBottom:2 }}>⚡ {t}</div>)}</div>}
+                              </div>
+                            )}
+                            {r.communicationPreferences && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8 }}>COMMUNICATION</div>
+                                {r.communicationPreferences.doThis?.length > 0 && <div style={{ marginBottom:6 }}>{r.communicationPreferences.doThis.map((d:string,di:number) => <div key={di} style={{ fontSize:11, fontFamily:body, color:_C.green, marginBottom:3 }}>✓ {d}</div>)}</div>}
+                                {r.communicationPreferences.dontDoThis?.length > 0 && <div>{r.communicationPreferences.dontDoThis.map((d:string,di:number) => <div key={di} style={{ fontSize:11, fontFamily:body, color:_C.red, marginBottom:3 }}>✗ {d}</div>)}</div>}
+                              </div>
+                            )}
+                          </div>
+                          {r.objections?.length > 0 && (
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>OBJECTIONS & HOW TO HANDLE THEM</div>
+                              {r.objections.map((o:any,oi:number) => (
+                                <div key={oi} style={{ padding:"12px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:8, borderLeft:`3px solid ${o.status==="resolved"?_C.green:o.status==="recurring"?_C.amber:_C.blue}` }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}><span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{o.objection}</span><span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:o.status==="resolved"?`${_C.green}12`:o.status==="recurring"?`${_C.amber}12`:`${_C.blue}12`, color:o.status==="resolved"?_C.green:o.status==="recurring"?_C.amber:_C.blue }}>{o.status}</span></div>
+                                  <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:4 }}>{o.context}</div>
+                                  <div style={{ fontSize:11, fontFamily:body, color:_C.green, fontWeight:600 }}>→ {o.bestResponse}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
+                            {r.personality && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8 }}>PERSONALITY</div>
+                                <div style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:4 }}>{r.personality.workingStyle}</div>
+                                <div style={{ fontSize:10, color:_C.muted, marginBottom:4 }}>Trust: <strong style={{ color:r.personality.trustLevel==="high"?_C.green:r.personality.trustLevel==="low"?_C.red:_C.amber }}>{r.personality.trustLevel}</strong></div>
+                                {r.personality.whatImpressesThem?.length > 0 && <div style={{ marginTop:4 }}>{r.personality.whatImpressesThem.map((w:string,wi:number) => <div key={wi} style={{ fontSize:10, color:_C.green, marginBottom:2 }}>✓ {w}</div>)}</div>}
+                                {r.personality.petPeeves?.length > 0 && <div style={{ marginTop:4 }}>{r.personality.petPeeves.map((p:string,pi:number) => <div key={pi} style={{ fontSize:10, color:_C.red, marginBottom:2 }}>✗ {p}</div>)}</div>}
+                              </div>
+                            )}
+                            {r.priorities && (
+                              <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8 }}>PRIORITIES</div>
+                                {r.priorities.whatTheyCareMostAbout?.length > 0 && <div style={{ marginBottom:6 }}>{r.priorities.whatTheyCareMostAbout.map((c:string,ci:number) => <div key={ci} style={{ fontSize:11, fontFamily:body, color:_C.text, marginBottom:2 }}>{ci+1}. {c}</div>)}</div>}
+                                {r.priorities.hiddenAgendas?.length > 0 && <div><div style={{ fontSize:9, fontFamily:mono, color:_C.amber, marginBottom:3 }}>HIDDEN MOTIVATIONS</div>{r.priorities.hiddenAgendas.map((h:string,hi:number) => <div key={hi} style={{ fontSize:10, fontFamily:body, color:_C.muted, fontStyle:"italic", marginBottom:2 }}>• {h}</div>)}</div>}
+                              </div>
+                            )}
+                          </div>
+                          {r.relationshipPlaybook?.length > 0 && (
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>RELATIONSHIP PLAYBOOK</div>
+                              {r.relationshipPlaybook.map((p:any,pi:number) => <div key={pi} style={{ padding:"10px 14px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:6 }}><div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.text }}>{p.situation}</div><div style={{ fontSize:11, fontFamily:body, color:_C.accent, fontWeight:600, marginTop:3 }}>→ {p.approach}</div><div style={{ fontSize:10, fontFamily:body, color:_C.muted, marginTop:2 }}>{p.why}</div></div>)}
+                            </div>
+                          )}
+                          {r.riskFactors?.length > 0 && (
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>RISK FACTORS</div>
+                              {r.riskFactors.map((rf:any,ri:number) => <div key={ri} style={{ display:"flex", gap:10, padding:"8px 12px", borderRadius:8, background:`${rf.severity==="high"?_C.red:rf.severity==="medium"?_C.amber:_C.blue}06`, border:`1px solid ${rf.severity==="high"?_C.red:rf.severity==="medium"?_C.amber:_C.blue}15`, marginBottom:4 }}><span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:rf.severity==="high"?`${_C.red}15`:`${_C.amber}15`, color:rf.severity==="high"?_C.red:_C.amber, flexShrink:0 }}>{rf.severity?.toUpperCase()}</span><div><div style={{ fontSize:11, fontFamily:body, color:_C.text }}>{rf.risk}</div><div style={{ fontSize:10, color:_C.muted, marginTop:2 }}>→ {rf.mitigation}</div></div></div>)}
+                            </div>
+                          )}
+                          {ci?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right" }}>Generated {new Date(ci.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>}
+                        </>)}
+                        {!r && !ciRunning && <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted, fontSize:13 }}>Click "Build Client Profile" to create an intelligence profile from all conversations.</div>}
+                      </div>
+                    );
+                  })()}
+
                 </div>
               </div>);
             })()}
