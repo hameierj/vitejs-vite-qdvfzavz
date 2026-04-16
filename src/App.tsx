@@ -13595,8 +13595,8 @@ Raw JSON only.`, "", 1400);
                     </button>
                   )}
 
-                  {/* Admin Panel */}
-                  {currentRole === "team" && (
+                  {/* Admin Panel — admin only */}
+                  {currentRole === "team" && loggedInUser?.email?.toLowerCase() === (import.meta.env.VITE_ADMIN_USER || "").toLowerCase() && (
                     <button onClick={()=>{ setProfileMenuOpen(false); setAppMode("admin"); }}
                       style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
                         borderRadius:7, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
