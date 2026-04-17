@@ -925,6 +925,17 @@ const APPROVAL_CFG = {
 let _seq = 0;
 const uid = () => `${Date.now()}-${++_seq}`;
 
+const CALL_TYPE_LABELS: Record<string,string> = {
+  onboarding: "Onboarding",
+  launch: "Launch Call",
+  draft_review: "Draft Review",
+  weekly_checkin: "Weekly Check-in",
+  qbr: "QBR",
+  touchpoint: "Touchpoint / Misc",
+  followup: "Weekly Check-in", // legacy records — display as the new name
+};
+const callTypeLabel = (t: string) => CALL_TYPE_LABELS[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Call");
+
 function getApiKey() {
   return window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || import.meta.env.VITE_API_KEY || "";
 }
@@ -955,6 +966,77 @@ function getSlackToken() {
 }
 function setSlackToken(token: string) {
   localStorage.setItem("b2br_slack_token", token);
+}
+
+// ─── HUBSPOT INTEGRATION ────────────────────────────────────────────────────
+const HUBSPOT_PROXY_URL = `${SUPABASE_URL}/functions/v1/hubspot-proxy`;
+
+function getHubspotToken() {
+  return localStorage.getItem("b2br_hubspot_token") || "";
+}
+function setHubspotToken(token: string) {
+  localStorage.setItem("b2br_hubspot_token", token);
+}
+
+async function hubspotApiFetch(path: string, method: "GET" | "POST" = "GET", body?: any): Promise<any> {
+  const token = getHubspotToken();
+  if (!token) return { error: "No HubSpot token configured" };
+  const resp = await fetch(HUBSPOT_PROXY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-hubspot-token": token,
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify({ path, method, body }),
+  });
+  return resp.json();
+}
+
+// Look up a company in HubSpot by website domain (e.g. "brandbuddy.co")
+async function hubspotFindCompanyByDomain(domain: string): Promise<any> {
+  const cleaned = domain.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0].trim().toLowerCase();
+  if (!cleaned) return null;
+  const result = await hubspotApiFetch("/crm/v3/objects/companies/search", "POST", {
+    filterGroups: [{
+      filters: [{ propertyName: "domain", operator: "EQ", value: cleaned }],
+    }],
+    properties: ["name", "domain", "website"],
+    limit: 1,
+  });
+  return result?.results?.[0] || null;
+}
+
+// Get ALL properties on a HubSpot company (requires two calls — schema + full company)
+async function hubspotGetCompanyFull(companyId: string): Promise<any> {
+  // 1. List all property names defined on companies
+  const schema = await hubspotApiFetch("/crm/v3/properties/companies", "GET");
+  const propNames = (schema?.results || []).map((p: any) => p.name);
+  if (!propNames.length) return null;
+  // 2. Fetch company with all properties (chunk into 100-at-a-time if needed; URL length limits)
+  const chunks: string[][] = [];
+  for (let i = 0; i < propNames.length; i += 100) chunks.push(propNames.slice(i, i + 100));
+  const merged: Record<string, any> = {};
+  for (const chunk of chunks) {
+    const qs = `properties=${chunk.join(",")}`;
+    const data = await hubspotApiFetch(`/crm/v3/objects/companies/${companyId}?${qs}`, "GET");
+    Object.assign(merged, data?.properties || {});
+  }
+  return { id: companyId, properties: merged };
+}
+
+// Get all emails associated with a HubSpot company
+async function hubspotGetCompanyEmails(companyId: string): Promise<any[]> {
+  const assoc = await hubspotApiFetch(`/crm/v3/objects/companies/${companyId}/associations/emails`, "GET");
+  const emailIds: string[] = (assoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean);
+  if (!emailIds.length) return [];
+  // Batch read emails with content properties
+  const batch = await hubspotApiFetch("/crm/v3/objects/emails/batch/read", "POST", {
+    inputs: emailIds.map(id => ({ id })),
+    properties: ["hs_email_subject", "hs_email_text", "hs_email_html", "hs_email_from_email", "hs_email_to_email", "hs_email_direction", "hs_timestamp", "hs_createdate"],
+  });
+  return batch?.results || [];
 }
 
 async function fetchSlackMessages(channelId: string, oldest?: string): Promise<{ok:boolean; messages:any[]; error?:string}> {
@@ -1116,9 +1198,118 @@ function loadApiLogs(): ApiLog[] {
   } catch { return []; }
 }
 
-async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
+// ─── FULL WORKSPACE CONTEXT ──────────────────────────────────────────────────
+// Pure function that assembles a comprehensive context string from all workspace data.
+// Consumed by callAI (via useFullContext flag) to give every AI generator full visibility.
+// The returned string is identical within a session (assuming unchanged data), so the
+// Anthropic prompt cache can hit when sent as a cache_control: "ephemeral" block.
+function buildFullContext(d: any): string {
+  if (!d) return "";
+  const parts: string[] = [];
+  const push = (title: string, body: string) => { if (body && body.trim()) parts.push(`\n## ${title}\n${body}`); };
+  const cd = d.companyData || {};
+  // Company
+  const coLines = Object.entries(cd).filter(([k, v]) => !k.startsWith("_") && v && String(v).trim()).map(([k, v]) => `${k}: ${String(v).slice(0, 800)}`);
+  if (coLines.length) push("COMPANY PROFILE", coLines.join("\n"));
+  // Products
+  if (d.products?.length) push("PRODUCTS / SERVICES", d.products.map((p: any, i: number) => `${i + 1}. ${p.name} (${p.category || "?"})\n  Description: ${p.description || ""}\n  Problems solved: ${p.problemsSolved || ""}\n  Value prop: ${p.valueProposition || ""}\n  Ideal customer: ${p.idealCustomer || ""}\n  Competitors: ${p.competitors || ""}\n  Deal type: ${p.dealType || ""}  ACV: ${p.acv || ""}  LTV: ${p.ltv || ""}`).join("\n\n"));
+  // Personas
+  if (d.personas?.length) push("PERSONAS / ICPs", d.personas.map((p: any, i: number) => {
+    const pd = p.data || {};
+    return `${i + 1}. ${p.name}\n  Buyer: ${pd.buyer || ""}\n  Industries: ${pd.industries || ""}\n  Size: ${(pd.co_sizes || []).join(", ")}  Geo: ${pd.geo || ""}\n  Primary pain: ${pd.pain1 || ""}\n  Secondary pain: ${pd.pain2 || ""}\n  Goals: ${pd.goals || ""}\n  Triggers: ${pd.triggers || ""}\n  Objections: ${pd.objections || ""}\n  Best channel: ${pd.best_channel || ""}  Tone: ${pd.tone || ""}  CTA: ${pd.cta || ""}\n  Why we win: ${pd.why_client_wins || ""}`;
+  }).join("\n\n"));
+  // Offers
+  if (d.offers?.length) push("OFFERS", d.offers.map((o: any) => {
+    const prod = d.products?.find((p: any) => p.id === o.productId);
+    const pers = d.personas?.find((p: any) => p.id === o.personaId);
+    return `[${o.tier || "?"}] ${prod?.name || "?"} × ${pers?.name || "?"}: "${o.ctaText || o.name || ""}" — ${o.whatTheyGet || ""}`;
+  }).join("\n"));
+  // Campaigns
+  if (d.campaigns?.length) push("CAMPAIGNS", d.campaigns.map((c: any) => `[${c.lifecycleStatus || "?"}] ${c.label || "Untitled"} — Persona: ${c.personaIds?.[0] || "?"}, Product: ${c.productId || "?"}, Offer: ${c.offerTier || "?"}, Channel: ${c.channel || "?"}`).join("\n"));
+  // Strategy
+  if (d.strategy) push("STRATEGY ROADMAP", JSON.stringify(d.strategy).slice(0, 3000));
+  // Playbooks
+  if (d.playbooks?.length) push("PLAYBOOKS", d.playbooks.map((p: any, i: number) => `${i + 1}. ${p.name || `Playbook ${i + 1}`}: objections=${(p.objections || []).length}, signals=${(p.signals || []).length}`).join("\n"));
+  // Battlecards
+  if (d.battlecards?.length) push("BATTLECARDS", d.battlecards.map((b: any) => `${b.competitorName || "?"}: strengths=${(b.strengths || "").slice(0, 120)} | weaknesses=${(b.weaknesses || "").slice(0, 120)} | displacement=${(b.displacementAngles || "").slice(0, 120)}`).join("\n"));
+  // Content assets (Knowledge Center links)
+  if (d.contentAssets?.length) push("CONTENT ASSETS / KNOWLEDGE LINKS", d.contentAssets.slice(0, 30).map((c: any) => `- ${c.title || c.url || "Untitled"} (${c.type || "other"}): ${c.description || ""}`).join("\n"));
+  // Knowledge Center files
+  if (d.wsFiles?.length) push("KNOWLEDGE CENTER FILES", d.wsFiles.slice(0, 20).map((f: any) => `- ${f.name || "?"}: ${(f.content || f.text || "").slice(0, 400)}`).join("\n"));
+  if (d.wsLinks?.length) push("KNOWLEDGE CENTER LINKS", d.wsLinks.slice(0, 20).map((l: any) => `- ${l.title || l.url}: ${l.description || ""}`).join("\n"));
+  // ROI + DFY
+  if (d.roiConfig) push("ROI CONFIG", JSON.stringify(d.roiConfig).slice(0, 500));
+  if (d.dfySetup) push("DFY SETUP", JSON.stringify(d.dfySetup).slice(0, 800));
+  // Performance logs
+  if (d.perfLogs?.length) push("PERFORMANCE LOGS (recent)", d.perfLogs.slice(0, 12).map((p: any) => {
+    const m = p.metrics || {};
+    return `[${p.date || "?"}] sent=${m.sent || 0} opens=${m.opens || 0} replies=${m.replies || 0} meetings=${m.meetings || 0} revenue=${m.revenue || 0}`;
+  }).join("\n"));
+  // Call records (summaries + recent transcripts)
+  if (d.callRecords?.length) {
+    push("CALL RECORDS (summaries)", d.callRecords.slice(0, 20).map((r: any) => `[${r.callDate || "?"}] ${r.callType || "?"} — Score: ${r.result?.overallScore || "?"}/100, Sentiment: ${r.result?.sentiment?.score || "?"}/10, Grade: ${r.result?.grade || "?"}`).join("\n"));
+    const recent = [...d.callRecords].sort((a: any, b: any) => new Date(b.callDate || b.scoredAt).getTime() - new Date(a.callDate || a.scoredAt).getTime()).slice(0, 3);
+    push("RECENT CALL TRANSCRIPTS (top 3, truncated)", recent.map((r: any) => `\n[${r.callDate || "?"}] ${r.callType || "?"}\n${(r.transcript || "").slice(0, 3500)}${r.transcript?.length > 3500 ? "\n...(truncated)" : ""}`).join("\n"));
+  }
+  // Communications (Slack / Email / HubSpot)
+  if (d.slackComms?.length) {
+    const slackDays = d.slackComms.filter((c: any) => c.type === "slack");
+    const slackMsgs = slackDays.reduce((s: number, c: any) => s + (c.messageCount || 0), 0);
+    const emailCount = d.slackComms.filter((c: any) => c.type === "email").length;
+    push("CLIENT COMMUNICATIONS", `${slackMsgs} Slack messages (${slackDays.length} days) · ${emailCount} emails\n` + d.slackComms.slice(0, 30).map((c: any) => {
+      const clean = (c.content || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").slice(0, 400);
+      return `[${c.type}${c.source ? "/" + c.source : ""} ${c.date || "?"}] ${c.subject ? c.subject + " — " : ""}${clean}`;
+    }).join("\n"));
+  }
+  // AI analyses
+  if (d.sentiment) {
+    const s = d.sentiment;
+    push("SENTIMENT ANALYSIS", `Overall: ${s.overallSentiment?.score}/10 (${s.overallSentiment?.label}) trend: ${s.overallSentiment?.trend}\n${s.overallSentiment?.summary || ""}\nRisks: ${(s.riskSignals || []).map((r: any) => `[${r.severity}] ${r.signal}`).join("; ")}\nRecs: ${(s.recommendations || []).map((r: any) => `[${r.priority}] ${r.action}`).join("; ")}`);
+  }
+  if (d.pitch) {
+    const p = d.pitch;
+    push("PITCH ANALYSIS", `Score: ${p.overallScore}/100 (${p.grade})\nOptimized pitch: ${p.rewrittenPitch || ""}\nTalking points: ${(p.talkingPoints || []).join("; ")}\nStop saying: ${(p.avoidList || []).join("; ")}\nCTA: ${p.callToAction?.assessment || ""}`);
+  }
+  if (d.coaching) {
+    const c = d.coaching;
+    push("CSM COACHING", `${c.overallAssessment || ""}\nCritical fixes: ${(c.criticalFixes || []).map((f: any) => f.issue).join("; ")}\nSkills: ${Object.entries(c.conversationSkills || {}).map(([k, v]: any) => `${k}=${v.score}`).join(", ")}`);
+  }
+  if (d.intel) {
+    const i = d.intel;
+    push("CLIENT INTEL", `${i.quickReference?.oneLiner || ""}\nGolden rule: ${i.quickReference?.goldenRule || ""}\nNever: ${i.quickReference?.avoid || ""}\nDecision: ${i.decisionMaking?.style || ""} — ${i.decisionMaking?.description || ""}\nObjections: ${(i.objections || []).map((o: any) => `${o.objection}(${o.status})`).join("; ")}`);
+  }
+  if (d.stratAnalysis) {
+    const s = d.stratAnalysis;
+    push("STRATEGIC ANALYSIS", `Health: ${s.overallHealth?.score}/10 — ${s.overallHealth?.oneLiner || ""}\nPositioning: ${s.positioning?.assessment || ""}\nPivots: ${(s.strategicPivots || []).map((p: any) => p.title).join("; ")}`);
+  }
+  // HubSpot properties — READ-ONLY
+  const hsProps = cd._hubspotProps;
+  if (hsProps && Object.keys(hsProps).length > 0) {
+    const meaningful = Object.entries(hsProps).filter(([k, v]) => v != null && v !== "" && !k.startsWith("hs_") && !k.startsWith("notes_")).slice(0, 120);
+    if (meaningful.length) push("HUBSPOT COMPANY DATA (READ-ONLY)", meaningful.map(([k, v]) => `${k}: ${String(v).slice(0, 200)}`).join("\n"));
+  }
+  return parts.join("\n");
+}
+
+// Read full context from the window-stored workspace snapshot (set by AppMain useEffect)
+function getFullContext(): string {
+  return (window as any).__workspaceCtx || "";
+}
+
+async function callAI(prompt: string, sys = "", tokens = 800, optionsOrRetries: number | { retries?: number; useFullContext?: boolean } = 5) {
   const key = getApiKey();
   if (!key) { alert("Please enter your Anthropic API key first (top-right corner)."); return ""; }
+  const _retries = typeof optionsOrRetries === "number" ? optionsOrRetries : (optionsOrRetries?.retries ?? 5);
+  const _useFullContext = typeof optionsOrRetries === "object" && optionsOrRetries?.useFullContext === true;
+  const fullCtx = _useFullContext ? getFullContext() : "";
+  // Build messages: if using full context, prepend it as a cacheable block so the same context
+  // across many calls hits the Anthropic ephemeral cache (5-min TTL).
+  const userContent: any = fullCtx
+    ? [
+        { type: "text", text: `WORKSPACE CONTEXT (read-only snapshot):\n${fullCtx}`, cache_control: { type: "ephemeral" } },
+        { type: "text", text: prompt },
+      ]
+    : prompt;
   const startTime = Date.now();
   for (let attempt = 0; attempt <= _retries; attempt++) {
     try {
@@ -1133,7 +1324,7 @@ async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
         body: JSON.stringify({
           model:"claude-sonnet-4-6", max_tokens: tokens,
           system: sys || "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.",
-          messages:[{ role:"user", content:prompt }],
+          messages:[{ role:"user", content: userContent }],
         }),
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
@@ -1164,7 +1355,7 @@ async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
 }
 
 async function callAIStream(
-  messages: { role: "user" | "assistant"; content: string }[],
+  messages: { role: "user" | "assistant"; content: string | any[] }[],
   sys: string,
   tokens: number,
   onChunk: (text: string) => void,
@@ -1532,6 +1723,21 @@ const COPILOT_TOOLS = [
       required: ["changes"],
     },
   },
+  {
+    name: "rerun_analysis",
+    description: "Re-run a Client Intelligence AI analysis with fresh conversation data. Use when the user says 'refresh the sentiment analysis', 'regenerate coaching', 'update the client intel profile', or after they've added new calls/emails that should change the analysis. Valid analysis keys: sentiment, pitch, coaching, intel.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        analysis: {
+          type: "string" as const,
+          enum: ["sentiment", "pitch", "coaching", "intel"],
+          description: "Which analysis to re-run",
+        },
+      },
+      required: ["analysis"],
+    },
+  },
 ];
 
 // Stream AI response with tool-use support, returns { text, toolCalls }
@@ -1634,18 +1840,46 @@ async function callAIStreamWithTools(
 
 // Fetch a web page's raw HTML via CORS proxy (tries multiple proxies)
 async function fetchPageHTML(url: string): Promise<string> {
-  const proxies = [
-    (u:string) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}`,
-    (u:string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  // Try the given URL first, then fall back to www. variant (or bare if www. was given) —
+  // many sites have SSL certs only valid for the www. subdomain (or vice versa).
+  const variants: string[] = [url];
+  try {
+    const u = new URL(url);
+    if (u.hostname.startsWith("www.")) {
+      const bare = new URL(url); bare.hostname = u.hostname.slice(4); variants.push(bare.toString());
+    } else {
+      const www = new URL(url); www.hostname = "www." + u.hostname; variants.push(www.toString());
+    }
+  } catch {}
+
+  const proxies: { name:string; make:(u:string)=>string }[] = [
+    { name:"corsproxy.io", make:(u:string) => `https://corsproxy.io/?${encodeURIComponent(u)}` },
+    { name:"codetabs",     make:(u:string) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}` },
+    { name:"allorigins",   make:(u:string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+    { name:"thingproxy",   make:(u:string) => `https://thingproxy.freeboard.io/fetch/${u}` },
   ];
-  for (const makeUrl of proxies) {
-    try {
-      const r = await fetch(makeUrl(url), { signal: AbortSignal.timeout(12000) });
-      if (!r.ok) continue;
-      const html = await r.text();
-      if (html && html.length > 200 && !html.includes("error code:")) return html;
-    } catch {}
+  for (const variantUrl of variants) {
+    for (const p of proxies) {
+      try {
+        const r = await fetch(p.make(variantUrl), { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) { console.warn(`[fetch] ${p.name} HTTP ${r.status} for ${variantUrl}`); continue; }
+        const html = await r.text();
+        if (!html || html.length < 200) { console.warn(`[fetch] ${p.name} empty for ${variantUrl} (${html?.length||0} chars)`); continue; }
+        if (html.includes("error code:") || html.includes("Please verify you are human")) { console.warn(`[fetch] ${p.name} blocked for ${variantUrl}`); continue; }
+        // Detect 404-style stub pages (common when CORS proxy gets a redirect/error and serves a site-wide error page)
+        const lowerHtml = html.toLowerCase();
+        if ((lowerHtml.includes("404") || lowerHtml.includes("page not found") || lowerHtml.includes("doesn't exist")) && html.length < 5000) {
+          console.warn(`[fetch] ${p.name} returned a 404-like stub for ${variantUrl} (${html.length} chars)`);
+          continue;
+        }
+        console.log(`[fetch] ✓ ${p.name} returned ${html.length} chars for ${variantUrl}`);
+        return html;
+      } catch (e:any) {
+        console.warn(`[fetch] ${p.name} threw for ${variantUrl}:`, e?.message || e);
+      }
+    }
   }
+  console.error(`[fetch] ALL proxies failed for all variants of ${url}`);
   return "";
 }
 
@@ -3019,6 +3253,12 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
 
             // Discover product pages via sitemaps — all in parallel
             const baseDomain = new URL(normalizedUrl).hostname.replace(/^www\./, "");
+            // If we have HTML, infer the canonical origin from extracted links — the site may only serve www version
+            let canonicalOrigin = new URL(normalizedUrl).origin;
+            if (homeHTML) {
+              const wwwLink = extractLinks(homeHTML, normalizedUrl).find(l => { try { return new URL(l.href).hostname === `www.${baseDomain}`; } catch { return false; } });
+              if (wwwLink) canonicalOrigin = `https://www.${baseDomain}`;
+            }
             const sitemapUrls = [normalizedUrl, `https://get.${baseDomain}`, `https://www.${baseDomain}`, `https://app.${baseDomain}`];
             if (homeHTML) {
               const subdomains = extractSubdomains(homeHTML, normalizedUrl);
@@ -3028,24 +3268,33 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
             let allUrls: string[] = [];
             for (const r of sitemapResults) { if (r.status === "fulfilled") allUrls.push(...r.value); }
             if (homeHTML) allUrls.push(...extractLinks(homeHTML, normalizedUrl).map(l => l.href));
+            // Always probe common service/product paths — use canonical origin (may be www)
+            const commonPaths = ["/services", "/our-services", "/what-we-do", "/products", "/solutions", "/offerings", "/capabilities", "/services-products", "/products-services"];
+            for (const p of commonPaths) allUrls.push(canonicalOrigin + p);
             allUrls = [...new Set(allUrls)];
-            console.log("[QS] Discovered URLs:", allUrls.length, allUrls.slice(0, 20));
+            console.log("[QS] Discovered URLs:", allUrls.length, "canonical origin:", canonicalOrigin, allUrls.slice(0, 30));
 
             if (allUrls.length > 0) {
-              // First: keyword filter for obvious product/about pages
-              const keywordPicks = allUrls.filter(u => {
-                const path = u.toLowerCase();
-                const skip = /blog|template|internal|lp\/|login|register|terms|privacy|career|style-guide|licensing|instruction|schedule|demo|affiliate|news|backup/i;
+              // Keyword filter: obvious product/about pages + shallow same-origin paths (service-specific pages like /amazon, /walmart)
+              // Treat bare and www as same origin (sites often redirect between them)
+              const sameOrigin = allUrls.filter(u => { try { return new URL(u).hostname.replace(/^www\./, "") === baseDomain; } catch { return false; } });
+              const keywordPicks = sameOrigin.filter(u => {
+                const path = new URL(u).pathname.toLowerCase();
+                const skip = /\/blog|\/template|\/internal|\/lp\/|\/login|\/register|\/terms|\/privacy|\/career|\/style-guide|\/licensing|\/instruction|\/schedule|\/affiliate|\/news|\/backup|\/cart|\/checkout|\/account|\/policy|\/faq|\/contact|\/wp-|\/sitemap|\/feed|\/rss|\/thank|\/404|\/search|\/tag\/|\/category\/|\/author\/|\/page\//i;
                 if (skip.test(path)) return false;
-                return /product|service|solution|about|platform|feature|pricing|app|insight|rtsl|outreach/i.test(path);
-              }).slice(0, 8);
+                if (/\/(product|service|solution|about|platform|feature|pricing|offering|capabilit|what-we-do|what-we-offer)/i.test(path)) return true;
+                // Also include shallow paths (1-2 segments, short) — likely to be named service/product pages
+                const segs = path.split("/").filter(Boolean);
+                if (segs.length <= 2 && segs.every(s => s.length <= 40)) return true;
+                return false;
+              }).slice(0, 15);
               console.log("[QS] Keyword picks:", keywordPicks);
 
               // If keywords found enough, use those. Otherwise ask AI.
               let picks = keywordPicks;
               if (picks.length < 2 && allUrls.length > 0) {
                 const aiPicks = await discoverProductPages(allUrls, normalizedUrl);
-                picks = [...new Set([...picks, ...aiPicks])].slice(0, 8);
+                picks = [...new Set([...picks, ...aiPicks])].slice(0, 15);
               }
               console.log("[QS] Final picks:", picks);
 
@@ -3055,10 +3304,15 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
                   return { url: u, text: html ? htmlToText(html, 6000) : "" };
                 }));
                 for (const r of pageResults) {
-                  if (r.status === "fulfilled" && r.value.text.length > 100) {
-                    pagesFetched++;
-                    _progress(0, "fetch", `${pagesFetched}`);
-                    context += `\n\nPRODUCT/ABOUT PAGE (${r.value.url}):\n${r.value.text}`;
+                  if (r.status === "fulfilled") {
+                    if (r.value.text.length > 100) {
+                      pagesFetched++;
+                      _progress(0, "fetch", `${pagesFetched}`);
+                      context += `\n\nPRODUCT/ABOUT PAGE (${r.value.url}):\n${r.value.text}`;
+                      console.log(`[QS] ✓ ${r.value.url}: ${r.value.text.length} chars`);
+                    } else {
+                      console.warn(`[QS] ✗ ${r.value.url}: only ${r.value.text.length} chars (probably 404 or empty)`);
+                    }
                   }
                 }
               }
@@ -3071,20 +3325,36 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
 
     // Fetch extra URLs (product pages, about pages, etc.)
     if (extraUrls.trim()) {
-      const urls = extraUrls.split("\n").map(u => u.trim()).filter(u => u && (u.startsWith("http://") || u.startsWith("https://")));
+      const urls = extraUrls.split(/[\n,]+/).map(u => u.trim()).filter(Boolean).map(u => /^https?:\/\//i.test(u) ? u : `https://${u}`);
       if (urls.length > 0) {
         sources.push(`${urls.length} additional URL${urls.length!==1?"s":""}`);
         updateToast(toastId, { message:`Fetching ${urls.length} additional page${urls.length!==1?"s":""}…` });
-        const results = await Promise.allSettled(urls.slice(0, 8).map(async u => {
+        console.log("[QS] Fetching extra URLs:", urls);
+        const results = await Promise.allSettled(urls.slice(0, 12).map(async u => {
           const html = await fetchPageHTML(u);
-          return { url: u, text: html ? htmlToText(html, 5000) : "" };
+          return { url: u, html, text: html ? htmlToText(html, 6000) : "" };
         }));
+        let extraSuccess = 0, extraFail = 0;
         for (const result of results) {
-          if (result.status === "fulfilled" && result.value.text && result.value.text.length > 100) {
-            pagesFetched++;
-            _progress(0, "fetch", `${pagesFetched}`);
-            context += `\n\nADDITIONAL PAGE (${result.value.url}):\n${result.value.text}`;
+          if (result.status === "fulfilled") {
+            const { url: u, text, html } = result.value;
+            if (text && text.length > 100) {
+              extraSuccess++;
+              pagesFetched++;
+              _progress(0, "fetch", `${pagesFetched}`);
+              context += `\n\nADDITIONAL PAGE (${u}):\n${text}`;
+              console.log(`[QS] ✓ Fetched ${u}: ${text.length} chars`);
+            } else {
+              extraFail++;
+              console.warn(`[QS] ✗ Empty content from ${u} (html=${html?.length||0} chars)`);
+            }
+          } else {
+            extraFail++;
+            console.warn(`[QS] ✗ Fetch failed:`, result.reason);
           }
+        }
+        if (extraFail > 0 && extraSuccess === 0) {
+          addToast({ title:"Page fetch failed", status:"warning", message:`Couldn't fetch any of the ${urls.length} URLs — CORS proxy may be down. AI will work from limited context.` });
         }
       }
     }
@@ -3165,16 +3435,29 @@ Raw JSON only.`, "", 3000);
     _totalFields += coFieldCount; _totalSeconds += coTimeSaved;
     _progress(2, "company", `${coFieldCount}`);
 
+    console.log(`[QS] Context built: ${context.length} chars, ${sources.length} sources, ${pagesFetched} pages fetched`);
+    if (context.length < 500) {
+      addToast({ title:"Very little source content", status:"warning", message:`Only ${context.length} chars of context — AI may generate generic results. Add a website URL or upload docs.` });
+    }
+
     // Generate comprehensive research brief — ONE call that identifies everything
+    let briefRaw = "";
     try {
-      const briefRaw = await callAI(
+      briefRaw = await callAI(
         `You are a senior B2B GTM strategist. Analyze this company and produce a comprehensive research brief.
 
 COMPANY: ${JSON.stringify(coFields)}
-SOURCES: ${context.slice(0,15000)}
+SOURCES (${context.length} chars):
+${context.slice(0,15000)}
+
+CRITICAL GROUNDING RULES — these override everything else:
+- ONLY identify products/services that are EXPLICITLY MENTIONED in the SOURCES text above. Do not infer from the company name.
+- If the sources mention specific named services (e.g., a nav menu listing "Amazon", "Walmart", "Consulting"), use THOSE EXACT NAMES as the products.
+- Do NOT invent or guess products based on what a company with this name "typically sells". If sources don't mention a product, it doesn't exist.
+- If SOURCES is under 1000 chars or mostly company-name only, return empty products/personas arrays — don't fabricate.
 
 Identify:
-1. ALL distinct products/services this company sells (not features — actual separate things they sell)
+1. ALL distinct products/services this company sells (not features — actual separate things they sell) — ONLY from what's explicitly in SOURCES
 2. ALL viable buyer personas (distinct roles/industries that buy these products)
 3. For each product×persona combination: is it viable? What priority? Why?
 
@@ -3199,16 +3482,27 @@ PRODUCT IDENTIFICATION RULES:
 
 Return ONLY valid JSON:
 {"products":[{"name":"","description":"","reasoning":"","dealSize":"","category":""}],"personas":[{"name":"","buyerTitles":"","industries":"","primaryPain":"","reasoning":""}],"matrix":[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":""}]}`,
-        "Return only valid JSON. Be thorough and specific.", 4000
+        "Return only valid JSON. Be thorough and specific.", 12000, { useFullContext: true }
       );
       const brief = JSON.parse(briefRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
-      _progress(3, "research", `${(brief.products?.length||0) + (brief.personas?.length||0)}`);
+      const pCount = brief.products?.length || 0;
+      const persCount = brief.personas?.length || 0;
+      console.log(`[QS] Brief parsed: ${pCount} products, ${persCount} personas`, brief);
+      _progress(3, "research", `${pCount + persCount}`);
 
-      // Pause here — hand off to user review (pass Phase A results directly)
-      onBriefReady?.(coFields, coConf, context, brief, { ..._results });
-      return; // Stop here — Phase B happens after user reviews
+      if (pCount === 0 && persCount === 0) {
+        console.warn("[QS] Brief returned 0 products AND 0 personas. Raw response:", briefRaw);
+        addToast({ title:"Brief was empty — using fallback", status:"warning", message:"AI couldn't identify products/personas from the sources. Trying direct generation." });
+        // Fall through to fallback path below instead of handing off to review
+      } else {
+        if (pCount === 0) addToast({ title:"No products in brief", status:"warning", message:"Add more product/service pages or describe products in the text field." });
+        if (persCount === 0) addToast({ title:"No personas in brief", status:"warning", message:"AI couldn't identify target buyers from the sources." });
+        // Pause here — hand off to user review (pass Phase A results directly)
+        onBriefReady?.(coFields, coConf, context, brief, { ..._results });
+        return; // Stop here — Phase B happens after user reviews
+      }
     } catch (e) {
-      console.error("Research brief failed:", e);
+      console.error("[QS] Research brief failed:", e, "\nRaw:", briefRaw);
       addToast({ title:"Research brief failed", status:"error", message:"Falling back to direct creation" });
     }
 
@@ -5054,7 +5348,62 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   const [councilState,   setCouncilState]  = useState<{ status:"idle"|"running"; phase:string }>({ status:"idle", phase:"" });
   const [refiningEmail,  setRefiningEmail] = useState<number | null>(null);
   const [splitView,      setSplitView]    = useState(false);
+  const [bulkFilling,    setBulkFilling]  = useState(false);
   const origRef = useRef<Record<string,any>>({});
+
+  // Fill ALL ICP fields at once using AI
+  const handleBulkFill = async () => {
+    setBulkFilling(true);
+    const toastId = addToast({ title:`Filling all fields: ${icp.name}`, status:"loading", message:"AI is generating a complete profile" });
+    const prompt = `Fill ALL fields for this B2B persona. Every field must be populated with specific, actionable content.
+
+COMPANY: ${JSON.stringify(companyData)}
+PERSONA NAME: ${icp.name || "Unnamed persona"}
+EXISTING FIELDS (preserve unless clearly wrong):
+${JSON.stringify(data)}
+
+${NAMING_RULES.persona}
+
+CRITICAL RULES:
+- Every single field MUST be filled. Never leave any field empty.
+- Preserve existing filled fields unless they contradict the persona. Fill any empty fields.
+- Be specific and actionable — a real GTM team should be able to run campaigns from this.
+
+Return ONLY JSON with ALL fields filled:
+{"name":"${icp.name||""}","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""}}
+
+tone: one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
+cta: one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
+best_channel: one of "Email"|"LinkedIn"|"Phone"|"Multi-channel (Email + LinkedIn)"|"Multi-channel (All)"
+linkedin_activity: one of "Very Active (posts/comments weekly)"|"Moderate (engages occasionally)"|"Low (profile exists, rarely active)"
+phone_accessibility: one of "Direct dial available"|"Gatekeeper (assistant)"|"Voicemail only"
+email_preference: one of "Responds to short punchy emails"|"Prefers detailed/professional"|"Responds to personalization"|"Responds to data/stats"
+Raw JSON only.`;
+
+    let success = false;
+    let lastRaw = "";
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        lastRaw = await callAI(prompt, "", attempt === 1 ? 8000 : 10000, { useFullContext: true });
+        if (!lastRaw || lastRaw.startsWith("Error:")) throw new Error(lastRaw || "Empty response");
+        const p = JSON.parse(lastRaw.replace(/```json|```/g,"").trim());
+        const fields = p.fields || {};
+        setData((prev: any) => ({ ...prev, ...fields }));
+        // Mark all as locked so they appear saved
+        setLocalConfLocked(prev => ({ ...prev, ...Object.fromEntries(Object.keys(fields).map(k => [k, true])) }));
+        success = true;
+        break;
+      } catch (err:any) {
+        console.error(`[ICPEditor] bulk fill attempt ${attempt}/2 failed:`, err, "\nRaw:", lastRaw);
+      }
+    }
+    if (success) {
+      updateToast(toastId, { status:"success", title:"All fields filled", message:"Review and tweak as needed" });
+    } else {
+      updateToast(toastId, { status:"error", title:"Fill failed", message:"Check console for details" });
+    }
+    setBulkFilling(false);
+  };
 
   useEffect(() => {
     const autoName = (data.buyer && data.industries)
@@ -5632,6 +5981,11 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               {allApproved && <span style={{ fontSize:10, color:_C.green, fontFamily:mono, fontWeight:700 }}>✓ All approved</span>}
             </div>
           </div>
+          <button onClick={handleBulkFill} disabled={bulkFilling}
+            style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.accent}`, background:bulkFilling?_C.faint:`${_C.accent}0E`,
+              color:_C.accent, fontSize:11, fontFamily:head, fontWeight:700, cursor:bulkFilling?"wait":"pointer", opacity:bulkFilling?0.7:1, flexShrink:0 }}>
+            {bulkFilling ? "◌ Filling..." : "◎ Fill All with AI"}
+          </button>
           {/* Workflow stepper */}
           <div style={{ display:"flex", alignItems:"center", gap:0 }}>
             {[
@@ -6716,9 +7070,10 @@ function CoverageMatrix({ products, personas, offers, campaigns, v2 = false, onC
 
 // ─── STRATEGY PAGE ───────────────────────────────────────────────────────────
 function StrategyPage({ strategy, onStrategyChange, companyData, products, offers, personas, v2 = false, addToast = (_t:any)=>"",
-  genState, onGenStateChange }: {
+  genState, onGenStateChange, activeWorkspace = null as any }: {
   strategy: any; onStrategyChange: (s: any) => void; companyData: any; products: any[]; offers: any[]; personas: any[]; v2?: boolean; addToast?: (t:any)=>string;
   genState?: {running:boolean;step:number}; onGenStateChange?: (s:{running:boolean;step:number})=>void;
+  activeWorkspace?: any;
 }) {
   const _C = v2 ? C2 : C;
   const generating = genState?.running ?? false;
@@ -6830,7 +7185,8 @@ Return ONLY a JSON array of 6 phases. Each campaign MUST include:
 - ifBenchmarksMet (next action), ifBenchmarksNotMet (specific test sequence)
 
 Keep each campaign object compact. No nested objects except as specified.`,
-        "Return ONLY valid JSON array. No markdown.", 4000
+        "Return ONLY valid JSON array. No markdown.", 4000,
+        { useFullContext: true }
       );
       let phases: any[];
       try {
@@ -7203,9 +7559,10 @@ const EMPTY_STEP = (stepNum: number) => ({
   variants: [] as any[],
 });
 
-function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, onOffersChange, companyData, strategy, v2 = false, addToast = (_t:any)=>"" }: {
+function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, onOffersChange, companyData, strategy, v2 = false, addToast = (_t:any)=>"", activeWorkspace = null as any }: {
   campaigns: any[]; onCampaignsChange: (c: any[]) => void; personas: any[]; products: any[]; offers: any[]; onOffersChange?: (o:any[])=>void;
   companyData: any; strategy: any; v2?: boolean; addToast?: (t:any)=>string;
+  activeWorkspace?: any;
 }) {
   const _C = v2 ? C2 : C;
   const [selectedId, setSelectedId] = useState<string|null>(null);
@@ -7310,7 +7667,7 @@ General rules:
 Return ONLY valid JSON:
 {"steps":[{"stepNumber":1,"role":"hook","dayOffset":0,"subject":"...","body":"...","variants":[{"label":"Variant B","subject":"...","body":"...","testVariable":"subject_line"}]},{"stepNumber":2,"role":"proof","dayOffset":3,"subject":"...","body":"...","variants":[]},...],"abTest":{"stepId":"step_1","variable":"subject_line"}}`;
 
-      const result = await callAI(prompt, "You are a B2B cold email copywriter. Return only valid JSON.", 3000);
+      const result = await callAI(prompt, "You are a B2B cold email copywriter. Return only valid JSON.", 3000, { useFullContext: true });
       const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(cleaned);
 
@@ -9644,7 +10001,7 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   );
 }
 
-function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[], slackComms = [] as any[], activeWorkspace = null as any }) {
+function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[], slackComms = [] as any[], activeWorkspace = null as any, offers = [] as any[], roiConfig = null as any, wsFiles = [] as any[], wsLinks = [] as any[], onRerunAnalysis = (_k:string)=>{} }) {
   const [activeChatId, setActiveChatId] = useState<string|null>(() => chats[0]?.id ?? null);
   const [input,          setInput]          = useState("");
   const [isStreaming,    setIsStreaming]    = useState(false);
@@ -9980,6 +10337,14 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         const conflictCount = proposedChanges.filter((c:any) => c.status === "conflict").length;
         return `Parsed ${proposedChanges.length} fields from the form. ${newCount} new fields (auto-approved), ${conflictCount} conflicts need your review. Check the changes card below.`;
       }
+      if (name === "rerun_analysis") {
+        const which = input.analysis as string;
+        if (!["sentiment","pitch","coaching","intel"].includes(which)) return `Invalid analysis: ${which}`;
+        onRerunAnalysis(which);
+        const labels: Record<string,string> = { sentiment: "Sentiment Analysis", pitch: "Pitch Analysis", coaching: "CSM Coaching", intel: "Client Intel Profile" };
+        onToast({ title: `Re-running ${labels[which]}...`, status: "loading", message: "Copilot triggered a refresh — switch to Client Intel to see progress" });
+        return `Triggered a re-run of ${labels[which]}. The user can watch progress in the Client Intel tab.`;
+      }
       return `Unknown tool: ${name}`;
     } catch (e: any) {
       return `Error executing ${name}: ${e.message}`;
@@ -10033,7 +10398,10 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
     const ciExtra: string[] = [];
     // Slack/Email comms summary
     if (slackComms.length > 0) {
-      ciExtra.push(`\n## CLIENT COMMUNICATIONS\n${slackComms.length} conversations (Slack/Email)`);
+      const slackDays = slackComms.filter((c:any) => c.type === "slack");
+      const slackMsgs = slackDays.reduce((s:number, c:any) => s + (c.messageCount || 0), 0);
+      const emailCount = slackComms.filter((c:any) => c.type === "email").length;
+      ciExtra.push(`\n## CLIENT COMMUNICATIONS\n${slackMsgs} Slack messages (${slackDays.length} days) · ${emailCount} emails`);
       slackComms.slice(0, 10).forEach((c: any) => {
         const clean = (c.content||"").replace(/\[(?:(?:CX|CLIENT):)?.*?\]\s*/g,"").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").slice(0,200);
         ciExtra.push(`- [${c.type}] ${c.date}: ${clean}...`);
@@ -10076,9 +10444,67 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
       if (stratAnalysis.positioning) ciExtra.push(`Positioning: ${stratAnalysis.positioning.score}/10 — ${stratAnalysis.positioning.assessment}`);
       if (stratAnalysis.strategicPivots?.length) ciExtra.push(`Pivots: ${stratAnalysis.strategicPivots.map((p:any)=>p.title).join("; ")}`);
     }
+
+    // Offers (full list — Copilot needs to know what CTAs exist per product×persona)
+    if (offers && offers.length > 0) {
+      ciExtra.push(`\n## OFFERS (${offers.length})`);
+      offers.forEach((o:any) => {
+        const prod = products.find((p:any) => p.id === o.productId);
+        const pers = icps.find((p:any) => p.id === o.personaId);
+        ciExtra.push(`- [${o.tier||"?"}] ${prod?.name||"?"} × ${pers?.name||"?"}: "${o.ctaText||o.name||""}" — ${o.whatTheyGet||""}`);
+      });
+    }
+
+    // ROI config
+    if (roiConfig) {
+      ciExtra.push(`\n## ROI CONFIG\n${JSON.stringify(roiConfig).slice(0, 500)}`);
+    }
+
+    // Knowledge Center — uploaded docs + links the user has curated for this client
+    if (wsFiles && wsFiles.length > 0) {
+      ciExtra.push(`\n## KNOWLEDGE CENTER FILES (${wsFiles.length})`);
+      wsFiles.slice(0, 20).forEach((f:any) => {
+        const snippet = (f.content || f.text || "").slice(0, 400);
+        ciExtra.push(`- ${f.name || "Untitled"} (${f.type || "file"}): ${snippet}${snippet.length >= 400 ? "..." : ""}`);
+      });
+    }
+    if (wsLinks && wsLinks.length > 0) {
+      ciExtra.push(`\n## KNOWLEDGE CENTER LINKS (${wsLinks.length})`);
+      wsLinks.slice(0, 20).forEach((l:any) => ciExtra.push(`- ${l.title || l.url}: ${l.description || ""}`));
+    }
+
+    // HubSpot company properties — READ-ONLY. Do not let Copilot attempt to modify these.
+    const hsProps = (companyData as any)?._hubspotProps;
+    if (hsProps && Object.keys(hsProps).length > 0) {
+      const meaningful = Object.entries(hsProps)
+        .filter(([k, v]) => v != null && v !== "" && !k.startsWith("hs_") && !k.startsWith("notes_"))
+        .slice(0, 120); // cap at 120 most-likely-useful properties
+      if (meaningful.length > 0) {
+        ciExtra.push(`\n## HUBSPOT COMPANY DATA (READ-ONLY — source of truth in HubSpot, do not attempt to modify via tools)`);
+        meaningful.forEach(([k, v]) => ciExtra.push(`- ${k}: ${String(v).slice(0, 200)}`));
+      }
+    }
+
+    // Recent call transcripts — give Copilot the actual words for the 3 most recent calls
+    if (callRecords && callRecords.length > 0) {
+      const recentCalls = [...callRecords].sort((a:any,b:any) => new Date(b.callDate||b.scoredAt).getTime() - new Date(a.callDate||a.scoredAt).getTime()).slice(0, 3);
+      ciExtra.push(`\n## RECENT CALL TRANSCRIPTS (${recentCalls.length} most recent, truncated)`);
+      recentCalls.forEach((rec:any) => {
+        const t = (rec.transcript || "").slice(0, 3500);
+        ciExtra.push(`\n[${rec.callDate||"?"}] ${callTypeLabel(rec.callType)} — Score: ${rec.result?.overallScore||"?"}/100\n${t}${rec.transcript?.length > 3500 ? "\n...(truncated)" : ""}`);
+      });
+    }
+
     const fullCtx = ctx + ciExtra.join("\n");
 
-    const systemPrompt = `You are Copilot, the AI assistant for ${clientName || "this client"}'s outreach platform. You have complete visibility into every part of their workspace — company profile, products, personas, campaigns, sequences, strategy, preferences, analytics, client communications, sentiment analysis, pitch analysis, client intelligence, and coaching data.
+    const systemPrompt = `You are Copilot, the AI assistant for ${clientName || "this client"}'s outreach platform. You have complete visibility into every part of their workspace — company profile, products, personas, campaigns, sequences, strategy, offers, ROI config, preferences, analytics, client communications (Slack/email/HubSpot), sentiment analysis, pitch analysis, client intelligence, CSM coaching data, HubSpot company properties (read-only), Knowledge Center files and links, and full transcripts of the 3 most recent calls.
+
+IMPORTANT DATA READ-ONLY RULES:
+- HubSpot company properties (shown in the HUBSPOT COMPANY DATA section) are READ-ONLY. They're the source of truth in HubSpot. Never attempt to use any update tool to change these. Treat them as fixed context.
+- Knowledge Center files are READ-ONLY context — you can reference their content but can't edit them.
+- Call transcripts are READ-ONLY — they're immutable historical records.
+
+If the user asks you to refresh any of the AI analyses (sentiment, pitch, coaching, intel), use the rerun_analysis tool.
 
 ${fullCtx}${fileContext ? `\n${fileContext}` : ""}
 
@@ -12750,6 +13176,7 @@ function AppMain() {
   const [openaiKey,      setOpenaiKey]      = useState(() => { try { return localStorage.getItem("b2br_openai_key") || ""; } catch { return ""; } });
   const [geminiKey,      setGeminiKey]      = useState(() => { try { return localStorage.getItem("b2br_gemini_key") || ""; } catch { return ""; } });
   const [slackKey,       setSlackKey]       = useState(() => { try { return localStorage.getItem("b2br_slack_token") || ""; } catch { return ""; } });
+  const [hubspotKey,     setHubspotKey]     = useState(() => { try { return localStorage.getItem("b2br_hubspot_token") || ""; } catch { return ""; } });
   const [showKeyInput,   setShowKeyInput]   = useState(false);
   const [keyDraft,       setKeyDraft]       = useState("");
   const [confirmSignOut,   setConfirmSignOut]  = useState(false);
@@ -12784,6 +13211,8 @@ function AppMain() {
   const [dfyProgress, setDfyProgress] = useState<{ running: boolean; phase: string; found: number; needed: number; checked: number; total: number } | null>(null);
   const [callRecords, setCallRecords] = useState<any[]>([]);
   const [slackComms, setSlackComms] = useState<any[]>([]);
+  // Persisted AI analyses: { sentiment, pitch, coaching, intel } — each is { result, generatedAt } or null
+  const [aiAnalyses, setAiAnalyses] = useState<{ sentiment: any; pitch: any; coaching: any; intel: any }>({ sentiment: null, pitch: null, coaching: null, intel: null });
 
   const addToast  = useCallback((t: Omit<Toast,"id">) => {
     const id = uid();
@@ -12901,7 +13330,38 @@ function AppMain() {
     setBattlecards(saved?.battlecards ?? []);
     setDfySetup(saved?.dfySetup ?? { tlds:[".com"], domainCount:67, mailboxCount:201, customAmount:false, forwardingDomain:"", forwardingVerified:null, mailboxNames:[], suggestedDomains:[], approvedDomains:[] });
     setCallRecords(saved?.callRecords ?? []);
-    setSlackComms(saved?.slackComms ?? []);
+    // Migrate legacy hubspot_email → type:email + source:hubspot so they show in filters
+    const rawComms = saved?.slackComms ?? [];
+    const migratedComms = rawComms.map((c:any) => c.type === "hubspot_email" ? { ...c, type: "email", source: "hubspot" } : c);
+    setSlackComms(migratedComms);
+    // Restore AI analyses and mirror to window globals so existing readers keep working
+    const savedAi = saved?.aiAnalyses ?? { sentiment: null, pitch: null, coaching: null, intel: null };
+    setAiAnalyses(savedAi);
+    if (activeWorkspace) {
+      (window as any)[`__sentAnalysis_${activeWorkspace.id}`] = savedAi.sentiment || undefined;
+      (window as any)[`__pitchAnalysis_${activeWorkspace.id}`] = savedAi.pitch || undefined;
+      (window as any)[`__csmCoaching_${activeWorkspace.id}`] = savedAi.coaching || undefined;
+      (window as any)[`__clientIntel_${activeWorkspace.id}`] = savedAi.intel || undefined;
+    }
+    // Prime the full-context snapshot from loaded data so generators called before the first save still have context.
+    (window as any).__workspaceCtx = buildFullContext({
+      companyData: saved?.companyData || {},
+      products: saved?.products || [],
+      personas: saved?.icps || [],
+      campaigns: saved?.campaigns || [],
+      strategy: saved?.strategy,
+      offers: saved?.offers || [],
+      playbooks: saved?.playbooks || [],
+      battlecards: saved?.battlecards || [],
+      contentAssets: saved?.contentAssets || [],
+      dfySetup: saved?.dfySetup,
+      roiConfig: saved?.roiConfig,
+      perfLogs: saved?.perfLogs || [],
+      callRecords: saved?.callRecords || [],
+      slackComms: migratedComms,
+      wsFiles: [], wsLinks: saved?.wsLinks || [],
+      sentiment: savedAi.sentiment?.result, pitch: savedAi.pitch?.result, coaching: savedAi.coaching?.result, intel: savedAi.intel?.result,
+    });
     // Load file blobs from IndexedDB async
     if (rawFiles.length && activeWorkspace) {
       loadWorkspaceFiles(activeWorkspace.id, rawFiles).then(loaded => setWsFiles(loaded.map((f:any) => ({ ...f, _loading: false }))));
@@ -12918,7 +13378,13 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords, slackComms });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords, slackComms, aiAnalyses });
+    // Build the global full-context snapshot — every AI generator calling with useFullContext:true reads this.
+    (window as any).__workspaceCtx = buildFullContext({
+      companyData, products, personas: icps, campaigns, strategy, offers, playbooks, battlecards, contentAssets, dfySetup, roiConfig, perfLogs, callRecords, slackComms, wsFiles, wsLinks,
+      sentiment: aiAnalyses?.sentiment?.result, pitch: aiAnalyses?.pitch?.result, coaching: aiAnalyses?.coaching?.result, intel: aiAnalyses?.intel?.result,
+      stratAnalysis: (window as any)[`__stratAnalysis_${activeWorkspace.id}`]?.result,
+    });
     // Sync co_name and co_industry back to ClientRecord so admin panel + sidebar stay current
     const cd = companyData as Record<string,string>;
     const cls = loadClients();
@@ -12934,7 +13400,7 @@ function AppMain() {
         if (patch.name) setActiveWorkspace((prev: any) => prev ? { ...prev, name: patch.name } : prev);
       }
     }
-  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords]);
+  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords, aiAnalyses]);
 
   // sync keys into global + localStorage
   useEffect(() => {
@@ -13069,8 +13535,7 @@ Raw JSON only.`, "", 1400);
     setIcpFilling(icp.id);
     const toastId = addToast({ title:`Filling fields: ${icp.name}`, status:"loading", message:"AI is populating all ICP fields" });
     const existing = icps.filter(x=>x.id!==icp.id).map(x=>x.name).filter(Boolean).join(", ") || "none";
-    try {
-      const raw = await callAI(`
+    const prompt = `
 Fill ALL fields for this ICP. Company: ${JSON.stringify(companyData)}
 Other ICPs already defined: ${existing}
 User's target segment description: "${userContext || "Not specified — choose the most logical distinct segment based on company context."}"
@@ -13090,19 +13555,31 @@ Return ONLY JSON:
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
 tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
 cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
-Raw JSON only.`, "", 1400);
-      let icpName = icp.name;
+Raw JSON only.`;
+
+    let success = false;
+    let filledName = icp.name;
+    let lastRaw = "";
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
-        icpName = p.name || icp.name;
+        lastRaw = await callAI(prompt, "", attempt === 1 ? 8000 : 10000, { useFullContext: true });
+        if (!lastRaw || lastRaw.startsWith("Error:")) throw new Error(lastRaw || "Empty response");
+        const p = JSON.parse(lastRaw.replace(/```json|```/g,"").trim());
+        filledName = p.name || icp.name;
         setIcps(prev => prev.map(i => i.id===icp.id
-          ? { ...i, data: p.fields??{}, name: icpName, confidence: p.confidence??{} }
+          ? { ...i, data: p.fields??{}, name: filledName, confidence: p.confidence??{} }
           : i));
-      } catch {}
-      updateToast(toastId, { status:"success", title:`Fields filled: ${icpName}`, message:undefined,
+        success = true;
+        break;
+      } catch (err:any) {
+        console.error(`[fillICP] "${icp.name}" attempt ${attempt}/2 failed:`, err, "\nRaw:", lastRaw);
+      }
+    }
+    if (success) {
+      updateToast(toastId, { status:"success", title:`Fields filled: ${filledName}`, message:undefined,
         action:{ label:"View profile", onClick:()=>setEditingId(icp.id) } });
-    } catch {
-      updateToast(toastId, { status:"error", title:"Fill failed", message:"Check your API key and try again" });
+    } else {
+      updateToast(toastId, { status:"error", title:"Fill failed", message:"JSON parse error — check console for details" });
     }
     setIcpFilling(null);
   }, [icps, companyData, addToast, updateToast]);
@@ -13618,6 +14095,7 @@ Raw JSON only.`, "", 1400);
                         { label:"OpenAI (GPT-4o)", ph:"sk-…", val:openaiKey, set:setOpenaiKey, hint:"AI Council" },
                         { label:"Google (Gemini)", ph:"AIza…", val:geminiKey, set:setGeminiKey, hint:"AI Council" },
                         { label:"Slack Bot Token", ph:"xoxb-…", val:slackKey, set:(v:string)=>{setSlackKey(v);setSlackToken(v);}, hint:"Client Intel — auto-sync Slack messages" },
+                        { label:"HubSpot Private App Token", ph:"pat-na1-…", val:hubspotKey, set:(v:string)=>{setHubspotKey(v);setHubspotToken(v);}, hint:"Client Intel — pull company properties + email history" },
                       ].map(k => (
                         <div key={k.label}>
                           <div style={{ fontSize:9, color:C.muted, fontFamily:mono, marginBottom:3 }}>{k.label}</div>
@@ -15032,7 +15510,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       events.push({
                         date: rec.callDate || fmtDate(rec.scoredAt), ts: new Date(rec.callDate || rec.scoredAt).getTime(),
                         type: "call", icon: "🎙", color: s?.score >= 7 ? C2.green : s?.score >= 4 ? C2.amber : s ? C2.red : C2.muted,
-                        title: `${rec.callType === "onboarding" ? "Onboarding" : "Follow-up"} call scored ${rec.result?.overallScore || "?"}/100`,
+                        title: `${callTypeLabel(rec.callType)} call scored ${rec.result?.overallScore || "?"}/100`,
                         desc: `${rec.result?.grade || ""} — ${rec.csmName || "Unknown CSM"}${sentLabel}${churnWarn}`,
                         sentiment: s?.score,
                         meta: s?.frustrations?.length ? `Client frustration: ${s.frustrations[0]}` : s?.positives?.length ? `Client positive: ${s.positives[0]}` : rec.result?.summary?.slice(0, 120) || ""
@@ -15369,7 +15847,8 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                   {stratTab==="roadmap" && (
                     <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
                       companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast}
-                      genState={strategyGen} onGenStateChange={setStrategyGen} />
+                      genState={strategyGen} onGenStateChange={setStrategyGen}
+                      activeWorkspace={activeWorkspace} />
                   )}
                   {stratTab==="coverage" && (
                     <CoverageMatrix products={products} personas={icps} offers={offers} campaigns={campaigns} v2={true}
@@ -15399,7 +15878,8 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
                     personas={icps} products={products} offers={offers} onOffersChange={setOffers}
-                    companyData={companyData} strategy={strategy} v2={true} addToast={addToast} />
+                    companyData={companyData} strategy={strategy} v2={true} addToast={addToast}
+                    activeWorkspace={activeWorkspace} />
                 </div>
               </div>
             )}
@@ -17110,8 +17590,9 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
               const scoreCall = async (transcript: string, callType: string, clientName: string, csmName: string, callDate: string) => {
                 setScoring(true);
                 addToast({ title:"Scoring call...", status:"loading", message:"AI analyzing transcript" });
+                let scoreRaw = "";
                 try {
-                  const raw = await callAI(
+                  scoreRaw = await callAI(
                     `You are an expert B2B call quality evaluator. Score this ${callType} call transcript.
 
 COMPANY CONTEXT:
@@ -17166,6 +17647,30 @@ ${callType === "onboarding" ? `
 - Audience methodology & ICP discovery (30%): Data types explained, portfolio approach, ICP questions asked
 - Call structure & expert posture (15%): Agent led, confidence, next call booked
 - Post-call commitments (10%): Agent/client actions set, summary committed
+` : callType === "launch" ? `
+- Campaign readiness review (25%): Sequences reviewed, audiences locked, tech stack verified, sending infra ready
+- Expectation setting (20%): Launch timeline, volume ramp, what "good" looks like in week 1-2
+- Risk/blocker identification (20%): Deliverability, list quality, domain warmup, unresolved questions surfaced
+- Commercial alignment (20%): Success metrics agreed, benchmark targets set, escalation paths clear
+- Post-call commitments (15%): Go-live date confirmed, owner-action items set, first check-in scheduled
+` : callType === "draft_review" ? `
+- Pre-call preparation (15%): Drafts pre-read, ICP context loaded, benchmarks ready
+- Copy critique quality (30%): Specific feedback on subject lines, hooks, CTAs — not generic
+- ICP/pain alignment (25%): Does the copy speak to the persona's actual pain? Tone match?
+- Commercial sharpness (15%): CTAs actionable, offers compelling, differentiation clear
+- Revision commitments (15%): Clear next steps, who revises what, timeline to final
+` : callType === "qbr" ? `
+- Business outcomes review (30%): Revenue, meetings, pipeline attribution, ROI framed against quarterly goals
+- Strategic context & market shifts (20%): Industry trends, competitor moves, buyer behavior changes discussed
+- Wins, losses, learnings (20%): Specific campaign wins cited, losses analyzed with lessons
+- Forward-looking plan (20%): Next quarter priorities, new initiatives, budget/resource decisions
+- Executive posture (10%): Strategic framing (not tactical), confident recommendations, trusted-advisor tone
+` : callType === "touchpoint" ? `
+- Purpose clarity (20%): Clear reason for the call, agenda stated, time respected
+- Relationship quality (25%): Rapport, listening, genuine interest in the client's situation
+- Value delivered (25%): Useful information shared, questions answered, blocker removed, or meaningful check-in provided
+- Next-step clarity (15%): Concrete outcome, ownership of any follow-ups, next touchpoint scheduled if warranted
+- Tone & sentiment (15%): Client mood, any risk/expansion signals surfaced, professionalism maintained
 ` : `
 - Pre-call preparation (20%): Performance data pulled, scores calculated, recommendations ready
 - Call structure & expert posture (15%): Owned agenda, context frame, expert language
@@ -17173,9 +17678,11 @@ ${callType === "onboarding" ? `
 - Commercial outcomes focus (20%): Demos stated, positive replies actioned, trajectory framed
 - Client relationship & escalation (15%): Sentiment read, escalation triggers checked, ramp managed
 `}`,
-                    "", 3000
+                    "", 8000,
+                    { useFullContext: true }
                   );
-                  const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                  if (!scoreRaw || scoreRaw.startsWith("Error:")) throw new Error(scoreRaw || "Empty response from AI");
+                  const result = JSON.parse(scoreRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
 
                   // Step 2: Generate workspace sync recommendations
                   let syncRecs: any = null;
@@ -17210,7 +17717,8 @@ Return ONLY JSON:
 }
 
 Be specific. Reference exact transcript moments. Only flag things that are genuinely actionable.`,
-                      "", 2500
+                      "", 2500,
+                      { useFullContext: true }
                     );
                     syncRecs = JSON.parse(syncRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
                   } catch (e) { console.warn("Sync recommendations failed:", e); }
@@ -17225,7 +17733,12 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                   addToast({ title:`Score: ${result.overallScore}/100 — ${result.grade}`, status:"success",
                     message: flagCount > 0 ? `${flagCount} items need attention — expand the call to review` : result.summary?.slice(0,80) });
                   return record;
-                } catch (e) { setScoring(false); addToast({ title:"Scoring failed", status:"error", message:"Try again" }); return null; }
+                } catch (e:any) {
+                  console.error("[ScoreCall] failed:", e, "\nRaw response:", scoreRaw);
+                  setScoring(false);
+                  addToast({ title:"Scoring failed", status:"error", message: (e?.message || "Check console for details").slice(0, 120) });
+                  return null;
+                }
               };
 
               // Communications state (Slack/Email alongside calls) — persisted via React state
@@ -17251,7 +17764,16 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                   <div style={{ fontSize:10, color:_C.accent, fontFamily:mono, fontWeight:700, letterSpacing:.6, marginBottom:8 }}>RESOURCES</div>
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
                     <h2 style={{ fontSize:22, fontWeight:700, fontFamily:head, color:_C.text, margin:0 }}>Client Intelligence</h2>
-                    <span style={{ fontSize:11, fontFamily:mono, color:_C.muted }}>{(callRecords||[]).length} calls · {comms.length} comms</span>
+                    {(() => {
+                      const slackDays = comms.filter((c:any) => c.type === "slack");
+                      const slackMsgs = slackDays.reduce((s:number, c:any) => s + (c.messageCount || 0), 0);
+                      const emailCount = comms.filter((c:any) => c.type === "email").length;
+                      const parts: string[] = [];
+                      parts.push(`${(callRecords||[]).length} calls`);
+                      if (slackDays.length) parts.push(`${slackMsgs} Slack msgs (${slackDays.length} days)`);
+                      if (emailCount) parts.push(`${emailCount} emails`);
+                      return <span style={{ fontSize:11, fontFamily:mono, color:_C.muted }}>{parts.join(" · ")}</span>;
+                    })()}
                   </div>
                   {/* Tabs */}
                   <div style={{ display:"flex", gap:4, padding:3, background:_C.faint, borderRadius:8, marginBottom:0, width:"fit-content" }}>
@@ -17429,7 +17951,7 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                         ts: new Date(rec.callDate || rec.scoredAt).getTime(),
                         type: "call", icon: "🎙",
                         color: r.overallScore >= 75 ? _C.green : r.overallScore >= 50 ? _C.amber : r.overallScore ? _C.red : _C.muted,
-                        title: `${rec.callType === "onboarding" ? "Onboarding" : "Follow-up"} Call`,
+                        title: `${callTypeLabel(rec.callType)} Call`,
                         subtitle: `${rec.csmName || "Unknown"} · Score: ${r.overallScore || "?"}/${r.grade || "?"}${s ? ` · Sentiment: ${s.score}/10` : ""}`,
                         preview: r.summary?.slice(0, 150) || rec.transcript?.slice(0, 150) || "",
                         sentiment: s?.score, score: r.overallScore
@@ -17515,7 +18037,7 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                         <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:16 }}>
                           {[
                             { label:"Calls", count:(callRecords||[]).length, icon:"🎙", color:_C.green },
-                            { label:"Slack", count:comms.filter((c:any)=>c.type==="slack").length, icon:"💬", color:"#6C5CE7" },
+                            { label:"Slack", count:comms.filter((c:any)=>c.type==="slack").reduce((s:number,c:any)=>s+(c.messageCount||1),0), icon:"💬", color:"#6C5CE7" },
                             { label:"Emails", count:comms.filter((c:any)=>c.type==="email").length, icon:"✉", color:_C.blue },
                           ].filter(s=>s.count>0).map((s,si)=>(
                             <div key={si} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, background:_C.faint }}>
@@ -17798,6 +18320,66 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                         );
                         const stepEdit = (_s: number) => null;
 
+                        const hubspotConnected = !!getHubspotToken();
+                        const hubspotSyncing = (window as any).__hubspotSyncing || false;
+                        const syncHubspot = async () => {
+                          if (!hubspotConnected) { addToast({ title:"Add HubSpot token first", status:"error", message:"Profile menu → API Keys → HubSpot Private App Token" }); return; }
+                          const domain = (cd.co_website || "").trim();
+                          if (!domain) { addToast({ title:"Set company website first", status:"error", message:"Need co_website to match a HubSpot company" }); return; }
+                          (window as any).__hubspotSyncing = true; setCallRecords(p=>p?[...p]:[]);
+                          const toastId = addToast({ title:"Syncing HubSpot...", status:"loading", message:`Looking up ${domain}` });
+                          try {
+                            const company = await hubspotFindCompanyByDomain(domain);
+                            if (!company?.id) throw new Error(`No HubSpot company matches domain "${domain}"`);
+                            updateToast(toastId, { message:"Fetching all company properties..." });
+                            const full = await hubspotGetCompanyFull(company.id);
+                            updateToast(toastId, { message:"Fetching email history..." });
+                            const emails = await hubspotGetCompanyEmails(company.id);
+                            // Merge select HubSpot properties into companyData (don't overwrite filled fields)
+                            const hsProps = full?.properties || {};
+                            const fieldMap: Record<string,string> = {
+                              name: "co_name", industry: "co_industry", description: "co_pitch",
+                              numberofemployees: "co_size", annualrevenue: "co_revenue", website: "co_website",
+                            };
+                            setCompanyData((prev:any) => {
+                              const merged = { ...prev };
+                              for (const [hs, local] of Object.entries(fieldMap)) {
+                                if (hsProps[hs] && !merged[local]) merged[local] = String(hsProps[hs]);
+                              }
+                              merged._hubspotProps = hsProps; // keep full raw snapshot
+                              merged._hubspotCompanyId = company.id;
+                              return merged;
+                            });
+                            // Import emails into slackComms
+                            const existingHsIds = new Set((slackComms||[]).filter((c:any) => c.source === "hubspot").map((c:any) => c.hsId));
+                            const newEmails = emails
+                              .filter((e:any) => e.id && !existingHsIds.has(e.id))
+                              .map((e:any) => {
+                                const p = e.properties || {};
+                                const dir = p.hs_email_direction || "UNKNOWN";
+                                const body = p.hs_email_text || (p.hs_email_html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+                                return {
+                                  id: `hs_${e.id}`,
+                                  hsId: e.id,
+                                  type: "email",
+                                  source: "hubspot",
+                                  date: (p.hs_timestamp || p.hs_createdate || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+                                  subject: p.hs_email_subject || "",
+                                  participants: [p.hs_email_from_email, p.hs_email_to_email].filter(Boolean).join(" → "),
+                                  direction: dir,
+                                  content: `[${dir}] From: ${p.hs_email_from_email||"?"} | To: ${p.hs_email_to_email||"?"} | Subject: ${p.hs_email_subject||""}\n\n${body}`.trim(),
+                                };
+                              });
+                            if (newEmails.length) setSlackComms((prev:any) => [...newEmails, ...(prev||[])]);
+                            (window as any).__hubspotSyncing = false; setCallRecords(p=>p?[...p]:[]);
+                            updateToast(toastId, { status:"success", title:`HubSpot synced`, message:`${Object.keys(hsProps).length} properties, ${newEmails.length} new emails` });
+                          } catch (err:any) {
+                            console.error("[HubSpot] sync failed:", err);
+                            (window as any).__hubspotSyncing = false; setCallRecords(p=>p?[...p]:[]);
+                            updateToast(toastId, { status:"error", title:"HubSpot sync failed", message:(err?.message || "Check console").slice(0, 120) });
+                          }
+                        };
+
                         return (
                           <div style={{ position:"relative" }}>
                             <div style={{ display:"flex", gap:6 }}>
@@ -17814,7 +18396,50 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                                   fontSize:10, fontFamily:mono, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
                                 {isConnected ? "●" : "○"} Slack
                               </button>
+                              <button disabled={hubspotSyncing} onClick={syncHubspot}
+                                style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${hubspotConnected ? "#ff7a59"+"40" : _C.border}`,
+                                  background: hubspotSyncing ? _C.muted : (hubspotConnected ? "#ff7a5910" : "transparent"),
+                                  color: hubspotConnected ? "#ff7a59" : _C.muted,
+                                  fontSize:10, fontFamily:mono, cursor:hubspotSyncing?"default":"pointer", display:"flex", alignItems:"center", gap:4 }}>
+                                {hubspotConnected ? "●" : "○"} {hubspotSyncing ? "Syncing..." : "HubSpot"}
+                              </button>
+                              {cd._hubspotProps && Object.keys(cd._hubspotProps).length > 0 && (
+                                <button onClick={()=>{ (window as any).__showHsProps = !(window as any).__showHsProps; setCallRecords(p=>p?[...p]:[]); }}
+                                  style={{ padding:"5px 10px", borderRadius:6, border:`1px solid #ff7a5940`, background:"#ff7a5910", color:"#ff7a59",
+                                    fontSize:10, fontFamily:mono, cursor:"pointer" }}>
+                                  {(window as any).__showHsProps ? "Hide" : "View"} {Object.keys(cd._hubspotProps).length} HS Properties
+                                </button>
+                              )}
                             </div>
+                            {(window as any).__showHsProps && cd._hubspotProps && (
+                              <div style={{ position:"absolute", right:0, top:"100%", marginTop:6, width:560, maxHeight:500, overflowY:"auto", zIndex:1000,
+                                background:_C.surface, border:`1px solid #ff7a5930`, borderRadius:10, padding:"14px 16px",
+                                boxShadow:"0 12px 40px rgba(0,0,0,.18)" }}>
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                                  <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>HubSpot Company Properties</span>
+                                  <input placeholder="Search..." onChange={e=>{ (window as any).__hsPropSearch = e.target.value; setCallRecords(p=>p?[...p]:[]); }}
+                                    style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:10, fontFamily:mono, width:160 }} />
+                                </div>
+                                {(() => {
+                                  const search = ((window as any).__hsPropSearch || "").toLowerCase();
+                                  const entries = Object.entries(cd._hubspotProps)
+                                    .filter(([k, v]) => v && !k.startsWith("hs_") || search) // hide hs_-prefixed by default
+                                    .filter(([k, v]) => !search || k.toLowerCase().includes(search) || String(v).toLowerCase().includes(search))
+                                    .filter(([, v]) => v != null && v !== "");
+                                  if (!entries.length) return <div style={{ fontSize:11, color:_C.muted, fontFamily:body }}>No properties match</div>;
+                                  return (
+                                    <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:4 }}>
+                                      {entries.map(([k, v]) => (
+                                        <div key={k} style={{ display:"grid", gridTemplateColumns:"220px 1fr", gap:8, padding:"5px 8px", borderRadius:5, background:_C.faint, fontSize:10, fontFamily:mono }}>
+                                          <span style={{ color:_C.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} title={k}>{k}</span>
+                                          <span style={{ color:_C.text, wordBreak:"break-word" }}>{String(v).slice(0, 300)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            )}
 
                             {wizardOpen && (
                               <>
@@ -18010,7 +18635,11 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                           <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:3 }}>TYPE</div>
                           <select id="ca-type" style={{ padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }}>
                             <option value="onboarding">Onboarding</option>
-                            <option value="followup">Follow-up</option>
+                            <option value="draft_review">Draft Review</option>
+                            <option value="launch">Launch Call</option>
+                            <option value="weekly_checkin">Weekly Check-in</option>
+                            <option value="qbr">QBR</option>
+                            <option value="touchpoint">Touchpoint / Misc</option>
                           </select>
                         </div>
                       </div>
@@ -18071,18 +18700,77 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                           <input id="comm-email-date" type="date" defaultValue={new Date().toISOString().slice(0,10)} style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono }} />
                         </div>
                       </div>
-                      <textarea id="comm-email-content" placeholder="Paste the email thread here..." rows={6}
+                      <textarea id="comm-email-content" placeholder="Paste the email thread here — can be a single message or an entire multi-email chain..." rows={14}
                         style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none", lineHeight:1.6, marginBottom:12 }} />
-                      <button onClick={()=>{
-                        const content = (document.getElementById("comm-email-content") as HTMLTextAreaElement)?.value || "";
-                        if (!content.trim()) { addToast({ title:"Paste email thread first", status:"error", message:"" }); return; }
-                        addComm({ id:uid(), type:"email", subject:(document.getElementById("comm-subject") as HTMLInputElement)?.value||"", participants:(document.getElementById("comm-participants") as HTMLInputElement)?.value||"", date:(document.getElementById("comm-email-date") as HTMLInputElement)?.value||new Date().toISOString().slice(0,10), content });
-                        (document.getElementById("comm-email-content") as HTMLTextAreaElement).value = "";
-                        addToast({ title:"Email thread saved", status:"success", message:"" });
-                      }}
-                        style={{ padding:"10px 24px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
-                        Save Email
-                      </button>
+                      <div style={{ display:"flex", gap:8 }}>
+                        <button onClick={()=>{
+                          const content = (document.getElementById("comm-email-content") as HTMLTextAreaElement)?.value || "";
+                          if (!content.trim()) { addToast({ title:"Paste email thread first", status:"error", message:"" }); return; }
+                          addComm({ id:uid(), type:"email", subject:(document.getElementById("comm-subject") as HTMLInputElement)?.value||"", participants:(document.getElementById("comm-participants") as HTMLInputElement)?.value||"", date:(document.getElementById("comm-email-date") as HTMLInputElement)?.value||new Date().toISOString().slice(0,10), content });
+                          (document.getElementById("comm-email-content") as HTMLTextAreaElement).value = "";
+                          addToast({ title:"Email thread saved", status:"success", message:"Saved as single entry" });
+                        }}
+                          style={{ padding:"10px 24px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:13, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                          Save as One Entry
+                        </button>
+                        <button onClick={async ()=>{
+                          const content = (document.getElementById("comm-email-content") as HTMLTextAreaElement)?.value || "";
+                          if (!content.trim()) { addToast({ title:"Paste email thread first", status:"error", message:"" }); return; }
+                          const btn = event?.currentTarget as HTMLButtonElement;
+                          if (btn) { btn.disabled = true; btn.textContent = "Parsing..."; }
+                          const toastId = addToast({ title:"Parsing thread with AI...", status:"loading", message:"Splitting into individual emails" });
+                          try {
+                            const raw = await callAI(
+                              `Parse this email thread into individual messages. Return ONLY a JSON array — one object per email in chronological order (oldest first).
+
+For each email, extract:
+- date: YYYY-MM-DD format (parse from "On Mar 15, 2026" / "Sent: Tuesday, March 15..." / "Date: ..." headers)
+- from: sender email or name
+- to: recipient email(s) or name(s)
+- subject: subject line (may repeat across messages)
+- body: the actual message text WITHOUT quoted replies from previous messages
+- direction: "inbound" if it's from the client/prospect, "outbound" if from the CSM/internal team — infer from context
+
+If dates are not explicitly stated for some messages, estimate based on surrounding context. If a message truly has no inferable date, use the date of the nearest message.
+
+Return ONLY JSON — no prose, no markdown fences.
+
+THREAD:
+${content}
+
+FORMAT:
+[
+  {"date":"YYYY-MM-DD","from":"","to":"","subject":"","body":"","direction":"inbound|outbound"}
+]`,
+                              "You parse email threads into structured JSON. Return only a valid JSON array.",
+                              8000
+                            );
+                            if (!raw || raw.startsWith("Error:")) throw new Error(raw || "Empty AI response");
+                            const arr = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                            if (!Array.isArray(arr) || arr.length === 0) throw new Error("AI didn't return an array of emails");
+                            const entries = arr.map((m:any) => ({
+                              id: uid(),
+                              type: "email",
+                              subject: m.subject || "",
+                              participants: [m.from, m.to].filter(Boolean).join(" → "),
+                              date: (m.date || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+                              direction: m.direction || "",
+                              content: `[${(m.direction||"").toUpperCase()}] From: ${m.from||"?"} | To: ${m.to||"?"} | Subject: ${m.subject||""}\n\n${m.body||""}`.trim(),
+                            }));
+                            // Add all entries
+                            setSlackComms((prev:any) => [...entries, ...(prev||[])]);
+                            (document.getElementById("comm-email-content") as HTMLTextAreaElement).value = "";
+                            updateToast(toastId, { status:"success", title:`Parsed ${entries.length} emails`, message:"Each saved as a separate entry with its own date" });
+                          } catch (err:any) {
+                            console.error("[EmailParse] failed:", err);
+                            updateToast(toastId, { status:"error", title:"Parse failed", message:(err?.message || "Try again").slice(0, 120) });
+                          }
+                          if (btn) { btn.disabled = false; btn.textContent = "◎ AI-Split into Individual Emails"; }
+                        }}
+                          style={{ padding:"10px 24px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                          ◎ AI-Split into Individual Emails
+                        </button>
+                      </div>
                     </>)}
                   </>);
                   })()}
@@ -18205,7 +18893,7 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                           </div>
                           <div style={{ flex:1 }}>
                             <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:_C.text }}>{rec.clientName || "Unnamed"}</div>
-                            <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>{rec.csmName || "Unknown"} · {rec.callDate || "No date"} · {rec.callType === "onboarding" ? "Onboarding" : "Follow-up"}</div>
+                            <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>{rec.csmName || "Unknown"} · {rec.callDate || "No date"} · {callTypeLabel(rec.callType)}</div>
                           </div>
                           <span style={{ fontSize:11, fontWeight:700, fontFamily:mono, padding:"4px 12px", borderRadius:8, background:gradeBg, color:gradeColor }}>{r.grade || "Unscored"}</span>
                           {r.sentiment && (
@@ -18437,19 +19125,34 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                     const saKey = `__sentAnalysis_${activeWorkspace?.id||""}`;
                     const sa: any = (window as any)[saKey] || null;
                     const saRunning = (window as any).__sentRunning || false;
-                    const runSentiment = async () => {
+                    const saProgress = (window as any).__sentProgress || 0;
+                    // Auto-trigger from Copilot rerun request
+                    if ((window as any).__copilotRerunRequest === "sentiment" && !saRunning) {
+                      (window as any).__copilotRerunRequest = null;
+                      setTimeout(() => { (window as any).__sentRerunTrigger?.(); }, 100);
+                    }
+                    const runSentiment: any = async () => {
                       if (!allConvos.length) { addToast({ title:"Add conversations first", status:"error", message:"" }); return; }
-                      (window as any).__sentRunning = true; setCallRecords(p=>p?[...p]:[]);
-                      addToast({ title:"Analyzing sentiment...", status:"loading", message:"Reading all communications" });
+                      (window as any).__sentRunning = true; (window as any).__sentProgress = 0; setCallRecords(p=>p?[...p]:[]);
+                      // Build full context — no truncation. Sonnet 4.6 has a 1M token input window.
+                      const fullContext = allConvos.map((c:any) => {
+                        if (c.commType === "call") return `[CALL ${c.callDate||""} — ${c.callType||""}] Score:${c.result?.overallScore||"?"}/100, Sentiment:${c.result?.sentiment?.score||"?"}/10\n${c.transcript||""}`;
+                        return `[${(c.type||"").toUpperCase()} ${c.date||""}]\n${c.content||""}`;
+                      }).join("\n\n---\n\n");
+                      addToast({ title:"Analyzing sentiment...", status:"loading", message:`Reading ${allConvos.length} conversations (${Math.round(fullContext.length/1000)}k chars)` });
+                      // Shared cacheable block — identical across all 4 analyses so caching kicks in
+                      const sharedBlock = `COMMUNICATIONS (${allConvos.length} total, chronological):\n${fullContext}`;
+                      let rawResponse = "";
                       try {
-                        const raw = await callAI(
-                          `You are an unbiased client relationship analyst. Analyze ALL communications below to assess how this client's sentiment has evolved over time. Be objective — don't sugarcoat or catastrophize. Base every assessment on specific evidence.
+                        let lastRender = 0;
+                        await callAIStream(
+                          [{ role:"user", content: [
+                            { type:"text", text: sharedBlock, cache_control:{ type:"ephemeral" } },
+                            { type:"text", text:
+                          `You are an unbiased client relationship analyst. Analyze the communications above to assess how this client's sentiment has evolved over time. Be objective — don't sugarcoat or catastrophize. Base every assessment on specific evidence.
 
 COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"})
 ${cd.co_sentiment_feedback ? `\nCSM FEEDBACK ON PREVIOUS ANALYSIS:\n"${cd.co_sentiment_feedback}"\nThe CSM disagrees with or wants to adjust the previous analysis. Carefully consider their perspective — they know this client. If their feedback is valid, adjust your scores and reasoning. If you disagree, explain why with evidence.\n` : ""}
-COMMUNICATIONS (${allConvos.length} total, chronological):
-${convoContext.slice(0, 18000)}
-
 Analyze sentiment trajectory and return ONLY JSON:
 {
   "overallSentiment": {
@@ -18495,15 +19198,32 @@ IMPORTANT:
 - Timeline entries should map to real events/conversations, not fabricated ones
 - Be brutally honest but constructive
 - If the relationship is fine, say so — don't manufacture problems
-- If there are issues, be specific about what and why`,
-                          "", 4000
+- If there are issues, be specific about what and why` }
+                          ] }],
+                          "You are an unbiased client relationship analyst. Return only valid JSON.",
+                          12000,
+                          (chunk: string) => {
+                            rawResponse += chunk;
+                            (window as any).__sentProgress = rawResponse.length;
+                            const now = Date.now();
+                            if (now - lastRender > 200) { lastRender = now; setCallRecords(p=>p?[...p]:[]); }
+                          }
                         );
-                        const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
-                        (window as any)[saKey] = { result, generatedAt: new Date().toISOString() };
-                        (window as any).__sentRunning = false; setCallRecords(p=>p?[...p]:[]);
+                        if (!rawResponse) throw new Error("Empty response from AI");
+                        if (rawResponse.startsWith("Error:")) throw new Error(rawResponse);
+                        const result = JSON.parse(rawResponse.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        const entry = { result, generatedAt: new Date().toISOString() };
+                        (window as any)[saKey] = entry;
+                        setAiAnalyses(prev => ({ ...prev, sentiment: entry }));
+                        (window as any).__sentRunning = false; (window as any).__sentProgress = 0; setCallRecords(p=>p?[...p]:[]);
                         addToast({ title:`Sentiment: ${result.overallSentiment?.score}/10 — ${result.overallSentiment?.label}`, status:"success", message:"" });
-                      } catch { (window as any).__sentRunning = false; setCallRecords(p=>p?[...p]:[]); addToast({ title:"Analysis failed", status:"error", message:"Try again" }); }
+                      } catch (err:any) {
+                        console.error("[Sentiment] Analysis failed:", err, "\nRaw response:", rawResponse);
+                        (window as any).__sentRunning = false; (window as any).__sentProgress = 0; setCallRecords(p=>p?[...p]:[]);
+                        addToast({ title:"Analysis failed", status:"error", message: (err?.message || "Check console for details").slice(0, 120) });
+                      }
                     };
+                    (window as any).__sentRerunTrigger = runSentiment;
 
                     const r = sa?.result;
                     const tl = r?.timeline || [];
@@ -18514,47 +19234,172 @@ IMPORTANT:
                           <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>Unbiased analysis of client sentiment across all communications</div>
                           <button disabled={saRunning} onClick={runSentiment}
                             style={{ padding:"8px 20px", borderRadius:8, border:"none", background:saRunning?_C.muted:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:saRunning?"default":"pointer" }}>
-                            {saRunning ? "Analyzing..." : r ? "Refresh Analysis" : "Analyze Sentiment"}
+                            {saRunning ? (saProgress > 0 ? `Analyzing… ${saProgress} chars` : "Analyzing…") : r ? "Refresh Analysis" : "Analyze Sentiment"}
                           </button>
                         </div>
 
 
-                        {r && (<>
-                          {/* Overall score + trend */}
-                          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:16, marginBottom:20 }}>
-                            <div style={{ textAlign:"center", padding:"20px 28px", borderRadius:14,
-                              background: r.overallSentiment?.score >= 7 ? `${_C.green}08` : r.overallSentiment?.score >= 4 ? `${_C.amber}08` : `${_C.red}08`,
-                              border: `1px solid ${r.overallSentiment?.score >= 7 ? _C.green : r.overallSentiment?.score >= 4 ? _C.amber : _C.red}20` }}>
-                              <div style={{ fontSize:40, fontWeight:800, fontFamily:head, lineHeight:1,
-                                color: r.overallSentiment?.score >= 7 ? _C.green : r.overallSentiment?.score >= 4 ? _C.amber : _C.red }}>
-                                {r.overallSentiment?.score}<span style={{ fontSize:16 }}>/10</span>
+                        {r && (() => {
+                          // Collapsible state backed by window so it survives re-renders
+                          const openMap = ((window as any).__sentOpen ||= {}) as Record<string,boolean>;
+                          const isOpen = (id:string) => openMap[id] === true;
+                          const toggle = (id:string) => { openMap[id] = !openMap[id]; setCallRecords(p=>p?[...p]:[]); };
+                          const setAll = (val:boolean) => { for (const k of ["timeline","themes","risks","strengths","recommendations","recovery"]) openMap[k] = val; setCallRecords(p=>p?[...p]:[]); };
+                          const headerScoreColor = r.overallSentiment?.score >= 7 ? _C.green : r.overallSentiment?.score >= 4 ? _C.amber : _C.red;
+                          const highRisks = (r.riskSignals||[]).filter((s:any) => s.severity === "high");
+                          const urgentRecs = (r.recommendations||[]).filter((rc:any) => rc.priority === "urgent");
+                          const topAction = urgentRecs[0] || r.recommendations?.[0];
+                          // Collapsible section wrapper
+                          const Section = ({ id, title, count, accent, children, defaultOpen = false }: any) => {
+                            const opened = openMap[id] === undefined ? defaultOpen : openMap[id];
+                            return (
+                              <div style={{ marginBottom:12, border:`1px solid ${_C.border}`, borderRadius:12, background:_C.canvas, overflow:"hidden" }}>
+                                <button onClick={()=>toggle(id)} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"12px 16px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left" }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:10, flex:1 }}>
+                                    <span style={{ width:3, height:18, borderRadius:2, background:accent||_C.accent, display:"inline-block" }} />
+                                    <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{title}</span>
+                                    {count != null && <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, padding:"2px 8px", borderRadius:10, background:_C.faint }}>{count}</span>}
+                                  </div>
+                                  <span style={{ fontSize:12, color:_C.muted, fontFamily:mono, transform:opened?"rotate(90deg)":"rotate(0)", transition:"transform .2s" }}>›</span>
+                                </button>
+                                {opened && <div style={{ padding:"0 16px 16px" }}>{children}</div>}
                               </div>
-                              <div style={{ fontSize:11, fontFamily:head, fontWeight:600, color:_C.text, marginTop:6 }}>{r.overallSentiment?.label}</div>
+                            );
+                          };
+                          return (<>
+                          {/* Hero: Score + Trend + Summary + Top Action */}
+                          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:16, marginBottom:14 }}>
+                            <div style={{ textAlign:"center", padding:"24px 32px", borderRadius:14,
+                              background: `${headerScoreColor}08`,
+                              border: `1px solid ${headerScoreColor}20`, display:"flex", flexDirection:"column", justifyContent:"center" }}>
+                              <div style={{ fontSize:48, fontWeight:800, fontFamily:head, lineHeight:1, color: headerScoreColor }}>
+                                {r.overallSentiment?.score}<span style={{ fontSize:18 }}>/10</span>
+                              </div>
+                              <div style={{ fontSize:12, fontFamily:head, fontWeight:700, color:_C.text, marginTop:8 }}>{r.overallSentiment?.label}</div>
                               <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, marginTop:4,
                                 color: r.overallSentiment?.trend === "improving" ? _C.green : r.overallSentiment?.trend === "declining" ? _C.red : _C.muted }}>
                                 {r.overallSentiment?.trend === "improving" ? "↑" : r.overallSentiment?.trend === "declining" ? "↓" : r.overallSentiment?.trend === "volatile" ? "↕" : "→"} {r.overallSentiment?.trend}
                               </div>
                             </div>
-                            <div style={{ padding:"16px 20px", borderRadius:14, background:_C.faint, display:"flex", flexDirection:"column", justifyContent:"center" }}>
-                              <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.7 }}>{r.overallSentiment?.summary}</div>
+                            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                              <div style={{ padding:"16px 20px", borderRadius:14, background:_C.faint, flex:1 }}>
+                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:6 }}>SUMMARY</div>
+                                <div style={{ fontSize:14, fontFamily:body, color:_C.text, lineHeight:1.7 }}>{r.overallSentiment?.summary}</div>
+                              </div>
+                              {topAction && (
+                                <div style={{ padding:"12px 16px", borderRadius:10, background:`${_C.accent}08`, border:`1px solid ${_C.accent}25`, display:"flex", alignItems:"center", gap:10 }}>
+                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:4,
+                                    background: topAction.priority === "urgent" ? `${_C.red}18` : `${_C.accent}18`,
+                                    color: topAction.priority === "urgent" ? _C.red : _C.accent, flexShrink:0 }}>DO NEXT</span>
+                                  <span style={{ fontSize:13, fontWeight:600, fontFamily:head, color:_C.text, lineHeight:1.4 }}>{topAction.action}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
+                          {/* Critical alert banner */}
+                          {highRisks.length > 0 && (
+                            <div style={{ padding:"12px 16px", borderRadius:10, background:`${_C.red}08`, border:`1px solid ${_C.red}30`, marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
+                              <span style={{ fontSize:16 }}>⚠</span>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.red }}>{highRisks.length} high-severity risk{highRisks.length>1?"s":""} flagged</div>
+                                <div style={{ fontSize:11, color:_C.text, fontFamily:body, marginTop:2 }}>{highRisks[0].signal}{highRisks.length>1?` (+${highRisks.length-1} more)`:""}</div>
+                              </div>
+                              <button onClick={()=>{openMap.risks = true; setCallRecords(p=>p?[...p]:[]);}}
+                                style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${_C.red}40`, background:"transparent", color:_C.red, fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                View all
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Expand/Collapse all */}
+                          <div style={{ display:"flex", justifyContent:"flex-end", gap:6, marginBottom:10 }}>
+                            <button onClick={()=>setAll(true)} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Expand all</button>
+                            <button onClick={()=>setAll(false)} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Collapse all</button>
+                          </div>
+
                           {/* Sentiment Graph */}
-                          {tl.length >= 2 && (() => {
-                            const gW = 600, gH = 160, padL = 30, padR = 10, padT = 10, padB = 24;
+                          {tl.length >= 1 && (() => {
+                            // Controls backed by window globals so they survive re-renders
+                            const viewMode = ((window as any).__sentViewMode || "all") as "all"|"day"|"week"|"month";
+                            const setViewMode = (v:string) => { (window as any).__sentViewMode = v; setCallRecords(p=>p?[...p]:[]); };
+                            // Parse valid dated events
+                            const dated = tl.map((e:any) => ({ ...e, ts: Date.parse(e.date) })).filter((e:any) => !isNaN(e.ts)).sort((a:any,b:any)=>a.ts-b.ts);
+                            if (!dated.length) return null;
+                            const minTs = dated[0].ts, maxTs = dated[dated.length-1].ts;
+                            const toIso = (ts:number) => new Date(ts).toISOString().slice(0,10);
+                            const rangeStart = (window as any).__sentRangeStart || toIso(minTs);
+                            const rangeEnd = (window as any).__sentRangeEnd || toIso(maxTs);
+                            const setRangeStart = (v:string) => { (window as any).__sentRangeStart = v; setCallRecords(p=>p?[...p]:[]); };
+                            const setRangeEnd = (v:string) => { (window as any).__sentRangeEnd = v; setCallRecords(p=>p?[...p]:[]); };
+                            const resetRange = () => { (window as any).__sentRangeStart = null; (window as any).__sentRangeEnd = null; setCallRecords(p=>p?[...p]:[]); };
+                            const startTs = Date.parse(rangeStart + "T00:00:00");
+                            const endTs = Date.parse(rangeEnd + "T23:59:59");
+                            // Filter by date range
+                            const inRange = dated.filter((e:any) => e.ts >= startTs && e.ts <= endTs);
+                            // Bucket by viewMode
+                            const bucketKey = (ts:number) => {
+                              const d = new Date(ts);
+                              if (viewMode === "day") return toIso(ts);
+                              if (viewMode === "week") { const day = d.getUTCDay(); const wStart = new Date(d); wStart.setUTCDate(d.getUTCDate() - day); return toIso(wStart.getTime()); }
+                              if (viewMode === "month") return toIso(ts).slice(0,7) + "-01";
+                              return toIso(ts) + "|" + Math.random(); // unique per event for "all"
+                            };
+                            const buckets: Record<string, { ts:number; scores:number[]; events:any[] }> = {};
+                            for (const e of inRange) {
+                              const k = bucketKey(e.ts);
+                              if (!buckets[k]) buckets[k] = { ts: viewMode === "all" ? e.ts : Date.parse(k), scores:[], events:[] };
+                              buckets[k].scores.push(e.score);
+                              buckets[k].events.push(e);
+                            }
+                            const aggregated = Object.values(buckets).map(b => ({
+                              ts: b.ts,
+                              score: b.scores.reduce((a,s)=>a+s,0) / b.scores.length,
+                              count: b.scores.length,
+                              events: b.events,
+                              date: toIso(b.ts)
+                            })).sort((a,b) => a.ts - b.ts);
+                            if (aggregated.length < 1) return null;
+                            const gW = 600, gH = 180, padL = 36, padR = 44, padT = 14, padB = 28;
                             const plotW = gW - padL - padR, plotH = gH - padT - padB;
-                            const pts = tl.map((p:any, i:number) => ({
-                              x: padL + (tl.length === 1 ? plotW/2 : (i / (tl.length - 1)) * plotW),
-                              y: padT + ((10 - p.score) / 9) * plotH,
-                              ...p
+                            // Time-based x positioning
+                            const aggMin = aggregated[0].ts, aggMax = aggregated[aggregated.length-1].ts;
+                            const span = Math.max(aggMax - aggMin, 1);
+                            const pts = aggregated.map((p:any) => ({
+                              ...p,
+                              x: aggregated.length === 1 ? padL + plotW/2 : padL + ((p.ts - aggMin) / span) * plotW,
+                              y: padT + ((10 - p.score) / 9) * plotH
                             }));
                             const linePoints = pts.map((p:any) => `${p.x},${p.y}`).join(" ");
-                            // Area fill under line
                             const areaPoints = `${pts[0].x},${padT+plotH} ${linePoints} ${pts[pts.length-1].x},${padT+plotH}`;
+                            // X-axis labels: max ~6 to avoid crowding
+                            const labelCount = Math.min(6, pts.length);
+                            const labelIdxs = labelCount === 1 ? [0] : Array.from({length:labelCount}, (_,i) => Math.round(i * (pts.length-1) / (labelCount-1)));
+                            const fmtLabel = (iso:string) => {
+                              const d = new Date(iso);
+                              if (viewMode === "month") return d.toLocaleDateString("en-US",{month:"short",year:"2-digit"});
+                              return d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+                            };
+                            const pillBtn = (active:boolean) => ({ padding:"4px 10px", borderRadius:6, border:`1px solid ${active?_C.accent:_C.border}`, background:active?`${_C.accent}12`:_C.canvas, color:active?_C.accent:_C.textSoft, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer", textTransform:"uppercase" as const });
                             return (
                             <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:"16px 20px", marginBottom:20 }}>
-                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, marginBottom:12 }}>SENTIMENT OVER TIME</div>
+                              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, gap:8, flexWrap:"wrap" }}>
+                                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4 }}>SENTIMENT OVER TIME</div>
+                                <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                                  {["all","day","week","month"].map(v => (
+                                    <button key={v} onClick={()=>setViewMode(v)} style={pillBtn(viewMode===v)}>{v}</button>
+                                  ))}
+                                  <input type="date" value={rangeStart} min={toIso(minTs)} max={rangeEnd} onChange={e=>setRangeStart(e.target.value)}
+                                    style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:10, fontFamily:mono, cursor:"pointer" }} />
+                                  <span style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>→</span>
+                                  <input type="date" value={rangeEnd} min={rangeStart} max={toIso(maxTs)} onChange={e=>setRangeEnd(e.target.value)}
+                                    style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:10, fontFamily:mono, cursor:"pointer" }} />
+                                  <button onClick={resetRange} style={{ padding:"4px 8px", borderRadius:6, border:"none", background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>reset</button>
+                                </div>
+                              </div>
+                              {pts.length === 0 ? (
+                                <div style={{ padding:"30px 0", textAlign:"center", color:_C.muted, fontSize:11, fontFamily:body }}>No events in selected range</div>
+                              ) : (
                               <svg viewBox={`0 0 ${gW} ${gH}`} style={{ width:"100%", height:"auto" }}>
                                 {/* Zone backgrounds */}
                                 <rect x={padL} y={padT} width={plotW} height={plotH/3} fill={_C.green} opacity="0.05" rx="2" />
@@ -18565,177 +19410,176 @@ IMPORTANT:
                                   const gy = padT + ((10-v)/9)*plotH;
                                   return <g key={v}><line x1={padL} y1={gy} x2={padL+plotW} y2={gy} stroke={_C.border} strokeWidth="0.5" /><text x={padL-4} y={gy+3} textAnchor="end" fontSize="9" fontFamily="monospace" fill={_C.muted}>{v}</text></g>;
                                 })}
-                                {/* Area fill */}
-                                <polygon points={areaPoints} fill={_C.accent} opacity="0.06" />
-                                {/* Line */}
-                                <polyline fill="none" stroke={_C.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={linePoints} />
+                                {pts.length >= 2 && <>
+                                  <polygon points={areaPoints} fill={_C.accent} opacity="0.06" />
+                                  <polyline fill="none" stroke={_C.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={linePoints} />
+                                </>}
                                 {/* Dots */}
                                 {pts.map((p:any, i:number) => {
                                   const col = p.score >= 7 ? _C.green : p.score >= 4 ? _C.amber : _C.red;
+                                  const tip = p.count > 1 ? `${fmtLabel(p.date)}: avg ${p.score.toFixed(1)}/10 (${p.count} events)` : `${fmtLabel(p.date)}: ${p.score}/10 — ${p.events[0]?.event||""}`;
                                   return <g key={i}>
                                     <circle cx={p.x} cy={p.y} r="7" fill={_C.canvas} stroke={col} strokeWidth="2" />
                                     <circle cx={p.x} cy={p.y} r="3.5" fill={col} />
-                                    <text x={p.x} y={p.y - 12} textAnchor="middle" fontSize="9" fontWeight="700" fontFamily="monospace" fill={col}>{p.score}</text>
-                                    <title>{`${p.date}: ${p.score}/10 — ${p.event}`}</title>
+                                    <text x={p.x} y={p.y - 12} textAnchor="middle" fontSize="9" fontWeight="700" fontFamily="monospace" fill={col}>{Math.round(p.score*10)/10}</text>
+                                    <title>{tip}</title>
                                   </g>;
                                 })}
-                                {/* X-axis dates */}
-                                {pts.map((p:any, i:number) => (
-                                  <text key={i} x={p.x} y={gH-2} textAnchor="middle" fontSize="8" fontFamily="monospace" fill={_C.muted}>{p.date?.slice(5)}</text>
+                                {/* X-axis labels */}
+                                {labelIdxs.map((idx, i) => (
+                                  <text key={i} x={pts[idx].x} y={gH-6} textAnchor="middle" fontSize="9" fontFamily="monospace" fill={_C.muted}>{fmtLabel(pts[idx].date)}</text>
                                 ))}
                                 {/* Zone labels */}
-                                <text x={padL+plotW+4} y={padT+plotH/6+3} fontSize="7" fontFamily="monospace" fill={_C.green} opacity="0.6">Good</text>
-                                <text x={padL+plotW+4} y={padT+plotH/2+3} fontSize="7" fontFamily="monospace" fill={_C.amber} opacity="0.6">OK</text>
-                                <text x={padL+plotW+4} y={padT+plotH*5/6+3} fontSize="7" fontFamily="monospace" fill={_C.red} opacity="0.6">Risk</text>
+                                <text x={padL+plotW+4} y={padT+plotH/6+3} fontSize="8" fontFamily="monospace" fill={_C.green} opacity="0.7">Good</text>
+                                <text x={padL+plotW+4} y={padT+plotH/2+3} fontSize="8" fontFamily="monospace" fill={_C.amber} opacity="0.7">OK</text>
+                                <text x={padL+plotW+4} y={padT+plotH*5/6+3} fontSize="8" fontFamily="monospace" fill={_C.red} opacity="0.7">Risk</text>
                               </svg>
+                              )}
                             </div>);
                           })()}
 
+                          {/* Recommendations — top of collapsibles so actions come first */}
+                          {r.recommendations?.length > 0 && (
+                            <Section id="recommendations" title="Recommendations" count={r.recommendations.length} accent={_C.accent} defaultOpen={urgentRecs.length > 0}>
+                              {r.recommendations.map((rec:any,ri:number) => (
+                                <div key={ri} style={{ padding:"12px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:8 }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                                    <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:4,
+                                      background:rec.priority==="urgent"?`${_C.red}18`:rec.priority==="high"?`${_C.amber}18`:`${_C.blue}12`,
+                                      color:rec.priority==="urgent"?_C.red:rec.priority==="high"?_C.amber:_C.blue }}>{rec.priority}</span>
+                                    <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{rec.action}</span>
+                                  </div>
+                                  <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, lineHeight:1.6 }}>{rec.reasoning}</div>
+                                  {rec.expectedOutcome && <div style={{ fontSize:11, color:_C.green, fontFamily:body, fontWeight:600, marginTop:6 }}>→ Expected: {rec.expectedOutcome}</div>}
+                                </div>
+                              ))}
+                            </Section>
+                          )}
+
+                          {/* Risk Signals */}
+                          {r.riskSignals?.length > 0 && (
+                            <Section id="risks" title="Risk Signals" count={r.riskSignals.length} accent={_C.red} defaultOpen={highRisks.length > 0}>
+                              {r.riskSignals.map((s:any,si:number) => (
+                                <div key={si} style={{ marginBottom:10, padding:"10px 12px", borderRadius:8, background:_C.faint, borderLeft:`3px solid ${s.severity==="high"?_C.red:s.severity==="medium"?_C.amber:_C.blue}` }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
+                                    <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 6px", borderRadius:3,
+                                      background:s.severity==="high"?`${_C.red}18`:s.severity==="medium"?`${_C.amber}18`:`${_C.blue}12`,
+                                      color:s.severity==="high"?_C.red:s.severity==="medium"?_C.amber:_C.blue }}>{s.severity}</span>
+                                    <span style={{ fontSize:13, fontWeight:600, fontFamily:head, color:_C.text }}>{s.signal}</span>
+                                  </div>
+                                  {s.evidence && <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, lineHeight:1.5, marginBottom:3, fontStyle:"italic" }}>"{s.evidence}"</div>}
+                                  {s.recommendation && <div style={{ fontSize:11, color:_C.accent, fontFamily:body, fontWeight:600 }}>→ {s.recommendation}</div>}
+                                </div>
+                              ))}
+                            </Section>
+                          )}
+
+                          {/* Strength Signals */}
+                          {r.strengthSignals?.length > 0 && (
+                            <Section id="strengths" title="Strength Signals" count={r.strengthSignals.length} accent={_C.green}>
+                              {r.strengthSignals.map((s:any,si:number) => (
+                                <div key={si} style={{ marginBottom:8, padding:"10px 12px", borderRadius:8, background:_C.faint, borderLeft:`3px solid ${_C.green}` }}>
+                                  <div style={{ fontSize:13, fontWeight:600, fontFamily:head, color:_C.text }}>{s.signal}</div>
+                                  {s.evidence && <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, marginTop:4, fontStyle:"italic", lineHeight:1.5 }}>"{s.evidence}"</div>}
+                                </div>
+                              ))}
+                            </Section>
+                          )}
+
                           {/* Timeline events with evidence */}
                           {tl.length > 0 && (
-                            <div style={{ marginBottom:20 }}>
-                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, marginBottom:10 }}>SENTIMENT EVENTS</div>
+                            <Section id="timeline" title="Sentiment Events" count={tl.length} accent={_C.accent}>
                               {tl.map((ev:any, ei:number) => (
                                 <div key={ei} style={{ display:"flex", gap:12, marginBottom:8, padding:"10px 14px", borderRadius:10, background:_C.faint,
                                   borderLeft:`3px solid ${ev.impact==="positive"?_C.green:ev.impact==="negative"?_C.red:_C.amber}` }}>
-                                  <div style={{ textAlign:"center", flexShrink:0, minWidth:40 }}>
-                                    <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:ev.impact==="positive"?_C.green:ev.impact==="negative"?_C.red:_C.amber }}>{ev.score}</div>
-                                    <div style={{ fontSize:8, fontFamily:mono, color:_C.muted }}>{ev.date?.slice(5)}</div>
+                                  <div style={{ textAlign:"center", flexShrink:0, minWidth:44 }}>
+                                    <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:ev.impact==="positive"?_C.green:ev.impact==="negative"?_C.red:_C.amber }}>{ev.score}</div>
+                                    <div style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{ev.date?.slice(5)}</div>
                                   </div>
                                   <div style={{ flex:1 }}>
-                                    <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, marginBottom:2 }}>
-                                      <span style={{ fontSize:9, fontFamily:mono, padding:"1px 5px", borderRadius:3, marginRight:6,
-                                        background: ev.source==="call"?`${_C.green}10`:ev.source==="slack"?"#6C5CE710":`${_C.blue}10`,
+                                    <div style={{ fontSize:13, fontWeight:600, fontFamily:head, color:_C.text, marginBottom:3 }}>
+                                      <span style={{ fontSize:9, fontFamily:mono, padding:"1px 6px", borderRadius:3, marginRight:6,
+                                        background: ev.source==="call"?`${_C.green}12`:ev.source==="slack"?"#6C5CE712":`${_C.blue}12`,
                                         color: ev.source==="call"?_C.green:ev.source==="slack"?"#6C5CE7":_C.blue }}>
                                         {ev.source}
                                       </span>
                                       {ev.event}
                                     </div>
                                     {ev.evidence && (
-                                      <div style={{ fontSize:11, fontFamily:body, color:_C.muted, fontStyle:"italic", lineHeight:1.5, marginTop:4,
-                                        padding:"4px 10px", borderRadius:6, borderLeft:`2px solid ${_C.accent}20`, background:`${_C.accent}04` }}>
+                                      <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, fontStyle:"italic", lineHeight:1.6, marginTop:4,
+                                        padding:"6px 10px", borderRadius:6, borderLeft:`2px solid ${_C.accent}20`, background:`${_C.accent}04` }}>
                                         "{ev.evidence}"
                                       </div>
                                     )}
                                   </div>
                                 </div>
                               ))}
-                            </div>
+                            </Section>
                           )}
 
                           {/* Themes */}
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
-                            {r.themes?.positive?.length > 0 && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.green}06`, border:`1px solid ${_C.green}15` }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:8 }}>POSITIVE THEMES</div>
-                                {r.themes.positive.map((t:any,ti:number) => (
-                                  <div key={ti} style={{ marginBottom:6 }}>
-                                    <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, display:"flex", alignItems:"center", gap:6 }}>
-                                      {t.theme}
-                                      <span style={{ fontSize:8, fontFamily:mono, padding:"1px 5px", borderRadius:3, background:`${_C.green}15`, color:_C.green }}>{t.frequency}</span>
-                                    </div>
-                                    {t.evidence && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>"{t.evidence}"</div>}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {r.themes?.negative?.length > 0 && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.red}06`, border:`1px solid ${_C.red}15` }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:8 }}>NEGATIVE THEMES</div>
-                                {r.themes.negative.map((t:any,ti:number) => (
-                                  <div key={ti} style={{ marginBottom:6 }}>
-                                    <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, display:"flex", alignItems:"center", gap:6 }}>
-                                      {t.theme}
-                                      <span style={{ fontSize:8, fontFamily:mono, padding:"1px 5px", borderRadius:3, background:`${_C.red}15`, color:_C.red }}>{t.frequency}</span>
-                                    </div>
-                                    {t.evidence && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>"{t.evidence}"</div>}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Risk + Strength signals */}
-                          {(r.riskSignals?.length > 0 || r.strengthSignals?.length > 0) && (
-                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
-                              {r.riskSignals?.length > 0 && (
-                                <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
-                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:8 }}>RISK SIGNALS</div>
-                                  {r.riskSignals.map((s:any,si:number) => (
-                                    <div key={si} style={{ marginBottom:8 }}>
-                                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-                                        <span style={{ fontSize:8, fontFamily:mono, fontWeight:700, padding:"1px 5px", borderRadius:3,
-                                          background:s.severity==="high"?`${_C.red}15`:s.severity==="medium"?`${_C.amber}15`:`${_C.blue}10`,
-                                          color:s.severity==="high"?_C.red:s.severity==="medium"?_C.amber:_C.blue }}>{s.severity}</span>
-                                        <span style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text }}>{s.signal}</span>
+                          {(r.themes?.positive?.length > 0 || r.themes?.negative?.length > 0) && (
+                            <Section id="themes" title="Themes" count={(r.themes?.positive?.length||0) + (r.themes?.negative?.length||0)} accent={_C.accent}>
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                                {r.themes?.positive?.length > 0 && (
+                                  <div style={{ padding:"12px 14px", borderRadius:10, background:`${_C.green}06`, borderLeft:`3px solid ${_C.green}` }}>
+                                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:10 }}>POSITIVE</div>
+                                    {r.themes.positive.map((t:any,ti:number) => (
+                                      <div key={ti} style={{ marginBottom:8 }}>
+                                        <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, display:"flex", alignItems:"center", gap:6 }}>
+                                          {t.theme}
+                                          <span style={{ fontSize:8, fontFamily:mono, padding:"1px 5px", borderRadius:3, background:`${_C.green}15`, color:_C.green }}>{t.frequency}</span>
+                                        </div>
+                                        {t.evidence && <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, marginTop:2, lineHeight:1.5 }}>"{t.evidence}"</div>}
                                       </div>
-                                      {s.evidence && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:2 }}>"{s.evidence}"</div>}
-                                      {s.recommendation && <div style={{ fontSize:10, color:_C.accent, fontFamily:body, fontWeight:600 }}>→ {s.recommendation}</div>}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              {r.strengthSignals?.length > 0 && (
-                                <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
-                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:8 }}>STRENGTH SIGNALS</div>
-                                  {r.strengthSignals.map((s:any,si:number) => (
-                                    <div key={si} style={{ marginBottom:6 }}>
-                                      <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text }}>{s.signal}</div>
-                                      {s.evidence && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>"{s.evidence}"</div>}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Recommendations */}
-                          {r.recommendations?.length > 0 && (
-                            <div style={{ marginBottom:20 }}>
-                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, marginBottom:10 }}>RECOMMENDATIONS</div>
-                              {r.recommendations.map((rec:any,ri:number) => (
-                                <div key={ri} style={{ padding:"12px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:8 }}>
-                                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                                    <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4,
-                                      background:rec.priority==="urgent"?`${_C.red}15`:rec.priority==="high"?`${_C.amber}15`:`${_C.blue}10`,
-                                      color:rec.priority==="urgent"?_C.red:rec.priority==="high"?_C.amber:_C.blue }}>{rec.priority}</span>
-                                    <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{rec.action}</span>
+                                    ))}
                                   </div>
-                                  <div style={{ fontSize:11, color:_C.muted, fontFamily:body, lineHeight:1.5 }}>{rec.reasoning}</div>
-                                  {rec.expectedOutcome && <div style={{ fontSize:10, color:_C.green, fontFamily:body, fontWeight:600, marginTop:4 }}>Expected: {rec.expectedOutcome}</div>}
-                                </div>
-                              ))}
-                            </div>
+                                )}
+                                {r.themes?.negative?.length > 0 && (
+                                  <div style={{ padding:"12px 14px", borderRadius:10, background:`${_C.red}06`, borderLeft:`3px solid ${_C.red}` }}>
+                                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:10 }}>NEGATIVE</div>
+                                    {r.themes.negative.map((t:any,ti:number) => (
+                                      <div key={ti} style={{ marginBottom:8 }}>
+                                        <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, display:"flex", alignItems:"center", gap:6 }}>
+                                          {t.theme}
+                                          <span style={{ fontSize:8, fontFamily:mono, padding:"1px 5px", borderRadius:3, background:`${_C.red}15`, color:_C.red }}>{t.frequency}</span>
+                                        </div>
+                                        {t.evidence && <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, marginTop:2, lineHeight:1.5 }}>"{t.evidence}"</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </Section>
                           )}
 
                           {/* Recovery Playbook */}
                           {r.recoveryPlaybook?.needed && (
-                            <div style={{ padding:"18px 20px", borderRadius:14, background:`${_C.red}06`, border:`1px solid ${_C.red}20`, marginBottom:20 }}>
-                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+                            <Section id="recovery" title="Recovery Playbook" count={r.recoveryPlaybook.steps?.length||0} accent={_C.red} defaultOpen={r.recoveryPlaybook.urgency === "critical"}>
+                              <div style={{ padding:"12px 14px", borderRadius:10, background:`${_C.red}06`, marginBottom:10 }}>
                                 <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"3px 8px", borderRadius:5,
-                                  background:r.recoveryPlaybook.urgency==="critical"?`${_C.red}15`:`${_C.amber}15`,
-                                  color:r.recoveryPlaybook.urgency==="critical"?_C.red:_C.amber }}>{r.recoveryPlaybook.urgency?.toUpperCase()}</span>
-                                <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>Recovery Playbook</span>
+                                  background:r.recoveryPlaybook.urgency==="critical"?`${_C.red}18`:`${_C.amber}18`,
+                                  color:r.recoveryPlaybook.urgency==="critical"?_C.red:_C.amber }}>{r.recoveryPlaybook.urgency?.toUpperCase()} URGENCY</span>
                               </div>
                               {r.recoveryPlaybook.steps?.map((s:any,si:number) => (
                                 <div key={si} style={{ display:"flex", gap:12, marginBottom:10 }}>
-                                  <div style={{ width:24, height:24, borderRadius:12, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                                    background:_C.accent, color:"#fff", fontSize:10, fontWeight:700, fontFamily:mono }}>{si+1}</div>
+                                  <div style={{ width:26, height:26, borderRadius:13, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
+                                    background:_C.accent, color:"#fff", fontSize:11, fontWeight:700, fontFamily:mono }}>{si+1}</div>
                                   <div style={{ flex:1 }}>
-                                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
-                                      <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{s.step}</span>
+                                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                                      <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{s.step}</span>
                                       <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{s.timing}</span>
                                     </div>
                                     {s.script && (
-                                      <div style={{ padding:"6px 10px", borderRadius:6, background:_C.canvas, border:`1px solid ${_C.border}`,
-                                        fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, fontStyle:"italic" }}>
+                                      <div style={{ padding:"8px 12px", borderRadius:7, background:_C.canvas, border:`1px solid ${_C.border}`,
+                                        fontSize:12, fontFamily:body, color:_C.text, lineHeight:1.6, fontStyle:"italic" }}>
                                         "{s.script}"
                                       </div>
                                     )}
                                   </div>
                                 </div>
                               ))}
-                            </div>
+                            </Section>
                           )}
 
                           {/* CSM Feedback */}
@@ -18759,7 +19603,8 @@ IMPORTANT:
                           </div>
 
                           {sa?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right" }}>Generated {new Date(sa.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})} at {new Date(sa.generatedAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>}
-                        </>)}
+                        </>);
+                        })()}
 
                         {!r && !saRunning && <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted, fontSize:13 }}>Click "Analyze Sentiment" to get an unbiased assessment of client sentiment across all communications.</div>}
                       </div>
@@ -18771,13 +19616,30 @@ IMPORTANT:
                     const paKey = `__pitchAnalysis_${activeWorkspace?.id||""}`;
                     const pa: any = (window as any)[paKey] || null;
                     const paRunning = (window as any).__paRunning || false;
-                    const runPitch = async () => {
+                    const paProgress = (window as any).__paProgress || 0;
+                    if ((window as any).__copilotRerunRequest === "pitch" && !paRunning) {
+                      (window as any).__copilotRerunRequest = null;
+                      setTimeout(() => { (window as any).__pitchRerunTrigger?.(); }, 100);
+                    }
+                    const runPitch: any = async () => {
                       if (!allConvos.length) { addToast({ title:"Add conversations first", status:"error", message:"Upload calls, emails, or Slack messages in the Conversations tab." }); return; }
-                      (window as any).__paRunning = true; setCallRecords(p=>p?[...p]:[]);
-                      addToast({ title:"Analyzing pitch...", status:"loading", message:"" });
+                      (window as any).__paRunning = true; (window as any).__paProgress = 0; setCallRecords(p=>p?[...p]:[]);
+                      // Full context — no truncation. Sonnet 4.6 has a 1M token input window.
+                      const fullContext = allConvos.map((c:any) => {
+                        if (c.commType === "call") return `[CALL ${c.callDate||""} — ${c.callType||""}] Score:${c.result?.overallScore||"?"}/100, Sentiment:${c.result?.sentiment?.score||"?"}/10\n${c.transcript||""}`;
+                        return `[${(c.type||"").toUpperCase()} ${c.date||""}]\n${c.content||""}`;
+                      }).join("\n\n---\n\n");
+                      addToast({ title:"Analyzing pitch...", status:"loading", message:`Reading ${allConvos.length} conversations (${Math.round(fullContext.length/1000)}k chars)` });
+                      // Shared cacheable block — identical across all 4 analyses
+                      const sharedBlock = `COMMUNICATIONS (${allConvos.length} total, chronological):\n${fullContext}`;
+                      let rawResponse = "";
                       try {
-                        const raw = await callAI(
-                          `You are an expert B2B sales pitch analyst. Analyze ALL conversations below to evaluate how the CSM team is pitching this company's products and services.
+                        let lastRender = 0;
+                        await callAIStream(
+                          [{ role:"user", content: [
+                            { type:"text", text: sharedBlock, cache_control:{ type:"ephemeral" } },
+                            { type:"text", text:
+                          `You are an expert B2B sales pitch analyst. Analyze the conversations above to evaluate how the CSM team is pitching this company's products and services.
 
 COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"})
 PITCH: ${cd.co_pitch||"not set"}
@@ -18785,9 +19647,6 @@ VALUE PROP: ${cd.co_diff||"not set"}
 KEY SELLING POINTS: ${cd.co_ksp||"not set"}
 PRODUCTS: ${(products||[]).map((p:any)=>`${p.name}: ${p.valueProposition||p.description||""}`).join("; ")||"none"}
 PERSONAS: ${(icps||[]).map((p:any)=>`${p.name}: ${(p.data||{}).buyer||""}`).join("; ")||"none"}
-
-CONVERSATIONS (${allConvos.length} total):
-${convoContext.slice(0, 15000)}
 
 Analyze and return ONLY JSON:
 {
@@ -18819,59 +19678,153 @@ Analyze and return ONLY JSON:
   "rewrittenPitch": "a rewritten, optimized 3-4 sentence pitch based on what works and what's missing",
   "talkingPoints": ["5-7 specific talking points the CSM should use, based on what resonates"],
   "avoidList": ["things being said that should stop — with why"]
-}`,
-                          "", 3000
+}` }
+                          ] }],
+                          "You are an expert B2B sales pitch analyst. Return only valid JSON.",
+                          12000,
+                          (chunk: string) => {
+                            rawResponse += chunk;
+                            (window as any).__paProgress = rawResponse.length;
+                            const now = Date.now();
+                            if (now - lastRender > 200) { lastRender = now; setCallRecords(p=>p?[...p]:[]); }
+                          }
                         );
-                        const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
-                        (window as any)[paKey] = { result, generatedAt: new Date().toISOString() };
-                        (window as any).__paRunning = false; setCallRecords(p=>p?[...p]:[]);
+                        if (!rawResponse) throw new Error("Empty response from AI");
+                        if (rawResponse.startsWith("Error:")) throw new Error(rawResponse);
+                        const result = JSON.parse(rawResponse.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        const entry = { result, generatedAt: new Date().toISOString() };
+                        (window as any)[paKey] = entry;
+                        setAiAnalyses(prev => ({ ...prev, pitch: entry }));
+                        (window as any).__paRunning = false; (window as any).__paProgress = 0; setCallRecords(p=>p?[...p]:[]);
                         addToast({ title:`Pitch: ${result.overallScore}/100 — ${result.grade}`, status:"success", message:"" });
-                      } catch { (window as any).__paRunning = false; setCallRecords(p=>p?[...p]:[]); addToast({ title:"Analysis failed", status:"error", message:"Try again" }); }
+                      } catch (err:any) {
+                        console.error("[Pitch] Analysis failed:", err, "\nRaw response:", rawResponse);
+                        (window as any).__paRunning = false; (window as any).__paProgress = 0; setCallRecords(p=>p?[...p]:[]);
+                        addToast({ title:"Analysis failed", status:"error", message: (err?.message || "Check console for details").slice(0, 120) });
+                      }
                     };
+                    (window as any).__pitchRerunTrigger = runPitch;
                     const r = pa?.result;
                     return (
                       <div style={{ marginTop:16 }}>
                         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
                           <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>Analyzes how you're pitching this client across all conversations</div>
                           <button disabled={paRunning} onClick={runPitch} style={{ padding:"8px 20px", borderRadius:8, border:"none", background:paRunning?_C.muted:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:paRunning?"default":"pointer" }}>
-                            {paRunning ? "Analyzing..." : r ? "Refresh" : "Analyze Pitch"}
+                            {paRunning ? (paProgress > 0 ? `Analyzing… ${paProgress} chars` : "Analyzing…") : r ? "Refresh" : "Analyze Pitch"}
                           </button>
                         </div>
-                        {r && (<>
-                          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr 1fr 1fr 1fr", gap:12, marginBottom:20 }}>
-                            <div style={{ textAlign:"center", padding:"16px 22px", borderRadius:12, background:`${r.overallScore>=75?_C.green:r.overallScore>=50?_C.amber:_C.red}08`, border:`1px solid ${r.overallScore>=75?_C.green:r.overallScore>=50?_C.amber:_C.red}20` }}>
-                              <div style={{ fontSize:32, fontWeight:800, fontFamily:head, color:r.overallScore>=75?_C.green:r.overallScore>=50?_C.amber:_C.red, lineHeight:1 }}>{r.overallScore}</div>
-                              <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginTop:4 }}>{r.grade}</div>
-                            </div>
-                            {[{l:"Positioning",s:r.positioning?.score},{l:"Consistency",s:r.messageConsistency?.score},{l:"Product Knowledge",s:r.productKnowledge?.score},{l:"CTA Strength",s:r.callToAction?.score}].map((s,si)=>(
-                              <div key={si} style={{ padding:"12px 14px", borderRadius:10, background:_C.faint }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:4, textTransform:"uppercase" as const }}>{s.l}</div>
-                                <div style={{ fontSize:22, fontWeight:800, fontFamily:head, color:(s.s||0)>=75?_C.green:(s.s||0)>=50?_C.amber:_C.red }}>{s.s||"?"}</div>
+                        {r && (() => {
+                          const openMap = ((window as any).__pitchOpen ||= {}) as Record<string,boolean>;
+                          const toggle = (id:string) => { openMap[id] = !openMap[id]; setCallRecords(p=>p?[...p]:[]); };
+                          const setAll = (val:boolean) => { for (const k of ["positioning","consistency","productknowledge"]) openMap[k] = val; setCallRecords(p=>p?[...p]:[]); };
+                          const scoreColor = (s:number) => s>=75?_C.green:s>=50?_C.amber:_C.red;
+                          const overallColor = scoreColor(r.overallScore||0);
+                          const Section = ({ id, title, count, accent, children, defaultOpen = false }: any) => {
+                            const opened = openMap[id] === undefined ? defaultOpen : openMap[id];
+                            return (
+                              <div style={{ marginBottom:12, border:`1px solid ${_C.border}`, borderRadius:12, background:_C.canvas, overflow:"hidden" }}>
+                                <button onClick={()=>toggle(id)} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"12px 16px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left" }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:10, flex:1 }}>
+                                    <span style={{ width:3, height:18, borderRadius:2, background:accent||_C.accent, display:"inline-block" }} />
+                                    <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{title}</span>
+                                    {count != null && <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, padding:"2px 8px", borderRadius:10, background:_C.faint }}>{count}</span>}
+                                  </div>
+                                  <span style={{ fontSize:12, color:_C.muted, fontFamily:mono, transform:opened?"rotate(90deg)":"rotate(0)", transition:"transform .2s" }}>›</span>
+                                </button>
+                                {opened && <div style={{ padding:"0 16px 16px" }}>{children}</div>}
                               </div>
-                            ))}
-                          </div>
-                          {r.rewrittenPitch && (
-                            <div style={{ padding:"16px 18px", borderRadius:12, background:`${_C.accent}06`, border:`1px solid ${_C.accent}20`, marginBottom:16 }}>
-                              <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8, textTransform:"uppercase" as const }}>OPTIMIZED PITCH</div>
-                              <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.7, fontStyle:"italic" }}>"{r.rewrittenPitch}"</div>
+                            );
+                          };
+                          return (<>
+                          {/* Hero: overall score + optimized pitch as the DO NEXT */}
+                          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:16, marginBottom:14 }}>
+                            <div style={{ textAlign:"center", padding:"24px 32px", borderRadius:14, background:`${overallColor}08`, border:`1px solid ${overallColor}20`, display:"flex", flexDirection:"column", justifyContent:"center" }}>
+                              <div style={{ fontSize:48, fontWeight:800, fontFamily:head, color:overallColor, lineHeight:1 }}>{r.overallScore}</div>
+                              <div style={{ fontSize:11, fontFamily:head, fontWeight:700, color:_C.text, marginTop:6 }}>{r.grade}</div>
+                              <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginTop:4, letterSpacing:.4 }}>OUT OF 100</div>
                             </div>
+                            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                              {r.rewrittenPitch && (
+                                <div style={{ padding:"14px 18px", borderRadius:12, background:`${_C.accent}08`, border:`1px solid ${_C.accent}25`, flex:1 }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:6, letterSpacing:.4 }}>OPTIMIZED PITCH — USE THIS</div>
+                                  <div style={{ fontSize:14, fontFamily:body, color:_C.text, lineHeight:1.7, fontStyle:"italic" }}>"{r.rewrittenPitch}"</div>
+                                </div>
+                              )}
+                              {/* Sub-scores compact row — messaging architecture only (CTA moved to Coaching) */}
+                              <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:8 }}>
+                                {[{l:"Positioning",s:r.positioning?.score,id:"positioning"},{l:"Consistency",s:r.messageConsistency?.score,id:"consistency"},{l:"Product Knowledge",s:r.productKnowledge?.score,id:"productknowledge"}].map((s,si)=>(
+                                  <button key={si} onClick={()=>toggle(s.id)} style={{ padding:"10px 12px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}`, cursor:"pointer", textAlign:"left" }}>
+                                    <div style={{ fontSize:8, fontFamily:mono, fontWeight:700, color:_C.muted, textTransform:"uppercase" as const, letterSpacing:.4 }}>{s.l}</div>
+                                    <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:scoreColor(s.s||0) }}>{s.s||"?"}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display:"flex", justifyContent:"flex-end", gap:6, marginBottom:10 }}>
+                            <button onClick={()=>setAll(true)} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Expand all</button>
+                            <button onClick={()=>setAll(false)} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Collapse all</button>
+                          </div>
+
+                          <div style={{ padding:"10px 14px", borderRadius:8, background:_C.faint, border:`1px dashed ${_C.border}`, fontSize:11, fontFamily:body, color:_C.muted, marginBottom:12, lineHeight:1.5 }}>
+                            💡 Talking points, Stop Saying, and CTA coaching have moved to the <strong style={{ color:_C.text }}>CSM Coaching</strong> tab — they're about rep behavior rather than product messaging.
+                          </div>
+
+                          {/* Sub-score detail sections */}
+                          {r.positioning && (
+                            <Section id="positioning" title="Positioning" count={r.positioning.score} accent={scoreColor(r.positioning.score||0)}>
+                              <div style={{ fontSize:13, color:_C.text, fontFamily:body, lineHeight:1.6, marginBottom:10 }}>{r.positioning.assessment}</div>
+                              {r.positioning.whatsBeingSaid?.length > 0 && (
+                                <div style={{ marginBottom:10 }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:6 }}>WHAT'S BEING SAID</div>
+                                  {r.positioning.whatsBeingSaid.map((s:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:4, paddingLeft:8 }}>• {s}</div>)}
+                                </div>
+                              )}
+                              {r.positioning.whatsMissing?.length > 0 && (
+                                <div style={{ marginBottom:10 }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.amber, marginBottom:6 }}>WHAT'S MISSING</div>
+                                  {r.positioning.whatsMissing.map((s:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:4, paddingLeft:8 }}>• {s}</div>)}
+                                </div>
+                              )}
+                              {r.positioning.competitorHandling && (
+                                <div><div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:6 }}>COMPETITOR HANDLING</div>
+                                  <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, lineHeight:1.5 }}>{r.positioning.competitorHandling}</div></div>
+                              )}
+                            </Section>
                           )}
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
-                            {r.talkingPoints?.length > 0 && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.green}06`, border:`1px solid ${_C.green}15` }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:8 }}>USE THESE TALKING POINTS</div>
-                                {r.talkingPoints.map((t:string,ti:number) => <div key={ti} style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:4 }}>• {t}</div>)}
-                              </div>
-                            )}
-                            {r.avoidList?.length > 0 && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.red}06`, border:`1px solid ${_C.red}15` }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:8 }}>STOP SAYING</div>
-                                {r.avoidList.map((a:string,ai:number) => <div key={ai} style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:4 }}>• {a}</div>)}
-                              </div>
-                            )}
-                          </div>
-                          {pa?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right" }}>Generated {new Date(pa.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>}
-                        </>)}
+                          {r.messageConsistency && (
+                            <Section id="consistency" title="Message Consistency" count={r.messageConsistency.score} accent={scoreColor(r.messageConsistency.score||0)}>
+                              <div style={{ fontSize:13, color:_C.text, fontFamily:body, lineHeight:1.6, marginBottom:10 }}>{r.messageConsistency.assessment}</div>
+                              {r.messageConsistency.strongMessages?.length > 0 && (
+                                <div style={{ marginBottom:10 }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:6 }}>MESSAGES THAT LAND</div>
+                                  {r.messageConsistency.strongMessages.map((s:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:4, paddingLeft:8 }}>• {s}</div>)}
+                                </div>
+                              )}
+                              {r.messageConsistency.inconsistencies?.length > 0 && (
+                                <div><div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:6 }}>INCONSISTENCIES</div>
+                                  {r.messageConsistency.inconsistencies.map((s:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:4, paddingLeft:8 }}>• {s}</div>)}</div>
+                              )}
+                            </Section>
+                          )}
+                          {r.productKnowledge && (
+                            <Section id="productknowledge" title="Product Knowledge" count={r.productKnowledge.score} accent={scoreColor(r.productKnowledge.score||0)}>
+                              {r.productKnowledge.strengths?.length > 0 && (
+                                <div style={{ marginBottom:10 }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:6 }}>STRENGTHS</div>
+                                  {r.productKnowledge.strengths.map((s:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:4, paddingLeft:8 }}>• {s}</div>)}
+                                </div>
+                              )}
+                              {r.productKnowledge.gaps?.length > 0 && (
+                                <div><div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:6 }}>GAPS</div>
+                                  {r.productKnowledge.gaps.map((s:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:4, paddingLeft:8 }}>• {s}</div>)}</div>
+                              )}
+                            </Section>
+                          )}
+                          {pa?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right", marginTop:10 }}>Generated {new Date(pa.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>}
+                        </>);
+                        })()}
                         {!r && !paRunning && <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted, fontSize:13 }}>Click "Analyze Pitch" to evaluate how you're positioning this client across all conversations.</div>}
                       </div>
                     );
@@ -18882,21 +19835,35 @@ Analyze and return ONLY JSON:
                     const coKey = `__csmCoaching_${activeWorkspace?.id||""}`;
                     const co: any = (window as any)[coKey] || null;
                     const coRunning = (window as any).__coRunning || false;
-                    const runCoaching = async () => {
+                    const coProgress = (window as any).__coProgress || 0;
+                    if ((window as any).__copilotRerunRequest === "coaching" && !coRunning) {
+                      (window as any).__copilotRerunRequest = null;
+                      setTimeout(() => { (window as any).__coachRerunTrigger?.(); }, 100);
+                    }
+                    const runCoaching: any = async () => {
                       if (!allConvos.length) { addToast({ title:"Add conversations first", status:"error", message:"" }); return; }
-                      (window as any).__coRunning = true; setCallRecords(p=>p?[...p]:[]);
-                      addToast({ title:"Generating coaching...", status:"loading", message:"" });
+                      (window as any).__coRunning = true; (window as any).__coProgress = 0; setCallRecords(p=>p?[...p]:[]);
+                      // Full context — no truncation. Sonnet 4.6 has a 1M token input window.
+                      const fullContext = allConvos.map((c:any) => {
+                        if (c.commType === "call") return `[CALL ${c.callDate||""} — ${c.callType||""}] Score:${c.result?.overallScore||"?"}/100, Sentiment:${c.result?.sentiment?.score||"?"}/10\n${c.transcript||""}`;
+                        return `[${(c.type||"").toUpperCase()} ${c.date||""}]\n${c.content||""}`;
+                      }).join("\n\n---\n\n");
+                      addToast({ title:"Generating coaching...", status:"loading", message:`Reading ${allConvos.length} conversations (${Math.round(fullContext.length/1000)}k chars)` });
+                      // Shared cacheable block — identical across all 4 analyses
+                      const sharedBlock = `COMMUNICATIONS (${allConvos.length} total, chronological):\n${fullContext}`;
+                      let rawResponse = "";
                       try {
-                        const raw = await callAI(
-                          `You are a world-class B2B sales coach. Analyze ALL conversations below and create a personalized coaching plan for the CSM team managing this client.
+                        let lastRender = 0;
+                        await callAIStream(
+                          [{ role:"user", content: [
+                            { type:"text", text: sharedBlock, cache_control:{ type:"ephemeral" } },
+                            { type:"text", text:
+                          `You are a world-class B2B sales coach. Analyze the conversations above and create a personalized coaching plan for the CSM team managing this client.
 
 COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"})
 PRODUCTS: ${(products||[]).map((p:any)=>p.name).join(", ")||"none"}
 
-CONVERSATIONS (${allConvos.length} total):
-${convoContext.slice(0, 15000)}
-
-Analyze the CSM's performance across ALL conversations and return ONLY JSON:
+Analyze the CSM's performance across all conversations and return ONLY JSON:
 {
   "overallAssessment": "2-3 sentence honest assessment",
   "strengths": [{"skill":"","evidence":"specific example","keepDoing":""}],
@@ -18906,76 +19873,200 @@ Analyze the CSM's performance across ALL conversations and return ONLY JSON:
   "weeklyFocus": [{"week":"Week 1","focus":"","drill":"specific exercise"}]
 }
 
-Be brutally honest but constructive. Use specific quotes as evidence.`,
-                          "", 3000
+Be brutally honest but constructive. Use specific quotes as evidence.` }
+                          ] }],
+                          "You are a world-class B2B sales coach. Return only valid JSON.",
+                          12000,
+                          (chunk: string) => {
+                            rawResponse += chunk;
+                            (window as any).__coProgress = rawResponse.length;
+                            const now = Date.now();
+                            if (now - lastRender > 200) { lastRender = now; setCallRecords(p=>p?[...p]:[]); }
+                          }
                         );
-                        const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
-                        (window as any)[coKey] = { result, generatedAt: new Date().toISOString() };
-                        (window as any).__coRunning = false; setCallRecords(p=>p?[...p]:[]);
+                        if (!rawResponse) throw new Error("Empty response from AI");
+                        if (rawResponse.startsWith("Error:")) throw new Error(rawResponse);
+                        const result = JSON.parse(rawResponse.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        const entry = { result, generatedAt: new Date().toISOString() };
+                        (window as any)[coKey] = entry;
+                        setAiAnalyses(prev => ({ ...prev, coaching: entry }));
+                        (window as any).__coRunning = false; (window as any).__coProgress = 0; setCallRecords(p=>p?[...p]:[]);
                         addToast({ title:"Coaching plan generated", status:"success", message:"" });
-                      } catch { (window as any).__coRunning = false; setCallRecords(p=>p?[...p]:[]); addToast({ title:"Failed", status:"error", message:"" }); }
+                      } catch (err:any) {
+                        console.error("[Coaching] Analysis failed:", err, "\nRaw response:", rawResponse);
+                        (window as any).__coRunning = false; (window as any).__coProgress = 0; setCallRecords(p=>p?[...p]:[]);
+                        addToast({ title:"Analysis failed", status:"error", message: (err?.message || "Check console for details").slice(0, 120) });
+                      }
                     };
+                    (window as any).__coachRerunTrigger = runCoaching;
                     const r = co?.result;
                     const skills = r?.conversationSkills || {};
+                    // Pull pitch-derived rep-coaching data from the pitch analysis (if run)
+                    const pitchForCoaching = (window as any)[`__pitchAnalysis_${activeWorkspace?.id||""}`]?.result || null;
                     return (
                       <div style={{ marginTop:16 }}>
                         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
                           <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>Personalized coaching based on real conversation performance</div>
                           <button disabled={coRunning} onClick={runCoaching} style={{ padding:"8px 20px", borderRadius:8, border:"none", background:coRunning?_C.muted:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:coRunning?"default":"pointer" }}>
-                            {coRunning ? "Analyzing..." : r ? "Refresh" : "Generate Coaching Plan"}
+                            {coRunning ? (coProgress > 0 ? `Analyzing… ${coProgress} chars` : "Analyzing…") : r ? "Refresh" : "Generate Coaching Plan"}
                           </button>
                         </div>
-                        {r && (<>
-                          {r.overallAssessment && <div style={{ padding:"16px 18px", borderRadius:12, background:_C.faint, marginBottom:16, fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.6 }}>{r.overallAssessment}</div>}
-                          {Object.keys(skills).length > 0 && (
-                            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:10, marginBottom:20 }}>
-                              {Object.entries(skills).map(([k,v]:any) => (
+                        {r && (() => {
+                          const openMap = ((window as any).__coachOpen ||= {}) as Record<string,boolean>;
+                          const toggle = (id:string) => { openMap[id] = !openMap[id]; setCallRecords(p=>p?[...p]:[]); };
+                          const setAll = (val:boolean) => { for (const k of ["skills","critical","strengths","weaknesses","weekly","talkingpoints","avoid","cta"]) openMap[k] = val; setCallRecords(p=>p?[...p]:[]); };
+                          const skillEntries = Object.entries(skills);
+                          const avgSkill = skillEntries.length ? skillEntries.reduce((s:number,[,v]:any)=>s+(v.score||0),0)/skillEntries.length : 0;
+                          const avgColor = avgSkill>=7?_C.green:avgSkill>=4?_C.amber:_C.red;
+                          const Section = ({ id, title, count, accent, children, defaultOpen = false }: any) => {
+                            const opened = openMap[id] === undefined ? defaultOpen : openMap[id];
+                            return (
+                              <div style={{ marginBottom:12, border:`1px solid ${_C.border}`, borderRadius:12, background:_C.canvas, overflow:"hidden" }}>
+                                <button onClick={()=>toggle(id)} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"12px 16px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left" }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:10, flex:1 }}>
+                                    <span style={{ width:3, height:18, borderRadius:2, background:accent||_C.accent, display:"inline-block" }} />
+                                    <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{title}</span>
+                                    {count != null && <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, padding:"2px 8px", borderRadius:10, background:_C.faint }}>{count}</span>}
+                                  </div>
+                                  <span style={{ fontSize:12, color:_C.muted, fontFamily:mono, transform:opened?"rotate(90deg)":"rotate(0)", transition:"transform .2s" }}>›</span>
+                                </button>
+                                {opened && <div style={{ padding:"0 16px 16px" }}>{children}</div>}
+                              </div>
+                            );
+                          };
+                          return (<>
+                          {/* Hero: avg skill score + assessment + top fix */}
+                          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:16, marginBottom:14 }}>
+                            <div style={{ textAlign:"center", padding:"24px 32px", borderRadius:14, background:`${avgColor}08`, border:`1px solid ${avgColor}20`, display:"flex", flexDirection:"column", justifyContent:"center" }}>
+                              <div style={{ fontSize:48, fontWeight:800, fontFamily:head, color:avgColor, lineHeight:1 }}>{avgSkill.toFixed(1)}<span style={{ fontSize:18 }}>/10</span></div>
+                              <div style={{ fontSize:11, fontFamily:head, fontWeight:700, color:_C.text, marginTop:6 }}>Skill Average</div>
+                              <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginTop:4, letterSpacing:.4 }}>{skillEntries.length} SKILLS</div>
+                            </div>
+                            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                              {r.overallAssessment && (
+                                <div style={{ padding:"16px 20px", borderRadius:14, background:_C.faint, flex:1 }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:6 }}>ASSESSMENT</div>
+                                  <div style={{ fontSize:14, fontFamily:body, color:_C.text, lineHeight:1.7 }}>{r.overallAssessment}</div>
+                                </div>
+                              )}
+                              {r.criticalFixes?.[0] && (
+                                <div style={{ padding:"12px 16px", borderRadius:10, background:`${_C.red}08`, border:`1px solid ${_C.red}25`, display:"flex", alignItems:"center", gap:10 }}>
+                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:4, background:`${_C.red}18`, color:_C.red, flexShrink:0 }}>TOP FIX</span>
+                                  <span style={{ fontSize:13, fontWeight:600, fontFamily:head, color:_C.text, lineHeight:1.4 }}>{r.criticalFixes[0].issue}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Skills grid — always visible */}
+                          {skillEntries.length > 0 && (
+                            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:8, marginBottom:14 }}>
+                              {skillEntries.map(([k,v]:any) => (
                                 <div key={k} style={{ padding:"10px 12px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`, textAlign:"center" }}>
                                   <div style={{ fontSize:22, fontWeight:800, fontFamily:head, color:v.score>=7?_C.green:v.score>=4?_C.amber:_C.red, lineHeight:1 }}>{v.score}</div>
-                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginTop:4, textTransform:"uppercase" as const }}>{k.replace(/([A-Z])/g," $1").trim()}</div>
-                                  {v.note && <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:4, lineHeight:1.3 }}>{v.note}</div>}
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, marginTop:4, textTransform:"uppercase" as const, letterSpacing:.3 }}>{k.replace(/([A-Z])/g," $1").trim()}</div>
+                                  {v.note && <div style={{ fontSize:10, color:_C.textSoft, fontFamily:body, marginTop:4, lineHeight:1.3 }}>{v.note}</div>}
                                 </div>
                               ))}
                             </div>
                           )}
-                          {r.criticalFixes?.length > 0 && (
-                            <div style={{ marginBottom:16 }}>
-                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>CRITICAL FIXES</div>
-                              {r.criticalFixes.map((f:any,fi:number) => (
-                                <div key={fi} style={{ padding:"14px 16px", borderRadius:10, background:`${_C.red}06`, border:`1px solid ${_C.red}15`, marginBottom:8 }}>
-                                  <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>{f.issue}</div>
-                                  <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginBottom:6 }}>{f.impact}</div>
-                                  {f.before && <div style={{ padding:"6px 10px", borderRadius:6, background:`${_C.red}08`, marginBottom:4, fontSize:11, fontFamily:body }}><span style={{ color:_C.red, fontWeight:600 }}>Before:</span> <span style={{ color:_C.text }}>{f.before}</span></div>}
-                                  {f.after && <div style={{ padding:"6px 10px", borderRadius:6, background:`${_C.green}08`, marginBottom:4, fontSize:11, fontFamily:body }}><span style={{ color:_C.green, fontWeight:600 }}>After:</span> <span style={{ color:_C.text }}>{f.after}</span></div>}
-                                  <div style={{ fontSize:11, fontFamily:body, color:_C.accent, fontWeight:600, marginTop:4 }}>→ {f.fix}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
-                            {r.strengths?.length > 0 && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.green}06`, border:`1px solid ${_C.green}15` }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:8 }}>STRENGTHS</div>
-                                {r.strengths.map((s:any,si:number) => <div key={si} style={{ marginBottom:8 }}><div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{s.skill}</div><div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>{s.evidence}</div><div style={{ fontSize:10, color:_C.green, marginTop:2 }}>→ {s.keepDoing}</div></div>)}
-                              </div>
-                            )}
-                            {r.weaknesses?.length > 0 && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:`${_C.amber}06`, border:`1px solid ${_C.amber}15` }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.amber, marginBottom:8 }}>AREAS TO IMPROVE</div>
-                                {r.weaknesses.map((w:any,wi:number) => <div key={wi} style={{ marginBottom:8 }}><div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{w.skill}</div><div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:2 }}>{w.evidence}</div><div style={{ fontSize:10, color:_C.amber, fontWeight:600, marginTop:2 }}>→ {w.howToImprove}</div>{w.scriptExample && <div style={{ padding:"4px 8px", borderRadius:4, background:_C.faint, marginTop:4, fontSize:10, fontFamily:mono, color:_C.text }}>"{w.scriptExample}"</div>}</div>)}
-                              </div>
-                            )}
+
+                          <div style={{ display:"flex", justifyContent:"flex-end", gap:6, marginBottom:10 }}>
+                            <button onClick={()=>setAll(true)} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Expand all</button>
+                            <button onClick={()=>setAll(false)} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Collapse all</button>
                           </div>
-                          {r.weeklyFocus?.length > 0 && (
-                            <div style={{ marginBottom:16 }}>
-                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>WEEKLY TRAINING PLAN</div>
-                              <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(r.weeklyFocus.length,4)},1fr)`, gap:10 }}>
-                                {r.weeklyFocus.map((w:any,wi:number) => <div key={wi} style={{ padding:"12px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}` }}><div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:4 }}>{w.week}</div><div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>{w.focus}</div><div style={{ fontSize:10, color:_C.muted, fontFamily:body, lineHeight:1.4 }}>{w.drill}</div></div>)}
-                              </div>
+
+                          {/* Rep-language sections from Pitch Analysis (if generated) */}
+                          {pitchForCoaching?.talkingPoints?.length > 0 && (
+                            <Section id="talkingpoints" title="Talking Points to Use" count={pitchForCoaching.talkingPoints.length} accent={_C.green} defaultOpen={true}>
+                              <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:8 }}>From Pitch Analysis — verbatim phrasings that land with this client</div>
+                              {pitchForCoaching.talkingPoints.map((t:string,ti:number) => <div key={ti} style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.6, marginBottom:6, padding:"6px 10px", borderLeft:`3px solid ${_C.green}`, background:`${_C.green}06`, borderRadius:"0 8px 8px 0" }}>{t}</div>)}
+                            </Section>
+                          )}
+                          {pitchForCoaching?.avoidList?.length > 0 && (
+                            <Section id="avoid" title="Stop Saying" count={pitchForCoaching.avoidList.length} accent={_C.red} defaultOpen={true}>
+                              <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:8 }}>From Pitch Analysis — language that's been hurting conversations</div>
+                              {pitchForCoaching.avoidList.map((a:string,ai:number) => <div key={ai} style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.6, marginBottom:6, padding:"6px 10px", borderLeft:`3px solid ${_C.red}`, background:`${_C.red}06`, borderRadius:"0 8px 8px 0" }}>{a}</div>)}
+                            </Section>
+                          )}
+                          {pitchForCoaching?.callToAction && (
+                            <Section id="cta" title={`Closing / CTA Coaching — ${pitchForCoaching.callToAction.score}/100`} accent={pitchForCoaching.callToAction.score>=75?_C.green:pitchForCoaching.callToAction.score>=50?_C.amber:_C.red}>
+                              <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:8 }}>From Pitch Analysis</div>
+                              <div style={{ fontSize:13, color:_C.text, fontFamily:body, lineHeight:1.6, marginBottom:10 }}>{pitchForCoaching.callToAction.assessment}</div>
+                              {pitchForCoaching.callToAction.examples?.length > 0 && (
+                                <div>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:6 }}>EXAMPLES</div>
+                                  {pitchForCoaching.callToAction.examples.map((s:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:4, paddingLeft:8, lineHeight:1.5 }}>• {s}</div>)}
+                                </div>
+                              )}
+                            </Section>
+                          )}
+                          {!pitchForCoaching && (
+                            <div style={{ padding:"10px 14px", borderRadius:8, background:_C.faint, border:`1px dashed ${_C.border}`, fontSize:11, fontFamily:body, color:_C.muted, marginBottom:12, lineHeight:1.5 }}>
+                              💡 Run <strong style={{ color:_C.text }}>Pitch Analysis</strong> to unlock Talking Points, Stop Saying, and CTA coaching sections here.
                             </div>
                           )}
-                          {co?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right" }}>Generated {new Date(co.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>}
-                        </>)}
+
+                          {/* Critical Fixes — opens by default */}
+                          {r.criticalFixes?.length > 0 && (
+                            <Section id="critical" title="Critical Fixes" count={r.criticalFixes.length} accent={_C.red} defaultOpen={true}>
+                              {r.criticalFixes.map((f:any,fi:number) => (
+                                <div key={fi} style={{ padding:"12px 14px", borderRadius:10, background:_C.faint, borderLeft:`3px solid ${_C.red}`, marginBottom:10 }}>
+                                  <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>{f.issue}</div>
+                                  <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:8, lineHeight:1.5 }}>{f.impact}</div>
+                                  {f.before && <div style={{ padding:"8px 12px", borderRadius:7, background:`${_C.red}08`, marginBottom:6, fontSize:12, fontFamily:body, lineHeight:1.5 }}><span style={{ color:_C.red, fontWeight:700 }}>Before:</span> <span style={{ color:_C.text }}>{f.before}</span></div>}
+                                  {f.after && <div style={{ padding:"8px 12px", borderRadius:7, background:`${_C.green}08`, marginBottom:6, fontSize:12, fontFamily:body, lineHeight:1.5 }}><span style={{ color:_C.green, fontWeight:700 }}>After:</span> <span style={{ color:_C.text }}>{f.after}</span></div>}
+                                  <div style={{ fontSize:12, fontFamily:body, color:_C.accent, fontWeight:600, marginTop:4 }}>→ {f.fix}</div>
+                                </div>
+                              ))}
+                            </Section>
+                          )}
+
+                          {/* Weaknesses */}
+                          {r.weaknesses?.length > 0 && (
+                            <Section id="weaknesses" title="Areas to Improve" count={r.weaknesses.length} accent={_C.amber}>
+                              {r.weaknesses.map((w:any,wi:number) => (
+                                <div key={wi} style={{ marginBottom:10, padding:"10px 12px", borderRadius:8, background:_C.faint, borderLeft:`3px solid ${_C.amber}` }}>
+                                  <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:3 }}>{w.skill}</div>
+                                  {w.evidence && <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, marginBottom:4, fontStyle:"italic" }}>"{w.evidence}"</div>}
+                                  <div style={{ fontSize:12, color:_C.amber, fontWeight:600, marginBottom:4 }}>→ {w.howToImprove}</div>
+                                  {w.scriptExample && <div style={{ padding:"6px 10px", borderRadius:6, background:_C.canvas, border:`1px solid ${_C.border}`, fontSize:11, fontFamily:mono, color:_C.text, lineHeight:1.5, fontStyle:"italic" }}>"{w.scriptExample}"</div>}
+                                </div>
+                              ))}
+                            </Section>
+                          )}
+
+                          {/* Strengths */}
+                          {r.strengths?.length > 0 && (
+                            <Section id="strengths" title="Strengths" count={r.strengths.length} accent={_C.green}>
+                              {r.strengths.map((s:any,si:number) => (
+                                <div key={si} style={{ marginBottom:8, padding:"10px 12px", borderRadius:8, background:_C.faint, borderLeft:`3px solid ${_C.green}` }}>
+                                  <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{s.skill}</div>
+                                  {s.evidence && <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, marginTop:4, fontStyle:"italic" }}>"{s.evidence}"</div>}
+                                  {s.keepDoing && <div style={{ fontSize:12, color:_C.green, fontWeight:600, marginTop:4 }}>→ {s.keepDoing}</div>}
+                                </div>
+                              ))}
+                            </Section>
+                          )}
+
+                          {/* Weekly training plan */}
+                          {r.weeklyFocus?.length > 0 && (
+                            <Section id="weekly" title="Weekly Training Plan" count={r.weeklyFocus.length} accent={_C.accent}>
+                              <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(r.weeklyFocus.length,4)},1fr)`, gap:10 }}>
+                                {r.weeklyFocus.map((w:any,wi:number) => (
+                                  <div key={wi} style={{ padding:"12px 14px", borderRadius:10, background:_C.faint, borderLeft:`3px solid ${_C.accent}` }}>
+                                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:4 }}>{w.week}</div>
+                                    <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>{w.focus}</div>
+                                    <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, lineHeight:1.5 }}>{w.drill}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </Section>
+                          )}
+
+                          {co?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right", marginTop:10 }}>Generated {new Date(co.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>}
+                        </>);
+                        })()}
                         {!r && !coRunning && <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted, fontSize:13 }}>Click "Generate Coaching Plan" to get personalized coaching based on real conversations.</div>}
                       </div>
                     );
@@ -18986,19 +20077,33 @@ Be brutally honest but constructive. Use specific quotes as evidence.`,
                     const ciKey = `__clientIntel_${activeWorkspace?.id||""}`;
                     const ci: any = (window as any)[ciKey] || null;
                     const ciRunning = (window as any).__ciRunning || false;
-                    const runIntel = async () => {
+                    const ciProgress = (window as any).__ciProgress || 0;
+                    if ((window as any).__copilotRerunRequest === "intel" && !ciRunning) {
+                      (window as any).__copilotRerunRequest = null;
+                      setTimeout(() => { (window as any).__intelRerunTrigger?.(); }, 100);
+                    }
+                    const runIntel: any = async () => {
                       if (!allConvos.length) { addToast({ title:"Add conversations first", status:"error", message:"" }); return; }
-                      (window as any).__ciRunning = true; setCallRecords(p=>p?[...p]:[]);
-                      addToast({ title:"Building client intel...", status:"loading", message:"" });
+                      (window as any).__ciRunning = true; (window as any).__ciProgress = 0; setCallRecords(p=>p?[...p]:[]);
+                      // Full context — no truncation. Sonnet 4.6 has a 1M token input window.
+                      const fullContext = allConvos.map((c:any) => {
+                        if (c.commType === "call") return `[CALL ${c.callDate||""} — ${c.callType||""}] Score:${c.result?.overallScore||"?"}/100, Sentiment:${c.result?.sentiment?.score||"?"}/10\n${c.transcript||""}`;
+                        return `[${(c.type||"").toUpperCase()} ${c.date||""}]\n${c.content||""}`;
+                      }).join("\n\n---\n\n");
+                      addToast({ title:"Building client intel...", status:"loading", message:`Reading ${allConvos.length} conversations (${Math.round(fullContext.length/1000)}k chars)` });
+                      // Shared cacheable block — identical across all 4 analyses
+                      const sharedBlock = `COMMUNICATIONS (${allConvos.length} total, chronological):\n${fullContext}`;
+                      let rawResponse = "";
                       try {
-                        const raw = await callAI(
-                          `You are a B2B client intelligence analyst. Analyze ALL conversations below to build a comprehensive profile of how this client thinks, makes decisions, and what drives them.
+                        let lastRender = 0;
+                        await callAIStream(
+                          [{ role:"user", content: [
+                            { type:"text", text: sharedBlock, cache_control:{ type:"ephemeral" } },
+                            { type:"text", text:
+                          `You are a B2B client intelligence analyst. Analyze the conversations above to build a comprehensive profile of how this client thinks, makes decisions, and what drives them.
 
 COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"})
 PRODUCTS: ${(products||[]).map((p:any)=>p.name).join(", ")||"none"}
-
-CONVERSATIONS (${allConvos.length} total — calls, emails, Slack):
-${convoContext.slice(0, 15000)}
 
 Build a client intelligence profile. Return ONLY JSON:
 {
@@ -19012,95 +20117,233 @@ Build a client intelligence profile. Return ONLY JSON:
   "quickReference": {"oneLiner":"","goldenRule":"single most important thing","avoid":"one thing that damages trust"}
 }
 
-Be specific and evidence-based. Reference actual conversation moments.`,
-                          "", 3500
+Be specific and evidence-based. Reference actual conversation moments.` }
+                          ] }],
+                          "You are a B2B client intelligence analyst. Return only valid JSON.",
+                          12000,
+                          (chunk: string) => {
+                            rawResponse += chunk;
+                            (window as any).__ciProgress = rawResponse.length;
+                            const now = Date.now();
+                            if (now - lastRender > 200) { lastRender = now; setCallRecords(p=>p?[...p]:[]); }
+                          }
                         );
-                        const result = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
-                        (window as any)[ciKey] = { result, generatedAt: new Date().toISOString() };
-                        (window as any).__ciRunning = false; setCallRecords(p=>p?[...p]:[]);
+                        if (!rawResponse) throw new Error("Empty response from AI");
+                        if (rawResponse.startsWith("Error:")) throw new Error(rawResponse);
+                        const result = JSON.parse(rawResponse.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        const entry = { result, generatedAt: new Date().toISOString() };
+                        (window as any)[ciKey] = entry;
+                        setAiAnalyses(prev => ({ ...prev, intel: entry }));
+                        (window as any).__ciRunning = false; (window as any).__ciProgress = 0; setCallRecords(p=>p?[...p]:[]);
                         addToast({ title:"Client intel profile built", status:"success", message:"" });
-                      } catch { (window as any).__ciRunning = false; setCallRecords(p=>p?[...p]:[]); addToast({ title:"Failed", status:"error", message:"" }); }
+                      } catch (err:any) {
+                        console.error("[Intel] Analysis failed:", err, "\nRaw response:", rawResponse);
+                        (window as any).__ciRunning = false; (window as any).__ciProgress = 0; setCallRecords(p=>p?[...p]:[]);
+                        addToast({ title:"Analysis failed", status:"error", message: (err?.message || "Check console for details").slice(0, 120) });
+                      }
                     };
+                    (window as any).__intelRerunTrigger = runIntel;
                     const r = ci?.result;
                     return (
                       <div style={{ marginTop:16 }}>
                         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
                           <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>How this client thinks, decides, and what drives them</div>
                           <button disabled={ciRunning} onClick={runIntel} style={{ padding:"8px 20px", borderRadius:8, border:"none", background:ciRunning?_C.muted:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:ciRunning?"default":"pointer" }}>
-                            {ciRunning ? "Analyzing..." : r ? "Refresh" : "Build Client Profile"}
+                            {ciRunning ? (ciProgress > 0 ? `Analyzing… ${ciProgress} chars` : "Analyzing…") : r ? "Refresh" : "Build Client Profile"}
                           </button>
                         </div>
-                        {r && (<>
+                        {r && (() => {
+                          const openMap = ((window as any).__intelOpen ||= {}) as Record<string,boolean>;
+                          const toggle = (id:string) => { openMap[id] = !openMap[id]; setCallRecords(p=>p?[...p]:[]); };
+                          const setAll = (val:boolean) => { for (const k of ["decision","comms","objections","personality","priorities","playbook","risks"]) openMap[k] = val; setCallRecords(p=>p?[...p]:[]); };
+                          const highRisks = (r.riskFactors||[]).filter((rf:any) => rf.severity === "high");
+                          const Section = ({ id, title, count, accent, children, defaultOpen = false }: any) => {
+                            const opened = openMap[id] === undefined ? defaultOpen : openMap[id];
+                            return (
+                              <div style={{ marginBottom:12, border:`1px solid ${_C.border}`, borderRadius:12, background:_C.canvas, overflow:"hidden" }}>
+                                <button onClick={()=>toggle(id)} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"12px 16px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left" }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:10, flex:1 }}>
+                                    <span style={{ width:3, height:18, borderRadius:2, background:accent||_C.accent, display:"inline-block" }} />
+                                    <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{title}</span>
+                                    {count != null && <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, padding:"2px 8px", borderRadius:10, background:_C.faint }}>{count}</span>}
+                                  </div>
+                                  <span style={{ fontSize:12, color:_C.muted, fontFamily:mono, transform:opened?"rotate(90deg)":"rotate(0)", transition:"transform .2s" }}>›</span>
+                                </button>
+                                {opened && <div style={{ padding:"0 16px 16px" }}>{children}</div>}
+                              </div>
+                            );
+                          };
+                          return (<>
+                          {/* Hero: quick reference card — always visible */}
                           {r.quickReference && (
-                            <div style={{ padding:"18px 20px", borderRadius:14, background:`${_C.accent}06`, border:`1px solid ${_C.accent}20`, marginBottom:20 }}>
-                              <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:8 }}>{r.quickReference.oneLiner}</div>
+                            <div style={{ padding:"20px 24px", borderRadius:14, background:`${_C.accent}06`, border:`1px solid ${_C.accent}25`, marginBottom:14 }}>
+                              <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, marginBottom:6 }}>QUICK REFERENCE</div>
+                              <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:14, lineHeight:1.5 }}>{r.quickReference.oneLiner}</div>
                               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                                <div style={{ padding:"8px 12px", borderRadius:8, background:`${_C.green}08` }}><div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:3 }}>GOLDEN RULE</div><div style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5 }}>{r.quickReference.goldenRule}</div></div>
-                                <div style={{ padding:"8px 12px", borderRadius:8, background:`${_C.red}08` }}><div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:3 }}>NEVER DO THIS</div><div style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5 }}>{r.quickReference.avoid}</div></div>
+                                <div style={{ padding:"12px 14px", borderRadius:10, background:`${_C.green}08`, borderLeft:`3px solid ${_C.green}` }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:5 }}>GOLDEN RULE</div>
+                                  <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.6 }}>{r.quickReference.goldenRule}</div>
+                                </div>
+                                <div style={{ padding:"12px 14px", borderRadius:10, background:`${_C.red}08`, borderLeft:`3px solid ${_C.red}` }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:5 }}>NEVER DO THIS</div>
+                                  <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.6 }}>{r.quickReference.avoid}</div>
+                                </div>
                               </div>
                             </div>
                           )}
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
-                            {r.decisionMaking && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8 }}>DECISION MAKING — <span style={{ textTransform:"uppercase" as const }}>{r.decisionMaking.style}</span></div>
-                                <div style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:6 }}>{r.decisionMaking.description}</div>
-                                {r.decisionMaking.keyInfluencers?.length > 0 && <div style={{ fontSize:10, color:_C.muted, marginBottom:4 }}>Influencers: {r.decisionMaking.keyInfluencers.join(", ")}</div>}
-                                {r.decisionMaking.triggers?.length > 0 && <div style={{ marginTop:4 }}>{r.decisionMaking.triggers.map((t:string,ti:number) => <div key={ti} style={{ fontSize:10, color:_C.green, marginBottom:2 }}>⚡ {t}</div>)}</div>}
+
+                          {/* Critical alert banner for high-severity risks */}
+                          {highRisks.length > 0 && (
+                            <div style={{ padding:"12px 16px", borderRadius:10, background:`${_C.red}08`, border:`1px solid ${_C.red}30`, marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
+                              <span style={{ fontSize:16 }}>⚠</span>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.red }}>{highRisks.length} high-severity risk{highRisks.length>1?"s":""}</div>
+                                <div style={{ fontSize:11, color:_C.text, fontFamily:body, marginTop:2 }}>{highRisks[0].risk}{highRisks.length>1?` (+${highRisks.length-1} more)`:""}</div>
                               </div>
-                            )}
-                            {r.communicationPreferences && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8 }}>COMMUNICATION</div>
-                                {r.communicationPreferences.doThis?.length > 0 && <div style={{ marginBottom:6 }}>{r.communicationPreferences.doThis.map((d:string,di:number) => <div key={di} style={{ fontSize:11, fontFamily:body, color:_C.green, marginBottom:3 }}>✓ {d}</div>)}</div>}
-                                {r.communicationPreferences.dontDoThis?.length > 0 && <div>{r.communicationPreferences.dontDoThis.map((d:string,di:number) => <div key={di} style={{ fontSize:11, fontFamily:body, color:_C.red, marginBottom:3 }}>✗ {d}</div>)}</div>}
-                              </div>
-                            )}
+                              <button onClick={()=>{openMap.risks = true; setCallRecords(p=>p?[...p]:[]);}}
+                                style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${_C.red}40`, background:"transparent", color:_C.red, fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                View all
+                              </button>
+                            </div>
+                          )}
+
+                          <div style={{ display:"flex", justifyContent:"flex-end", gap:6, marginBottom:10 }}>
+                            <button onClick={()=>setAll(true)} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Expand all</button>
+                            <button onClick={()=>setAll(false)} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Collapse all</button>
                           </div>
-                          {r.objections?.length > 0 && (
-                            <div style={{ marginBottom:16 }}>
-                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>OBJECTIONS & HOW TO HANDLE THEM</div>
-                              {r.objections.map((o:any,oi:number) => (
-                                <div key={oi} style={{ padding:"12px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:8, borderLeft:`3px solid ${o.status==="resolved"?_C.green:o.status==="recurring"?_C.amber:_C.blue}` }}>
-                                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}><span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{o.objection}</span><span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:o.status==="resolved"?`${_C.green}12`:o.status==="recurring"?`${_C.amber}12`:`${_C.blue}12`, color:o.status==="resolved"?_C.green:o.status==="recurring"?_C.amber:_C.blue }}>{o.status}</span></div>
-                                  <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:4 }}>{o.context}</div>
-                                  <div style={{ fontSize:11, fontFamily:body, color:_C.green, fontWeight:600 }}>→ {o.bestResponse}</div>
+
+                          {/* Risk Factors — first, action-oriented */}
+                          {r.riskFactors?.length > 0 && (
+                            <Section id="risks" title="Risk Factors" count={r.riskFactors.length} accent={_C.red} defaultOpen={highRisks.length > 0}>
+                              {r.riskFactors.map((rf:any,ri:number) => (
+                                <div key={ri} style={{ display:"flex", gap:10, padding:"10px 14px", borderRadius:10, background:_C.faint, borderLeft:`3px solid ${rf.severity==="high"?_C.red:rf.severity==="medium"?_C.amber:_C.blue}`, marginBottom:8 }}>
+                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:4, background:rf.severity==="high"?`${_C.red}18`:rf.severity==="medium"?`${_C.amber}18`:`${_C.blue}12`, color:rf.severity==="high"?_C.red:rf.severity==="medium"?_C.amber:_C.blue, flexShrink:0, alignSelf:"flex-start" }}>{rf.severity?.toUpperCase()}</span>
+                                  <div style={{ flex:1 }}>
+                                    <div style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.text }}>{rf.risk}</div>
+                                    <div style={{ fontSize:12, color:_C.accent, fontWeight:600, marginTop:4 }}>→ {rf.mitigation}</div>
+                                  </div>
                                 </div>
                               ))}
-                            </div>
+                            </Section>
                           )}
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
-                            {r.personality && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8 }}>PERSONALITY</div>
-                                <div style={{ fontSize:11, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:4 }}>{r.personality.workingStyle}</div>
-                                <div style={{ fontSize:10, color:_C.muted, marginBottom:4 }}>Trust: <strong style={{ color:r.personality.trustLevel==="high"?_C.green:r.personality.trustLevel==="low"?_C.red:_C.amber }}>{r.personality.trustLevel}</strong></div>
-                                {r.personality.whatImpressesThem?.length > 0 && <div style={{ marginTop:4 }}>{r.personality.whatImpressesThem.map((w:string,wi:number) => <div key={wi} style={{ fontSize:10, color:_C.green, marginBottom:2 }}>✓ {w}</div>)}</div>}
-                                {r.personality.petPeeves?.length > 0 && <div style={{ marginTop:4 }}>{r.personality.petPeeves.map((p:string,pi:number) => <div key={pi} style={{ fontSize:10, color:_C.red, marginBottom:2 }}>✗ {p}</div>)}</div>}
+
+                          {/* Objections */}
+                          {r.objections?.length > 0 && (
+                            <Section id="objections" title="Objections & Responses" count={r.objections.length} accent={_C.amber}>
+                              {r.objections.map((o:any,oi:number) => (
+                                <div key={oi} style={{ padding:"12px 14px", borderRadius:10, background:_C.faint, borderLeft:`3px solid ${o.status==="resolved"?_C.green:o.status==="recurring"?_C.amber:_C.blue}`, marginBottom:8 }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
+                                    <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{o.objection}</span>
+                                    <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:o.status==="resolved"?`${_C.green}15`:o.status==="recurring"?`${_C.amber}15`:`${_C.blue}12`, color:o.status==="resolved"?_C.green:o.status==="recurring"?_C.amber:_C.blue }}>{o.status}</span>
+                                  </div>
+                                  {o.context && <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body, marginBottom:6, fontStyle:"italic" }}>{o.context}</div>}
+                                  <div style={{ fontSize:12, fontFamily:body, color:_C.green, fontWeight:600 }}>→ {o.bestResponse}</div>
+                                </div>
+                              ))}
+                            </Section>
+                          )}
+
+                          {/* Decision Making */}
+                          {r.decisionMaking && (
+                            <Section id="decision" title={`Decision Style — ${r.decisionMaking.style || "?"}`} accent={_C.accent}>
+                              <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.6, marginBottom:10 }}>{r.decisionMaking.description}</div>
+                              {r.decisionMaking.keyInfluencers?.length > 0 && (
+                                <div style={{ marginBottom:10 }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:6 }}>KEY INFLUENCERS</div>
+                                  {r.decisionMaking.keyInfluencers.map((k:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:3, paddingLeft:8 }}>• {k}</div>)}
+                                </div>
+                              )}
+                              {r.decisionMaking.triggers?.length > 0 && (
+                                <div>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:6 }}>TRIGGERS THAT CAUSE ACTION</div>
+                                  {r.decisionMaking.triggers.map((t:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.green, marginBottom:4, paddingLeft:8 }}>⚡ {t}</div>)}
+                                </div>
+                              )}
+                            </Section>
+                          )}
+
+                          {/* Communication Preferences */}
+                          {r.communicationPreferences && (
+                            <Section id="comms" title="Communication Preferences" accent={_C.accent}>
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                                {r.communicationPreferences.doThis?.length > 0 && (
+                                  <div>
+                                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:6 }}>DO THIS</div>
+                                    {r.communicationPreferences.doThis.map((d:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.text, fontFamily:body, marginBottom:4, lineHeight:1.5 }}>✓ {d}</div>)}
+                                  </div>
+                                )}
+                                {r.communicationPreferences.dontDoThis?.length > 0 && (
+                                  <div>
+                                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:6 }}>DON'T DO THIS</div>
+                                    {r.communicationPreferences.dontDoThis.map((d:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.text, fontFamily:body, marginBottom:4, lineHeight:1.5 }}>✗ {d}</div>)}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                            {r.priorities && (
-                              <div style={{ padding:"14px 16px", borderRadius:10, background:_C.faint }}>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:8 }}>PRIORITIES</div>
-                                {r.priorities.whatTheyCareMostAbout?.length > 0 && <div style={{ marginBottom:6 }}>{r.priorities.whatTheyCareMostAbout.map((c:string,ci:number) => <div key={ci} style={{ fontSize:11, fontFamily:body, color:_C.text, marginBottom:2 }}>{ci+1}. {c}</div>)}</div>}
-                                {r.priorities.hiddenAgendas?.length > 0 && <div><div style={{ fontSize:9, fontFamily:mono, color:_C.amber, marginBottom:3 }}>HIDDEN MOTIVATIONS</div>{r.priorities.hiddenAgendas.map((h:string,hi:number) => <div key={hi} style={{ fontSize:10, fontFamily:body, color:_C.muted, fontStyle:"italic", marginBottom:2 }}>• {h}</div>)}</div>}
+                            </Section>
+                          )}
+
+                          {/* Personality */}
+                          {r.personality && (
+                            <Section id="personality" title="Personality" accent={_C.accent}>
+                              {r.personality.workingStyle && <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.6, marginBottom:10 }}>{r.personality.workingStyle}</div>}
+                              {r.personality.trustLevel && (
+                                <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, marginBottom:10 }}>
+                                  Trust level: <strong style={{ color:r.personality.trustLevel==="high"?_C.green:r.personality.trustLevel==="low"?_C.red:_C.amber }}>{r.personality.trustLevel}</strong>
+                                </div>
+                              )}
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                                {r.personality.whatImpressesThem?.length > 0 && (
+                                  <div>
+                                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.green, marginBottom:6 }}>WHAT IMPRESSES THEM</div>
+                                    {r.personality.whatImpressesThem.map((w:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.text, fontFamily:body, marginBottom:4, lineHeight:1.5 }}>✓ {w}</div>)}
+                                  </div>
+                                )}
+                                {r.personality.petPeeves?.length > 0 && (
+                                  <div>
+                                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, marginBottom:6 }}>PET PEEVES</div>
+                                    {r.personality.petPeeves.map((p:string,i:number) => <div key={i} style={{ fontSize:12, color:_C.text, fontFamily:body, marginBottom:4, lineHeight:1.5 }}>✗ {p}</div>)}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
+                            </Section>
+                          )}
+
+                          {/* Priorities */}
+                          {r.priorities && (
+                            <Section id="priorities" title="Priorities" accent={_C.accent}>
+                              {r.priorities.whatTheyCareMostAbout?.length > 0 && (
+                                <div style={{ marginBottom:12 }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, marginBottom:6 }}>WHAT THEY CARE ABOUT (RANKED)</div>
+                                  {r.priorities.whatTheyCareMostAbout.map((c:string,i:number) => (
+                                    <div key={i} style={{ fontSize:13, fontFamily:body, color:_C.text, marginBottom:5, paddingLeft:8 }}>{i+1}. {c}</div>
+                                  ))}
+                                </div>
+                              )}
+                              {r.priorities.hiddenAgendas?.length > 0 && (
+                                <div>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.amber, marginBottom:6 }}>HIDDEN MOTIVATIONS</div>
+                                  {r.priorities.hiddenAgendas.map((h:string,i:number) => <div key={i} style={{ fontSize:12, fontFamily:body, color:_C.textSoft, fontStyle:"italic", marginBottom:4, paddingLeft:8, lineHeight:1.5 }}>• {h}</div>)}
+                                </div>
+                              )}
+                            </Section>
+                          )}
+
+                          {/* Relationship Playbook */}
                           {r.relationshipPlaybook?.length > 0 && (
-                            <div style={{ marginBottom:16 }}>
-                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>RELATIONSHIP PLAYBOOK</div>
-                              {r.relationshipPlaybook.map((p:any,pi:number) => <div key={pi} style={{ padding:"10px 14px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:6 }}><div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.text }}>{p.situation}</div><div style={{ fontSize:11, fontFamily:body, color:_C.accent, fontWeight:600, marginTop:3 }}>→ {p.approach}</div><div style={{ fontSize:10, fontFamily:body, color:_C.muted, marginTop:2 }}>{p.why}</div></div>)}
-                            </div>
+                            <Section id="playbook" title="Relationship Playbook" count={r.relationshipPlaybook.length} accent={_C.accent}>
+                              {r.relationshipPlaybook.map((p:any,pi:number) => (
+                                <div key={pi} style={{ padding:"12px 14px", borderRadius:10, background:_C.faint, borderLeft:`3px solid ${_C.accent}`, marginBottom:8 }}>
+                                  <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{p.situation}</div>
+                                  <div style={{ fontSize:12, fontFamily:body, color:_C.accent, fontWeight:600, marginTop:5 }}>→ {p.approach}</div>
+                                  {p.why && <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, marginTop:4, lineHeight:1.5 }}>{p.why}</div>}
+                                </div>
+                              ))}
+                            </Section>
                           )}
-                          {r.riskFactors?.length > 0 && (
-                            <div style={{ marginBottom:16 }}>
-                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.red, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>RISK FACTORS</div>
-                              {r.riskFactors.map((rf:any,ri:number) => <div key={ri} style={{ display:"flex", gap:10, padding:"8px 12px", borderRadius:8, background:`${rf.severity==="high"?_C.red:rf.severity==="medium"?_C.amber:_C.blue}06`, border:`1px solid ${rf.severity==="high"?_C.red:rf.severity==="medium"?_C.amber:_C.blue}15`, marginBottom:4 }}><span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:rf.severity==="high"?`${_C.red}15`:`${_C.amber}15`, color:rf.severity==="high"?_C.red:_C.amber, flexShrink:0 }}>{rf.severity?.toUpperCase()}</span><div><div style={{ fontSize:11, fontFamily:body, color:_C.text }}>{rf.risk}</div><div style={{ fontSize:10, color:_C.muted, marginTop:2 }}>→ {rf.mitigation}</div></div></div>)}
-                            </div>
-                          )}
-                          {ci?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right" }}>Generated {new Date(ci.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>}
-                        </>)}
+
+                          {ci?.generatedAt && <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, textAlign:"right", marginTop:10 }}>Generated {new Date(ci.generatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>}
+                        </>);
+                        })()}
                         {!r && !ciRunning && <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted, fontSize:13 }}>Click "Build Client Profile" to create an intelligence profile from all conversations.</div>}
                       </div>
                     );
@@ -19192,27 +20435,36 @@ Be specific and evidence-based. Reference actual conversation moments.`,
               // Products — all in parallel (already were)
               Promise.allSettled(selProds.map(async (i: number) => {
                 const p = brief.products[i];
-                try {
-                  const prodRaw = await callAI(
-                    `Create a COMPLETE product profile. Fill EVERY field — no empty values. Be specific and actionable.\n\n${NAMING_RULES.product}\n\nProduct: ${p.name}\nDescription: ${p.description||""}\nReasoning: ${p.reasoning||""}\nDeal size hint: ${p.dealSize||""}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"Established category — buyers know what this is|Emerging category — some education needed|New category — significant education required|Replacing an existing behavior (not a tool)","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both — recurring and one-time options","acv":"","mrr":"","contractLength":"Month-to-month|Quarterly|6 months|Annual|Multi-year|Custom","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}\n\nunsolvedImpact: what happens if the customer does nothing — lost revenue, competitive disadvantage, scaling limits.\n\nIMPORTANT for dealType: Infer from context whether this is recurring (SaaS, subscription, retainer) or one-time (project, purchase, implementation). Fill the relevant commercial fields accordingly — leave recurring fields empty for one-time deals and vice versa. Fill shared fields (avgDaysToClose, closeRateByStage, etc.) for both types.`,
-                    "", 2500
-                  );
-                  const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
-                  return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
-                } catch {
-                  return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
+                const productPrompt = `Create a COMPLETE product profile. Fill EVERY field — no empty values. Be specific and actionable.\n\n${NAMING_RULES.product}\n\nProduct: ${p.name}\nDescription: ${p.description||""}\nReasoning: ${p.reasoning||""}\nDeal size hint: ${p.dealSize||""}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"Established category — buyers know what this is|Emerging category — some education needed|New category — significant education required|Replacing an existing behavior (not a tool)","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both — recurring and one-time options","acv":"","mrr":"","contractLength":"Month-to-month|Quarterly|6 months|Annual|Multi-year|Custom","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}\n\nunsolvedImpact: what happens if the customer does nothing — lost revenue, competitive disadvantage, scaling limits.\n\nIMPORTANT for dealType: Infer from context whether this is recurring (SaaS, subscription, retainer) or one-time (project, purchase, implementation). Fill the relevant commercial fields accordingly — leave recurring fields empty for one-time deals and vice versa. Fill shared fields (avgDaysToClose, closeRateByStage, etc.) for both types.`;
+                for (let attempt = 1; attempt <= 2; attempt++) {
+                  let prodRaw = "";
+                  try {
+                    prodRaw = await callAI(productPrompt, "", attempt === 1 ? 6000 : 8000, { useFullContext: true });
+                    const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
+                    return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
+                  } catch (err) {
+                    console.error(`[QS] Product "${p.name}" parse failed (attempt ${attempt}/2):`, err, "\nRaw:", prodRaw);
+                    if (attempt === 2) return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
+                  }
                 }
+                return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
               })),
               // Personas — all in parallel (brief provides dedup context)
               Promise.allSettled(allBriefPersonas.map(async (pe: any, idx: number) => {
-                try {
-                  const raw = await callAI(
-                    `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\n\nALL PERSONAS being created (ensure yours is DISTINCT from each — different industries, titles, pains, messaging):\n${personaDedup}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}`,
-                    "", 2500
-                  );
-                  const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
-                  return { parsed, pe, idx };
-                } catch { return { parsed: null, pe, idx }; }
+                const personaPrompt = `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nCompetitors: ${coFields.co_competitors||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\n\nALL PERSONAS being created (ensure yours is DISTINCT from each — different industries, titles, pains, messaging):\n${personaDedup}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}`;
+                // Try up to 2 times — if JSON parse fails, retry with a higher token cap
+                for (let attempt = 1; attempt <= 2; attempt++) {
+                  let raw = "";
+                  try {
+                    raw = await callAI(personaPrompt, "", attempt === 1 ? 6000 : 8000, { useFullContext: true });
+                    const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+                    return { parsed, pe, idx };
+                  } catch (err) {
+                    console.error(`[QS] Persona "${pe.name}" parse failed (attempt ${attempt}/2):`, err, "\nRaw:", raw);
+                    if (attempt === 2) return { parsed: null, pe, idx };
+                  }
+                }
+                return { parsed: null, pe, idx };
               })),
             ]);
 
@@ -19265,7 +20517,8 @@ Be specific and evidence-based. Reference actual conversation moments.`,
                 try {
                   const intelRaw = await callAI(
                     `You are a senior B2B strategist. Generate competitive intelligence and per-combo sales playbooks.\n\nCOMPANY: ${coFields.co_name||""} (${coFields.co_industry||""})\nVALUE PROP: ${coFields.co_pitch||""}\nCOMPETITORS: ${coFields.co_competitors||""}\nPRODUCT × PERSONA COMBOS:\n${combos.map((c:any,i:number)=>`${i}: ${c.prodName} × ${c.persName} (buyer: ${c.buyer}, pain: ${c.pain})`).join("\n")}\n\nReturn ONLY valid JSON:\n{"battlecards":[{"competitorName":"","overview":"","strengths":"","weaknesses":"","pricing":"","landmines":"","displacementAngles":"","winLossNotes":""}],"playbooks":[{"comboIndex":0,"discoveryQuestions":"","demoTalkingPoints":"","qualificationCriteria":"","handoffProcess":"","pricingGuidance":"","closingTechniques":"","followUpCadence":"","commonScenarios":"","objections":[{"objection":"","category":"pricing","severity":"common","rebuttal":"","talkTrack":""}],"signals":[{"signalType":"funding","detail":"","suggestedAction":""}]}],"contentAssets":[{"title":"","type":"blog_post|case_study|webinar|one_pager","description":"","funnelStage":"awareness|consideration|decision"}]}\n\nRULES: battlecards 2-4, playbooks ONE per combo (${combos.length}), contentAssets 4-6. Be specific.\nRaw JSON only.`,
-                    "", 5000
+                    "", 5000,
+                    { useFullContext: true }
                   );
                   return JSON.parse(intelRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
                 } catch { return null; }
@@ -19739,6 +20992,19 @@ Be specific and evidence-based. Reference actual conversation moments.`,
           callRecords={callRecords}
           slackComms={slackComms}
           activeWorkspace={activeWorkspace}
+          offers={offers}
+          roiConfig={roiConfig}
+          wsFiles={wsFiles}
+          wsLinks={wsLinks}
+          onRerunAnalysis={(k:string)=>{
+            // Navigate user to Client Intel, set the right sub-tab, and signal that the analysis should auto-run
+            const tabMap: Record<string,string> = { sentiment: "sentiment", pitch: "pitch", coaching: "coaching", intel: "intel" };
+            const target = tabMap[k] || "sentiment";
+            (window as any).__callTab = target;
+            (window as any).__copilotRerunRequest = k;
+            setView("clientintel");
+            setCallRecords(p=>p?[...p]:[]);
+          }}
         />
       )}
     </>
