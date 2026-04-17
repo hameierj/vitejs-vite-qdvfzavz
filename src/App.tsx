@@ -1131,7 +1131,7 @@ async function callAI(prompt, sys = "", tokens = 800, _retries = 5) {
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model:"claude-sonnet-4-20250514", max_tokens: tokens,
+          model:"claude-sonnet-4-6", max_tokens: tokens,
           system: sys || "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.",
           messages:[{ role:"user", content:prompt }],
         }),
@@ -1184,7 +1184,7 @@ async function callAIStream(
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: tokens,
           system: sys,
           messages,
@@ -1557,7 +1557,7 @@ async function callAIStreamWithTools(
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: tokens,
           system: sys,
           messages,
@@ -3601,7 +3601,7 @@ function CampaignAnalyzerModal({ companyData, icps: existingIcps, onComplete, on
           headers:{ "Content-Type":"application/json", "x-api-key":key,
             "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
           body: JSON.stringify({
-            model:"claude-sonnet-4-20250514", max_tokens:2000,
+            model:"claude-sonnet-4-6", max_tokens:2000,
             messages:[{ role:"user", content:[
               { type:"image", source:{ type:"base64", media_type:mime, data:images[i].b64 } },
               { type:"text", text:`Analyze this screenshot thoroughly. It may contain ANY of the following — extract everything you can see:\n\n1. CONTACT/PROSPECT DATA: email addresses, phone numbers, names, titles, company/organization names. For each domain or company, infer the likely industry, business type, and company size.\n\n2. EMAIL/LINKEDIN COPY: subjects, bodies, signatures, message sequences. Include exact text verbatim.\n\n3. TARGETING FILTERS: industries, titles, geo, company size, revenue, intent topics, keywords, exclusions.\n\n4. CAMPAIGN SETTINGS: sequence names, timing, channels, number of steps.\n\n5. PERFORMANCE METRICS: sent, opens, replies, meetings, conversion rates.\n\n6. AUDIENCE PATTERNS: Look at the companies/domains listed and identify patterns — what industry are they in? What size? What type of business? What do they have in common?\n\nIMPORTANT: If you see a list of contacts, companies, or domains, analyze the PATTERN. For example, if you see bike shops and cycling businesses, note that the target audience is "bicycle retail / cycling industry." Infer the ICP from what you observe.\n\nReturn a detailed plain text extraction with your analysis of what this data tells us about the target audience and campaign strategy.` }
@@ -6257,21 +6257,15 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
                     style={{ background:_C.canvas, borderRadius:12, borderLeft:`3px solid ${_C.accent}`,
                       borderTop:`1px solid ${_C.border}`, borderRight:`1px solid ${_C.border}`, borderBottom:`1px solid ${_C.border}`,
                       cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.03)",
-                      transition:"all .2s", padding:"14px 16px" }}
+                      transition:"all .2s", padding:"14px 16px", display:"flex", flexDirection:"column", justifyContent:"center", gap:10, minHeight:80 }}
                     onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 4px 16px ${_C.accent}18`; el.style.borderColor=_C.accent; const d=el.querySelector(".prod-del") as HTMLElement; if(d) d.style.opacity="1";}}
                     onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.03)"; el.style.borderTopColor=_C.border; el.style.borderRightColor=_C.border; el.style.borderBottomColor=_C.border; const d=el.querySelector(".prod-del") as HTMLElement; if(d) d.style.opacity="0";}}>
-                    {/* Row 1: Name + category pill + delete */}
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                    {/* Name + delete */}
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                       <div style={{ flex:1, fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, lineHeight:1.3,
                         overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                         {p.name || `Product ${i+1}`}
                       </div>
-                      {p.category && (
-                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:_C.accent, background:`${_C.accent}0D`,
-                          padding:"2px 7px", borderRadius:4, flexShrink:0 }}>
-                          {p.category}
-                        </span>
-                      )}
                       <button className="prod-del" onClick={e=>{
                         e.stopPropagation();
                         if (confirm(`Delete "${p.name || `Product ${i+1}`}"?`)) {
@@ -6285,12 +6279,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
                         onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;}}
                         onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;}}>×</button>
                     </div>
-                    {/* Row 2: Subtitle */}
-                    <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, lineHeight:1.4, marginBottom:10,
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                      {p.description || "No description"}
-                    </div>
-                    {/* Row 3: Progress bar + pct */}
+                    {/* Progress bar + pct */}
                     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                       <div style={{ flex:1, height:3, borderRadius:2, background:_C.faint, overflow:"hidden" }}>
                         <div style={{ height:"100%", borderRadius:2, width:`${pPct}%`,
@@ -8263,7 +8252,7 @@ function PerformancePanel({ perfLogs, onLogsChange, icps }) {
         headers: { "Content-Type":"application/json", "x-api-key":key,
           "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 600,
+          model: "claude-sonnet-4-6", max_tokens: 600,
           system: `You extract B2B outreach campaign performance metrics from screenshots (e.g. B2B Rocket, Instantly, Smartlead, Apollo). Return ONLY valid JSON, no markdown or explanation.`,
           messages: [{ role:"user", content: [
             { type:"image", source:{ type:"base64", media_type:mime as any, data:b64 } },
@@ -9655,7 +9644,7 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   );
 }
 
-function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[] }) {
+function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[], slackComms = [] as any[], activeWorkspace = null as any }) {
   const [activeChatId, setActiveChatId] = useState<string|null>(() => chats[0]?.id ?? null);
   const [input,          setInput]          = useState("");
   const [isStreaming,    setIsStreaming]    = useState(false);
@@ -11395,7 +11384,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 800,
           system: "You extract company or client names from screenshots. Return ONLY a JSON array of strings — one name per entry. No explanation, no markdown, just the raw JSON array.",
           messages: [{
@@ -15502,21 +15491,15 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                               style={{ background:C2.canvas, borderRadius:12, borderLeft:`3px solid ${icp.color}`,
                                 borderTop:`1px solid ${C2.border}`, borderRight:`1px solid ${C2.border}`, borderBottom:`1px solid ${C2.border}`,
                                 cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.03)",
-                                transition:"all .2s", padding:"14px 16px" }}
+                                transition:"all .2s", padding:"14px 16px", display:"flex", flexDirection:"column", justifyContent:"center", gap:10, minHeight:80 }}
                               onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 4px 16px ${icp.color}18`; el.style.borderColor=icp.color; const d=el.querySelector(".persona-del") as HTMLElement; if(d) d.style.opacity="1";}}
                               onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.03)"; el.style.borderTopColor=C2.border; el.style.borderRightColor=C2.border; el.style.borderBottomColor=C2.border; const d=el.querySelector(".persona-del") as HTMLElement; if(d) d.style.opacity="0";}}>
-                              {/* Row 1: Name + category pill + delete */}
-                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                              {/* Name + delete */}
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                                 <div style={{ flex:1, fontSize:14, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.3,
                                   overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                                   {icp.name || `Persona ${i+1}`}
                                 </div>
-                                {d.best_channel && (
-                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:C2.accent, background:`${C2.accent}0D`,
-                                    padding:"2px 7px", borderRadius:4, flexShrink:0 }}>
-                                    {d.best_channel.replace("Multi-channel (","").replace(")","").replace(" + ",", ")}
-                                  </span>
-                                )}
                                 <button className="persona-del" onClick={e=>{
                                   e.stopPropagation();
                                   if (confirm(`Delete "${icp.name || `Persona ${i+1}`}"?`)) {
@@ -15530,12 +15513,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                                   onMouseEnter={e=>{(e.target as HTMLElement).style.color=C2.red;}}
                                   onMouseLeave={e=>{(e.target as HTMLElement).style.color=C2.muted;}}>×</button>
                               </div>
-                              {/* Row 2: Subtitle */}
-                              <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.4, marginBottom:10,
-                                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                {d.buyer || "No buyer title defined"}
-                              </div>
-                              {/* Row 3: Progress bar + pct */}
+                              {/* Progress bar + pct */}
                               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                                 <div style={{ flex:1, height:3, borderRadius:2, background:C2.faint, overflow:"hidden" }}>
                                   <div style={{ height:"100%", borderRadius:2, width:`${icpPct}%`,
@@ -19759,6 +19737,8 @@ Be specific and evidence-based. Reference actual conversation moments.`,
           contentAssets={contentAssets}
           dfySetup={dfySetup}
           callRecords={callRecords}
+          slackComms={slackComms}
+          activeWorkspace={activeWorkspace}
         />
       )}
     </>
