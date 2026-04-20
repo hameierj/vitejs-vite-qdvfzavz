@@ -392,21 +392,10 @@ const body = "'Inter', 'Source Sans 3', system-ui, sans-serif";
 const mono = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 
 // ─── SCHEMA ──────────────────────────────────────────────────────────────────
-const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> = {
-  client: { label:"Client Info", icon:"◎",
+const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; group?:string; fields:any[]}> = {
+  business: { label:"Business Profile", icon:"◉", group:"research",
     fields:[
       { id:"co_name",         label:"Company Name",               type:"text",     ph:"",                                                    required:true, hint:"Exactly as you want it to appear in outreach messages", noConf:true },
-      { id:"co_contact_first",label:"Contact First Name",         type:"text",     ph:"",                                                   hint:"Primary point of contact for this account", noConf:true },
-      { id:"co_contact_last", label:"Contact Last Name",          type:"text",     ph:"", noConf:true },
-      { id:"co_contact_title",label:"Contact Job Title / Role",   type:"text",     ph:"", noConf:true },
-      { id:"co_contact_phone",label:"Contact Phone Number",       type:"text",     ph:"", noConf:true },
-      { id:"co_contact_email",label:"Contact Business Email",     type:"text",     ph:"",                                                   hint:"Primary business email address", noConf:true },
-      { id:"co_contact_linkedin",label:"Contact LinkedIn URL",    type:"text",     ph:"https://linkedin.com/in/...",                         hint:"LinkedIn profile of the primary contact", noConf:true },
-      { id:"co_login_email",  label:"B2B Rocket Login Email",     type:"text",     ph:"",                                                   hint:"Email used to login to app.b2brocket.ai", noConf:true },
-    ]
-  },
-  business: { label:"Business Profile", icon:"◉",
-    fields:[
       { id:"co_industry",     label:"Industry",                   type:"text",     ph:"B2B SaaS, FinTech, Healthcare IT…",                  hint:"The industry or vertical this company operates in" },
       { id:"co_website",      label:"Website",                    type:"text",     ph:"https://acme.com",                                   hint:"Primary marketing site" },
       { id:"co_size",         label:"Company Size",               type:"select",   opts:["1–10 employees","10–50 employees","50–200 employees","200–500 employees","500–1000 employees","1000+ employees"], noConf:true, hint:"Approximate headcount — helps calibrate deal size and approach" },
@@ -435,62 +424,53 @@ const COMPANY_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]
 const COMPANY_FIELDS = Object.values(COMPANY_SECTIONS).flatMap(s => s.fields);
 
 // ─── PREFERENCES (Campaign Planning) ─────────────────────────────────────────
-const PREFERENCES_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> = {
-  outbound: { label:"Outbound Readiness", icon:"◎",
+const PREFERENCES_SECTIONS: Record<string, {label:string; icon?:string; group?:string; fields:any[]}> = {
+  outbound: { label:"Outbound Readiness", icon:"◎", group:"client",
     fields:[
-      { id:"co_outbound_maturity", label:"Outbound Maturity",       type:"select",   opts:["Just Getting Started","Have Done Some Outreach","Running & Optimizing","Scaling Existing Program"], noConf:true, hint:"Where you are today with outbound lead generation" },
-      { id:"co_monthly_volume",    label:"Monthly Outreach Volume", type:"select",   opts:["Not sending yet","Under 100","100–500","500–2,000","2,000–10,000","10,000+"], noConf:true, hint:"How many outreach messages (emails + LinkedIn) sent per month" },
-      { id:"co_prev_tools",        label:"Previous Outbound Tools", type:"textarea", ph:"HubSpot, Apollo, Outreach, Salesloft, Lemlist, Instantly…", rows:2, noConf:true, hint:"Tools you've used for outbound — helps understand workflow expectations" },
-      { id:"co_existing_leads",    label:"Existing Lead List",      type:"select",   opts:["No list yet","Some, but incomplete","Yes — needs cleaning","Yes — ready to use"], noConf:true, hint:"Do you have existing contacts/leads to start with?" },
-      { id:"co_biggest_challenge", label:"Biggest Outbound Challenge", type:"textarea", ph:"Time to create touch points, low reply rates, list quality, personalization at scale…", rows:2, noConf:true, hint:"What has been your biggest struggle with outbound so far?" },
-      { id:"co_90day_goal",        label:"90-Day Success Definition", type:"textarea", ph:"20 booked demos per month / 50 qualified replies / $100K pipeline generated", rows:2, noConf:true, hint:"What does success look like for you in the next 90 days? Be specific with numbers." },
+      { id:"co_outbound_maturity", label:"Outbound Maturity",       type:"select",   opts:["Just Getting Started","Have Done Some Outreach","Running & Optimizing","Scaling Existing Program"], noConf:true, aiFill:false, hint:"Where you are today with outbound lead generation" },
+      { id:"co_monthly_volume",    label:"Monthly Outreach Volume", type:"select",   opts:["Not sending yet","Under 100","100–500","500–2,000","2,000–10,000","10,000+"], noConf:true, aiFill:false, hint:"How many outreach messages (emails + LinkedIn) sent per month" },
+      { id:"co_prev_tools",        label:"Previous Outbound Tools", type:"textarea", ph:"HubSpot, Apollo, Outreach, Salesloft, Lemlist, Instantly…", rows:2, noConf:true, aiFill:false, hint:"Tools you've used for outbound — helps understand workflow expectations" },
+      { id:"co_existing_leads",    label:"Existing Lead List",      type:"select",   opts:["No list yet","Some, but incomplete","Yes — needs cleaning","Yes — ready to use"], noConf:true, aiFill:false, hint:"Do you have existing contacts/leads to start with?" },
+      { id:"co_biggest_challenge", label:"Biggest Outbound Challenge", type:"textarea", ph:"Time to create touch points, low reply rates, list quality, personalization at scale…", rows:2, noConf:true, aiFill:false, hint:"What has been your biggest struggle with outbound so far?" },
+      { id:"co_90day_goal",        label:"90-Day Success Definition", type:"textarea", ph:"20 booked demos per month / 50 qualified replies / $100K pipeline generated", rows:2, noConf:true, aiFill:false, hint:"What does success look like for you in the next 90 days? Be specific with numbers." },
     ]
   },
-  campaign: { label:"Campaign Setup", icon:"◉",
+  scheduling: { label:"Scheduling", icon:"◈", group:"campaign",
     fields:[
-      { id:"co_channels",     label:"Outreach Channels",           type:"chips",    opts:["Email","LinkedIn","AI Calls"], noConf:true },
-      { id:"co_num_campaigns",label:"Number of Campaigns",         type:"select",   opts:["1","2","3","4","5+"],                            hint:"How many campaigns to start with", noConf:true },
-      { id:"co_campaign_purpose",label:"Campaign Purpose",         type:"textarea", ph:"Describe the purpose of each campaign — e.g. \'Campaign 1: target enterprise CFOs for demo bookings\'", rows:3, noConf:true },
-      { id:"co_outcomes",     label:"Expected Outcomes",           type:"chips",    opts:["Book demos","Schedule follow-up calls","Drive replies","Upsell existing customers","Re-engage inactive users","Activate trial users","Book renewal meetings","Drive event sign-ups","Collect feedback"], noConf:true },
-      { id:"co_deal",         label:"Avg Deal Size",               type:"select",   opts:["<$1K","$1K–$5K","$5K–$25K","$25K–$100K","$100K+"], noConf:true },
-      { id:"co_cycle",        label:"Sales Cycle",                 type:"select",   opts:["<1 week","1–4 weeks","1–3 months","3–6 months","6+ months"], noConf:true },
-      { id:"co_goal",         label:"Monthly Meetings Goal",       type:"select",   opts:["1–5","5–10","10–20","20–30","30+"], noConf:true },
+      { id:"co_timezone",     label:"Campaign Timezone",           type:"text",     ph:"(UTC -05:00) America/New_York", noConf:true, aiFill:false },
+      { id:"co_days",         label:"Campaign Days",               type:"chips",    opts:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], noConf:true, aiFill:false },
+      { id:"co_start_time",   label:"Daily Start Time",            type:"text",     ph:"9:00 AM", noConf:true, aiFill:false },
+      { id:"co_end_time",     label:"Daily End Time",              type:"text",     ph:"5:00 PM", noConf:true, aiFill:false },
     ]
   },
-  scheduling: { label:"Scheduling", icon:"◈",
+  guardrails: { label:"Messaging Guardrails", icon:"◈", group:"campaign",
     fields:[
-      { id:"co_timezone",     label:"Campaign Timezone",           type:"text",     ph:"(UTC -05:00) America/New_York", noConf:true },
-      { id:"co_days",         label:"Campaign Days",               type:"chips",    opts:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], noConf:true },
-      { id:"co_start_time",   label:"Daily Start Time",            type:"text",     ph:"9:00 AM", noConf:true },
-      { id:"co_end_time",     label:"Daily End Time",              type:"text",     ph:"5:00 PM", noConf:true },
-    ]
-  },
-  guardrails: { label:"Sales & Messaging", icon:"◈",
-    fields:[
-      { id:"co_past_emails",  label:"Past Email Examples",         type:"textarea", ph:"Paste your best-performing email copy here — subject lines and body text.", rows:4, hint:"Helps us match your proven style and tone", noConf:true },
-      { id:"co_website_permission", label:"Website Content Permission", type:"select", opts:["Yes — use any content from our website","Yes — but only specific pages","No — do not reference website content"], noConf:true, hint:"Can we pull content from your website for outreach copy?" },
-      { id:"co_website_urls", label:"Approved Website URLs",       type:"textarea", ph:"https://pearldiver.io\nhttps://pearldiver.io/products", rows:2, hint:"If 'specific pages only' — list the approved URLs", noConf:true },
+      { id:"co_past_emails",  label:"Past Email Examples",         type:"textarea", ph:"Paste your best-performing email copy here — subject lines and body text.", rows:4, hint:"Helps us match your proven style and tone", noConf:true, aiFill:false },
+      { id:"co_website_permission", label:"Website Content Permission", type:"select", opts:["Yes — use any content from our website","Yes — but only specific pages","No — do not reference website content"], noConf:true, aiFill:false, hint:"Can we pull content from your website for outreach copy?" },
+      { id:"co_website_urls", label:"Approved Website URLs",       type:"textarea", ph:"https://pearldiver.io\nhttps://pearldiver.io/products", rows:2, hint:"If 'specific pages only' — list the approved URLs", noConf:true, aiFill:false },
       { id:"co_exclude",      label:"Global Exclude List",         type:"textarea", ph:"Current customers, investors, specific domains.",     hint:"Anyone we should never contact — applies to all ICPs. Upload a DNC file in the Knowledge Center for larger lists.", noConf:true },
       { id:"co_avoid",        label:"Copy — Always Avoid",         type:"textarea", ph:"Competitor names, pricing language, banned phrases.", hint:"Topics or angles that are off-limits in email copy", noConf:true },
     ]
   },
-  benchmarks: { label:"Default Benchmarks", icon:"⊙",
+  notes: { label:"Additional Notes", icon:"◇", group:"client",
     fields:[
-      { id:"co_bench_reply",      label:"Target Reply Rate (%)",         type:"text", ph:"3",   hint:"Default reply rate target — campaigns inherit this. Typical B2B cold email: 1-5%", noConf:true },
-      { id:"co_bench_interested",  label:"Target Interested Rate (%)",   type:"text", ph:"1",   hint:"Positive/interested reply rate. Typical: 0.5-2%", noConf:true },
-      { id:"co_bench_bounce_max",  label:"Max Bounce Rate (%)",          type:"text", ph:"3",   hint:"Above this = list quality issue. Keep under 3%", noConf:true },
-      { id:"co_bench_autoreply_max",label:"Max Auto-Reply Rate (%)",     type:"text", ph:"30",  hint:"OOO/auto-responders. Above 30% = too much noise", noConf:true },
-      { id:"co_bench_meeting",     label:"Target Meeting Rate (%)",      type:"text", ph:"0.5", hint:"Meetings booked per emails sent. Typical: 0.3-1%", noConf:true },
-    ]
-  },
-  notes: { label:"Additional Notes", icon:"◇",
-    fields:[
-      { id:"co_notes", label:"Custom Notes & Context", type:"textarea", ph:"Anything else AI should know when generating content for this client — regulatory constraints, internal terminology, seasonal patterns, executive preferences, etc.", rows:6, hint:"This context is included in every AI generation prompt", noConf:true },
+      { id:"co_notes", label:"Custom Notes & Context", type:"textarea", ph:"Anything else AI should know when generating content for this client — regulatory constraints, internal terminology, seasonal patterns, executive preferences, etc.", rows:6, hint:"This context is included in every AI generation prompt", noConf:true, aiFill:false },
     ]
   },
 };
 const PREFERENCES_FIELDS = Object.values(PREFERENCES_SECTIONS).flatMap(s => s.fields);
 const ALL_COMPANY_FIELDS = [...COMPANY_FIELDS, ...PREFERENCES_FIELDS];
+// Fields the AI can (and does) fill during Quick Start. User-only fields (aiFill:false) are
+// excluded from fill% math so a perfect QS run reads 100% on every section.
+const AI_FILLABLE_ALL_COMPANY_FIELDS = ALL_COMPANY_FIELDS.filter((f:any) => f.aiFill !== false);
+// Section-level classification: "ai" = every field is AI-fillable, "manual" = every field is user-only,
+// "mixed" = some of each. Used to render "AI-filled" vs "Client Setup" badges in the sidebar.
+const getSectionFillMode = (sectionFields: any[]): "ai" | "manual" | "mixed" => {
+  const aiCount = sectionFields.filter((f:any) => f.aiFill !== false).length;
+  if (aiCount === 0) return "manual";
+  if (aiCount === sectionFields.length) return "ai";
+  return "mixed";
+};
 
 // ─── PRODUCTS & SERVICES ─────────────────────────────────────────────────────
 const PRODUCT_SECTIONS: Record<string, {label:string; fields:any[]}> = {
@@ -547,7 +527,7 @@ const PRODUCT_SECTIONS: Record<string, {label:string; fields:any[]}> = {
     { id:"messagingDonts",    label:"Messaging Don'ts",         type:"textarea", ph:"Never compare directly to [competitor] by name\nDon't mention pricing in cold outreach\nAvoid technical jargon — buyers aren't engineers", rows:3, hint:"Product-specific things to avoid in copy" },
   ]},
   notes: { label:"Notes", fields:[
-    { id:"prod_notes", label:"Additional Notes", type:"textarea", ph:"Anything specific about this product that AI should know — seasonal availability, technical prerequisites, pricing nuances, etc.", rows:4, noConf:true },
+    { id:"prod_notes", label:"Additional Notes", type:"textarea", ph:"Anything specific about this product that AI should know — seasonal availability, technical prerequisites, pricing nuances, etc.", rows:4, noConf:true, aiFill:false },
   ]},
 };
 const PRODUCT_FIELDS = Object.values(PRODUCT_SECTIONS).flatMap(s => s.fields) as any[];
@@ -566,6 +546,11 @@ const getVisibleProductFields = (product: any) => {
     return true;
   });
 };
+// AI-fillable subset of getVisibleProductFields — excludes user-only fields (aiFill:false) from
+// fill% math so a perfect QS run hits 100%. Use this for progress bars and "is complete" checks;
+// getVisibleProductFields still returns everything for editor display.
+const getCountableProductFields = (product: any) =>
+  getVisibleProductFields(product).filter((f: any) => f.aiFill !== false);
 
 // ─── OFFERS ──────────────────────────────────────────────────────────────────
 const OFFER_TIERS = [
@@ -601,6 +586,15 @@ const CAMPAIGN_STATUSES = [
   { id:"reviewing", label:"Reviewing Performance", color:"#FFC048", where:"CX Tool ← B2B Rocket" },
   { id:"completed", label:"Completed",             color:"#6C5CE7", where:"CX Tool" },
   { id:"paused",    label:"Paused",                color:"#FF6B6B", where:"B2B Rocket" },
+];
+
+// Phase-specific status — semantically different from campaign statuses.
+// Drives "Regenerate remaining phases" (only touches pending) and progress math.
+const PHASE_STATUSES = [
+  { id:"pending",     label:"Pending",     color:"#8E94A7" },
+  { id:"in_progress", label:"In Progress", color:"#54A0FF" },
+  { id:"completed",   label:"Completed",   color:"#00D68F" },
+  { id:"skipped",     label:"Skipped",     color:"#D0D3DA" },
 ];
 
 const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> = {
@@ -648,7 +642,7 @@ const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> =
       { id:"cta",       label:"CTA Style",                      type:"select",   opts:["15-min call ask","Soft permission (\'worth a chat?\')","Video/resource share","Direct demo ask","Open-ended question","Easy yes/no reply","Direct callback ask"] },
       { id:"why_client_wins", label:"Why Client Wins for This ICP", type:"textarea", ph:"We win because of speed, flexibility, human process — better fit than banks for messy finances…", rows:2, hint:"Why your client specifically beats alternatives for THIS ICP" },
       { id:"icp_proof", label:"Best Proof for This ICP",        type:"textarea", ph:"Which case study, logo, or stat lands hardest for this audience?", hint:"One targeted proof point beats five generic ones" },
-      { id:"ref_emails",label:"Reference Email Copy (manual)",   type:"textarea", ph:"Paste examples of emails that have worked well for this audience — subject lines and body. AI won't fill this — paste your own.", rows:4, hint:"User-provided only. Paste proven emails so AI can match the style when generating sequences.", noConf:true },
+      { id:"ref_emails",label:"Reference Email Copy (manual)",   type:"textarea", ph:"Paste examples of emails that have worked well for this audience — subject lines and body. AI won't fill this — paste your own.", rows:4, hint:"User-provided only. Paste proven emails so AI can match the style when generating sequences.", noConf:true, aiFill:false },
       { id:"seq_strategy", label:"Sequence Strategy",           type:"textarea", ph:"e.g., Start with pain-focused hook, follow with proof, escalate urgency, end with breakup", rows:2, hint:"How should the email sequence flow? Single narrative, multi-angle, escalating?", noConf:true },
       { id:"seq_cta_style",label:"CTA Variation",               type:"text",     ph:"e.g., Soft ask first, escalate to direct demo ask by step 3", hint:"Same CTA throughout or escalating commitment?", noConf:true },
     ]
@@ -682,13 +676,16 @@ const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> =
   },
   notes: { label:"Notes", icon:"◇",
     fields:[
-      { id:"persona_notes", label:"Additional Notes", type:"textarea", ph:"Anything specific about this persona that AI should know — quirks, preferences, internal politics, seasonality, past interactions, etc.", rows:4, noConf:true },
+      { id:"persona_notes", label:"Additional Notes", type:"textarea", ph:"Anything specific about this persona that AI should know — quirks, preferences, internal politics, seasonality, past interactions, etc.", rows:4, noConf:true, aiFill:false },
     ]
   },
 };
 
 const ALL_ICP_FIELDS = Object.values(ICP_SECTIONS).flatMap(s => s.fields) as any[];
-const TOTAL_FIELDS = ALL_ICP_FIELDS.length;
+// Fields the AI can (and should) fill during Quick Start / AI-fill flows.
+// User-only fields (aiFill:false) are excluded from the denominator so a perfect QS run reads 100%.
+const AI_FILLABLE_ICP_FIELDS = ALL_ICP_FIELDS.filter(f => f.aiFill !== false);
+const TOTAL_FIELDS = AI_FILLABLE_ICP_FIELDS.length;
 
 // ─── CONTENT & ASSETS ───────────────────────────────────────────────────────
 const EMPTY_CONTENT_ASSET = () => ({
@@ -1225,7 +1222,13 @@ function buildFullContext(d: any): string {
     return `[${o.tier || "?"}] ${prod?.name || "?"} × ${pers?.name || "?"}: "${o.ctaText || o.name || ""}" — ${o.whatTheyGet || ""}`;
   }).join("\n"));
   // Campaigns
-  if (d.campaigns?.length) push("CAMPAIGNS", d.campaigns.map((c: any) => `[${c.lifecycleStatus || "?"}] ${c.label || "Untitled"} — Persona: ${c.personaIds?.[0] || "?"}, Product: ${c.productId || "?"}, Offer: ${c.offerTier || "?"}, Channel: ${c.channel || "?"}`).join("\n"));
+  if (d.campaigns?.length) push("CAMPAIGNS", d.campaigns.map((c: any) => `[${c.lifecycleStatus || "?"}] ${c.label || "Untitled"} — Persona: ${c.personaIds?.[0] || "?"}, Product: ${c.productId || "?"}, Offer: ${c.offerTier || "?"}, Channel: ${c.channel || "?"}${c.intentTier === "high" || c.rtsListId ? ", INTENT: HIGH (RTS)" : ""}${(c.iterations||[]).length ? `, iterations: ${(c.iterations||[]).length}` : ""}`).join("\n"));
+  // RTS lists — high-intent, triple-qualified, refreshed daily. Different playbook from cold.
+  if (d.rtsLists?.length) push("RTS LISTS (HIGH-INTENT)", d.rtsLists.map((l: any, i: number) => {
+    const b = l.bebopSetup || {};
+    const linkedCount = (l.linkedCampaignIds || []).length;
+    return `${i + 1}. "${l.name}" · ${linkedCount} campaign${linkedCount!==1?"s":""}\n  Goal: ${b.campaignGoal || ""}\n  Selling: ${b.sellingDescription || ""}\n  ICP / signal: ${(b.customerProfile || "").slice(0, 400)}${b.customerProfile && b.customerProfile.length > 400 ? "..." : ""}\n  Competitors: ${b.competitorUrls || ""} · Methodologies: ${b.salesMethodologies || ""}`;
+  }).join("\n\n") + `\n\nHIGH-INTENT PLAYBOOK REMINDER: RTS leads are ALREADY showing buying signals. When advising on these lists or campaigns linked to them, use: 2-3 touch sequences (not 5), direct meeting ask from touch 1 (no soft content offers), reference the signal explicitly, short test window (1-2 days), expect 2-4× cold benchmarks. If an RTS campaign underperforms, pivot the SIGNAL/targeting before rewriting copy.`);
   // Strategy
   if (d.strategy) push("STRATEGY ROADMAP", JSON.stringify(d.strategy).slice(0, 3000));
   // Playbooks
@@ -1426,7 +1429,7 @@ async function callAIStream(
 const COPILOT_TOOLS = [
   {
     name: "update_company_fields",
-    description: "Update one or more fields on the company profile or preferences. Use this whenever the user asks to change, set, or update any company-level information. Field IDs include: co_name, co_contact_first, co_contact_last, co_contact_title, co_contact_phone, co_contact_email, co_contact_linkedin, co_login_email, co_industry, co_website, co_size, co_revenue, co_pitch, co_we_help, co_who_struggle, co_by_providing, co_unlike, co_we_uniquely, co_core_problem, co_product, co_prod_breakdown, co_category, co_competitors, co_buying_motion, co_trust_risks, co_ksp, co_diff, co_proof, co_customers, co_dream, co_outbound_maturity, co_monthly_volume, co_prev_tools, co_existing_leads, co_biggest_challenge, co_90day_goal, co_channels (array), co_num_campaigns, co_campaign_purpose, co_outcomes (array), co_deal, co_cycle, co_goal, co_timezone, co_days (array), co_start_time, co_end_time, co_past_emails, co_website_permission, co_website_urls, co_exclude, co_avoid, co_bench_reply, co_bench_interested, co_bench_bounce_max, co_bench_autoreply_max, co_bench_meeting, co_notes.",
+    description: "Update one or more fields on the company profile or preferences. Use this whenever the user asks to change, set, or update any company-level information. Field IDs include: co_name, co_industry, co_website, co_size, co_revenue, co_pitch, co_we_help, co_who_struggle, co_by_providing, co_unlike, co_we_uniquely, co_core_problem, co_product, co_prod_breakdown, co_category, co_competitors, co_buying_motion, co_trust_risks, co_ksp, co_diff, co_proof, co_customers, co_dream, co_outbound_maturity, co_monthly_volume, co_prev_tools, co_existing_leads, co_biggest_challenge, co_90day_goal, co_deal, co_cycle, co_goal, co_timezone, co_days (array), co_start_time, co_end_time, co_past_emails, co_website_permission, co_website_urls, co_exclude, co_avoid, co_notes. NOTE: Contact info (names, emails, phone, LinkedIn) is synced from HubSpot — not editable here. co_deal/co_cycle/co_goal are editable via ROI config. Benchmarks are no longer company-level — they're calibrated per campaign.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -1701,7 +1704,7 @@ const COPILOT_TOOLS = [
   },
   {
     name: "propose_form_changes",
-    description: "ALWAYS use this tool when the user pastes an implementation form, onboarding form, or bulk data that maps to multiple workspace fields. Instead of updating fields directly, this proposes changes for user review. Parse the form text and map each value to the appropriate field ID. Include ALL fields found in the form — company fields (co_name, co_industry, co_website, co_size, co_revenue, co_contact_first, co_contact_last, co_contact_title, co_contact_phone, co_contact_email, co_contact_linkedin, co_login_email, co_pitch, co_we_help, co_who_struggle, co_by_providing, co_unlike, co_we_uniquely, co_core_problem, co_product, co_ksp, co_diff, co_proof, co_customers, co_dream, co_competitors, co_category, co_prod_breakdown, co_buying_motion, co_trust_risks, co_exclude, co_avoid, co_past_emails, co_channels, co_num_campaigns, co_campaign_purpose, co_outcomes, co_deal, co_cycle, co_goal, co_timezone, co_days, co_start_time, co_end_time, co_outbound_maturity, co_monthly_volume, co_prev_tools, co_existing_leads, co_biggest_challenge, co_90day_goal, co_website_permission, co_notes, co_bench_reply, co_bench_meeting) and persona fields (industries, co_sizes, geo, buyer, pain1, keywords, neg, intent_topics). Map form data intelligently — 'Job Title / Role' → co_contact_title, 'WE HELP' → co_we_help, 'Target Industries' → persona industries field, etc.",
+    description: "ALWAYS use this tool when the user pastes an implementation form, onboarding form, or bulk data that maps to multiple workspace fields. Instead of updating fields directly, this proposes changes for user review. Parse the form text and map each value to the appropriate field ID. Include ALL fields found in the form — company fields (co_name, co_industry, co_website, co_size, co_revenue, co_pitch, co_we_help, co_who_struggle, co_by_providing, co_unlike, co_we_uniquely, co_core_problem, co_product, co_ksp, co_diff, co_proof, co_customers, co_dream, co_competitors, co_category, co_prod_breakdown, co_buying_motion, co_trust_risks, co_exclude, co_avoid, co_past_emails, co_channels, co_num_campaigns, co_campaign_purpose, co_outcomes, co_deal, co_cycle, co_goal, co_timezone, co_days, co_start_time, co_end_time, co_outbound_maturity, co_monthly_volume, co_prev_tools, co_existing_leads, co_biggest_challenge, co_90day_goal, co_website_permission, co_notes, co_deal, co_cycle, co_goal) and persona fields (industries, co_sizes, geo, buyer, pain1, keywords, neg, intent_topics). Map form data intelligently — 'Job Title / Role' → co_contact_title, 'WE HELP' → co_we_help, 'Target Industries' → persona industries field, etc.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -2711,7 +2714,7 @@ function exportFullPDF(companyData: any, icps: any[], clientName: string) {
     html += `<div class="icp-header"><h2>${esc(icp.name||"Unnamed ICP")}</h2>
       <div class="meta">Status: <span class="badge ${icp.approval==="finalized"?"badge-purple":icp.approval==="approved"?"badge-green":"badge-amber"}">${icp.approval==="finalized"?"✦ Finalized":icp.approval==="approved"?"✓ Approved":"Draft"}</span>
       ${icp.aiCouncil?` · Email Score: ${icp.aiCouncil.finalScore}/10`:""}
-      · ${ALL_ICP_FIELDS.filter(f=>fieldFilled(f,d[f.id])).length}/${ALL_ICP_FIELDS.length} fields filled</div></div>`;
+      · ${AI_FILLABLE_ICP_FIELDS.filter(f=>fieldFilled(f,d[f.id])).length}/${AI_FILLABLE_ICP_FIELDS.length} fields filled</div></div>`;
 
     // ICP fields by section
     for (const [,sec] of Object.entries(ICP_SECTIONS) as any[]) {
@@ -2823,8 +2826,8 @@ const FIELD_TIME_SECONDS: Record<string, number> = {
   co_website_permission:10, co_website_urls:30,
   // Product fields
   unsolvedImpact:300,
-  // Benchmarks & notes (1-3 min each)
-  co_bench_reply:60, co_bench_interested:60, co_bench_bounce_max:60, co_bench_autoreply_max:60, co_bench_meeting:60, co_notes:180,
+  // Notes (2-3 min)
+  co_notes:180,
   // Product fields — core (2-8 min each)
   name:30, description:240, category:15, useCases:360, keyFeatures:420, problemsSolved:420,
   valueProposition:480, timeToValue:180,
@@ -3398,10 +3401,13 @@ CRITICAL RULES:
 - co_exclude and co_avoid: infer sensible defaults based on the company's type and segment.
 
 Return ONLY JSON:
-{"fields":{"co_name":"","co_industry":"","co_website":"","co_size":"","co_revenue":"","co_pitch":"","co_we_help":"","co_who_struggle":"","co_by_providing":"","co_unlike":"","co_we_uniquely":"","co_core_problem":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":"","co_bench_reply":"3","co_bench_interested":"1","co_bench_bounce_max":"3","co_bench_autoreply_max":"30","co_bench_meeting":"0.5"},
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_size":"","co_revenue":"","co_pitch":"","co_we_help":"","co_who_struggle":"","co_by_providing":"","co_unlike":"","co_we_uniquely":"","co_core_problem":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":""},
 "confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_size":0,"co_revenue":0,"co_pitch":0,"co_we_help":0,"co_who_struggle":0,"co_by_providing":0,"co_unlike":0,"co_we_uniquely":0,"co_core_problem":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
+
 Do NOT generate fields for: contact info (first name, last name, phone, email, linkedin, login email), channels, outcomes, timezone, days, start/end time, num_campaigns, campaign_purpose, outbound maturity, monthly volume, previous tools, existing leads, biggest challenge, 90-day goal, website permission. Those are filled manually.
-DO fill: co_size (pick from options), co_revenue (estimate), co_deal (pick from options), co_cycle (pick from options), co_exclude (infer from context), co_avoid (infer messaging risks), co_bench_* (estimate based on industry/deal size).
+DO fill: co_size (pick from options), co_revenue (estimate), co_deal (pick from options), co_cycle (pick from options), co_exclude (infer from context), co_avoid (infer messaging risks).
+
+Benchmarks are NOT company-level — they are calibrated per campaign based on channel, type, intent tier, and audience. Do not generate co_bench_* fields.
 co_we_help: the specific audience they serve
 co_who_struggle: the specific problem that audience faces
 co_by_providing: their solution in one line
@@ -3417,7 +3423,7 @@ co_buying_motion: how deals actually happen — direct, channel, inbound
 co_trust_risks: what makes prospects hesitate before engaging
 co_customers: known current customers if any
 co_dream: ideal target companies
-Raw JSON only.`, "", 3000);
+Raw JSON only.`, "", 5000);
     let coFields: any = {}, coConf: any = {};
     try {
       const p = JSON.parse(coRaw.replace(/```json|```/g,"").trim());
@@ -3950,7 +3956,7 @@ Based on ALL the extracted data, infer the company profile. Key approach:
 - COMBINE all signals to build the most complete picture possible.
 
 Return ONLY JSON:
-{"fields":{"co_name":"","co_industry":"","co_website":"","co_size":"","co_revenue":"","co_pitch":"","co_we_help":"","co_who_struggle":"","co_by_providing":"","co_unlike":"","co_we_uniquely":"","co_core_problem":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":"","co_bench_reply":"3","co_bench_interested":"1","co_bench_bounce_max":"3","co_bench_autoreply_max":"30","co_bench_meeting":"0.5"},
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_size":"","co_revenue":"","co_pitch":"","co_we_help":"","co_who_struggle":"","co_by_providing":"","co_unlike":"","co_we_uniquely":"","co_core_problem":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":""},
 "confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_size":0,"co_revenue":0,"co_pitch":0,"co_we_help":0,"co_who_struggle":0,"co_by_providing":0,"co_unlike":0,"co_we_uniquely":0,"co_core_problem":0,"co_product":0,"co_prod_breakdown":0,"co_category":0,"co_competitors":0,"co_buying_motion":0,"co_trust_risks":0,"co_ksp":0,"co_diff":0,"co_proof":0,"co_customers":0,"co_dream":0}}
 
 Set confidence based on how clearly the info is visible in the screenshots (90+ = directly visible, 60-89 = strongly inferred, 30-59 = educated guess).
@@ -4908,7 +4914,7 @@ function FilesPanel({ files, onFilesChange, links, onLinksChange, onUploadFiles 
 // ─── ICP KANBAN CARD ─────────────────────────────────────────────────────────
 // ═══════════ V2 ICP CARD ═══════════
 function ICPCardV2({ icp, idx, onOpen, onDuplicate, onDelete, isSelected = false }) {
-  const filled   = ALL_ICP_FIELDS.filter(f=>fieldFilled(f,icp.data[f.id])).length;
+  const filled   = AI_FILLABLE_ICP_FIELDS.filter(f=>fieldFilled(f,icp.data[f.id])).length;
   const pct      = Math.round(filled/TOTAL_FIELDS*100);
   const hasOut   = !!icp.outputs;
   const [hov, setHov] = useState(false);
@@ -5952,7 +5958,7 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
   const sec         = ICP_SECTIONS[secTab];
   const curOT       = OUTPUT_TABS.find(t=>t.id===outTab) ?? OUTPUT_TABS[0];
   const secFill     = sec?.fields.filter(f=>fieldFilled(f,data[f.id])).length ?? 0;
-  const totFill     = ALL_ICP_FIELDS.filter(f=>fieldFilled(f,data[f.id])).length;
+  const totFill     = AI_FILLABLE_ICP_FIELDS.filter(f=>fieldFilled(f,data[f.id])).length;
   const secApproved = (icp.sectionApprovals??{})[outTab]==="approved";
   const allApproved = OUTPUT_TABS.every(t=>(icp.sectionApprovals??{})[t.id]==="approved");
   const openComm    = (icp.comments??[]).filter(c=>!c.resolved).length;
@@ -6217,7 +6223,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
 
   const bulkFillProducts = async () => {
     const incomplete = products.filter(p => {
-      const vf = getVisibleProductFields(p);
+      const vf = getCountableProductFields(p);
       const filled = vf.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length;
       return filled < vf.length && p.name;
     });
@@ -6227,7 +6233,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
     let filled = 0;
     for (const prod of incomplete) {
       try {
-        const emptyFields = PRODUCT_FIELDS.filter(f => !prod[f.id] || !String(prod[f.id]).trim()).map(f => f.label);
+        const emptyFields = PRODUCT_FIELDS.filter(f => f.aiFill !== false && (!prod[f.id] || !String(prod[f.id]).trim())).map(f => f.label);
         const result = await callAI(
           `Fill the missing fields for this product.\n\n${NAMING_RULES.product}\n\nProduct: ${prod.name}\nExisting data: ${JSON.stringify(prod)}\nCompany: ${(companyData as any)?.co_name||""} (${(companyData as any)?.co_industry||""})\n${fileContext ? `Files:\n${fileContext}` : ""}\n\nMissing fields: ${emptyFields.join(", ")}\n\nReturn ONLY JSON with the missing fields filled. Only include fields that were empty.`,
           "Return only valid JSON.", 1000
@@ -6560,7 +6566,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
               </p>
             </div>
             <div style={{ display:"flex", gap:8 }}>
-              {products.some(p => { const vf = getVisibleProductFields(p); const f = vf.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length; return f < vf.length && p.name; }) && (
+              {products.some(p => { const vf = getCountableProductFields(p); const f = vf.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length; return f < vf.length && p.name; }) && (
                 <button onClick={bulkFillProducts} disabled={bulkFilling}
                   style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
                     color:_C.green, fontSize:12, fontFamily:head, fontWeight:600,
@@ -6603,7 +6609,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
             /* Product cards grid */
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12, paddingBottom:24 }}>
               {products.map((p, i) => {
-                const visF = getVisibleProductFields(p);
+                const visF = getCountableProductFields(p);
                 const pFilled = visF.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length;
                 const pPct = Math.round(pFilled / visF.length * 100);
                 return (
@@ -6936,11 +6942,335 @@ function OffersPage({ offers, onOffersChange, products, personas = [], companyDa
   );
 }
 
+// ─── RTS LEADS PAGE ──────────────────────────────────────────────────────────
+function RTSLeadsPage({ rtsLists, onRtsListsChange, campaigns, products = [], personas = [], addToast }: {
+  rtsLists: any[]; onRtsListsChange: (lists: any[]) => void; campaigns: any[]; products?: any[]; personas?: any[]; addToast: (t:any)=>string;
+}) {
+  const [editingId, setEditingId] = useState<string|null>(null);
+  const [fillingListId, setFillingListId] = useState<string|null>(null);
+  // Brief prompt context shown before AI Fill runs. Null = modal hidden.
+  const [fillContext, setFillContext] = useState<{ listId: string; productId: string; personaId: string; goal: string; direction: string } | null>(null);
+  const canAddMore = rtsLists.length < MAX_RTS_LISTS_PER_WORKSPACE;
+  const addList = () => {
+    if (!canAddMore) { addToast({ title:"Limit reached", status:"error", message:`Max ${MAX_RTS_LISTS_PER_WORKSPACE} RTS lists per workspace` }); return; }
+    const l = EMPTY_RTS_LIST();
+    l.name = `RTS List ${rtsLists.length + 1}`;
+    onRtsListsChange([...rtsLists, l]);
+    setEditingId(l.id);
+  };
+  const updateList = (id: string, patch: any) => onRtsListsChange(rtsLists.map(l => l.id === id ? { ...l, ...patch, updatedAt: new Date().toISOString() } : l));
+  const deleteList = (id: string) => {
+    const list = rtsLists.find(l => l.id === id);
+    if (!list) return;
+    if (!confirm(`Delete RTS list "${list.name}"?`)) return;
+    onRtsListsChange(rtsLists.filter(l => l.id !== id));
+    if (editingId === id) setEditingId(null);
+    addToast({ title:"RTS list deleted", status:"success", message: list.name });
+  };
+  const editing = rtsLists.find(l => l.id === editingId) || null;
+
+  // AI Fill — populates all 9 Bebop fields from full workspace context + optional user hints.
+  // Preserves the user-provided name (if any) and emailRecipients (personal).
+  const aiFillList = async (listId: string, hints: { productId?: string; personaId?: string; goal?: string; direction?: string } = {}) => {
+    const list = rtsLists.find(l => l.id === listId);
+    if (!list) return;
+    const b = list.bebopSetup || {};
+    const anyFilled = ["websiteUrl","productDisplayName","sellingDescription","campaignGoal","additionalContext","salesMethodologies","competitorUrls","customerProfile"].some(k => b[k] && String(b[k]).trim());
+    if (anyFilled && !confirm("AI Fill will overwrite all Bebop fields on this list (email recipients + name are preserved). Continue?")) return;
+    setFillingListId(listId);
+    try {
+      const hintedProduct = hints.productId ? products.find(p => p.id === hints.productId) : null;
+      const hintedPersona = hints.personaId ? personas.find(p => p.id === hints.personaId) : null;
+      const nameHint = list.name && !list.name.startsWith("RTS List ") ? `\n- List name (user-provided): "${list.name}"` : "";
+      const productHint = hintedProduct ? `\n- Product to sell on this list: "${hintedProduct.name}" — ${hintedProduct.valueProposition || hintedProduct.description || ""}` : "";
+      const personaHint = hintedPersona ? `\n- Target persona: "${hintedPersona.name}" — buyer: ${hintedPersona.data?.buyer || ""}, pain: ${hintedPersona.data?.pain1 || ""}, direct signals: ${hintedPersona.data?.buying_signals_direct || ""}, triggers: ${hintedPersona.data?.triggers || ""}` : "";
+      const goalHint = hints.goal?.trim() ? `\n- Campaign goal: ${hints.goal.trim()}` : "";
+      const directionHint = hints.direction?.trim() ? `\n- Angle / direction: ${hints.direction.trim()}` : "";
+      const hasAnyHint = nameHint || productHint || personaHint || goalHint || directionHint;
+      const hintsBlock = hasAnyHint
+        ? `\n\nUSER DIRECTION FOR THIS LIST:${nameHint}${productHint}${personaHint}${goalHint}${directionHint}\n\nUse these hints as the anchor — pick signals and framing that serve this specific product/persona/goal.`
+        : `\n\nNo user direction provided — pick the most impactful signal-led angle given the workspace's ICPs and products.`;
+
+      const prompt = `Generate ONE RTS (Real-Time Signals) list proposal to paste directly into Bebop. RTS lists receive triple-qualified high-intent leads refreshed daily — the leads are ALREADY showing buying signals (hiring, funding, tech changes, RFPs, competitor churn, etc.). Bebop uses the fields below to know which signals to look for.${hintsBlock}
+
+Return ONLY JSON in Bebop's exact shape:
+{"name": "<short signal-led name — e.g. 'Just-hired VPEs at Series B SaaS' (if the user already named the list, you can leave this blank and it will be preserved)>",
+ "websiteUrl": "<URL — use the company's main site or a specific landing page if applicable>",
+ "productDisplayName": "<product display name (match the user-hinted product if provided)>",
+ "sellingDescription": "<1-2 sentences framing the offer AGAINST the signal: why they need this now given what just happened to them>",
+ "campaignGoal": "<measurable, time-bound — use the user-provided goal if given, otherwise propose one>",
+ "additionalContext": "<geography, company size, any targeting nuance NOT in the ICP>",
+ "salesMethodologies": "<BANT/SPIN/MEDDIC/Challenger — pick what fits high-intent>",
+ "competitorUrls": "<competitor URLs from the workspace, comma-separated>",
+ "customerProfile": "<LONG-FORM. Lead with the SIGNAL (3-4 sentences: what trigger/event/behavior makes these leads high-intent and WHY that signal predicts buying readiness right now). THEN the demographic filter layered on top of the signal (3-4 sentences: titles, seniority, company size, industry, revenue, location, tech stack). Signal FIRST — demographics narrow the signal.>"}
+
+RULES:
+- customerProfile MUST lead with the buying signal, not demographic fit. That's what makes RTS different from cold.
+- Use specific signals from the workspace personas' direct/indirect buying signals and triggers — not generic ones.
+- campaignGoal must be measurable.
+- Raw JSON only, no markdown.`;
+      const raw = await callAI(prompt, "Return ONLY valid JSON. No markdown.", 4000, { useFullContext: true });
+      const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+      updateList(listId, {
+        name: (list.name && !list.name.startsWith("RTS List ")) ? list.name : (parsed.name || list.name || "RTS list"),
+        bebopSetup: {
+          websiteUrl: parsed.websiteUrl || "",
+          productDisplayName: parsed.productDisplayName || "",
+          sellingDescription: parsed.sellingDescription || "",
+          campaignGoal: parsed.campaignGoal || "",
+          additionalContext: parsed.additionalContext || "",
+          salesMethodologies: parsed.salesMethodologies || "",
+          competitorUrls: parsed.competitorUrls || "",
+          customerProfile: parsed.customerProfile || "",
+          emailRecipients: b.emailRecipients || "", // preserved
+        },
+      });
+      addToast({ title:"RTS list filled", status:"success", message:"AI populated Bebop fields from workspace context" });
+    } catch (e) {
+      console.error("AI fill failed:", e);
+      addToast({ title:"AI fill failed", status:"error", message:"Try again — AI didn't return a valid proposal" });
+    }
+    setFillingListId(null);
+  };
+
+  return (
+    <div style={{ width:"100%", height:"100%", overflowY:"auto", padding:"24px clamp(20px, 3vw, 48px)", boxSizing:"border-box" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+        <div>
+          <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>RTS Leads</h2>
+          <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0 }}>
+            {rtsLists.length} of {MAX_RTS_LISTS_PER_WORKSPACE} lists — triple-qualified high-intent leads, updated daily
+          </p>
+        </div>
+        <button disabled={!canAddMore} onClick={addList}
+          style={{ padding:"9px 20px", borderRadius:10, border:"none", background:canAddMore?C2.accent:C2.muted, color:"#fff",
+            fontSize:12, fontFamily:head, fontWeight:700, cursor:canAddMore?"pointer":"not-allowed", boxShadow:canAddMore?`0 2px 8px ${C2.accent}44`:"none" }}>
+          + New RTS List
+        </button>
+      </div>
+
+      {rtsLists.length === 0 ? (
+        <div style={{ padding:"48px 24px", textAlign:"center", background:C2.canvas, borderRadius:14, border:`1px dashed ${C2.border}` }}>
+          <div style={{ fontSize:40, marginBottom:12, opacity:.3 }}>⚡</div>
+          <div style={{ fontSize:16, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:6 }}>No RTS lists yet</div>
+          <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6, marginBottom:20, maxWidth:480, margin:"0 auto 20px" }}>
+            Fill out the Bebop setup form fields here, then push the list to Bebop to start receiving high-intent leads.
+          </div>
+          <button onClick={addList}
+            style={{ padding:"10px 24px", borderRadius:10, border:"none", background:C2.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+            Create first RTS list
+          </button>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns: editing ? "1fr 2fr" : "1fr", gap:16 }}>
+          {/* List column */}
+          <div>
+            {rtsLists.map(l => {
+              const linkedCount = (l.linkedCampaignIds || []).filter((id:string) => campaigns.some(c => c.id === id)).length;
+              return (
+                <div key={l.id} onClick={()=>setEditingId(l.id)}
+                  style={{ padding:"14px 16px", borderRadius:12, background:C2.canvas,
+                    border: editingId===l.id ? `2px solid ${C2.accent}` : `1px solid ${C2.border}`,
+                    cursor:"pointer", marginBottom:10, transition:"all .2s" }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C2.text, fontFamily:head, marginBottom:4 }}>{l.name || "Untitled"}</div>
+                  <div style={{ fontSize:11, color:C2.muted, fontFamily:body }}>
+                    {linkedCount > 0 ? `Feeds ${linkedCount} campaign${linkedCount!==1?"s":""}` : "Not linked to any campaign"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Editor column */}
+          {editing && (
+            <div style={{ padding:"20px 24px", background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}` }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:16 }}>
+                <input value={editing.name} onChange={e=>updateList(editing.id, { name: e.target.value })}
+                  placeholder="RTS list name"
+                  style={{ flex:1, fontSize:18, fontWeight:700, fontFamily:head, color:C2.text, border:"none", outline:"none", background:"transparent" }} />
+                <button onClick={()=>setFillContext({ listId: editing.id, productId: "", personaId: "", goal: "", direction: "" })}
+                  disabled={fillingListId === editing.id}
+                  title="Fill all Bebop fields with AI — prompts for product, persona, and goal first"
+                  style={{ padding:"6px 12px", borderRadius:6, border:"none",
+                    background: fillingListId === editing.id ? C2.muted : C2.accent, color:"#fff",
+                    fontSize:11, fontFamily:mono, fontWeight:700, cursor: fillingListId === editing.id ? "wait" : "pointer",
+                    boxShadow: fillingListId === editing.id ? "none" : `0 2px 6px ${C2.accent}44` }}>
+                  {fillingListId === editing.id ? "◌ Filling…" : "✨ AI Fill"}
+                </button>
+                <button onClick={()=>deleteList(editing.id)}
+                  style={{ padding:"6px 12px", borderRadius:6, border:`1px solid ${C2.border}`, background:"transparent", color:C2.red, fontSize:11, fontFamily:mono, cursor:"pointer" }}>Delete</button>
+              </div>
+
+              {/* Bebop setup — mirrors Bebop's RTS list creation form 1:1 */}
+              <div style={{ padding:"14px 16px", borderRadius:10, background:`${C2.accent}04`, border:`1px solid ${C2.accent}22`, marginBottom:14 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                  <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:C2.text }}>Bebop Setup</div>
+                  <button onClick={()=>{
+                    const b = editing.bebopSetup || {};
+                    const txt = `Campaign name: ${editing.name||""}\nWebsite: ${b.websiteUrl||""}\nProduct: ${b.productDisplayName||""}\n\nSelling:\n${b.sellingDescription||""}\n\nGoal:\n${b.campaignGoal||""}\n\nAdditional context:\n${b.additionalContext||""}\n\nSales methodologies:\n${b.salesMethodologies||""}\n\nCompetitors:\n${b.competitorUrls||""}\n\nIdeal Customer Profile:\n${b.customerProfile||""}\n\nEmail recipients: ${b.emailRecipients||""}`;
+                    navigator.clipboard.writeText(txt);
+                    addToast({ title:"Copied", status:"success", message:"Bebop setup copied — paste into Bebop's RTS form" });
+                  }}
+                    style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${C2.accent}44`, background:"transparent", color:C2.accent, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>
+                    Copy for Bebop
+                  </button>
+                </div>
+                <div style={{ fontSize:10, color:C2.muted, fontFamily:body, marginBottom:12 }}>Fields below match Bebop's RTS list creation form exactly. Fill here → paste into Bebop.</div>
+
+                {/* Bebop Page 1: Campaign basics */}
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:3, letterSpacing:.4 }}>WEBSITE URL <span style={{ color:C2.muted, fontWeight:500 }}>— specific landing page if available</span></div>
+                  <input value={editing.bebopSetup?.websiteUrl || ""}
+                    onChange={e=>updateList(editing.id, { bebopSetup: { ...editing.bebopSetup, websiteUrl: e.target.value } })}
+                    placeholder="www.example.com"
+                    style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:12, fontFamily:body, boxSizing:"border-box" as const }} />
+                </div>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:3, letterSpacing:.4 }}>PRODUCT / SERVICE DISPLAY NAME</div>
+                  <input value={editing.bebopSetup?.productDisplayName || ""}
+                    onChange={e=>updateList(editing.id, { bebopSetup: { ...editing.bebopSetup, productDisplayName: e.target.value } })}
+                    placeholder="My Product"
+                    style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:12, fontFamily:body, boxSizing:"border-box" as const }} />
+                </div>
+
+                {/* Bebop Page 2: Offer & context */}
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:3, letterSpacing:.4 }}>WHAT ARE WE SELLING?</div>
+                  <textarea value={editing.bebopSetup?.sellingDescription || ""}
+                    onChange={e=>updateList(editing.id, { bebopSetup: { ...editing.bebopSetup, sellingDescription: e.target.value } })}
+                    rows={3} placeholder="Describe the offering for this campaign"
+                    style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:12, fontFamily:body, resize:"vertical" as const, boxSizing:"border-box" as const }} />
+                </div>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:3, letterSpacing:.4 }}>CAMPAIGN GOAL *</div>
+                  <input value={editing.bebopSetup?.campaignGoal || ""}
+                    onChange={e=>updateList(editing.id, { bebopSetup: { ...editing.bebopSetup, campaignGoal: e.target.value } })}
+                    placeholder="What are we hoping to achieve?"
+                    style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:12, fontFamily:body, boxSizing:"border-box" as const }} />
+                </div>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:3, letterSpacing:.4 }}>ADDITIONAL CONTEXT <span style={{ color:C2.muted, fontWeight:500 }}>— non-ICP notes</span></div>
+                  <textarea value={editing.bebopSetup?.additionalContext || ""}
+                    onChange={e=>updateList(editing.id, { bebopSetup: { ...editing.bebopSetup, additionalContext: e.target.value } })}
+                    rows={2} placeholder="Specific industries to target, geographic location, type of company"
+                    style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:12, fontFamily:body, resize:"vertical" as const, boxSizing:"border-box" as const }} />
+                </div>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:3, letterSpacing:.4 }}>SALES METHODOLOGIES</div>
+                  <input value={editing.bebopSetup?.salesMethodologies || ""}
+                    onChange={e=>updateList(editing.id, { bebopSetup: { ...editing.bebopSetup, salesMethodologies: e.target.value } })}
+                    placeholder="BANT, SPIN, MEDDIC, Challenger, …"
+                    style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:12, fontFamily:body, boxSizing:"border-box" as const }} />
+                </div>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:3, letterSpacing:.4 }}>DIRECT COMPETITORS</div>
+                  <input value={editing.bebopSetup?.competitorUrls || ""}
+                    onChange={e=>updateList(editing.id, { bebopSetup: { ...editing.bebopSetup, competitorUrls: e.target.value } })}
+                    placeholder="www.competitor.com"
+                    style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:12, fontFamily:body, boxSizing:"border-box" as const }} />
+                </div>
+
+                {/* Bebop Page 3: ICP */}
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:3, letterSpacing:.4 }}>IDEAL CUSTOMER PROFILE *</div>
+                  <textarea value={editing.bebopSetup?.customerProfile || ""}
+                    onChange={e=>updateList(editing.id, { bebopSetup: { ...editing.bebopSetup, customerProfile: e.target.value } })}
+                    rows={6} placeholder="Long-form description of the ideal customer — titles, seniority, industries, company size, revenue, location, tech stack, buying signals…"
+                    style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:12, fontFamily:body, resize:"vertical" as const, boxSizing:"border-box" as const, lineHeight:1.5 }} />
+                </div>
+
+                {/* Bebop Page 4: Notifications */}
+                <div>
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:3, letterSpacing:.4 }}>EMAIL RECIPIENTS <span style={{ color:C2.muted, fontWeight:500 }}>— separated by commas</span></div>
+                  <input value={editing.bebopSetup?.emailRecipients || ""}
+                    onChange={e=>updateList(editing.id, { bebopSetup: { ...editing.bebopSetup, emailRecipients: e.target.value } })}
+                    placeholder="johndoe@gmail.com, spikespiegel@outlook.com"
+                    style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:12, fontFamily:body, boxSizing:"border-box" as const }} />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AI Fill context modal — asks for product / persona / goal before generating */}
+      {fillContext && createPortal(
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483647, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(4px)", padding:24 }}
+          onClick={()=>setFillContext(null)}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`, boxShadow:"0 24px 64px rgba(13,15,26,0.22)", maxWidth:560, width:"100%", maxHeight:"85vh", overflow:"hidden", display:"flex", flexDirection:"column" as const, animation:"toastIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ padding:"18px 22px", borderBottom:`1px solid ${C2.border}` }}>
+              <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C2.text }}>✨ AI Fill — RTS list context</div>
+              <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:4, lineHeight:1.5 }}>
+                Give the AI a direction. All fields are optional — skip any to let the AI decide.
+              </div>
+            </div>
+            <div style={{ flex:1, overflowY:"auto", padding:"18px 22px" }}>
+              {/* Product */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:5, letterSpacing:.4 }}>PRODUCT / SERVICE</div>
+                <select value={fillContext.productId}
+                  onChange={e=>setFillContext({ ...fillContext, productId: e.target.value })}
+                  style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${C2.border}`, background:C2.faint, fontSize:12, fontFamily:mono }}>
+                  <option value="">— Let AI pick —</option>
+                  {products.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Untitled product"}</option>)}
+                </select>
+              </div>
+              {/* Persona */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:5, letterSpacing:.4 }}>TARGET PERSONA</div>
+                <select value={fillContext.personaId}
+                  onChange={e=>setFillContext({ ...fillContext, personaId: e.target.value })}
+                  style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${C2.border}`, background:C2.faint, fontSize:12, fontFamily:mono }}>
+                  <option value="">— Let AI pick —</option>
+                  {personas.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Untitled persona"}</option>)}
+                </select>
+              </div>
+              {/* Goal */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:5, letterSpacing:.4 }}>CAMPAIGN GOAL <span style={{ fontWeight:500 }}>(optional)</span></div>
+                <input value={fillContext.goal}
+                  onChange={e=>setFillContext({ ...fillContext, goal: e.target.value })}
+                  placeholder="Book 10 discovery calls per month with Series B SaaS companies"
+                  style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${C2.border}`, background:C2.faint, fontSize:12, fontFamily:body, boxSizing:"border-box" as const }} />
+              </div>
+              {/* Angle / direction */}
+              <div>
+                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:5, letterSpacing:.4 }}>ANGLE / DIRECTION <span style={{ fontWeight:500 }}>(optional)</span></div>
+                <textarea value={fillContext.direction}
+                  onChange={e=>setFillContext({ ...fillContext, direction: e.target.value })}
+                  rows={3}
+                  placeholder="Target companies that just hired a new VP Engineering — usually a 90-day window where they're evaluating eng tooling"
+                  style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:`1px solid ${C2.border}`, background:C2.faint, fontSize:12, fontFamily:body, resize:"vertical" as const, boxSizing:"border-box" as const, lineHeight:1.5 }} />
+                <div style={{ fontSize:10, color:C2.muted, fontFamily:body, marginTop:4 }}>
+                  What signal / trigger / event makes these leads high-intent? (Hiring, funding, RFP, competitor churn, etc.)
+                </div>
+              </div>
+            </div>
+            <div style={{ padding:"14px 22px", borderTop:`1px solid ${C2.border}`, display:"flex", gap:8 }}>
+              <button onClick={()=>setFillContext(null)}
+                style={{ flex:1, padding:"10px", borderRadius:8, border:`1px solid ${C2.border}`, background:"transparent", color:C2.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                Cancel
+              </button>
+              <button onClick={()=>{ const ctx = fillContext; setFillContext(null); aiFillList(ctx.listId, { productId: ctx.productId, personaId: ctx.personaId, goal: ctx.goal, direction: ctx.direction }); }}
+                style={{ flex:2, padding:"10px", borderRadius:8, border:"none", background:C2.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${C2.accent}44` }}>
+                Generate
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 // ─── COVERAGE MATRIX ─────────────────────────────────────────────────────────
-function CoverageMatrix({ products, personas, offers, campaigns, v2 = false, onCreateCampaign, onViewCampaign }: {
-  products: any[]; personas: any[]; offers: any[]; campaigns: any[]; v2?: boolean;
+function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], v2 = false, onCreateCampaign, onViewCampaign, onGoToRts }: {
+  products: any[]; personas: any[]; offers: any[]; campaigns: any[]; rtsLists?: any[]; v2?: boolean;
   onCreateCampaign?: (productId:string, personaId:string) => void;
   onViewCampaign?: (campaignId:string) => void;
+  onGoToRts?: () => void;
 }) {
   const _C = v2 ? C2 : C;
   if (products.length === 0 || personas.length === 0) {
@@ -6984,6 +7314,53 @@ function CoverageMatrix({ products, personas, offers, campaigns, v2 = false, onC
           color:coveragePct===100?_C.green:coveragePct>=50?_C.accent:_C.muted }}>{coveragePct}%</div>
       </div>
 
+      {/* RTS (High-Intent) Coverage strip — only shown when workspace has RTS lists */}
+      {rtsLists.length > 0 && (() => {
+        const rtsWithCampaign = rtsLists.filter((l:any) => campaigns.some((c:any) => c.rtsListId === l.id));
+        const rtsWithout = rtsLists.filter((l:any) => !campaigns.some((c:any) => c.rtsListId === l.id));
+        return (
+          <div style={{ marginBottom:20, padding:"14px 16px", borderRadius:12, background:`#B946F208`, border:`1px solid #B946F222` }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:"#B946F2", letterSpacing:.4 }}>⚡ HIGH-INTENT (RTS)</span>
+                <span style={{ fontSize:11, color:_C.muted, fontFamily:body }}>
+                  {rtsWithCampaign.length}/{rtsLists.length} lists have a campaign
+                </span>
+              </div>
+              {onGoToRts && (
+                <button onClick={onGoToRts}
+                  style={{ padding:"4px 10px", borderRadius:6, border:`1px solid #B946F244`, background:"transparent", color:"#B946F2", fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>
+                  Manage lists →
+                </button>
+              )}
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
+              {rtsLists.map((l:any) => {
+                const linked = campaigns.find((c:any) => c.rtsListId === l.id);
+                return (
+                  <div key={l.id}
+                    onClick={()=>linked ? onViewCampaign?.(linked.id) : onGoToRts?.()}
+                    style={{ padding:"5px 10px", borderRadius:8, cursor:"pointer",
+                      background: linked ? "#B946F215" : _C.canvas,
+                      border: `1px dashed ${linked ? "#B946F266" : _C.border}`,
+                      fontSize:10, fontFamily:mono, fontWeight:600,
+                      color: linked ? "#B946F2" : _C.muted,
+                      display:"flex", alignItems:"center", gap:6 }}>
+                    <span>{linked ? "✓" : "○"}</span>
+                    <span>{l.name || "Unnamed list"}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {rtsWithout.length > 0 && (
+              <div style={{ marginTop:8, fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" }}>
+                {rtsWithout.length} RTS list{rtsWithout.length!==1?"s":""} without a campaign — high-intent leads are decaying
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Grid */}
       <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, overflow:"auto", boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
         <table style={{ width:"100%", borderCollapse:"collapse", minWidth: products.length * 150 + 180 }}>
@@ -7017,14 +7394,19 @@ function CoverageMatrix({ products, personas, offers, campaigns, v2 = false, onC
                   if (campaign) {
                     const statusObj = CAMPAIGN_STATUSES.find(s => s.id === campaign.status) || CAMPAIGN_STATUSES[0];
                     const seqLen = campaign.sequence?.length || 0;
+                    const isHigh = campaign.intentTier === "high" || !!campaign.rtsListId;
                     return (
                       <td key={prod.id} style={{ padding:"8px 10px", textAlign:"center",
                         borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none" }}>
                         <div onClick={()=>onViewCampaign?.(campaign.id)}
                           style={{ padding:"8px 12px", borderRadius:10, background:`${statusObj.color}0C`,
-                            border:`1px solid ${statusObj.color}22`, cursor:"pointer", transition:"all .15s" }}
+                            border:`1px solid ${statusObj.color}22`, cursor:"pointer", transition:"all .15s", position:"relative" as const }}
                           onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=statusObj.color;(e.currentTarget as HTMLElement).style.background=`${statusObj.color}18`;}}
                           onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=statusObj.color+"22";(e.currentTarget as HTMLElement).style.background=`${statusObj.color}0C`;}}>
+                          {isHigh && (
+                            <div style={{ position:"absolute" as const, top:-5, right:-5, padding:"1px 6px", borderRadius:8,
+                              background:"#B946F2", color:"#fff", fontSize:8, fontFamily:mono, fontWeight:700, letterSpacing:.4, boxShadow:"0 1px 4px rgba(185,70,242,0.35)" }}>⚡ RTS</div>
+                          )}
                           <div style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, marginBottom:3,
                             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                             {campaign.name || "Untitled"}
@@ -7070,10 +7452,16 @@ function CoverageMatrix({ products, personas, offers, campaigns, v2 = false, onC
 
 // ─── STRATEGY PAGE ───────────────────────────────────────────────────────────
 function StrategyPage({ strategy, onStrategyChange, companyData, products, offers, personas, v2 = false, addToast = (_t:any)=>"",
-  genState, onGenStateChange, activeWorkspace = null as any }: {
+  genState, onGenStateChange, activeWorkspace = null as any, onLaunchPhaseCampaign = null as any, workspaceCampaigns = [] as any[], rtsLists = [] as any[],
+  autoRun = false, onAutoRunConsumed = null as any }: {
   strategy: any; onStrategyChange: (s: any) => void; companyData: any; products: any[]; offers: any[]; personas: any[]; v2?: boolean; addToast?: (t:any)=>string;
   genState?: {running:boolean;step:number}; onGenStateChange?: (s:{running:boolean;step:number})=>void;
   activeWorkspace?: any;
+  onLaunchPhaseCampaign?: ((phaseSpec: any, phaseId: string) => any) | null;
+  workspaceCampaigns?: any[];
+  rtsLists?: any[];
+  autoRun?: boolean;
+  onAutoRunConsumed?: (() => void) | null;
 }) {
   const _C = v2 ? C2 : C;
   const generating = genState?.running ?? false;
@@ -7130,6 +7518,7 @@ COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"$5K-2
 PRODUCTS: ${prodList||"general"}.
 PERSONAS: ${persList||"general"}.
 INFRA: ${cd.co_mailbox_count||200} mailboxes (${warmupDaysLeft>0?warmupDaysLeft+" days warmup left":"ready"}). LinkedIn+RTS: ready now. Retargeting lists: ${hasLists?"yes":"no"}.
+${rtsLists.length ? `RTS LISTS AVAILABLE (${rtsLists.length}/${MAX_RTS_LISTS_PER_WORKSPACE}) — HIGH-INTENT, triple-qualified, refreshed daily:\n${rtsLists.slice(0,5).map((l:any,i:number)=>`  ${i+1}. "${l.name}" — signal: ${(l.bebopSetup?.customerProfile||"").slice(0,120)}... goal: ${l.bebopSetup?.campaignGoal||""}`).join("\n")}\nThese leads are ALREADY showing intent. They need a DIFFERENT playbook from cold outbound: short sequence (2-3 touches over 5-7 days), direct meeting ask from touch 1 (no soft content offers), reference the trigger/signal in the opener. They should run from DAY 1 in parallel with domain warmup — no need to wait for mailbox warmup since they can go through LinkedIn or AI-calling (for opt-in lists only).\n` : ""}
 ${(() => {
   const intel: string[] = [];
   const _pi = (window as any)[`__pitchAnalysis_${activeWorkspace?.id||""}`]?.result;
@@ -7150,8 +7539,18 @@ ${(() => {
 })()}
 METHODOLOGY — follow this exact playbook:
 
-MONTHS 1-3 (AGGRESSIVE — most critical, user retention depends on early results):
-- Week 1-2: SETUP. Domain warmup begins. Launch LinkedIn connection campaigns immediately (50-100/day). Start RTS lead lists for cold calling.${hasLists?" Launch retargeting campaign with existing contacts (3-step sequence, 3-5 day test).":""}
+${rtsLists.length ? `RTS / HIGH-INTENT LANE (runs CONTINUOUSLY from Week 1 — parallel to cold, not sequenced after):
+- Each RTS list gets its OWN campaign (type: "rts_high_intent"), ONE campaign per list, ONE persona per list.
+- Channel: LinkedIn message OR email (or AI-calling if list is opt-in compliant — check compliance field). Never cold call non-opt-in lists.
+- Sequence: 2-3 touches MAX over 5-7 days. Touch 1 references the buying signal explicitly. CTA is a direct meeting ask from touch 1 — no gated content, no "quick question", no free audit offers.
+- Volume: low (10-30/day per list — high-intent is quality, not volume).
+- Test window: 1-2 days initial (not 3-5). Signals decay fast — if touch 1 doesn't get a response in 48h, the signal may be stale.
+- Benchmarks: expect 2-4× the reply rate of cold (6-12% reply, 2-4% meeting). If RTS is NOT outperforming cold by 2×, the list targeting is wrong — revisit the signal criteria, not the copy.
+- Decision tree: if RTS campaign fails initial benchmarks, re-evaluate the SIGNAL used (is the trigger still relevant? did the buying window close?), not the copy. Copy iteration is for cold.
+- Every RTS list that doesn't convert is ALSO a client hand-off candidate — push raw leads to client's own reps if AI/email isn't working.
+
+` : ""}MONTHS 1-3 (AGGRESSIVE — most critical, user retention depends on early results):
+- Week 1-2: SETUP. Domain warmup begins. Launch LinkedIn connection campaigns immediately (50-100/day). ${rtsLists.length ? "Launch ALL RTS campaigns Day 1 (no warmup needed — low volume through LinkedIn/AI-call/opt-in channels)." : "Start RTS lead lists for cold calling."}${hasLists?" Launch retargeting campaign with existing contacts (3-step sequence, 3-5 day test).":""}
 - Week 3: First cold email campaign launches. Start with 1 persona × 1 product × soft CTA. 5-step sequence. 3-day initial test period.
 - TESTING METHODOLOGY per campaign: Day 1-3 = initial test. Check reply rate (>1%), interested reply rate, bounce (<3%), auto-reply rate (<30%). Do NOT track open rates (unreliable with privacy proxies) or click rates (tracked links hurt deliverability). If benchmarks NOT met: Day 4-6 test new subject lines. Day 7-9 test new opening lines. Day 10-12 test new CTA/offer. If still failing after 3 iterations → pivot persona or product.
 - If benchmarks MET: scale volume, extend duration, launch parallel campaign for next persona.
@@ -7177,7 +7576,9 @@ MONTHS 10-12 (COMPOUNDING):
 - Plan next year's strategy based on full year of data.
 
 Return ONLY a JSON array of 6 phases. Each campaign MUST include:
-- id, type (cold_email/retargeting/linkedin_connection/linkedin_message/rts_calling)
+- id, type (cold_email/retargeting/linkedin_connection/linkedin_message/rts_calling/rts_high_intent)
+- intentTier ("cold" for standard outbound, "high" for any RTS-sourced campaign)
+- rtsListName (required when intentTier="high" — must match one of the RTS list names above)
 - personaName (exact name from list), productName (exact name from list)
 - offerTier (soft/medium/hard), duration (e.g. "2 weeks"), dailyVolume
 - goal (specific, measurable)
@@ -7266,9 +7667,201 @@ Keep each campaign object compact. No nested objects except as specified.`,
     genStateRef.current?.({ running: false, step: 0 });
   };
 
+  // Auto-run trigger — fired from the DFY panel after purchase so the CSM doesn't have to manually click.
+  // Only fires if there's no existing strategy (never overwrites) and nothing is currently generating.
+  const autoRunFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoRun) return;
+    if (autoRunFiredRef.current) return;
+    if (generating) return;
+    if ((strategy?.phases?.length || 0) > 0) {
+      // Strategy already exists — just consume the flag without re-generating
+      autoRunFiredRef.current = true;
+      onAutoRunConsumed?.();
+      return;
+    }
+    if (products.length === 0 || personas.length === 0) {
+      // Can't generate without the prerequisites; consume flag silently
+      autoRunFiredRef.current = true;
+      onAutoRunConsumed?.();
+      return;
+    }
+    autoRunFiredRef.current = true;
+    onAutoRunConsumed?.();
+    // Kick it off
+    generateRoadmap();
+  }, [autoRun, generating, strategy?.phases?.length, products.length, personas.length]);
+
   const updatePhaseStatus = (phaseId: string, status: string) => {
     const updated = { ...strategy, phases: phases.map((p:any) => p.id === phaseId ? { ...p, status } : p) };
     onStrategyChange(updated);
+  };
+
+  // Client-facing strategy export — clean markdown suitable for pasting into a shared doc.
+  // Strips internal status codes, iteration history, intentTier flags, phase IDs — keeps only
+  // what the client should see.
+  const exportStrategyForClient = () => {
+    const cd = companyData as Record<string,string>;
+    const clientName = cd.co_name || "Client";
+    const today = new Date().toLocaleDateString(undefined, { month:"long", day:"numeric", year:"numeric" });
+    const lines: string[] = [];
+    lines.push(`# Outreach Strategy — ${clientName}`);
+    lines.push(`_Prepared ${today}_`);
+    lines.push("");
+    if (cd.co_goal) lines.push(`**Goal:** ${cd.co_goal}`);
+    if (cd.co_industry) lines.push(`**Industry:** ${cd.co_industry}`);
+    if (cd.co_deal) lines.push(`**Deal Size:** ${cd.co_deal}`);
+    if (cd.co_cycle) lines.push(`**Sales Cycle:** ${cd.co_cycle}`);
+    lines.push("");
+
+    // Infrastructure
+    const mailboxes = parseInt(cd.co_mailbox_count || "0") || 0;
+    const liAccts = parseInt(cd.co_linkedin_accounts || "0") || 0;
+    if (mailboxes || liAccts) {
+      lines.push(`## Infrastructure`);
+      if (mailboxes) lines.push(`- **${mailboxes} email mailboxes** — ${mailboxes * 30} emails/day capacity after warmup`);
+      if (liAccts) lines.push(`- **${liAccts} LinkedIn account${liAccts!==1?"s":""}** — ${liAccts * 10} connections + ${liAccts * 10} messages/day capacity`);
+      lines.push("");
+    }
+
+    // Phases
+    if (phases.length) {
+      lines.push(`## 12-Month Roadmap`);
+      lines.push(`${phases.length} phase${phases.length!==1?"s":""} across 12 months: 3-month proof-of-concept phase, then 9-month scale & optimization.`);
+      lines.push("");
+      phases.forEach((p:any, idx:number) => {
+        lines.push(`### Phase ${idx + 1}: ${p.name}`);
+        const weeks = (p.startWeek && p.endWeek) ? `Weeks ${p.startWeek}–${p.endWeek}` : "";
+        if (weeks) lines.push(`_${weeks}_`);
+        if (p.goal) lines.push(`\n**Goal:** ${p.goal}`);
+        const camps = p.campaigns || [];
+        if (camps.length) {
+          lines.push(`\n**Campaigns (${camps.length}):**`);
+          camps.forEach((c:any) => {
+            const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
+            const parts: string[] = [];
+            parts.push(`**${typeObj.label}**`);
+            if (c.personaName) parts.push(`targeting ${c.personaName}`);
+            if (c.productName) parts.push(`for ${c.productName}`);
+            if (c.offerTier) parts.push(`(${c.offerTier} CTA)`);
+            lines.push(`- ${parts.join(" ")}`);
+            if (c.goal) lines.push(`  - Goal: ${c.goal}`);
+            if (c.duration || c.dailyVolume) lines.push(`  - ${c.duration || ""}${c.duration && c.dailyVolume ? " · " : ""}${c.dailyVolume ? `${c.dailyVolume}/day` : ""}`);
+          });
+        }
+        lines.push("");
+      });
+    }
+
+    // Benchmarks
+    const bm = strategy?.benchmarks;
+    if (bm) {
+      lines.push(`## Success Benchmarks`);
+      if (bm.baseReplyRate) lines.push(`- Reply rate: ${bm.baseReplyRate}%+ (healthy)`);
+      if (bm.baseInterestedRate) lines.push(`- Interested reply rate: ${bm.baseInterestedRate}%+`);
+      if (bm.baseMeetingRate) lines.push(`- Meeting rate: ${bm.baseMeetingRate}%+`);
+      lines.push("");
+    }
+
+    lines.push(`---`);
+    lines.push(`_This roadmap is a living document — it will be reviewed and adjusted monthly based on campaign performance._`);
+
+    const md = lines.join("\n");
+    navigator.clipboard.writeText(md);
+    toastRef.current?.({ title:"Strategy exported", status:"success", message:`Markdown copied — ${phases.length} phases · paste into your client deliverable` });
+  };
+
+  // Regenerate ONLY pending phases — preserves in-progress, completed, skipped ones.
+  // Passes the preserved phases to the AI as context so the new ones sequence correctly.
+  const regeneratePendingPhases = async () => {
+    const pendingPhases = phases.filter((p:any) => p.status === "pending");
+    if (pendingPhases.length === 0) {
+      toastRef.current?.({ title:"Nothing to regenerate", status:"info", message:"No phases are currently marked Pending." });
+      return;
+    }
+    const lockedPhases = phases.filter((p:any) => p.status !== "pending");
+    if (!confirm(`Regenerate ${pendingPhases.length} pending phase${pendingPhases.length!==1?"s":""}? ${lockedPhases.length} phase${lockedPhases.length!==1?"s":""} (in progress / completed / skipped) will be preserved.`)) return;
+
+    setGenerating(true);
+    setGenStep(1);
+    try {
+      const cd = companyData as Record<string,string>;
+      const prodList = products.slice(0,5).map((p:any)=>`${p.name}: ${(p.problemsSolved||"").slice(0,80)}`).join("; ");
+      const persList = personas.slice(0,5).map((p:any)=>`${p.name} (${p.data?.buyer||"?"})`).join("; ");
+
+      // Build a summary of what's already in flight so the AI can pick up where it left off
+      const lockedSummary = lockedPhases.map((p:any) => `- Phase ${p.number || p.id}: "${p.name}" (weeks ${p.startWeek}-${p.endWeek}, status: ${p.status}) — ${(p.campaigns||[]).length} campaigns${(p.campaigns||[]).length?": "+(p.campaigns||[]).map((c:any)=>c.type||"").filter(Boolean).join(", "):""}`).join("\n");
+      const pendingSummary = pendingPhases.map((p:any) => `- Phase ${p.number || p.id}: "${p.name}" (weeks ${p.startWeek}-${p.endWeek}) — currently ${(p.campaigns||[]).length} campaigns`).join("\n");
+
+      setGenStep(2);
+      const phasesRaw = await callAI(
+        `You are regenerating ONLY the pending phases of a campaign strategy. The preserved phases are locked — do not recreate them.
+
+COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"$5K-25K"}. Goal: ${cd.co_goal||"10-20"} meetings/mo.
+PRODUCTS: ${prodList||"general"}.
+PERSONAS: ${persList||"general"}.
+${rtsLists.length ? `RTS LISTS: ${rtsLists.length} high-intent list${rtsLists.length!==1?"s":""} available — ${rtsLists.slice(0,3).map((l:any)=>l.name).join(", ")}\n` : ""}
+LOCKED PHASES (already in progress or completed — do NOT regenerate):
+${lockedSummary || "(none)"}
+
+PENDING PHASES TO REGENERATE (produce one replacement for each, matching its number/week range):
+${pendingSummary}
+
+Produce replacements for ONLY the pending phases. Your replacements should sequence naturally AFTER the locked phases — learn from what's already been done and adjust accordingly. For example, if an early cold-email phase is already "in progress", later phases should lean into channels that complement (LinkedIn warm, retargeting, RTS-lead follow-up) rather than stacking more cold email.
+
+Return ONLY a JSON array of ${pendingPhases.length} phase objects, in the same shape as before. Each phase keeps its id and number so it can be merged back:
+[{"id":"<keep exact id from pending list>","number":<keep>,"name":"","startWeek":<keep>,"endWeek":<keep>,"goal":"","campaigns":[{"id":"","type":"cold_email|linkedin_message|linkedin_connection|retargeting|rts_calling|rts_high_intent","intentTier":"cold|high","personaName":"","productName":"","offerTier":"soft|medium|hard","duration":"","dailyVolume":100,"goal":"","testPeriod":"","testMetrics":"","ifBenchmarksMet":"","ifBenchmarksNotMet":"","rtsListName":""}]}]
+
+Raw JSON only, no markdown.`,
+        "Return ONLY valid JSON array. No markdown.", 4000,
+        { useFullContext: true }
+      );
+      let newPendingPhases: any[];
+      try {
+        newPendingPhases = JSON.parse(phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+      } catch {
+        throw new Error("Could not parse regeneration response");
+      }
+      if (!Array.isArray(newPendingPhases) || newPendingPhases.length === 0) throw new Error("No phases returned");
+
+      setGenStep(3);
+      // Enrich each regenerated phase with benchmarks + decision trees (same as initial generation)
+      for (const phase of newPendingPhases) {
+        phase.status = "pending";
+        for (const c of (phase.campaigns||[])) {
+          const isEmail = c.type === "cold_email" || c.type === "retargeting";
+          c.benchmarks = {
+            replyRate: isEmail ? 3 : c.type?.includes("linkedin") ? 15 : 5,
+            interestedRate: isEmail ? 1 : c.type?.includes("linkedin") ? 5 : 2,
+            bounceRate: isEmail ? 3 : null,
+            autoReplyRate: isEmail ? 30 : null,
+            meetingRate: isEmail ? 0.5 : 1,
+          };
+          c.decisionTree = {
+            ifMet: c.ifBenchmarksMet || (isEmail ? "Scale daily volume by 50%. Extend duration. Launch parallel campaign for next persona." : "Increase volume. Begin multi-channel sequence."),
+            ifNotMet: c.ifBenchmarksNotMet || (isEmail ? "Day 1-3: Test 2 new subject lines. Day 4-6: Test new opening. Day 7-9: Test different CTA." : "Test new copy. Adjust targeting filters."),
+            ifFailed: "After 3 test iterations → pause. Pivot persona × product or switch channel.",
+          };
+          if (!c.testPeriod) c.testPeriod = isEmail ? "3-5 days" : "5-7 days";
+          if (!c.testMetrics) c.testMetrics = isEmail ? "Reply >1%, Interested >0.5%, Bounce <3%" : "Accept >30%, Reply >10%";
+        }
+      }
+
+      setGenStep(4);
+      // Merge: keep locked phases, replace pending phases by id match
+      const mergedPhases = phases.map((p:any) => {
+        if (p.status !== "pending") return p; // keep locked
+        const replacement = newPendingPhases.find((np:any) => String(np.id) === String(p.id) || String(np.number) === String(p.number));
+        return replacement ? { ...replacement, id: p.id, number: p.number, status: "pending" } : p;
+      });
+
+      strategyRef.current?.({ ...strategy, phases: mergedPhases, regeneratedAt: new Date().toISOString() });
+      toastRef.current?.({ title:"Pending phases regenerated", status:"success", message: `${newPendingPhases.length} phase${newPendingPhases.length!==1?"s":""} rebuilt · ${lockedPhases.length} preserved` });
+    } catch (e) {
+      console.error("Regenerate pending phases failed:", e);
+      toastRef.current?.({ title:"Regeneration failed", status:"error", message: String(e).slice(0,100) });
+    }
+    genStateRef.current?.({ running: false, step: 0 });
   };
 
   const inputSt: any = { padding:"7px 10px", borderRadius:8, border:`1px solid ${_C.border}`,
@@ -7287,13 +7880,34 @@ Keep each campaign object compact. No nested objects except as specified.`,
               : "Generate a launch plan for the first 45 days, then expand as you learn what works."}
           </p>
         </div>
-        <button onClick={generateRoadmap} disabled={generating}
-          style={{ padding:"10px 24px", borderRadius:12, border:"none",
-            background:generating?_C.muted:_C.accent, color:"#fff",
-            fontSize:13, fontFamily:head, fontWeight:700, cursor:generating?"wait":"pointer",
-            boxShadow:`0 4px 14px ${_C.accent}44`, opacity:generating?0.7:1 }}>
-          {generating ? "◌ Generating roadmap..." : "◎ Generate Roadmap"}
-        </button>
+        <div style={{ display:"flex", gap:10 }}>
+          {phases.length > 0 && (
+            <button onClick={exportStrategyForClient}
+              style={{ padding:"10px 18px", borderRadius:12, border:`1px solid ${_C.border}`,
+                background: _C.canvas, color: _C.text,
+                fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}
+              title="Export a client-facing markdown summary of the roadmap">
+              📤 Export for Client
+            </button>
+          )}
+          {phases.length > 0 && phases.some((p:any) => p.status === "pending") && (
+            <button onClick={() => regeneratePendingPhases()} disabled={generating}
+              style={{ padding:"10px 18px", borderRadius:12, border:`1px solid ${_C.border}`,
+                background: _C.canvas, color: _C.text,
+                fontSize:12, fontFamily:head, fontWeight:600, cursor:generating?"wait":"pointer",
+                opacity:generating?0.5:1 }}
+              title="Regenerate only phases still marked Pending. In-progress, completed, and skipped phases are preserved.">
+              ↻ Regenerate Pending
+            </button>
+          )}
+          <button onClick={generateRoadmap} disabled={generating}
+            style={{ padding:"10px 24px", borderRadius:12, border:"none",
+              background:generating?_C.muted:_C.accent, color:"#fff",
+              fontSize:13, fontFamily:head, fontWeight:700, cursor:generating?"wait":"pointer",
+              boxShadow:`0 4px 14px ${_C.accent}44`, opacity:generating?0.7:1 }}>
+            {generating ? "◌ Generating roadmap..." : phases.length > 0 ? "◎ Regenerate All" : "◎ Generate Roadmap"}
+          </button>
+        </div>
       </div>
 
       {/* Infrastructure banner */}
@@ -7303,8 +7917,8 @@ Keep each campaign object compact. No nested objects except as specified.`,
             sub:emailReady?"All mailboxes active":`${warmupDaysLeft} days remaining` },
           { label:"LinkedIn", value:"Ready", color:_C.green, sub:"Available immediately" },
           { label:"RTS Calling", value:"Ready", color:_C.green, sub:"Available immediately" },
-          { label:"Phases", value:phases.length>0?String(phases.length):"—", color:_C.accent,
-            sub:phases.length>0?`${phases.filter((p:any)=>p.status==="completed").length} completed`:"Generate to start" },
+          { label:"Phases", value:phases.length>0?`${phases.filter((p:any)=>p.status==="completed").length}/${phases.length}`:"—", color:_C.accent,
+            sub:phases.length>0?`${phases.filter((p:any)=>p.status==="in_progress").length} in progress · ${phases.filter((p:any)=>p.status==="pending").length} pending`:"Generate to start" },
         ].map(c => (
           <div key={c.label} style={{ padding:"16px 20px", borderRadius:14, background:_C.canvas,
             border:`1px solid ${_C.border}`, boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
@@ -7374,10 +7988,21 @@ Keep each campaign object compact. No nested objects except as specified.`,
           {phases.map((phase: any, pi: number) => {
             const isExpanded = expandedPhase === phase.id;
             const campaigns = phase.campaigns || [];
-            const statusObj = CAMPAIGN_STATUSES.find(s => s.id === phase.status) || CAMPAIGN_STATUSES[0];
+            const statusObj = PHASE_STATUSES.find(s => s.id === phase.status) || PHASE_STATUSES[0];
+            // Sync indicator — live = campaign exists AND has sending activity uploaded (sent > 0).
+            // Draft = campaign exists but no sending activity yet.
+            let liveInPhase = 0, draftInPhase = 0;
+            (phase.campaigns || []).forEach((_c:any, ci:number) => {
+              const phaseSpecId = `${phase.id || phase.number}_${ci}`;
+              const linked = (workspaceCampaigns||[]).find((rc:any) => rc.strategyPhaseId === phaseSpecId);
+              if (!linked) return;
+              if ((linked.performance?.metrics?.sent || 0) > 0) liveInPhase++;
+              else draftInPhase++;
+            });
             return (
               <div key={phase.id} style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`,
-                overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)", transition:"box-shadow .2s" }}>
+                overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)", transition:"box-shadow .2s",
+                opacity: phase.status === "skipped" ? 0.55 : 1 }}>
                 {/* Phase header */}
                 <div onClick={()=>setExpandedPhase(isExpanded?null:phase.id)}
                   style={{ padding:"18px 24px", cursor:"pointer", display:"flex", alignItems:"center", gap:16,
@@ -7388,7 +8013,16 @@ Keep each campaign object compact. No nested objects except as specified.`,
                     display:"flex", alignItems:"center", justifyContent:"center",
                     fontSize:14, fontWeight:700, fontFamily:mono, color:statusObj.color }}>{pi+1}</div>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:_C.text }}>{phase.name}</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:_C.text }}>{phase.name}</div>
+                      {campaigns.length > 0 && (
+                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4,
+                          background: liveInPhase === campaigns.length ? `${_C.green}15` : liveInPhase > 0 ? `${_C.amber}15` : _C.faint,
+                          color: liveInPhase === campaigns.length ? _C.green : liveInPhase > 0 ? _C.amber : _C.muted }}>
+                          {liveInPhase}/{campaigns.length} live{draftInPhase > 0 ? ` · ${draftInPhase} draft` : ""}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
                       Weeks {phase.startWeek}–{phase.endWeek} · {campaigns.length} campaign{campaigns.length!==1?"s":""}
                     </div>
@@ -7398,7 +8032,7 @@ Keep each campaign object compact. No nested objects except as specified.`,
                     style={{ padding:"5px 10px", borderRadius:8, border:`1px solid ${statusObj.color}44`,
                       background:`${statusObj.color}11`, color:statusObj.color,
                       fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", outline:"none" }}>
-                    {CAMPAIGN_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    {PHASE_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                   </select>
                   <span style={{ fontSize:16, color:_C.muted, transition:"transform .2s",
                     transform:isExpanded?"rotate(180deg)":"rotate(0)" }}>▾</span>
@@ -7411,6 +8045,12 @@ Keep each campaign object compact. No nested objects except as specified.`,
                     <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
                       {campaigns.map((c: any, ci: number) => {
                         const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
+                        const phaseSpecId = `${phase.id || phase.number}_${ci}`;
+                        const linkedCampaign = (workspaceCampaigns || []).find((rc:any) => rc.strategyPhaseId === phaseSpecId);
+                        const isLive = linkedCampaign && (linkedCampaign.performance?.metrics?.sent || 0) > 0;
+                        const firstActivityDate = isLive && linkedCampaign.performance?.lastUpdated
+                          ? new Date(linkedCampaign.performance.lastUpdated).toLocaleDateString()
+                          : null;
                         return (
                           <div key={c.id||ci} style={{ padding:"16px 20px", borderRadius:12,
                             border:`1px solid ${_C.border}`, borderLeft:`4px solid ${typeObj.color}`,
@@ -7427,6 +8067,21 @@ Keep each campaign object compact. No nested objects except as specified.`,
                                 <div style={{ fontSize:12, fontFamily:mono, color:_C.text, fontWeight:600 }}>{c.duration}</div>
                                 <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{c.dailyVolume}/day</div>
                               </div>
+                              {onLaunchPhaseCampaign && (
+                                isLive ? (
+                                  <div style={{ textAlign:"right" as const }}>
+                                    <span style={{ padding:"5px 12px", borderRadius:6, background:`${_C.green}15`, color:_C.green, fontSize:10, fontFamily:mono, fontWeight:700 }}>● LIVE</span>
+                                    {firstActivityDate && <div style={{ fontSize:9, color:_C.muted, fontFamily:mono, marginTop:3 }}>Activity: {firstActivityDate}</div>}
+                                  </div>
+                                ) : linkedCampaign ? (
+                                  <span style={{ padding:"5px 12px", borderRadius:6, background:`${_C.amber}15`, color:_C.amber, fontSize:10, fontFamily:mono, fontWeight:700 }}>◯ DRAFT</span>
+                                ) : (
+                                  <button onClick={()=>onLaunchPhaseCampaign({ ...c, _phaseSpecId: phaseSpecId, _phaseId: phase.id || phase.number, _phaseLabel: phase.name || `Phase ${phase.number}` }, phase.id || phase.number)}
+                                    style={{ padding:"6px 14px", borderRadius:7, border:"none", background:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                    Create Campaign →
+                                  </button>
+                                )
+                              )}
                             </div>
 
                             {/* Goal */}
@@ -7538,19 +8193,269 @@ const STEP_ROLES = [
   { id:"follow_up", label:"Follow-Up",         desc:"Re-engage after silence" },
 ];
 const DEFAULT_SEQUENCE_TIMING = [0, 3, 7, 14, 21]; // day offsets for 5-step
+// Channel enum — compliance-aware. Cold phone is intentionally excluded.
+//   email: warmed cold outbound email
+//   linkedin: connection requests + messages
+//   rts_ai_call: AI dials — ONLY for opt-in compliant lists (hard-gated in validation)
+const CAMPAIGN_CHANNELS = ["email", "linkedin", "rts_ai_call"] as const;
+type CampaignChannel = typeof CAMPAIGN_CHANNELS[number];
+
 const EMPTY_CAMPAIGN = () => ({
   id: uid(), name: "", status: "planning" as string,
-  type: "cold_email" as string,
+  channel: "email" as CampaignChannel, // single-channel per campaign
+  type: "cold_email" as string, // legacy — kept for backwards compat, derived from channel going forward
+  // Intent tier: "cold" = standard outbound, "high" = RTS-sourced high-intent lead (fast cadence, direct CTA, short sequence)
+  intentTier: "cold" as "cold"|"high",
   personaIds: [] as string[], productId: "", offerId: "",
   strategyPhaseId: null as string|null,
+  // Audience source — determines where leads come from
+  audienceSource: "people_search" as "people_search"|"custom_list"|"rts_list",
+  rtsListId: null as string|null, // required when audienceSource === "rts_list"
+  customListName: "", // freeform when CSM uploads a CSV from outside
+  // Targeting spec — structured so CSM can plug into B2BR People Search filter-for-filter
+  targeting: {
+    titles: "", seniority: "", departments: "",
+    industries: "", companySizes: "", revenue: "",
+    personLocation: "", companyLocation: "",
+    keywords: "", technologies: "",
+    intentTopics: "",
+    excludedDomains: "", excludedCompetitors: "",
+  },
+  // Sender / infrastructure advisory (CSM configures actual accounts in B2BR)
+  senderConfig: { accountsNeeded: 3, warmupRequired: true, dailyVolumePerAccount: 50 },
+  // Sending schedule
+  sendingSchedule: { timezone: "client_local", days: ["Mon","Tue","Wed","Thu"], startHour: 9, endHour: 17 },
+  // Safety & limits — mirrors B2BR's auto-pause config
+  safetyLimits: { autoPauseOnBounce: true, bouncePauseThreshold: 8, autoPauseOnLowReply: true, lowReplyThreshold: { sentCount: 300, repliesAtMost: 0 } },
   sequence: [] as any[],
   abTests: [] as any[],
+  // Iteration history — records AI-proposed tests triggered by Health State diagnoses
+  iterations: [] as any[],
   benchmarks: { replyRate:{good:3,warning:1.5,action:0.5,critical:0}, interestedRate:{good:1,warning:0.5,action:0.2,critical:0}, bounceRate:{good:3,warning:5,action:8,critical:12}, autoReplyRate:{good:30,warning:40,action:50,critical:60}, meetingRate:{good:0.5,warning:0.2,action:0,critical:0} },
+  // Test plan — guides optimization flow
+  testPlan: { initialTestDays: 3, firstIterationVariable: "subject_line" as "subject_line"|"opening"|"cta", iterationSchedule: "D1-3 initial, D4-6 subject, D7-9 opening, D10-12 CTA" },
   dailySendVolume: 100,
   handoffCriteria: "",
   performance: null as any,
   createdAt: new Date().toISOString(), startDate: null as string|null, endDate: null as string|null,
 });
+
+// RTS (Real-Time Signals) List — mirrors Bebop's RTS setup form 1:1.
+// bebopSetup holds ONLY the fields Bebop asks for — nothing else (no status, no delivery mode,
+// no opt-in, no volume tracking, no persona/product linkage).
+const EMPTY_RTS_LIST = () => ({
+  id: uid(), name: "",
+  bebopSetup: {
+    websiteUrl: "",            // "What's your website? (if there's a specific landing page for this campaign or product, use that)"
+    productDisplayName: "",    // "What is the name of your product or service? (Display name)"
+    sellingDescription: "",    // "What are we selling in this campaign?"
+    campaignGoal: "",          // "What are we hoping to achieve with this campaign?" (required)
+    additionalContext: "",     // "Is there anything else important to know? (ICP details will be covered on the next page)"
+    salesMethodologies: "",    // "What sales methodologies do you use?" (BANT, SPIN, MEDDIC, etc.)
+    competitorUrls: "",        // "Do you have any direct competitors?" (URLs)
+    customerProfile: "",       // "Your ideal customer profile" — long-form ICP text (required)
+    emailRecipients: "",       // comma-separated emails for delivery notifications
+  },
+  linkedCampaignIds: [] as string[], // internal: tracks which campaigns reference this list
+  createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+});
+const MAX_RTS_LISTS_PER_WORKSPACE = 5;
+
+// Expanded B2BR-shaped performance metrics. Used for per-campaign perfLogs entries and dashboard aggregates.
+// Mirrors B2B Rocket's analytics dashboard (screenshot reference).
+// (Distinct from the legacy EMPTY_METRICS — this is for campaign-level analytics, not quick entry perf logs.)
+function EMPTY_CAMPAIGN_METRICS() {
+  return {
+    // Delivery funnel
+    sent: 0, delivered: 0, bounce: 0,
+    // Engagement
+    opens: 0, clicks: 0, pageViews: 0, pageEngagement: 0, websiteClicks: 0,
+    videoViews: 0, avgVideoViewedPct: 0,
+    // Unsubscribes + AI
+    unsubscribed: 0, aiConversations: 0,
+    // Reply breakdown (the diagnostic ladder)
+    allReplies: 0, humanReplies: 0, oooReplies: 0, wrongPersonReplies: 0,
+    notInterestedReplies: 0, opportunityReplies: 0, otherReplies: 0,
+    // Outcomes
+    meetings: 0, revenue: 0,
+  };
+}
+
+// Per-campaign benchmark calibration — replaces the old "company-level defaults" model.
+// Benchmarks vary significantly by channel, campaign type, intent tier, and audience source:
+//   - LinkedIn gets ~4× email's reply rate (it's a conversational channel)
+//   - Retargeting warms get 2-3× cold email's rates (they already know you)
+//   - High-intent RTS lists get 2-3× cold rates (signal-qualified)
+//   - AI calling (opt-in only) has different dynamics again
+// Returns a full benchmarks object { replyRate, interestedRate, bounceRate, autoReplyRate, meetingRate }
+// each with { good, warning, action, critical } thresholds. Used on campaign creation.
+function calibrateCampaignBenchmarks(c: any): any {
+  const isLinkedIn = c.channel === "linkedin" || c.type === "linkedin_message" || c.type === "linkedin_connection";
+  const isCall     = c.channel === "rts_ai_call" || c.type === "rts_calling";
+  const isRetarget = c.type === "retargeting" || c.audienceSource === "custom_list";
+  const isHighIntent = c.intentTier === "high" || !!c.rtsListId;
+
+  // Start with email-cold baselines
+  let reply = 3, interested = 1, bounce = 3, auto = 30, meeting = 0.5;
+
+  // Channel multipliers
+  if (isLinkedIn) {
+    reply = 12; interested = 4; bounce = 0; auto = 0; meeting = 1;
+  } else if (isCall) {
+    reply = 15; interested = 6; bounce = 0; auto = 0; meeting = 4;
+  }
+
+  // Warm/retarget lift (already familiar with the brand)
+  if (isRetarget) {
+    reply *= 2.2; interested *= 2.5; meeting *= 3;
+  }
+  // High-intent (RTS signal-qualified) lift — stacks with retarget
+  if (isHighIntent) {
+    reply *= 2; interested *= 3; meeting *= 4;
+  }
+
+  const round = (n: number) => Math.round(n * 10) / 10;
+  return {
+    replyRate:      { good: round(reply),      warning: round(reply * 0.5),      action: round(reply * 0.15),      critical: 0 },
+    interestedRate: { good: round(interested), warning: round(interested * 0.5), action: round(interested * 0.2), critical: 0 },
+    bounceRate:     { good: bounce, warning: bounce + 2, action: bounce + 5, critical: bounce + 9 },
+    autoReplyRate:  { good: auto,   warning: auto + 10,  action: auto + 20,  critical: auto + 30 },
+    meetingRate:    { good: round(meeting),    warning: round(meeting * 0.4),    action: 0,                        critical: 0 },
+  };
+}
+
+// Campaign Health State — diagnostic ladder from the audit.
+// Returns { state, label, color, diagnosis, action } given a totals object from metrics.
+function computeCampaignHealth(m: any, benchmarks: any = null) {
+  const sent = m.sent || 0;
+  if (sent < 20) return { state: "new", label: "Too early", color: "#9CA3AF", diagnosis: `Only ${sent} sent — need at least 20 to evaluate`, action: "Keep sending; check back in 2-3 days." };
+
+  const pct = (n: number) => sent ? (n / sent) * 100 : 0;
+  const meetings = m.meetings || 0;
+  const opportunity = m.opportunityReplies || 0;
+  const human = m.humanReplies || 0;
+  const notInterested = m.notInterestedReplies || 0;
+  const ooo = (m.oooReplies || 0) + (m.wrongPersonReplies || 0);
+  const anyReply = m.allReplies || (human + ooo + notInterested + opportunity + (m.otherReplies || 0));
+  const anyReplyPct = pct(anyReply);
+  const meetingPct = pct(meetings);
+  const opportunityPct = pct(opportunity);
+  const humanPct = pct(human);
+  const notInterestedPct = pct(notInterested);
+
+  const bMeet = benchmarks?.meetingRate?.good ?? 0.5;
+  const bOpp = benchmarks?.interestedRate?.good ?? 1;
+  const bHuman = benchmarks?.replyRate?.good ?? 3;
+
+  // 🟢 Working
+  if (meetingPct >= bMeet || opportunityPct >= bOpp) {
+    return { state: "working", label: "Working", color: "#3a9a6e",
+      diagnosis: meetingPct >= bMeet ? `${meetings} meetings booked (${meetingPct.toFixed(2)}%)` : `${opportunity} opportunity replies (${opportunityPct.toFixed(2)}%)`,
+      action: "Scale volume. Extend duration. Launch parallel campaign for next persona." };
+  }
+  // 🔴 Dead air — absolute worst; infrastructure issue
+  if (anyReplyPct < 1) {
+    return { state: "dead_air", label: "Dead air", color: "#c0392b",
+      diagnosis: `${anyReply} replies of any kind on ${sent} sent (${anyReplyPct.toFixed(2)}%)`,
+      action: "Infrastructure issue. Check: deliverability, domain warmup, spam triggers, list quality." };
+  }
+  // 🟡 Close — functional engagement, just no conversion
+  if (humanPct >= bHuman) {
+    return { state: "close", label: "Close", color: "#c09030",
+      diagnosis: `Human reply rate at ${humanPct.toFixed(2)}% but no meetings/opportunities yet`,
+      action: "Iterate offer ladder: soft → medium → hard CTA. Consider tightening ICP." };
+  }
+  // 🟠 Message off — loudest negative signal
+  if (notInterestedPct >= 5) {
+    return { state: "message_off", label: "Message off", color: "#d8922b",
+      diagnosis: `${notInterestedPct.toFixed(2)}% not-interested replies — targeting or value prop mismatch`,
+      action: "Rewrite subject + opening. Re-check persona/product fit." };
+  }
+  // 🟠 Signals weak — landing but not resonating
+  if (ooo > 0 && humanPct < 1) {
+    return { state: "signals_weak", label: "Signals weak", color: "#d8922b",
+      diagnosis: `Getting OOO/wrong-person but <1% human engagement — emails land, message doesn't stick`,
+      action: "Rewrite body. Sharpen hook. Test different pain angle." };
+  }
+  // Default: weak, still early
+  return { state: "weak", label: "Weak", color: "#c09030",
+    diagnosis: `${anyReply} replies on ${sent} sent (${anyReplyPct.toFixed(2)}%)`,
+    action: "Iterate subject line. If no improvement in 3 days, test opening + CTA." };
+}
+
+// Winning-metric priority score (for cross-campaign ranking)
+function campaignScore(m: any) {
+  const sent = m.sent || 0;
+  const anyReply = m.allReplies || 0;
+  const deadAir = Math.max(0, sent - anyReply);
+  return (m.meetings || 0) * 100 +
+    (m.opportunityReplies || 0) * 40 +
+    (m.humanReplies || 0) * 10 +
+    (m.notInterestedReplies || 0) * 2 +
+    ((m.oooReplies || 0) + (m.wrongPersonReplies || 0)) * 1 +
+    deadAir * -0.5;
+}
+
+// Parse a B2B Rocket analytics CSV export → EMPTY_METRICS shape.
+// Accepts common header variations ("Sent", "Total Sent", "sent_count" etc.).
+function parseB2BRAnalyticsCSV(csv: string): any | null {
+  try {
+    const lines = csv.trim().split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return null;
+    // Two common formats: (a) Metric, Value rows  OR  (b) header row + data row.
+    // Try (a) first — 2-column "Metric,Value"
+    const firstCols = lines[0].split(",").map(s => s.trim().replace(/^"|"$/g, ""));
+    const metrics: any = EMPTY_CAMPAIGN_METRICS();
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
+    const map: Record<string,string> = {
+      sent:"sent", totalsent:"sent",
+      delivered:"delivered",
+      bounce:"bounce", bounces:"bounce", bounced:"bounce",
+      opens:"opens", opened:"opens",
+      clicks:"clicks", clicked:"clicks",
+      pageviews:"pageViews", pageview:"pageViews",
+      pageengagement:"pageEngagement",
+      websiteclicks:"websiteClicks",
+      videoviews:"videoViews",
+      avgvideoviewed:"avgVideoViewedPct", averagevideoviewed:"avgVideoViewedPct",
+      unsubscribed:"unsubscribed", unsubscribes:"unsubscribed",
+      aiconversations:"aiConversations",
+      allreplies:"allReplies",
+      humanreplies:"humanReplies",
+      outofofficereplies:"oooReplies", oooreplies:"oooReplies",
+      wrongpersonreplies:"wrongPersonReplies",
+      otherreplies:"otherReplies",
+      notinterestedreplies:"notInterestedReplies",
+      opportunityreplies:"opportunityReplies",
+      meetingsbooked:"meetings", meetings:"meetings",
+    };
+    if (firstCols.length === 2 && lines.length > 2) {
+      // Metric-Value format
+      for (const line of lines.slice(firstCols[0].toLowerCase() === "metric" ? 1 : 0)) {
+        const [k, v] = line.split(",").map(s => s.trim().replace(/^"|"$/g, ""));
+        if (!k || !v) continue;
+        const key = map[norm(k)];
+        if (!key) continue;
+        const num = parseFloat(v.replace(/[^\d.-]/g, ""));
+        if (!isNaN(num)) metrics[key] = num;
+      }
+    } else {
+      // Header + single data row format
+      const headers = firstCols.map(norm);
+      const data = lines[1].split(",").map(s => s.trim().replace(/^"|"$/g, ""));
+      headers.forEach((h, i) => {
+        const key = map[h];
+        if (!key) return;
+        const num = parseFloat((data[i] || "").replace(/[^\d.-]/g, ""));
+        if (!isNaN(num)) metrics[key] = num;
+      });
+    }
+    return metrics;
+  } catch (e) {
+    console.error("[parseB2BRAnalyticsCSV] failed:", e);
+    return null;
+  }
+}
 const EMPTY_STEP = (stepNum: number) => ({
   id: uid(), stepNumber: stepNum,
   role: STEP_ROLES[Math.min(stepNum - 1, STEP_ROLES.length - 1)].id,
@@ -7559,10 +8464,12 @@ const EMPTY_STEP = (stepNum: number) => ({
   variants: [] as any[],
 });
 
-function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, onOffersChange, companyData, strategy, v2 = false, addToast = (_t:any)=>"", activeWorkspace = null as any }: {
+function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, onOffersChange, companyData, strategy, v2 = false, addToast = (_t:any)=>"", activeWorkspace = null as any, onCreateCampaign = null as any, rtsLists = [] as any[] }: {
   campaigns: any[]; onCampaignsChange: (c: any[]) => void; personas: any[]; products: any[]; offers: any[]; onOffersChange?: (o:any[])=>void;
   companyData: any; strategy: any; v2?: boolean; addToast?: (t:any)=>string;
   activeWorkspace?: any;
+  onCreateCampaign?: ((input: any) => any) | null;
+  rtsLists?: any[];
 }) {
   const _C = v2 ? C2 : C;
   const [selectedId, setSelectedId] = useState<string|null>(null);
@@ -7570,23 +8477,27 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
   const [genOfferLoading, setGenOfferLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [bulkGenSeq, setBulkGenSeq] = useState(false);
+  const [proposingTest, setProposingTest] = useState(false);
+  const [testProposal, setTestProposal] = useState<any|null>(null); // { campaignId, diagnosedState, hypothesis, testVariable, durationDays, successMetric, variants: [...] }
+  const [genReplies, setGenReplies] = useState(false);
+  const [replyInput, setReplyInput] = useState("");
+  const [analyzingReplies, setAnalyzingReplies] = useState(false);
+  const [replyFilter, setReplyFilter] = useState<string>("all");
+  const [benchRatGenerating, setBenchRatGenerating] = useState(false);
 
   const selected = campaigns.find(c => c.id === selectedId) || null;
 
   const updCampaign = (id: string, patch: any) => onCampaignsChange(campaigns.map(c => c.id === id ? { ...c, ...patch } : c));
   const addCampaign = () => {
-    const c = EMPTY_CAMPAIGN();
-    // Inherit client-level benchmarks if set
-    const cd = companyData as Record<string,string>;
-    if (cd.co_bench_reply || cd.co_bench_interested || cd.co_bench_meeting) {
-      c.benchmarks = {
-        replyRate: { good: parseFloat(cd.co_bench_reply||"3"), warning: parseFloat(cd.co_bench_reply||"3")*0.5, action: parseFloat(cd.co_bench_reply||"3")*0.15, critical: 0 },
-        interestedRate: { good: parseFloat(cd.co_bench_interested||"1"), warning: parseFloat(cd.co_bench_interested||"1")*0.5, action: parseFloat(cd.co_bench_interested||"1")*0.2, critical: 0 },
-        bounceRate: { good: parseFloat(cd.co_bench_bounce_max||"3"), warning: 5, action: 8, critical: 12 },
-        autoReplyRate: { good: parseFloat(cd.co_bench_autoreply_max||"30"), warning: 40, action: 50, critical: 60 },
-        meetingRate: { good: parseFloat(cd.co_bench_meeting||"0.5"), warning: parseFloat(cd.co_bench_meeting||"0.5")*0.4, action: 0, critical: 0 },
-      };
+    // Prefer the unified helper from AppMain; fall back to inline creation if prop isn't wired.
+    if (onCreateCampaign) {
+      const c = onCreateCampaign({ channel: "email", source: "manual" });
+      if (c) { setSelectedId(c.id); setTab("config"); }
+      return;
     }
+    // Fallback (should only run if component is used standalone) — still benefits from per-campaign calibration.
+    const c = EMPTY_CAMPAIGN();
+    c.benchmarks = calibrateCampaignBenchmarks(c);
     onCampaignsChange([...campaigns, c]);
     setSelectedId(c.id);
     setTab("config");
@@ -7615,8 +8526,24 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
       const isEmail = selected.type === "cold_email" || selected.type === "retargeting";
       const isLinkedIn = selected.type === "linkedin_connection" || selected.type === "linkedin_message";
       const isCalling = selected.type === "rts_calling";
+      const isHighIntent = selected.intentTier === "high" || selected.audienceSource === "rts_list" || !!selected.rtsListId;
+      const linkedRtsList = selected.rtsListId ? rtsLists.find((l:any) => l.id === selected.rtsListId) : null;
 
-      const channelRules = isEmail
+      // HIGH-INTENT branch — overrides default cadence: 2-3 touches, direct CTA, signal-led
+      const channelRules = isHighIntent
+        ? (isLinkedIn || isCalling
+            ? `CHANNEL: HIGH-INTENT ${isCalling ? "AI call script (opt-in list only)" : "LinkedIn"} — leads are ALREADY showing buying signals, signals decay fast
+- Step 1 (Day 0): SIGNAL-LED OPENER + DIRECT MEETING ASK. Reference the specific trigger/signal in the first sentence (what just happened to them — hiring, funding, tech change, RFP, etc.). CTA is "15 min this week" or a specific time block — NO soft content offers, NO "quick question", NO audits.
+- Step 2 (Day 3): SPECIFIC ANGLE — connect the signal to a concrete outcome (how other customers in this exact situation solved it). Repeat the meeting ask directly.
+- Step 3 (Day 6): SHORT BREAKUP — one sentence, "should I close the loop?" Honest and direct.
+Rules: Max 2-3 steps total. Every step contains the meeting ask explicitly — no nurturing, no value-add detours. Conversational, under 80 words.`
+            : `CHANNEL: HIGH-INTENT email — leads are ALREADY showing buying signals, signals decay fast
+- Step 1 (Day 0): SIGNAL-LED HOOK + DIRECT MEETING ASK. Opening sentence names the trigger explicitly (what just happened to them — a hire, a funding event, a tech change, an RFP, a competitor churn, etc.). Subject line is specific and references the signal. CTA is a direct meeting ask ("15 min Thursday at 2pm?") — NO free audits, NO gated content, NO "quick question" soft opens.
+- Step 2 (Day 2-3): SPECIFIC OUTCOME — describe how one other customer in the exact same situation (same signal) solved it. Repeat meeting ask directly.
+- Step 3 (Day 5-6): SHORT BREAKUP — one sentence. "Should I close the loop?"
+For Step 1, generate 2 A/B variants testing CTA specificity (specific time slot vs. open calendar link).
+Rules: Max 3 steps total (not 5). No nurturing, no case study PDFs, no value-add detours. Under 60 words per body. Under 6 words per subject.`)
+        : isEmail
         ? `CHANNEL: Email sequence (5 steps)
 - Step 1 (Day 0): HOOK — lead with primary pain, use the offer CTA
 - Step 2 (Day 3): PROOF — social proof, case study, different angle
@@ -7626,11 +8553,43 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
 For Step 1, generate 2 A/B variants with different subject lines.
 Rules: Max 80 words per body, 6 words max for subjects. No AI-sounding phrases.`
         : isLinkedIn
-        ? `CHANNEL: LinkedIn ${selected.type === "linkedin_connection" ? "connection request + follow-up messages" : "direct messages"} (3 steps)
-- Step 1 (Day 0): ${selected.type === "linkedin_connection" ? "CONNECTION NOTE — 300 char max, personalized, mention something specific" : "FIRST MESSAGE — short, relevant, reference mutual context"}
-- Step 2 (Day 3): FOLLOW-UP — add value, share insight or resource
-- Step 3 (Day 7): SOFT ASK — use the offer CTA naturally
-Rules: LinkedIn messages should be conversational, short (under 100 words), and feel personal.`
+        ? (() => {
+            const liAccts = Math.max(1, parseInt((cd.co_linkedin_accounts as any) || "1") || 1);
+            const maxConns = liAccts * 10;
+            const maxMsgs = liAccts * 10;
+            const endGoal = offer?.ctaText || persona?.data?.cta || "Book a 15-min intro call";
+            return `CHANNEL: LinkedIn ${selected.type === "linkedin_connection" ? "connection request + post-accept messages" : "direct messages to existing connections"} (3-4 steps)
+
+INFRASTRUCTURE: Client has ${liAccts} LinkedIn account${liAccts!==1?"s":""} — HARD DAILY LIMITS: ${maxConns} connections + ${maxMsgs} messages across all accounts (LinkedIn's per-account cap is 10 + 10/day).
+
+END GOAL FOR THIS CAMPAIGN: "${endGoal}" — every step's copy should be working toward this goal, not nurturing for its own sake.
+
+SEQUENCE STRUCTURE:
+${selected.type === "linkedin_connection" ? `
+- Step 1 (Day 0): CONNECTION REQUEST — 300 char max. Must include a specific personalization hook (recent post, shared connection, company milestone, pain signal). NO pitch, NO CTA. The only goal is the accept.
+- Step 2 (Day 2-3 after accept): FIRST MESSAGE — thank them for connecting (briefly), reference the specific hook from the connection note, surface the relevant pain, ask a light qualifying question. Under 80 words. NO meeting ask yet.
+- Step 3 (Day 5-7 after Step 2): VALUE FOLLOW-UP — share one specific, relevant insight (short resource, tactic, or observation tied to their role/industry). Still conversational. Soft end-goal nudge at the end: "Worth a quick chat about this?"
+- Step 4 (Day 10-14 after Step 3, OPTIONAL): DIRECT ASK — explicit CTA using the end-goal CTA text above. Short, human, no pressure. If they pass, they pass.
+`: `
+- Step 1 (Day 0): FIRST MESSAGE — short, relevant, reference a specific mutual context (connection reason, shared group, recent post, common interest). NO cold pitch — they already know us.
+- Step 2 (Day 3): VALUE TOUCH — surface the relevant pain and share one specific insight. Under 80 words. Conversational.
+- Step 3 (Day 7): DIRECT ASK — use the end-goal CTA text. Short, human.
+`}
+PERSONALIZATION HOOKS (use AI to pick ONE per lead — do NOT use all generically):
+- Recent LinkedIn post or article they shared
+- Company news: funding, hiring, product launch, expansion
+- Trigger signals from the persona's buying_signals_direct / triggers
+- Common connection or shared employer
+- Specific industry/role challenge the persona cares about (pain1)
+
+Rules:
+- LinkedIn is conversational: contractions, short sentences, no corporate speak.
+- Never lead with "I noticed" or "I came across" — those scream automation.
+- Step 1 connection note: 300 chars is the HARD CAP. Shorter is fine.
+- Follow-up messages: under 80 words. One clear thought per message.
+- No links in Step 1 (kills connection acceptance rate).
+- Personalization tokens you can use: {{firstName}}, {{company}}, {{role}} — sparingly.`;
+          })()
         : `CHANNEL: Cold call script (1 detailed script)
 - Step 1: COLD CALL SCRIPT with sections: Opening (15 sec), Pain Question, Value Pitch, Objection Handling, Close/CTA
 Include: what to say when they pick up, how to handle "not interested", how to handle "send me info", the specific CTA ask.
@@ -7643,7 +8602,15 @@ PRODUCT: ${product?.name || "General"} — ${product?.valueProposition || produc
 OFFER (${offer?.tier || "soft"} CTA): "${offer?.ctaText || offer?.name || "Worth a quick chat?"}"
 PERSONA: ${persona?.name || "General"} — Titles: ${persona?.data?.buyer || "?"}, Pain: ${persona?.data?.pain1 || "?"}
 COMPETITOR: Currently using: ${persona?.data?.current_solutions || "unknown"}. Displacement: ${persona?.data?.displacement_messaging || "N/A"}
-TONE: ${persona?.data?.tone || "Consultative"}
+TONE: ${isHighIntent ? "Direct, specific, signal-led — these leads are already showing intent" : (persona?.data?.tone || "Consultative")}
+${isHighIntent && linkedRtsList ? `\nHIGH-INTENT LIST CONTEXT (read this carefully — the copy MUST reference the signal from this list):
+LIST NAME: ${linkedRtsList.name}
+SIGNAL / ICP (the buying signal these leads are showing): ${linkedRtsList.bebopSetup?.customerProfile || ""}
+CAMPAIGN GOAL: ${linkedRtsList.bebopSetup?.campaignGoal || ""}
+WHAT WE'RE SELLING FOR THIS LIST: ${linkedRtsList.bebopSetup?.sellingDescription || ""}
+ADDITIONAL CONTEXT: ${linkedRtsList.bebopSetup?.additionalContext || ""}
+
+Touch 1 opener MUST reference the specific signal/trigger from the SIGNAL section above — not generic pain. Example: if the signal is "just hired a VP of Engineering", the opener should say something like "Saw you brought on [name] as VP Engineering last week — congrats. When teams scale eng leadership, [specific pain] usually surfaces within 90 days."` : ""}
 ${cd.co_notes ? `\nIMPORTANT CONTEXT: ${cd.co_notes}` : ""}${cd.co_avoid ? `\nAVOID IN COPY: ${cd.co_avoid}` : ""}${product?.prod_notes ? `\nPRODUCT NOTES: ${product.prod_notes}` : ""}${persona?.data?.persona_notes ? `\nPERSONA NOTES: ${persona.data.persona_notes}` : ""}
 ${(() => {
   const ci: string[] = [];
@@ -7685,6 +8652,374 @@ Return ONLY valid JSON:
       }
     } catch (e) { console.error("Sequence generation failed:", e); addToast({ title:"Sequence generation failed", status:"error", message:"Try again" }); }
     setGenerating(false);
+  };
+
+  // AI-driven "Propose Next Test" — reads campaign health + iteration history, returns concrete variants to test
+  const proposeNextTest = async () => {
+    if (!selected) return;
+    const m = (selected.performance?.metrics) || EMPTY_CAMPAIGN_METRICS();
+    const health = computeCampaignHealth(m, selected.benchmarks);
+    if (health.state === "working" || health.state === "new") {
+      addToast({ title:"Nothing to test yet", status:"info", message: health.state === "new" ? "Campaign needs more volume before testing" : "Campaign is working — scale instead of iterate" });
+      return;
+    }
+    setProposingTest(true);
+    try {
+      const persona = personas.find((p:any) => selected.personaIds?.includes(p.id));
+      const product = products.find((p:any) => p.id === selected.productId);
+      const offer = offers.find((o:any) => o.id === selected.offerId);
+      const cd = companyData as Record<string,string>;
+      const step1 = (selected.sequence || [])[0] || {};
+      const prevIterations = (selected.iterations || []).slice(-5); // last 5 for context
+      const isHighIntent = selected.intentTier === "high" || !!selected.rtsListId;
+      const linkedRtsList = selected.rtsListId ? rtsLists.find((l:any) => l.id === selected.rtsListId) : null;
+
+      // Decision-tree guidance per state — tells AI WHAT to test first based on the symptom
+      const stateGuidance: Record<string, string> = {
+        dead_air: "Infrastructure issue: deliverability, spam triggers, domain reputation, list quality. Before testing copy, diagnose infra. Test: (1) is the domain warmed up? (2) spam score check on sent copy, (3) re-verify list freshness/bounce risk.",
+        message_off: "Not-interested replies are high — message/targeting mismatch. Test in this order: (1) different pain angle in subject+opener, (2) different persona-pain hypothesis, (3) tighter ICP filter if targeting is off.",
+        signals_weak: "Landing but not resonating (OOO/wrong-person but low human engagement). Test the BODY first: sharpen hook, lead with different pain, shorten, more specific proof. Subject is working — don't touch it yet.",
+        weak: "Early-stage low engagement. Test in priority order per our playbook: subject line first (3 days), then opening hook (3 days), then CTA tier (3 days).",
+        close: "Human replies but no meetings — CTA friction or offer mismatch. Escalate offer ladder: soft → medium → hard. OR reduce friction on current CTA (specific time slot vs. generic ask).",
+      };
+      const guidance = stateGuidance[health.state] || stateGuidance.weak;
+
+      const prompt = `You are the campaign optimization lead. Diagnose the specific failure mode and propose the ONE next test (not multiple).
+
+CAMPAIGN: ${selected.name}
+CHANNEL: ${selected.channel} | INTENT TIER: ${selected.intentTier || "cold"}${isHighIntent ? " (high-intent RTS-sourced)" : ""}
+HEALTH STATE: ${health.label} — ${health.diagnosis}
+${isHighIntent && linkedRtsList ? `RTS LIST: "${linkedRtsList.name}" — signal: ${(linkedRtsList.bebopSetup?.customerProfile||"").slice(0,200)}\n` : ""}
+METRICS (so far):
+- Sent: ${m.sent||0}, Delivered: ${m.delivered||0}, Bounce: ${m.bounce||0}
+- Replies — all: ${m.allReplies||0}, human: ${m.humanReplies||0}, not-interested: ${m.notInterestedReplies||0}, OOO: ${m.oooReplies||0}, opportunity: ${m.opportunityReplies||0}
+- Meetings: ${m.meetings||0}
+
+CONTEXT:
+Company: ${cd.co_name||""} (${cd.co_industry||""})
+Product: ${product?.name||""} — ${product?.valueProposition||""}
+Persona: ${persona?.name||""} (${persona?.data?.buyer||""}) — pain: ${persona?.data?.pain1||""}
+Current offer: ${offer?.name||""} (${offer?.tier||"soft"}) CTA: "${offer?.ctaText||""}"
+
+CURRENT STEP 1 (what's live today):
+Subject: ${step1.subject||"—"}
+Body: ${step1.body||"—"}
+
+${prevIterations.length ? `PRIOR ITERATIONS (don't repeat what already failed):\n${prevIterations.map((it:any,i:number)=>`  ${i+1}. Tested ${it.testVariable} → outcome: ${it.outcome||"in-progress"}${it.notes?" ("+it.notes+")":""}`).join("\n")}\n` : ""}
+DIAGNOSTIC GUIDANCE FOR "${health.label}":
+${guidance}
+
+${isHighIntent ? `HIGH-INTENT RULE: if this list isn't hitting 2× cold benchmarks, the issue is the SIGNAL — not copy. Propose testing the signal/ICP targeting before rewriting body.` : ""}
+
+Return ONLY valid JSON:
+{
+  "hypothesis": "<1-sentence hypothesis for why the current version is failing>",
+  "testVariable": "subject_line|opening|body|cta|offer_tier|targeting|signal",
+  "rationale": "<2-3 sentences on why we test this variable first and not another>",
+  "durationDays": <number, typically 3 for cold / 2 for high-intent / 5 for targeting>,
+  "successMetric": "<concrete threshold, e.g. 'reply rate >= 2% over 3 days' or 'interested rate >= 0.8%'>",
+  "variants": [
+    { "label": "Variant A", "subject": "<new subject if testing subject_line, else omit>", "body": "<new body if testing body/opening/cta, else omit>", "rationale": "<why this specific copy>" },
+    { "label": "Variant B", "subject": "...", "body": "...", "rationale": "..." }
+  ]
+}
+
+RULES:
+- ONE testVariable only (don't change subject AND body in one iteration — we can't attribute).
+- 2 variants max, each with a distinct hypothesis.
+- No AI-sounding phrases. Human, specific, short.
+- If testVariable is "targeting" or "signal", variants should describe the filter change (not copy), as { "label": "...", "body": "<description of the targeting change>", "rationale": "..." }.
+- Reference the campaign context specifically — no generic "add urgency" advice.`;
+
+      const result = await callAI(prompt, "Return only valid JSON. No markdown.", 3000, { useFullContext: true });
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      setTestProposal({
+        campaignId: selected.id,
+        diagnosedState: health.state,
+        diagnosisSnapshot: health.diagnosis,
+        ...parsed,
+      });
+    } catch (e) {
+      console.error("Propose test failed:", e);
+      addToast({ title:"Couldn't propose a test", status:"error", message:"AI didn't return a valid proposal — try again" });
+    }
+    setProposingTest(false);
+  };
+
+  // Accept the proposal — append as a live iteration on the campaign
+  const startIteration = () => {
+    if (!testProposal || !selected) return;
+    const metricsSnapshot = (selected.performance?.metrics) || EMPTY_CAMPAIGN_METRICS();
+    const iteration = {
+      id: uid(),
+      createdAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      endedAt: null as string|null,
+      diagnosedState: testProposal.diagnosedState,
+      diagnosisSnapshot: testProposal.diagnosisSnapshot,
+      hypothesis: testProposal.hypothesis,
+      rationale: testProposal.rationale,
+      testVariable: testProposal.testVariable,
+      durationDays: testProposal.durationDays || 3,
+      successMetric: testProposal.successMetric || "",
+      variants: testProposal.variants || [],
+      status: "live" as "proposed"|"live"|"completed"|"abandoned",
+      outcome: null as "winner"|"flat"|"worse"|null,
+      winningVariantLabel: null as string|null,
+      metricsBefore: metricsSnapshot,
+      metricsAfter: null as any,
+      notes: "",
+    };
+    const prior = selected.iterations || [];
+    updCampaign(selected.id, { iterations: [...prior, iteration] });
+    setTestProposal(null);
+    addToast({ title:"Iteration started", status:"success", message:`Testing ${iteration.testVariable.replace(/_/g," ")} — ${iteration.durationDays} day window` });
+  };
+
+  // Mark an iteration complete with outcome
+  const completeIteration = (iterationId: string, outcome: "winner"|"flat"|"worse", winningVariantLabel?: string, notes?: string) => {
+    if (!selected) return;
+    const updated = (selected.iterations || []).map((it:any) => it.id === iterationId ? {
+      ...it,
+      status: "completed",
+      outcome,
+      winningVariantLabel: winningVariantLabel || null,
+      notes: notes || it.notes,
+      endedAt: new Date().toISOString(),
+      metricsAfter: (selected.performance?.metrics) || it.metricsBefore,
+    } : it);
+    updCampaign(selected.id, { iterations: updated });
+    addToast({ title:`Iteration ${outcome}`, status: outcome === "winner" ? "success" : outcome === "worse" ? "error" : "info", message: outcome === "winner" ? "Roll the winner into the live sequence" : outcome === "worse" ? "Revert — original was better" : "Flat result — try a different variable" });
+  };
+
+  // ─── Per-Campaign Benchmark Rationale ──────────────────────────────────────
+  // Generates a personalized rationale explaining how THIS campaign's benchmarks were calibrated
+  // (channel × type × intent tier × audience source × company context). Also updates the
+  // benchmark values based on the AI's recommendation.
+  const generateCampaignBenchmarkRationale = async () => {
+    if (!selected) return;
+    if (selected.benchmarkRationale) {
+      if (!confirm("Regenerate will adjust this campaign's benchmark values based on channel/type/intent and company context — overwriting any manual edits. Continue?")) return;
+    }
+    setBenchRatGenerating(true);
+    try {
+      const cd = companyData as Record<string,string>;
+      const persona = personas.find((p:any) => (selected.personaIds||[])[0] === p.id);
+      const product = products.find((p:any) => p.id === selected.productId);
+      const rtsList = selected.rtsListId ? rtsLists.find((l:any) => l.id === selected.rtsListId) : null;
+      const isHighIntent = selected.intentTier === "high" || !!selected.rtsListId;
+
+      const prompt = `Calibrate the 5 benchmark targets for THIS SPECIFIC CAMPAIGN based on channel, type, intent tier, audience source, and company context. Then explain the reasoning.
+
+CAMPAIGN:
+- Name: ${selected.name || "Untitled"}
+- Channel: ${selected.channel || selected.type}
+- Type: ${selected.type || "?"}
+- Intent tier: ${selected.intentTier || "cold"}${isHighIntent ? " (high-intent RTS)" : ""}
+- Audience source: ${selected.audienceSource || "people_search"}${rtsList ? ` — linked RTS list "${rtsList.name}"` : ""}
+- Offer tier: ${offers.find((o:any) => o.id === selected.offerId)?.tier || "soft"}
+
+COMPANY CONTEXT:
+- Industry: ${cd.co_industry||"?"}
+- Deal size: ${cd.co_deal||"?"}
+- Sales cycle: ${cd.co_cycle||"?"}
+- Monthly meetings goal: ${cd.co_goal||"?"}
+- Company size: ${cd.co_size||"?"}
+
+PERSONA: ${persona?.name||""} — ${persona?.data?.buyer||""}
+PRODUCT: ${product?.name||""} — ${product?.valueProposition||""}
+
+REFERENCE RATES (adjust from these):
+- Cold email baseline: reply 3%, interested 1%, bounce ≤3%, auto-reply ≤30%, meeting 0.5%
+- Retargeting/warm email: 2-3× cold on reply/interested/meeting
+- High-intent RTS: 2-3× cold on reply/interested, 4× on meeting
+- LinkedIn (direct message to connections): reply 25-30%, meeting 3-5%
+- LinkedIn (cold connection + follow-up): reply 10-15% post-accept, meeting 1-2%
+- AI-calling (opt-in only): reply 15%, interested 6%, meeting 4%
+
+Return ONLY JSON:
+{
+  "summary": "<2-3 sentences explaining how THIS campaign's benchmarks are calibrated vs cold-email baseline>",
+  "breakdown": {
+    "reply":      {"value":"<%>","baseline":"<what's normal for this channel>","adjustments":["<reason with explicit math>"],"target":"<final target with justification>"},
+    "interested": {"value":"<%>","baseline":"","adjustments":[""],"target":""},
+    "bounce":     {"value":"<%>","baseline":"","adjustments":[""],"target":""},
+    "autoReply":  {"value":"<%>","baseline":"","adjustments":[""],"target":""},
+    "meeting":    {"value":"<%>","baseline":"","adjustments":[""],"target":""}
+  },
+  "implications": ["<concrete volume implication, e.g. 'At 4% reply / 1.5% meeting rate on 100 sends/day, expect ~1-2 meetings/day'>","<...>"]
+}
+
+RULES:
+- For LinkedIn/AI-call, bounce and auto-reply don't apply — use "0" for those values.
+- Every adjustment must cite SPECIFIC campaign attributes (channel, intent tier, retarget status) with math.
+- Values MUST be plain numbers as strings (e.g. "3.5", "1.2"). No % signs.
+- Raw JSON only, no markdown.`;
+
+      const raw = await callAI(prompt, "Return only valid JSON.", 3000, { useFullContext: true });
+      const parsed = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+      const extractNum = (v: any): number | null => {
+        if (v == null) return null;
+        const m = String(v).match(/(\d+(?:\.\d+)?)/);
+        return m ? parseFloat(m[1]) : null;
+      };
+      const brk = parsed.breakdown || {};
+      const cur = selected.benchmarks || {};
+      // Scale warning/action/critical proportionally from existing structure
+      const scaleBand = (newGood: number, existing: any, mode: "target"|"ceiling" = "target") => ({
+        good: newGood,
+        warning: mode === "target" ? Math.round(newGood * 0.5 * 10)/10 : newGood + 2,
+        action:  mode === "target" ? Math.round(newGood * 0.15 * 10)/10 : newGood + 5,
+        critical: mode === "target" ? 0 : newGood + 9,
+        ...(existing || {}),  // preserve any extra fields already set
+      });
+      const nextBench = { ...cur };
+      const nReply      = extractNum(brk.reply?.value);      if (nReply != null)      nextBench.replyRate      = { good: nReply,      warning: Math.round(nReply*0.5*10)/10,      action: Math.round(nReply*0.15*10)/10,      critical: 0 };
+      const nInterested = extractNum(brk.interested?.value); if (nInterested != null) nextBench.interestedRate = { good: nInterested, warning: Math.round(nInterested*0.5*10)/10, action: Math.round(nInterested*0.2*10)/10, critical: 0 };
+      const nBounce     = extractNum(brk.bounce?.value);     if (nBounce != null)     nextBench.bounceRate     = { good: nBounce,     warning: nBounce+2,                           action: nBounce+5,                            critical: nBounce+9 };
+      const nAuto       = extractNum(brk.autoReply?.value);  if (nAuto != null)       nextBench.autoReplyRate  = { good: nAuto,       warning: nAuto+10,                            action: nAuto+20,                             critical: nAuto+30 };
+      const nMeeting    = extractNum(brk.meeting?.value);    if (nMeeting != null)    nextBench.meetingRate    = { good: nMeeting,    warning: Math.round(nMeeting*0.4*10)/10,    action: 0,                                    critical: 0 };
+
+      updCampaign(selected.id, {
+        benchmarks: nextBench,
+        benchmarkRationale: { ...parsed, generatedAt: new Date().toISOString() },
+      });
+      addToast({ title:"Benchmarks recalibrated", status:"success", message:"Targets + rationale updated for this campaign" });
+    } catch (e) {
+      console.error("Benchmark rationale failed:", e);
+      addToast({ title:"Generation failed", status:"error", message:"AI didn't return a valid rationale — try again" });
+    }
+    setBenchRatGenerating(false);
+  };
+
+  // ─── Reply Analyzer (Stage 9) ───────────────────────────────────────────────
+  // Takes raw pasted reply text, batches it to AI, returns classification + suggested response
+  // + matching playbook objection. Pairs with Bebop sales playbooks for rebuttal guidance.
+  const analyzeReplies = async () => {
+    if (!selected) return;
+    const raw = replyInput.trim();
+    if (!raw) { addToast({ title:"Paste replies first", status:"error", message:"" }); return; }
+
+    // Split into individual replies — blank line separator, or lines starting with "From:" / "---"
+    const blocks = raw.split(/\n\s*(?:---+|\n)\s*\n/).map(s => s.trim()).filter(Boolean);
+    if (!blocks.length) { addToast({ title:"Couldn't parse replies", status:"error", message:"Separate replies with a blank line" }); return; }
+    if (blocks.length > 25) {
+      if (!confirm(`${blocks.length} replies detected. Large batches slow down analysis. Continue?`)) return;
+    }
+
+    setAnalyzingReplies(true);
+    try {
+      const persona = personas.find((p:any) => (selected.personaIds||[])[0] === p.id);
+      const product = products.find((p:any) => p.id === selected.productId);
+      const offer = offers.find((o:any) => o.id === selected.offerId);
+      const cd = companyData as Record<string,string>;
+
+      // Build Bebop playbook context — existing objections + signals from the matching playbook
+      const relevantPlaybook = (playbooks || []).find((pb:any) =>
+        (pb.productId === selected.productId) && (selected.personaIds || []).includes(pb.personaId)
+      );
+      const playbookObjections = (relevantPlaybook?.objections || []).map((o:any, i:number) =>
+        `  [${i}] category=${o.category || "?"} severity=${o.severity || "?"}\n    objection: ${o.objection || ""}\n    rebuttal: ${o.rebuttal || ""}\n    talk track: ${o.talkTrack || ""}`
+      ).join("\n") || "  (no playbook objections defined)";
+
+      const prompt = `You are a cold-outreach reply analyzer. For each inbound reply, classify it, flag urgency, suggest the response approach, and cite a matching Bebop playbook objection if one exists.
+
+CAMPAIGN: ${selected.name}
+CHANNEL: ${selected.channel || selected.type}
+COMPANY: ${cd.co_name || ""} (${cd.co_industry || ""})
+PRODUCT: ${product?.name || ""} — ${product?.valueProposition || product?.description || ""}
+PERSONA: ${persona?.name || ""} — buyer: ${persona?.data?.buyer || ""}, pain: ${persona?.data?.pain1 || ""}
+OFFER (${offer?.tier || "soft"} CTA): "${offer?.ctaText || offer?.name || ""}"
+CAMPAIGN END GOAL: ${selected.handoffCriteria || "Book a discovery call"}
+
+PLAYBOOK OBJECTIONS (reference these by index when matching):
+${playbookObjections}
+
+REPLIES TO ANALYZE (${blocks.length}):
+${blocks.map((b:string, i:number) => `\n─── REPLY [${i}] ───\n${b.slice(0, 2000)}`).join("\n")}
+
+For EACH reply, return JSON:
+{
+  "analyses": [
+    {
+      "index": <number 0..${blocks.length-1}>,
+      "senderHint": "<extract sender name if present in the reply (e.g. 'From: John Doe'), else empty>",
+      "classification": "interested" | "warm" | "objection" | "not_now" | "not_interested" | "ooo" | "wrong_person" | "meeting_request" | "info_request" | "unsubscribe" | "auto_reply" | "dead",
+      "objectionCategory": "price" | "timing" | "competitor" | "need" | "authority" | "trust" | "fit" | "other" | null,
+      "urgency": "high" | "medium" | "low",
+      "playbookMatchIndex": <number or null — index from PLAYBOOK OBJECTIONS above if this reply matches one, else null>,
+      "reasoning": "<1-2 sentence explanation of classification>",
+      "suggestedApproach": "<2-3 sentences on HOW to respond: tone, angle, what to emphasize, what to avoid>",
+      "suggestedResponse": "<a complete, paste-ready draft reply — match the channel (short/conversational for LinkedIn, slightly more formal for email). Under 100 words. No AI-sounding phrases. Natural.>"
+    }
+  ]
+}
+
+CLASSIFICATION RULES:
+- "interested" / "meeting_request": they want to engage, move fast
+- "warm": positive but not committed (asking questions, showing curiosity)
+- "objection": active resistance tied to a specific concern (price/timing/competitor/etc.) — match a playbook if possible
+- "not_now": not a bad fit, just wrong time — schedule follow-up
+- "not_interested": hard pass, don't push
+- "ooo": out of office auto-reply — schedule follow-up for return date
+- "wrong_person": not the right contact, ask for referral
+- "info_request": wants info but not commitment — send resource, don't pitch
+- "unsubscribe": honor immediately, no response
+- "auto_reply": system-generated, no human action needed
+- "dead": rude, hostile, or asking to never contact
+
+RESPONSE RULES:
+- For objections: lead with acknowledgment, THEN rebuttal (use playbook rebuttal if matched, else craft from persona/product context)
+- For interested: propose a specific time slot, not "what works for you"
+- For not_now: acknowledge + specific follow-up date (not "next quarter")
+- For wrong_person: be gracious, ask for referral to the right person
+- NEVER argue with a hard pass ("not_interested" / "unsubscribe")
+- Match the reply's tone — if they're terse, be terse back
+
+Raw JSON only, no markdown.`;
+
+      const result = await callAI(prompt, "Return only valid JSON.", 6000, { useFullContext: true });
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      const analyses = Array.isArray(parsed.analyses) ? parsed.analyses : [];
+      if (!analyses.length) { addToast({ title:"No analyses returned", status:"error", message:"Try again" }); setAnalyzingReplies(false); return; }
+
+      const existing = selected.analyzedReplies || [];
+      const newItems = analyses.map((a: any) => {
+        const block = blocks[a.index] || "";
+        const match = (a.playbookMatchIndex != null && relevantPlaybook?.objections?.[a.playbookMatchIndex]) || null;
+        return {
+          id: uid(),
+          rawText: block,
+          senderHint: a.senderHint || "",
+          classification: a.classification || "warm",
+          objectionCategory: a.objectionCategory || null,
+          urgency: a.urgency || "medium",
+          reasoning: a.reasoning || "",
+          suggestedApproach: a.suggestedApproach || "",
+          suggestedResponse: a.suggestedResponse || "",
+          playbookMatch: match ? { objection: match.objection, rebuttal: match.rebuttal, talkTrack: match.talkTrack, category: match.category } : null,
+          status: "new" as "new"|"replied"|"snoozed"|"archived",
+          analyzedAt: new Date().toISOString(),
+        };
+      });
+
+      updCampaign(selected.id, { analyzedReplies: [...newItems, ...existing] });
+      setReplyInput("");
+      addToast({ title:`${newItems.length} replies analyzed`, status:"success",
+        message: `${newItems.filter((a:any)=>a.classification==="interested"||a.classification==="meeting_request").length} interested · ${newItems.filter((a:any)=>a.classification==="objection").length} objections · ${newItems.filter((a:any)=>a.urgency==="high").length} high urgency` });
+    } catch (e) {
+      console.error("Reply analysis failed:", e);
+      addToast({ title:"Analysis failed", status:"error", message:"AI didn't return valid JSON — try again or split the batch" });
+    }
+    setAnalyzingReplies(false);
+  };
+
+  const updateAnalyzedReply = (replyId: string, patch: any) => {
+    if (!selected) return;
+    const updated = (selected.analyzedReplies || []).map((r: any) => r.id === replyId ? { ...r, ...patch } : r);
+    updCampaign(selected.id, { analyzedReplies: updated });
   };
 
   const bulkGenerateSequences = async () => {
@@ -7771,7 +9106,150 @@ Return ONLY valid JSON:
                 </button>
               );
             })}
-            <div style={{ marginLeft:"auto" }}>
+            <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
+              {/* Export for Client — clean client-facing markdown (hides internal CSM / B2BR config) */}
+              <button onClick={()=>{
+                const c = selected;
+                if (!c) return;
+                const persona = personas.find((p:any) => p.id === (c.personaIds||[])[0]);
+                const product = products.find((p:any) => p.id === c.productId);
+                const offer = offers.find((o:any) => o.id === c.offerId);
+                const cd = companyData as Record<string,string>;
+                const channelLabel = c.channel === "linkedin" ? "LinkedIn" : c.channel === "rts_ai_call" ? "AI Calling" : "Email";
+                const today = new Date().toLocaleDateString(undefined, { month:"long", day:"numeric", year:"numeric" });
+                const lines: string[] = [];
+                lines.push(`# ${c.name || "Campaign"}`);
+                lines.push(`_${channelLabel} campaign for ${cd.co_name || "your business"} · Prepared ${today}_`);
+                lines.push("");
+                lines.push(`## Overview`);
+                if (product) lines.push(`- **Promoting:** ${product.name}${product.valueProposition ? ` — ${product.valueProposition}` : ""}`);
+                if (persona) lines.push(`- **Target audience:** ${persona.name}${persona.data?.buyer ? ` (${persona.data.buyer})` : ""}`);
+                if (offer) lines.push(`- **Call to action:** "${offer.ctaText || offer.name || ""}"${offer.whatTheyGet ? ` — ${offer.whatTheyGet}` : ""}`);
+                if (c.handoffCriteria) lines.push(`- **End goal:** ${c.handoffCriteria}`);
+                lines.push("");
+
+                // Volume and timing
+                lines.push(`## Volume & Timing`);
+                if (c.channel === "linkedin" && c.linkedinLimits) {
+                  lines.push(`- **Daily capacity:** ${c.linkedinLimits.accounts} LinkedIn account${c.linkedinLimits.accounts !== 1 ? "s" : ""} × (${c.linkedinLimits.connectionsPerAccountPerDay} connections + ${c.linkedinLimits.messagesPerAccountPerDay} messages) = ${c.linkedinLimits.maxDailyConnections + c.linkedinLimits.maxDailyMessages} per day`);
+                } else if (c.dailySendVolume) {
+                  lines.push(`- **Daily volume:** ${c.dailySendVolume}`);
+                }
+                if (c.startDate) lines.push(`- **Start date:** ${new Date(c.startDate).toLocaleDateString()}`);
+                const sched = c.sendingSchedule;
+                if (sched?.days?.length) lines.push(`- **Schedule:** ${sched.days.join(", ")} · ${sched.startHour || 9}:00–${sched.endHour || 17}:00 ${sched.timezone === "client_local" ? "(client local time)" : ""}`);
+                lines.push("");
+
+                // Sequence — copy only
+                const seq = c.sequence || [];
+                if (seq.length) {
+                  lines.push(`## Sequence — ${seq.length} Step${seq.length !== 1 ? "s" : ""}`);
+                  seq.forEach((step:any, idx:number) => {
+                    const dayTxt = step.dayOffset === 0 ? "Day 0" : step.dayOffset ? `Day ${step.dayOffset}` : "";
+                    lines.push(`\n### Step ${idx + 1}${dayTxt ? ` — ${dayTxt}` : ""}${step.role ? ` (${step.role})` : ""}`);
+                    if (step.subject) lines.push(`**Subject:** ${step.subject}`);
+                    if (step.body) lines.push(`\n${step.body}`);
+                    if (step.variants?.length) {
+                      step.variants.forEach((v:any, vi:number) => {
+                        lines.push(`\n**A/B Variant ${String.fromCharCode(66 + vi)}:**`);
+                        if (v.subject) lines.push(`Subject: ${v.subject}`);
+                        if (v.body) lines.push(`\n${v.body}`);
+                      });
+                    }
+                  });
+                  lines.push("");
+                }
+
+                // Success metrics — client-friendly framing
+                const b = c.benchmarks || {};
+                lines.push(`## Success Metrics`);
+                lines.push(`We'll measure this campaign against:`);
+                if (b.replyRate?.good) lines.push(`- Reply rate: **${b.replyRate.good}%+** (healthy)`);
+                if (b.interestedRate?.good) lines.push(`- Interested-reply rate: **${b.interestedRate.good}%+**`);
+                if (b.meetingRate?.good) lines.push(`- Meeting-booked rate: **${b.meetingRate.good}%+**`);
+                if (b.bounceRate?.action) lines.push(`- Bounce rate kept below: ${b.bounceRate.action}%`);
+                lines.push("");
+                lines.push(`---`);
+                lines.push(`_This campaign will be iterated on weekly as data comes in. Copy variants will be tested and winners promoted to maximize results._`);
+
+                const md = lines.join("\n");
+                navigator.clipboard.writeText(md);
+                addToast({ title:"Client export copied", status:"success", message:"Paste into a shared doc to send to your client" });
+              }}
+                style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:"transparent", color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}
+                title="Export a clean client-facing markdown summary of this campaign (hides internal config)">
+                📤 Export for Client
+              </button>
+              <button onClick={()=>{
+                const c = selected;
+                if (!c) return;
+                const persona = personas.find((p:any) => p.id === (c.personaIds||[])[0]);
+                const product = products.find((p:any) => p.id === c.productId);
+                const offer = offers.find((o:any) => o.id === c.offerId);
+                const tg = c.targeting || {};
+                const rtsList = (c.rtsListId && rtsLists) ? rtsLists.find((l:any) => l.id === c.rtsListId) : null;
+                const lines: string[] = [];
+                lines.push(`# ${c.name || "Untitled Campaign"} — B2B Rocket Setup Brief\n`);
+                lines.push(`**Channel:** ${c.channel || c.type}`);
+                lines.push(`**Status:** ${c.status}`);
+                if (persona) lines.push(`**Persona:** ${persona.name}`);
+                if (product) lines.push(`**Product:** ${product.name}`);
+                if (offer) lines.push(`**Offer:** [${offer.tier}] "${offer.ctaText || offer.name}"`);
+                lines.push("\n## 1. Audience");
+                if (c.audienceSource === "rts_list" && rtsList) {
+                  lines.push(`Source: RTS List → ${rtsList.name}`);
+                } else if (c.audienceSource === "custom_list") {
+                  lines.push(`Source: Custom CSV — ${c.customListName || "(no name)"}`);
+                } else {
+                  lines.push(`Source: B2BR People Search — plug the criteria below into the filter panel`);
+                  const ts: [string,string][] = [
+                    ["Titles/Roles", tg.titles], ["Seniority", tg.seniority], ["Departments", tg.departments],
+                    ["Industries", tg.industries], ["Company Sizes", tg.companySizes], ["Revenue", tg.revenue],
+                    ["Person Location", tg.personLocation], ["Company Location", tg.companyLocation],
+                    ["Keywords", tg.keywords], ["Technologies", tg.technologies], ["Intent Topics", tg.intentTopics],
+                    ["Excluded Domains", tg.excludedDomains], ["Excluded Competitors", tg.excludedCompetitors],
+                  ];
+                  for (const [k,v] of ts) if (v) lines.push(`- **${k}:** ${v}`);
+                }
+                lines.push("\n## 2. Sender Config");
+                lines.push(`- Accounts needed: ${c.senderConfig?.accountsNeeded ?? 3}`);
+                lines.push(`- Daily volume per account: ${c.senderConfig?.dailyVolumePerAccount ?? 50}`);
+                lines.push(`- Warmup required: ${c.senderConfig?.warmupRequired ? "yes" : "no"}`);
+                lines.push("\n## 3. Sending Schedule");
+                lines.push(`- Timezone: ${c.sendingSchedule?.timezone || "client_local"}`);
+                lines.push(`- Days: ${(c.sendingSchedule?.days||["Mon","Tue","Wed","Thu"]).join(", ")}`);
+                lines.push(`- Hours: ${c.sendingSchedule?.startHour ?? 9}:00 – ${c.sendingSchedule?.endHour ?? 17}:00`);
+                lines.push("\n## 4. Safety & Limits");
+                lines.push(`- Auto-pause on bounce: ${c.safetyLimits?.autoPauseOnBounce ? `yes (>${c.safetyLimits?.bouncePauseThreshold ?? 8}%)` : "no"}`);
+                lines.push(`- Auto-pause on low reply: ${c.safetyLimits?.autoPauseOnLowReply ? `yes (${c.safetyLimits?.lowReplyThreshold?.sentCount ?? 300} sent, ≤${c.safetyLimits?.lowReplyThreshold?.repliesAtMost ?? 0} replies)` : "no"}`);
+                lines.push("\n## 5. Sequence");
+                for (const step of (c.sequence||[])) {
+                  lines.push(`\n### Step ${step.stepNumber} — ${step.role || "?"} (day +${step.dayOffset ?? "?"})`);
+                  lines.push(`**Subject:** ${step.subject || "(empty)"}`);
+                  lines.push(`**Body:**\n${step.body || "(empty)"}`);
+                  if (step.variants?.length) {
+                    step.variants.forEach((v:any, vi:number) => {
+                      lines.push(`\n**Variant ${String.fromCharCode(66+vi)}** — ${v.label || ""} (test: ${v.testVariable || "?"})`);
+                      lines.push(`Subject: ${v.subject || ""}`);
+                      lines.push(`Body:\n${v.body || ""}`);
+                    });
+                  }
+                }
+                lines.push("\n## 6. Benchmarks");
+                const b = c.benchmarks || {};
+                lines.push(`- Reply rate: ${b.replyRate?.good||3}% target`);
+                lines.push(`- Interested rate: ${b.interestedRate?.good||1}% target`);
+                lines.push(`- Meeting rate: ${b.meetingRate?.good||0.5}% target`);
+                lines.push(`- Max bounce: ${b.bounceRate?.action||8}%`);
+                const md = lines.join("\n");
+                navigator.clipboard.writeText(md);
+                addToast({ title:"Setup brief copied", status:"success", message:"Paste into a note while configuring B2B Rocket" });
+              }}
+                style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.border}`,
+                  background:"transparent", color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                📋 Copy Setup Brief
+              </button>
               <button onClick={generateSequence} disabled={generating}
                 style={{ padding:"7px 16px", borderRadius:8, border:`1px solid ${_C.greenBorder}`,
                   background:_C.greenLo, color:_C.green, fontSize:11, fontFamily:head, fontWeight:700,
@@ -7792,11 +9270,26 @@ Return ONLY valid JSON:
                   <input value={selected.name} onChange={e=>updCampaign(selected.id, {name:e.target.value})}
                     placeholder="e.g., Cold Email — Manufacturing CEOs — Equipment Financing" style={inputSt} />
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14 }}>
                   <div>
-                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Type</label>
-                    <select value={selected.type} onChange={e=>updCampaign(selected.id, {type:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
-                      {CAMPAIGN_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Channel <span style={{ fontWeight:400, color:_C.muted }}>(single-channel)</span></label>
+                    <select value={selected.channel || "email"} onChange={e=>{
+                      const ch = e.target.value as "email"|"linkedin"|"rts_ai_call";
+                      const legacyType = ch === "email" ? "cold_email" : ch === "linkedin" ? "linkedin_message" : "rts_calling";
+                      updCampaign(selected.id, { channel: ch, type: legacyType });
+                    }} style={{...inputSt, cursor:"pointer"}}>
+                      <option value="email">Email</option>
+                      <option value="linkedin">LinkedIn</option>
+                      <option value="rts_ai_call">RTS AI Call (opt-in only)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Audience Source</label>
+                    <select value={selected.audienceSource || "people_search"} onChange={e=>updCampaign(selected.id, {audienceSource: e.target.value})}
+                      style={{...inputSt, cursor:"pointer"}}>
+                      <option value="people_search">B2BR People Search</option>
+                      <option value="custom_list">Custom CSV upload</option>
+                      <option value="rts_list">RTS Lead List</option>
                     </select>
                   </div>
                   <div>
@@ -7806,6 +9299,24 @@ Return ONLY valid JSON:
                     </select>
                   </div>
                 </div>
+                {selected.audienceSource === "rts_list" && (
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>RTS List <span style={{ fontWeight:400, color:_C.muted }}>(required)</span></label>
+                    <select value={selected.rtsListId || ""} onChange={e=>updCampaign(selected.id, { rtsListId: e.target.value || null })} style={{...inputSt, cursor:"pointer"}}>
+                      <option value="">Select an RTS list…</option>
+                      {rtsLists.map((l:any) => (
+                        <option key={l.id} value={l.id}>{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {selected.audienceSource === "custom_list" && (
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Custom list name / source</label>
+                    <input value={selected.customListName || ""} onChange={e=>updCampaign(selected.id, { customListName: e.target.value })}
+                      placeholder="e.g. Q2 Conference Attendees CSV" style={inputSt} />
+                  </div>
+                )}
                 <div>
                   <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
                     Persona <span style={{ fontWeight:400, color:_C.muted }}>(one persona per campaign)</span>
@@ -7841,6 +9352,37 @@ Return ONLY valid JSON:
                     <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Daily Send Volume</label>
                     <input type="number" value={selected.dailySendVolume||""} onChange={e=>updCampaign(selected.id, {dailySendVolume:parseInt(e.target.value)||0})}
                       placeholder="100" style={inputSt} />
+                    {selected.channel === "linkedin" && (() => {
+                      const cd = companyData as any;
+                      const liAccts = Math.max(1, parseInt(cd.co_linkedin_accounts || "1") || 1);
+                      const maxConn = liAccts * 10;
+                      const maxMsg = liAccts * 10;
+                      const maxTotal = maxConn + maxMsg;
+                      const overLimit = (selected.dailySendVolume || 0) > maxTotal;
+                      return (
+                        <div style={{ marginTop:6, padding:"6px 10px", borderRadius:6,
+                          background: overLimit ? `${_C.red}10` : `${_C.accent}08`,
+                          border: `1px solid ${overLimit ? _C.red + "33" : _C.accent + "22"}`,
+                          fontSize:10, fontFamily:mono, lineHeight:1.5 }}>
+                          <div style={{ fontWeight:700, color: overLimit ? _C.red : _C.accent, marginBottom:2, letterSpacing:.3, textTransform:"uppercase" as const }}>
+                            {overLimit ? "⚠ Over capacity" : "LinkedIn capacity"}
+                          </div>
+                          <div style={{ color: _C.textSoft }}>
+                            {liAccts} account{liAccts!==1?"s":""} × 10 connections + 10 messages = <strong style={{ color: overLimit ? _C.red : _C.text }}>{maxTotal}/day max</strong>
+                          </div>
+                          {overLimit && (
+                            <div style={{ color:_C.red, marginTop:3 }}>
+                              Exceeds cap by {(selected.dailySendVolume || 0) - maxTotal}/day — add accounts or lower volume.
+                            </div>
+                          )}
+                          {!cd.co_linkedin_accounts && (
+                            <div style={{ color:_C.muted, marginTop:3 }}>
+                              No LinkedIn account count set on Company profile (defaulting to 1).
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div>
                     <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Start Date</label>
@@ -8057,7 +9599,6 @@ Return ONLY valid JSON:
             {tab === "replies" && selected && (() => {
               const persona = personas.find((p:any) => (selected.personaIds||[])[0] === p.id);
               const product = products.find((p:any) => p.id === selected.productId);
-              const [genReplies, setGenReplies] = useState(false);
               const replies = selected.replyHandlers || [];
 
               const generateReplies = async () => {
@@ -8128,12 +9669,435 @@ Return ONLY valid JSON:
                       })}
                     </div>
                   )}
+
+                  {/* ─── Reply Analyzer (Stage 9) ─────────────────────────────── */}
+                  <div style={{ marginTop:28, paddingTop:24, borderTop:`1px solid ${_C.border}` }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div>
+                        <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>⚡ Analyze Incoming Replies</div>
+                        <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginTop:2 }}>
+                          Paste real replies from the campaign — AI classifies each, suggests a response, and cites playbook objections.
+                        </div>
+                      </div>
+                      {(selected.analyzedReplies || []).length > 0 && (
+                        <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"4px 10px", borderRadius:6, background:`${_C.accent}12`, color:_C.accent }}>
+                          {(selected.analyzedReplies || []).filter((r:any) => r.status === "new").length} new / {(selected.analyzedReplies || []).length} total
+                        </span>
+                      )}
+                    </div>
+                    <textarea value={replyInput} onChange={e => setReplyInput(e.target.value)}
+                      rows={6}
+                      placeholder={`Paste replies here — separate each with a blank line.\n\nExample:\nFrom: John Doe\nHey — thanks but we already use CompetitorX. Not looking to switch.\n\nFrom: Jane Smith\nInteresting. Got time Thursday at 2pm?\n\nFrom: Mark — OOO\nI'm out until May 6. Try me then.`}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text,
+                        fontSize:12, fontFamily:mono, lineHeight:1.5, outline:"none", resize:"vertical", marginBottom:10, boxSizing:"border-box" as const }} />
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={analyzeReplies} disabled={analyzingReplies || !replyInput.trim()}
+                        style={{ padding:"10px 18px", borderRadius:8, border:"none",
+                          background: (analyzingReplies || !replyInput.trim()) ? _C.muted : _C.accent, color:"#fff",
+                          fontSize:12, fontFamily:head, fontWeight:700,
+                          cursor: analyzingReplies ? "wait" : !replyInput.trim() ? "not-allowed" : "pointer",
+                          boxShadow: (analyzingReplies || !replyInput.trim()) ? "none" : `0 2px 8px ${_C.accent}44` }}>
+                        {analyzingReplies ? "◌ Analyzing…" : "⚡ Analyze Replies"}
+                      </button>
+                      {replyInput.trim() && (
+                        <button onClick={() => setReplyInput("")} disabled={analyzingReplies}
+                          style={{ padding:"10px 14px", borderRadius:8, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Analyzed replies list */}
+                    {(selected.analyzedReplies || []).length > 0 && (() => {
+                      const classColors: Record<string,string> = {
+                        interested: _C.green, meeting_request: _C.green, warm: _C.green,
+                        objection: _C.red, not_interested: _C.muted, dead: _C.muted, unsubscribe: _C.muted,
+                        not_now: _C.amber, ooo: _C.amber, wrong_person: _C.amber, info_request: _C.blue,
+                        auto_reply: _C.muted,
+                      };
+                      const classLabels: Record<string,string> = {
+                        interested: "Interested", meeting_request: "Meeting Request", warm: "Warm",
+                        objection: "Objection", not_interested: "Not Interested", dead: "Dead",
+                        unsubscribe: "Unsubscribe", not_now: "Not Now", ooo: "OOO", wrong_person: "Wrong Person",
+                        info_request: "Info Request", auto_reply: "Auto Reply",
+                      };
+                      const filterOptions: [string, string, number][] = [
+                        ["all", "All", (selected.analyzedReplies || []).length],
+                        ["new", "New", (selected.analyzedReplies || []).filter((r:any) => r.status === "new").length],
+                        ["high", "High urgency", (selected.analyzedReplies || []).filter((r:any) => r.urgency === "high").length],
+                        ["interested", "Interested", (selected.analyzedReplies || []).filter((r:any) => r.classification === "interested" || r.classification === "meeting_request" || r.classification === "warm").length],
+                        ["objection", "Objections", (selected.analyzedReplies || []).filter((r:any) => r.classification === "objection").length],
+                      ];
+                      const filtered = (selected.analyzedReplies || []).filter((r:any) => {
+                        if (replyFilter === "all") return true;
+                        if (replyFilter === "new") return r.status === "new";
+                        if (replyFilter === "high") return r.urgency === "high";
+                        if (replyFilter === "interested") return r.classification === "interested" || r.classification === "meeting_request" || r.classification === "warm";
+                        if (replyFilter === "objection") return r.classification === "objection";
+                        return true;
+                      });
+                      return (
+                        <div style={{ marginTop:20 }}>
+                          <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" as const }}>
+                            {filterOptions.map(([id, label, count]) => (
+                              <button key={id} onClick={()=>setReplyFilter(id)}
+                                style={{ padding:"5px 11px", borderRadius:6,
+                                  border:`1px solid ${replyFilter === id ? _C.accent : _C.border}`,
+                                  background: replyFilter === id ? `${_C.accent}12` : _C.canvas,
+                                  color: replyFilter === id ? _C.accent : _C.muted,
+                                  fontSize:11, fontFamily:mono, fontWeight:600, cursor:"pointer" }}>
+                                {label} ({count})
+                              </button>
+                            ))}
+                          </div>
+                          {filtered.map((r:any) => {
+                            const color = classColors[r.classification] || _C.muted;
+                            const urgencyColor = r.urgency === "high" ? _C.red : r.urgency === "medium" ? _C.amber : _C.muted;
+                            return (
+                              <div key={r.id} style={{ background: r.status === "replied" ? _C.faint : _C.canvas,
+                                border:`1px solid ${_C.border}`, borderLeft:`4px solid ${color}`,
+                                borderRadius:12, padding:"14px 18px", marginBottom:10,
+                                opacity: r.status === "archived" ? 0.5 : 1 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, flexWrap:"wrap" as const }}>
+                                  <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:4,
+                                    background:`${color}15`, color, letterSpacing:.3 }}>
+                                    {(classLabels[r.classification] || r.classification || "?").toUpperCase()}
+                                  </span>
+                                  {r.objectionCategory && (
+                                    <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"2px 7px", borderRadius:4, background:_C.faint, color:_C.textSoft }}>
+                                      {r.objectionCategory}
+                                    </span>
+                                  )}
+                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:urgencyColor, letterSpacing:.3 }}>
+                                    {r.urgency?.toUpperCase()}
+                                  </span>
+                                  {r.senderHint && (
+                                    <span style={{ fontSize:11, fontFamily:body, color:_C.text, fontWeight:600 }}>{r.senderHint}</span>
+                                  )}
+                                  <span style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginLeft:"auto" }}>
+                                    {new Date(r.analyzedAt).toLocaleDateString()}
+                                    {r.status !== "new" && ` · ${r.status}`}
+                                  </span>
+                                </div>
+                                {/* Raw reply */}
+                                <div style={{ padding:"8px 10px", borderRadius:6, background:_C.faint, marginBottom:8, fontSize:11, fontFamily:body, color:_C.textSoft, whiteSpace:"pre-wrap" as const, lineHeight:1.5, maxHeight:100, overflowY:"auto" as const }}>
+                                  {r.rawText}
+                                </div>
+                                {/* Reasoning */}
+                                <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const, marginBottom:8 }}>
+                                  Why: {r.reasoning}
+                                </div>
+                                {/* Playbook match */}
+                                {r.playbookMatch && (
+                                  <div style={{ padding:"8px 10px", borderRadius:6, background:`${_C.accent}06`, border:`1px solid ${_C.accent}22`, marginBottom:8 }}>
+                                    <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.3, marginBottom:3 }}>📘 PLAYBOOK MATCH</div>
+                                    <div style={{ fontSize:11, fontFamily:body, color:_C.text, marginBottom:4 }}><strong>Objection:</strong> {r.playbookMatch.objection}</div>
+                                    <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, marginBottom:4 }}><strong>Rebuttal:</strong> {r.playbookMatch.rebuttal}</div>
+                                    {r.playbookMatch.talkTrack && <div style={{ fontSize:10, fontFamily:body, color:_C.muted }}><em>Talk track: {r.playbookMatch.talkTrack}</em></div>}
+                                  </div>
+                                )}
+                                {/* Suggested approach */}
+                                {r.suggestedApproach && (
+                                  <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, marginBottom:8, lineHeight:1.5 }}>
+                                    <strong style={{ color:_C.text }}>Approach: </strong>{r.suggestedApproach}
+                                  </div>
+                                )}
+                                {/* Suggested response */}
+                                <div style={{ marginBottom:8 }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.3, marginBottom:4 }}>SUGGESTED RESPONSE</div>
+                                  <textarea value={r.suggestedResponse || ""}
+                                    onChange={e => updateAnalyzedReply(r.id, { suggestedResponse: e.target.value })}
+                                    rows={3}
+                                    style={{ width:"100%", padding:"8px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text,
+                                      fontSize:12, fontFamily:body, outline:"none", resize:"vertical", lineHeight:1.5, boxSizing:"border-box" as const }} />
+                                </div>
+                                {/* Actions */}
+                                <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const }}>
+                                  <button onClick={() => { navigator.clipboard.writeText(r.suggestedResponse || ""); addToast({ title:"Copied", status:"success", message:"Reply copied to clipboard" }); }}
+                                    style={{ padding:"5px 10px", borderRadius:6, border:"none", background:_C.accent, color:"#fff", fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>
+                                    📋 Copy
+                                  </button>
+                                  <button onClick={() => updateAnalyzedReply(r.id, { status: r.status === "replied" ? "new" : "replied" })}
+                                    style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${r.status === "replied" ? _C.green : _C.border}`,
+                                      background: r.status === "replied" ? `${_C.green}10` : "transparent",
+                                      color: r.status === "replied" ? _C.green : _C.muted,
+                                      fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>
+                                    {r.status === "replied" ? "✓ Replied" : "Mark replied"}
+                                  </button>
+                                  <button onClick={() => updateAnalyzedReply(r.id, { status: r.status === "snoozed" ? "new" : "snoozed" })}
+                                    style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>
+                                    {r.status === "snoozed" ? "Unsnooze" : "Snooze"}
+                                  </button>
+                                  <button onClick={() => { if (confirm("Archive this reply?")) updateAnalyzedReply(r.id, { status: "archived" }); }}
+                                    style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer", marginLeft:"auto" }}>
+                                    Archive
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {filtered.length === 0 && (
+                            <div style={{ padding:"24px", textAlign:"center" as const, color:_C.muted, fontSize:12, fontFamily:body }}>
+                              No replies match this filter.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               );
             })()}
 
             {tab === "benchmarks" && (
-              <div style={{ maxWidth:600, animation:"contentFade .3s ease" }}>
+              <div style={{ maxWidth:720, animation:"contentFade .3s ease" }}>
+                {/* Campaign Health Card */}
+                {(() => {
+                  const m = (selected.performance?.metrics) || EMPTY_CAMPAIGN_METRICS();
+                  const health = computeCampaignHealth(m, selected.benchmarks);
+                  const sent = m.sent || 0;
+                  const canPropose = health.state !== "working" && health.state !== "new";
+                  const liveIter = (selected.iterations || []).find((it:any) => it.status === "live");
+                  return (
+                    <div style={{ marginBottom:20, padding:"18px 22px", borderRadius:14, background:`${health.color}08`, border:`1px solid ${health.color}30` }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"auto 1fr auto", gap:18, alignItems:"center" }}>
+                        <div style={{ textAlign:"center", padding:"8px 16px", borderRadius:10, background:`${health.color}18`, minWidth:120 }}>
+                          <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:health.color, letterSpacing:.4 }}>HEALTH</div>
+                          <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:health.color, marginTop:4 }}>{health.label}</div>
+                          <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginTop:4 }}>{sent} sent</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>{health.diagnosis}</div>
+                          <div style={{ fontSize:12, fontFamily:body, color:_C.textSoft, lineHeight:1.6 }}>
+                            <strong style={{ color:_C.accent }}>Next:</strong> {health.action}
+                          </div>
+                        </div>
+                        {canPropose && !liveIter && (
+                          <button disabled={proposingTest} onClick={proposeNextTest}
+                            style={{ padding:"10px 16px", borderRadius:10, border:"none", background:proposingTest?_C.muted:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:proposingTest?"wait":"pointer", whiteSpace:"nowrap" as const, boxShadow:proposingTest?"none":`0 2px 8px ${_C.accent}44` }}>
+                            {proposingTest ? "Thinking…" : "🧪 Propose Next Test"}
+                          </button>
+                        )}
+                        {liveIter && (
+                          <div style={{ padding:"8px 12px", borderRadius:8, background:`${_C.accent}10`, border:`1px solid ${_C.accent}33`, textAlign:"center" }}>
+                            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4 }}>LIVE TEST</div>
+                            <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.text, marginTop:2 }}>{liveIter.testVariable.replace(/_/g," ")}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Iteration history */}
+                {(selected.iterations && selected.iterations.length > 0) && (
+                  <div style={{ marginBottom:24 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Iteration History</div>
+                      <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{selected.iterations.length} iteration{selected.iterations.length!==1?"s":""}</div>
+                    </div>
+                    {[...selected.iterations].reverse().map((it:any, _i:number) => {
+                      const outcomeColor = it.status === "live" ? _C.accent : it.outcome === "winner" ? _C.green : it.outcome === "worse" ? _C.red : _C.muted;
+                      const outcomeLabel = it.status === "live" ? "LIVE" : (it.outcome || "—").toUpperCase();
+                      return (
+                        <div key={it.id} style={{ padding:"12px 14px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:8, borderLeft:`4px solid ${outcomeColor}` }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                            <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:`${outcomeColor}18`, color:outcomeColor }}>{outcomeLabel}</span>
+                            <span style={{ fontSize:11, fontFamily:mono, fontWeight:600, color:_C.text }}>{it.testVariable.replace(/_/g," ")}</span>
+                            <span style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginLeft:"auto" }}>
+                              {it.status === "live"
+                                ? `${Math.floor((Date.now() - new Date(it.startedAt).getTime())/86400000)}d of ${it.durationDays}d`
+                                : new Date(it.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.5, marginBottom:6 }}>
+                            <strong>Hypothesis:</strong> {it.hypothesis}
+                          </div>
+                          <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:6 }}>
+                            Target: {it.successMetric} · Variants: {(it.variants||[]).map((v:any)=>v.label).join(", ")}
+                          </div>
+                          {it.status === "live" && (
+                            <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                              <button onClick={()=>completeIteration(it.id, "winner", (it.variants?.[0]?.label)||"Variant A")}
+                                style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${_C.green}44`, background:`${_C.green}0C`, color:_C.green, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>
+                                ✓ Winner
+                              </button>
+                              <button onClick={()=>completeIteration(it.id, "flat")}
+                                style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>
+                                = Flat
+                              </button>
+                              <button onClick={()=>completeIteration(it.id, "worse")}
+                                style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${_C.red}44`, background:`${_C.red}0C`, color:_C.red, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>
+                                ✗ Worse
+                              </button>
+                            </div>
+                          )}
+                          {it.status === "completed" && it.notes && (
+                            <div style={{ fontSize:10, fontFamily:body, color:_C.muted, fontStyle:"italic" as const, marginTop:4 }}>{it.notes}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Test proposal modal */}
+                {testProposal && testProposal.campaignId === selected.id && createPortal(
+                  <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483647, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(4px)", padding:24 }}>
+                    <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, boxShadow:"0 24px 64px rgba(13,15,26,0.22)", maxWidth:680, width:"100%", maxHeight:"85vh", overflow:"hidden", display:"flex", flexDirection:"column" as const, animation:"toastIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                      <div style={{ padding:"18px 22px", borderBottom:`1px solid ${_C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                        <div>
+                          <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:_C.text }}>Proposed Next Test</div>
+                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Testing <strong>{testProposal.testVariable.replace(/_/g," ")}</strong> · {testProposal.durationDays || 3}d window</div>
+                        </div>
+                        <button onClick={()=>setTestProposal(null)}
+                          style={{ width:28, height:28, borderRadius:7, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, cursor:"pointer", fontSize:14 }}>✕</button>
+                      </div>
+                      <div style={{ flex:1, overflowY:"auto", padding:"18px 22px" }}>
+                        <div style={{ padding:"12px 14px", borderRadius:10, background:`${_C.accent}06`, border:`1px solid ${_C.accent}22`, marginBottom:14 }}>
+                          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, marginBottom:4 }}>HYPOTHESIS</div>
+                          <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.5, marginBottom:8 }}>{testProposal.hypothesis}</div>
+                          <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.5 }}>{testProposal.rationale}</div>
+                        </div>
+                        <div style={{ padding:"10px 14px", borderRadius:8, background:_C.faint, marginBottom:16 }}>
+                          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:2 }}>SUCCESS METRIC</div>
+                          <div style={{ fontSize:12, fontFamily:body, color:_C.text }}>{testProposal.successMetric}</div>
+                        </div>
+                        {(testProposal.variants || []).map((v:any, i:number) => (
+                          <div key={i} style={{ padding:"14px 16px", borderRadius:10, border:`1px solid ${_C.border}`, marginBottom:10 }}>
+                            <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:_C.accent, marginBottom:6 }}>{v.label || `Variant ${i+1}`}</div>
+                            {v.subject && (
+                              <div style={{ marginBottom:6 }}>
+                                <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:700, marginBottom:2 }}>SUBJECT</div>
+                                <div style={{ fontSize:13, fontFamily:body, fontWeight:600, color:_C.text }}>{v.subject}</div>
+                              </div>
+                            )}
+                            {v.body && (
+                              <div style={{ marginBottom:6 }}>
+                                <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:700, marginBottom:2 }}>{testProposal.testVariable === "targeting" || testProposal.testVariable === "signal" ? "TARGETING CHANGE" : "BODY"}</div>
+                                <div style={{ fontSize:12, fontFamily:body, color:_C.text, whiteSpace:"pre-wrap" as const, lineHeight:1.5 }}>{v.body}</div>
+                              </div>
+                            )}
+                            {v.rationale && (
+                              <div style={{ fontSize:10, fontFamily:body, color:_C.muted, fontStyle:"italic" as const, marginTop:6 }}>{v.rationale}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ padding:"14px 22px", borderTop:`1px solid ${_C.border}`, display:"flex", gap:8 }}>
+                        <button onClick={()=>setTestProposal(null)}
+                          style={{ flex:1, padding:"10px", borderRadius:8, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                          Discard
+                        </button>
+                        <button onClick={startIteration}
+                          style={{ flex:2, padding:"10px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
+                          Start Iteration
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+                  document.body
+                )}
+
+                {/* Import B2BR Analytics */}
+                <div style={{ marginBottom:20, padding:"14px 16px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>Import B2B Rocket Analytics</div>
+                      <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Export analytics from B2BR and paste the CSV below to update this campaign's performance.</div>
+                    </div>
+                  </div>
+                  <textarea id={`b2br-csv-${selected.id}`} placeholder="Paste the CSV export from B2BR Analytics → Export…" rows={4}
+                    style={{ width:"100%", padding:"10px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:11, fontFamily:mono, outline:"none", lineHeight:1.5, marginBottom:10, resize:"vertical" }} />
+                  <button onClick={()=>{
+                    const ta = document.getElementById(`b2br-csv-${selected.id}`) as HTMLTextAreaElement;
+                    const csv = ta?.value?.trim();
+                    if (!csv) { addToast({ title:"Paste CSV first", status:"error", message:"" }); return; }
+                    const parsed = parseB2BRAnalyticsCSV(csv);
+                    if (!parsed) { addToast({ title:"Couldn't parse CSV", status:"error", message:"Expected either 'Metric,Value' rows or header + data row format." }); return; }
+                    const score = campaignScore(parsed);
+                    updCampaign(selected.id, { performance: { metrics: parsed, lastUpdated: new Date().toISOString(), score } });
+                    ta.value = "";
+                    const h = computeCampaignHealth(parsed, selected.benchmarks);
+                    addToast({ title:`Metrics imported — ${h.label}`, status:"success", message: h.diagnosis });
+                  }}
+                    style={{ padding:"8px 18px", borderRadius:7, border:"none", background:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                    Parse + Import
+                  </button>
+                </div>
+
+                {/* Per-campaign benchmark rationale — explains why THIS campaign's targets are what they are */}
+                {(() => {
+                  const r = selected.benchmarkRationale;
+                  const brk = r?.breakdown || {};
+                  return (
+                    <div style={{ padding:"16px 18px", borderRadius:12, background:`${_C.accent}06`, border:`1px solid ${_C.accent}22`, marginBottom:20 }}>
+                      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12, marginBottom: r ? 12 : 0 }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:4 }}>
+                            📊 Why these targets for this campaign?
+                          </div>
+                          <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, lineHeight:1.5 }}>
+                            {r?.summary || `Benchmarks are calibrated per campaign — a ${selected.channel || "cold"} campaign with ${selected.intentTier === "high" ? "HIGH-intent" : "cold"} audience has different baselines than a retargeting or LinkedIn push. Generate a rationale to see the math and adjust targets based on channel, intent tier, and company context.`}
+                          </div>
+                        </div>
+                        <button onClick={generateCampaignBenchmarkRationale} disabled={benchRatGenerating}
+                          style={{ padding:"7px 14px", borderRadius:8, border:"none",
+                            background: benchRatGenerating ? _C.muted : _C.accent, color:"#fff",
+                            fontSize:11, fontFamily:head, fontWeight:700,
+                            cursor: benchRatGenerating ? "wait" : "pointer",
+                            boxShadow: benchRatGenerating ? "none" : `0 2px 6px ${_C.accent}44`,
+                            flexShrink:0, whiteSpace:"nowrap" as const }}>
+                          {benchRatGenerating ? "◌ Calibrating…" : r ? "Regenerate" : "Calibrate Benchmarks"}
+                        </button>
+                      </div>
+
+                      {r && (
+                        <>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+                            {[
+                              ["reply",      "Reply Rate",         brk.reply],
+                              ["interested", "Interested Rate",    brk.interested],
+                              ["bounce",     "Bounce Ceiling",     brk.bounce],
+                              ["autoReply",  "Auto-Reply Ceiling", brk.autoReply],
+                              ["meeting",    "Meeting Rate",       brk.meeting],
+                            ].map(([k, label, row]:any) => row ? (
+                              <div key={k} style={{ padding:"10px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                                  <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.3 }}>{(label as string).toUpperCase()}</span>
+                                  <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.accent }}>{row.value || "—"}{row.value ? "%" : ""}</span>
+                                </div>
+                                {row.baseline && <div style={{ fontSize:10, fontFamily:body, color:_C.textSoft, marginBottom:4 }}><strong style={{ color:_C.muted }}>Baseline:</strong> {row.baseline}</div>}
+                                {Array.isArray(row.adjustments) && row.adjustments.length > 0 && (
+                                  <div style={{ marginBottom:4 }}>
+                                    {row.adjustments.map((adj:string, i:number) => adj ? (
+                                      <div key={i} style={{ fontSize:10, fontFamily:body, color:_C.textSoft, lineHeight:1.4, paddingLeft:8, borderLeft:`2px solid ${_C.accent}33`, marginBottom:2 }}>{adj}</div>
+                                    ) : null)}
+                                  </div>
+                                )}
+                                {row.target && <div style={{ fontSize:10, fontFamily:body, color:_C.text, fontStyle:"italic" as const, marginTop:4 }}>{row.target}</div>}
+                              </div>
+                            ) : null)}
+                          </div>
+
+                          {Array.isArray(r.implications) && r.implications.length > 0 && (
+                            <div style={{ padding:"10px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.3, marginBottom:6, textTransform:"uppercase" as const }}>What this means in practice</div>
+                              {r.implications.map((imp:string, i:number) => (
+                                <div key={i} style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.5, marginBottom:3 }}>→ {imp}</div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div style={{ fontSize:9, color:_C.muted, fontFamily:mono, textAlign:"right" as const, marginTop:8 }}>
+                            Generated {new Date(r.generatedAt).toLocaleString()}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>Campaign Benchmarks</div>
                 <div style={{ fontSize:12, color:_C.muted, fontFamily:body, marginBottom:20 }}>Thresholds for monitoring campaign health. Green = good, amber = warning, red = action needed.</div>
                 {[
@@ -8350,10 +10314,11 @@ Return ONLY valid JSON:
 
 // ─── COMPANY PANEL ────────────────────────────────────────────────────────────
 // ═══════════ V2 COMPANY PANEL ═══════════
-function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, onConfLock, fileContext = "" }) {
+function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, onConfLock, fileContext = "", addToast = (_t:any)=>"" }:
+  { data:any; confidence?:any; confLocked?:any; onChange:(d:any)=>void; onConfChange?:any; onConfLock?:any; fileContext?:string; addToast?:(t:any)=>string }) {
   const [aiOn, setAiOn] = useState(null);
   const [aiOptions, setAiOptions] = useState<Record<string,any[]>>({});
-  const [secTab, setSecTab] = useState("client");
+  const [secTab, setSecTab] = useState("business");
   const origRef = useRef<Record<string,any>>({});
 
   const upd = (id: string, v: any) => onChange({ ...data, [id]: v });
@@ -8387,34 +10352,67 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
 
   const swapTab = (newTab: string) => { setSecTab(newTab); };
 
+  // Group sections into the 3 top-level categories: Client Info / Company Research / Campaign Settings.
+  // Sections without an explicit `group` default to "client" so nothing disappears on older data.
+  const clientKeys   = secKeys.filter(k => (ALL_SECTIONS[k]?.group || "client") === "client");
+  const researchKeys = secKeys.filter(k => ALL_SECTIONS[k]?.group === "research");
+  const campaignKeys = secKeys.filter(k => ALL_SECTIONS[k]?.group === "campaign");
+
+  const renderSectionButton = (key: string) => {
+    const s = ALL_SECTIONS[key];
+    if (!s) return null;
+    // Count against ALL fields so "Done" means the section is actually complete —
+    // not just that AI finished its part while manual fields remain blank.
+    const gf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
+    const on = secTab === key;
+    const allFilled = s.fields.length > 0 && gf === s.fields.length;
+    return (
+      <button key={key} onClick={() => swapTab(key)} style={{
+        display:"flex", alignItems:"center", gap:8, width:"100%", padding:"10px 14px",
+        background: on ? `${C2.accent}14` : "transparent",
+        borderRadius:12, border:"none", whiteSpace:"nowrap" as const,
+        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:4 }}
+        onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C2.canvas; }}
+        onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+        <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight: on ? 700 : 500, color: on ? C2.text : C2.textSoft, overflow:"hidden" as const, textOverflow:"ellipsis" as const }}>{s.label}</span>
+        <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:allFilled?C2.green:on?C2.accent:C2.muted,
+          background:allFilled?C2.greenLo:on?`${C2.accent}11`:C2.canvas,
+          padding:"2px 8px", borderRadius:8, flexShrink:0 }}>
+          {allFilled?"Done":`${gf}/${s.fields.length}`}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div style={{ display:"flex", height:"100%", overflow:"hidden", borderRadius:16, border:`1px solid ${C2.border}`,
       background:C2.canvas, boxShadow:"0 2px 12px rgba(108,92,231,.04)" }}>
-      {/* Section nav */}
-      <div style={{ width:220, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
-        {secKeys.map(key => {
-          const s = ALL_SECTIONS[key];
-          if (!s) return null;
-          const gf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
-          const on = secTab === key;
-          const allFilled = gf === s.fields.length;
-          return (
-            <button key={key} onClick={() => swapTab(key)} style={{
-              display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
-              background: on ? `${C2.accent}14` : "transparent",
-              borderRadius:12, border:"none", whiteSpace:"nowrap" as const,
-              cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:4 }}
-              onMouseEnter={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background=C2.canvas; }}
-              onMouseLeave={e=>{ if(!on)(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-              <span style={{ flex:1, fontSize:13, fontFamily:head, fontWeight: on ? 700 : 500, color: on ? C2.text : C2.textSoft }}>{s.label}</span>
-              <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:allFilled?C2.green:on?C2.accent:C2.muted,
-                background:allFilled?C2.greenLo:on?`${C2.accent}11`:C2.canvas,
-                padding:"2px 8px", borderRadius:8, flexShrink:0, marginLeft:"auto" }}>
-                {allFilled?"Done":`${gf}/${s.fields.length}`}
-              </span>
-            </button>
-          );
-        })}
+      {/* Section nav — grouped: Client Info / Company Research / Campaign Settings */}
+      <div style={{ width:240, background:C2.faint, borderRight:`1px solid ${C2.border}`, flexShrink:0, padding:"16px 10px", overflowY:"auto" }}>
+        {clientKeys.length > 0 && (
+          <>
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, padding:"4px 14px 6px", textTransform:"uppercase" as const }}>
+              Client Info
+            </div>
+            {clientKeys.map(renderSectionButton)}
+          </>
+        )}
+        {researchKeys.length > 0 && (
+          <>
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.5, padding:"16px 14px 6px", textTransform:"uppercase" as const }}>
+              Company Research
+            </div>
+            {researchKeys.map(renderSectionButton)}
+          </>
+        )}
+        {campaignKeys.length > 0 && (
+          <>
+            <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, padding:"16px 14px 6px", textTransform:"uppercase" as const }}>
+              Outreach Setup
+            </div>
+            {campaignKeys.map(renderSectionButton)}
+          </>
+        )}
       </div>
 
       {/* Fields */}
@@ -8424,6 +10422,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
           if (!s) return null;
           const isActive = secTab === key;
           if (!isActive) return null;
+          const _mode = getSectionFillMode(s.fields);
           const sf = s.fields.filter((f: any) => fieldFilled(f, data[f.id])).length;
 
           return (
@@ -8436,7 +10435,9 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
                   <div>
                     <div style={{ fontSize:18, fontWeight:700, color:C2.text, fontFamily:head }}>{s.label}</div>
-                    <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:2 }}>Fill in each field or use AI to auto-generate</div>
+                    <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:2 }}>
+                      {_mode === "manual" ? "You fill these in — AI doesn't have this info." : _mode === "mixed" ? "Mixed — AI fills some fields during Quick Start, you fill the rest." : "AI fills these during Quick Start — you can edit any value."}
+                    </div>
                   </div>
                   <span style={{ fontSize:12, color:C2.muted, fontFamily:mono, background:C2.faint,
                     padding:"4px 12px", borderRadius:10, fontWeight:600 }}>{sf}/{s.fields.length}</span>
@@ -9197,9 +11198,6 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
     ["Campaign Purpose", cd.co_campaign_purpose], ["Expected Outcomes", cd.co_outcomes],
     ["Timezone", cd.co_timezone], ["Campaign Days", cd.co_days],
     ["Schedule", cd.co_start_time && cd.co_end_time ? `${cd.co_start_time} – ${cd.co_end_time}` : null],
-    ["Target Reply Rate", cd.co_bench_reply ? `${cd.co_bench_reply}%` : null],
-    ["Target Meeting Rate", cd.co_bench_meeting ? `${cd.co_bench_meeting}%` : null],
-    ["Max Bounce Rate", cd.co_bench_bounce_max ? `${cd.co_bench_bounce_max}%` : null],
     ["Past Email Examples", cd.co_past_emails],
   ];
   const filledPrefs = prefFields.filter(([,v]) => v);
@@ -9214,7 +11212,7 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
     lines.push("No products defined yet.");
   } else {
     products.forEach((p, idx) => {
-      const vpf = getVisibleProductFields(p);
+      const vpf = getCountableProductFields(p);
       const filled = vpf.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length;
       lines.push(`\n### Product ${idx+1}: ${p.name || "Unnamed"} (${Math.round(filled/vpf.length*100)}% complete)`);
       [
@@ -9249,7 +11247,7 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
   } else {
     icps.forEach((icp, idx) => {
       const d = icp.data || {};
-      const filled = ALL_ICP_FIELDS.filter((f: any) => fieldFilled(f, d[f.id])).length;
+      const filled = AI_FILLABLE_ICP_FIELDS.filter((f: any) => fieldFilled(f, d[f.id])).length;
       lines.push(`\n### Persona ${idx + 1}: ${icp.name || "Unnamed"} (${Math.round(filled/TOTAL_FIELDS*100)}% complete)`);
       [
         ["Target Industries", d.industries], ["Company Sizes", d.co_sizes],
@@ -9324,8 +11322,8 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
 
   // Platform completeness
   lines.push("\n## PLATFORM COMPLETENESS");
-  const companyFilled = ALL_COMPANY_FIELDS.filter(f => fieldFilled(f, cd[f.id])).length;
-  lines.push(`Company Profile: ${Math.round(companyFilled/ALL_COMPANY_FIELDS.length*100)}% (${companyFilled}/${ALL_COMPANY_FIELDS.length} fields)`);
+  const companyFilled = AI_FILLABLE_ALL_COMPANY_FIELDS.filter(f => fieldFilled(f, cd[f.id])).length;
+  lines.push(`Company Profile: ${Math.round(companyFilled/AI_FILLABLE_ALL_COMPANY_FIELDS.length*100)}% (${companyFilled}/${AI_FILLABLE_ALL_COMPANY_FIELDS.length} fields)`);
   lines.push(`Products: ${products.length} defined`);
   lines.push(`Personas: ${icps.length} defined`);
   lines.push(`Campaigns: ${campaigns.length} created (${campaigns.filter(c=>c.status==="active"||c.status==="live").length} active)`);
@@ -9333,7 +11331,7 @@ function buildClientContext(companyData: any, icps: any[], perfLogs: any[] = [],
   const emptySeqs = campaigns.filter(c => !c.sequence?.length).length;
   if (emptySeqs) lines.push(`⚠ ${emptySeqs} campaign${emptySeqs!==1?"s":""} missing sequences`);
   const incompleteProducts = products.filter(p => {
-    const vf = getVisibleProductFields(p);
+    const vf = getCountableProductFields(p);
     const f = vf.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length;
     return f < vf.length;
   }).length;
@@ -10168,10 +12166,23 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
       }
       if (name === "create_campaign") {
         const fields = input.fields || {};
-        const newC = { id: uid(), name: "", status: "planned", type: "cold_email", personaId: "", productId: "", offerId: "", purpose: "", channels: [], notes: "", sequence: [], ...fields, createdAt: new Date().toISOString() };
+        // Normalize Copilot-supplied fields into the canonical EMPTY_CAMPAIGN shape.
+        // Accept legacy `personaId` (singular) from older tool calls.
+        const personaId = fields.personaId || fields.personaIds?.[0] || "";
+        const channel = fields.channel || (fields.type === "linkedin_message" || fields.type === "linkedin_connection" ? "linkedin" : fields.type === "rts_calling" ? "rts_ai_call" : "email");
+        const newC: any = {
+          ...EMPTY_CAMPAIGN(),
+          name: fields.name || "",
+          channel,
+          type: channel === "email" ? "cold_email" : channel === "linkedin" ? "linkedin_message" : "rts_calling",
+          personaIds: personaId ? [personaId] : (fields.personaIds || []),
+          productId: fields.productId || "",
+          offerId: fields.offerId || "",
+          status: fields.status || "planning",
+        };
         onUpdateCampaigns((prev: any[]) => [...prev, newC]);
-        onToast({ title: "Campaign created", status: "success", message: fields.name || "New campaign" });
-        return `Created campaign "${fields.name || "Untitled"}"`;
+        onToast({ title: "Campaign created", status: "success", message: newC.name || "New campaign" });
+        return `Created ${channel} campaign "${newC.name || "Untitled"}"`;
       }
       if (name === "update_strategy") {
         const strat = input.strategy || {};
@@ -10390,114 +12401,41 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
 
     const historyMsgs = (chats.find(c => c.id === targetId)?.messages ?? [])
       .map(m => ({ role: m.role, content: m.content }));
-    const apiMessages: { role: string; content: any }[] = [...historyMsgs, { role: "user", content: userText }];
 
-    const ctx = buildClientContext(companyData, icps, perfLogs, products, campaigns, strategy, playbooks, battlecards, contentAssets, dfySetup, callRecords);
+    // Use the shared full-context snapshot (primed by AppMain). This is identical across all
+    // Copilot messages in a session, so sending it as a cache_control:"ephemeral" block means the
+    // Anthropic prompt cache hits after the first message — ~90% cheaper input on every subsequent turn.
+    const fullCtx = getFullContext();
+    const fileContextAppended = fileContext ? `\n${fileContext}` : "";
 
-    // Add Client Intelligence data to Copilot context
-    const ciExtra: string[] = [];
-    // Slack/Email comms summary
-    if (slackComms.length > 0) {
-      const slackDays = slackComms.filter((c:any) => c.type === "slack");
-      const slackMsgs = slackDays.reduce((s:number, c:any) => s + (c.messageCount || 0), 0);
-      const emailCount = slackComms.filter((c:any) => c.type === "email").length;
-      ciExtra.push(`\n## CLIENT COMMUNICATIONS\n${slackMsgs} Slack messages (${slackDays.length} days) · ${emailCount} emails`);
-      slackComms.slice(0, 10).forEach((c: any) => {
-        const clean = (c.content||"").replace(/\[(?:(?:CX|CLIENT):)?.*?\]\s*/g,"").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").slice(0,200);
-        ciExtra.push(`- [${c.type}] ${c.date}: ${clean}...`);
+    // First user message carries the cached context block. All other history stays as strings.
+    // We mark the context block AND the last assistant message (if any) as cache breakpoints so history caches too.
+    const apiMessages: { role: string; content: any }[] = [];
+    if (historyMsgs.length === 0) {
+      // Fresh chat — prepend workspace context to the first user turn.
+      apiMessages.push({
+        role: "user",
+        content: [
+          { type: "text", text: `WORKSPACE CONTEXT (read-only snapshot of everything we know about this client):\n${fullCtx}${fileContextAppended}`, cache_control: { type: "ephemeral" } },
+          { type: "text", text: userText },
+        ],
       });
-    }
-    // Sentiment analysis
-    const sentResult = (window as any)[`__sentAnalysis_${activeWorkspace?.id||""}`]?.result;
-    if (sentResult) {
-      ciExtra.push(`\n## SENTIMENT ANALYSIS\nOverall: ${sentResult.overallSentiment?.score}/10 (${sentResult.overallSentiment?.label}), Trend: ${sentResult.overallSentiment?.trend}`);
-      ciExtra.push(sentResult.overallSentiment?.summary || "");
-      if (sentResult.riskSignals?.length) ciExtra.push(`Risk signals: ${sentResult.riskSignals.map((r:any)=>`[${r.severity}] ${r.signal}`).join("; ")}`);
-      if (sentResult.recommendations?.length) ciExtra.push(`Recommendations: ${sentResult.recommendations.map((r:any)=>`[${r.priority}] ${r.action}`).join("; ")}`);
-    }
-    // Pitch analysis
-    const pitchResult = (window as any)[`__pitchAnalysis_${activeWorkspace?.id||""}`]?.result;
-    if (pitchResult) {
-      ciExtra.push(`\n## PITCH ANALYSIS\nScore: ${pitchResult.overallScore}/100 (${pitchResult.grade})`);
-      if (pitchResult.rewrittenPitch) ciExtra.push(`Optimized pitch: ${pitchResult.rewrittenPitch}`);
-      if (pitchResult.talkingPoints?.length) ciExtra.push(`Talking points: ${pitchResult.talkingPoints.join("; ")}`);
-      if (pitchResult.avoidList?.length) ciExtra.push(`Stop saying: ${pitchResult.avoidList.join("; ")}`);
-    }
-    // Client intel
-    const intelResult = (window as any)[`__clientIntel_${activeWorkspace?.id||""}`]?.result;
-    if (intelResult) {
-      ciExtra.push(`\n## CLIENT INTEL PROFILE`);
-      if (intelResult.quickReference) ciExtra.push(`One-liner: ${intelResult.quickReference.oneLiner}\nGolden rule: ${intelResult.quickReference.goldenRule}\nNever: ${intelResult.quickReference.avoid}`);
-      if (intelResult.decisionMaking) ciExtra.push(`Decision style: ${intelResult.decisionMaking.style} — ${intelResult.decisionMaking.description}`);
-      if (intelResult.objections?.length) ciExtra.push(`Objections: ${intelResult.objections.map((o:any)=>`${o.objection} (${o.status})`).join("; ")}`);
-    }
-    // CSM coaching
-    const coachResult = (window as any)[`__csmCoaching_${activeWorkspace?.id||""}`]?.result;
-    if (coachResult) {
-      ciExtra.push(`\n## CSM COACHING\n${coachResult.overallAssessment || ""}`);
-      if (coachResult.criticalFixes?.length) ciExtra.push(`Critical fixes: ${coachResult.criticalFixes.map((f:any)=>f.issue).join("; ")}`);
-    }
-    // Strategic analysis
-    const stratAnalysis = (window as any)[`__stratAnalysis_${activeWorkspace?.id||""}`]?.result;
-    if (stratAnalysis) {
-      ciExtra.push(`\n## STRATEGIC ANALYSIS\nHealth: ${stratAnalysis.overallHealth?.score}/10 — ${stratAnalysis.overallHealth?.oneLiner}`);
-      if (stratAnalysis.positioning) ciExtra.push(`Positioning: ${stratAnalysis.positioning.score}/10 — ${stratAnalysis.positioning.assessment}`);
-      if (stratAnalysis.strategicPivots?.length) ciExtra.push(`Pivots: ${stratAnalysis.strategicPivots.map((p:any)=>p.title).join("; ")}`);
-    }
-
-    // Offers (full list — Copilot needs to know what CTAs exist per product×persona)
-    if (offers && offers.length > 0) {
-      ciExtra.push(`\n## OFFERS (${offers.length})`);
-      offers.forEach((o:any) => {
-        const prod = products.find((p:any) => p.id === o.productId);
-        const pers = icps.find((p:any) => p.id === o.personaId);
-        ciExtra.push(`- [${o.tier||"?"}] ${prod?.name||"?"} × ${pers?.name||"?"}: "${o.ctaText||o.name||""}" — ${o.whatTheyGet||""}`);
+    } else {
+      // Ongoing chat — inject the cached context block as part of the earliest user message so the cache still hits.
+      const first = historyMsgs[0];
+      apiMessages.push({
+        role: first.role,
+        content: [
+          { type: "text", text: `WORKSPACE CONTEXT (read-only snapshot of everything we know about this client):\n${fullCtx}${fileContextAppended}`, cache_control: { type: "ephemeral" } },
+          { type: "text", text: typeof first.content === "string" ? first.content : JSON.stringify(first.content) },
+        ],
       });
+      // Append the rest of history unchanged.
+      for (let i = 1; i < historyMsgs.length; i++) apiMessages.push(historyMsgs[i]);
+      apiMessages.push({ role: "user", content: userText });
     }
 
-    // ROI config
-    if (roiConfig) {
-      ciExtra.push(`\n## ROI CONFIG\n${JSON.stringify(roiConfig).slice(0, 500)}`);
-    }
-
-    // Knowledge Center — uploaded docs + links the user has curated for this client
-    if (wsFiles && wsFiles.length > 0) {
-      ciExtra.push(`\n## KNOWLEDGE CENTER FILES (${wsFiles.length})`);
-      wsFiles.slice(0, 20).forEach((f:any) => {
-        const snippet = (f.content || f.text || "").slice(0, 400);
-        ciExtra.push(`- ${f.name || "Untitled"} (${f.type || "file"}): ${snippet}${snippet.length >= 400 ? "..." : ""}`);
-      });
-    }
-    if (wsLinks && wsLinks.length > 0) {
-      ciExtra.push(`\n## KNOWLEDGE CENTER LINKS (${wsLinks.length})`);
-      wsLinks.slice(0, 20).forEach((l:any) => ciExtra.push(`- ${l.title || l.url}: ${l.description || ""}`));
-    }
-
-    // HubSpot company properties — READ-ONLY. Do not let Copilot attempt to modify these.
-    const hsProps = (companyData as any)?._hubspotProps;
-    if (hsProps && Object.keys(hsProps).length > 0) {
-      const meaningful = Object.entries(hsProps)
-        .filter(([k, v]) => v != null && v !== "" && !k.startsWith("hs_") && !k.startsWith("notes_"))
-        .slice(0, 120); // cap at 120 most-likely-useful properties
-      if (meaningful.length > 0) {
-        ciExtra.push(`\n## HUBSPOT COMPANY DATA (READ-ONLY — source of truth in HubSpot, do not attempt to modify via tools)`);
-        meaningful.forEach(([k, v]) => ciExtra.push(`- ${k}: ${String(v).slice(0, 200)}`));
-      }
-    }
-
-    // Recent call transcripts — give Copilot the actual words for the 3 most recent calls
-    if (callRecords && callRecords.length > 0) {
-      const recentCalls = [...callRecords].sort((a:any,b:any) => new Date(b.callDate||b.scoredAt).getTime() - new Date(a.callDate||a.scoredAt).getTime()).slice(0, 3);
-      ciExtra.push(`\n## RECENT CALL TRANSCRIPTS (${recentCalls.length} most recent, truncated)`);
-      recentCalls.forEach((rec:any) => {
-        const t = (rec.transcript || "").slice(0, 3500);
-        ciExtra.push(`\n[${rec.callDate||"?"}] ${callTypeLabel(rec.callType)} — Score: ${rec.result?.overallScore||"?"}/100\n${t}${rec.transcript?.length > 3500 ? "\n...(truncated)" : ""}`);
-      });
-    }
-
-    const fullCtx = ctx + ciExtra.join("\n");
-
-    const systemPrompt = `You are Copilot, the AI assistant for ${clientName || "this client"}'s outreach platform. You have complete visibility into every part of their workspace — company profile, products, personas, campaigns, sequences, strategy, offers, ROI config, preferences, analytics, client communications (Slack/email/HubSpot), sentiment analysis, pitch analysis, client intelligence, CSM coaching data, HubSpot company properties (read-only), Knowledge Center files and links, and full transcripts of the 3 most recent calls.
+    const systemPrompt = `You are Copilot, the AI assistant for ${clientName || "this client"}'s outreach platform. The first user message contains a WORKSPACE CONTEXT block with complete visibility into this client — company profile, products, personas, campaigns, sequences, strategy, offers, ROI config, preferences, analytics, client communications (Slack/email/HubSpot), sentiment analysis, pitch analysis, client intelligence, CSM coaching data, HubSpot company properties (read-only), Knowledge Center files and links, and full transcripts of the 3 most recent calls. Reference it in every answer.
 
 IMPORTANT DATA READ-ONLY RULES:
 - HubSpot company properties (shown in the HUBSPOT COMPANY DATA section) are READ-ONLY. They're the source of truth in HubSpot. Never attempt to use any update tool to change these. Treat them as fixed context.
@@ -10505,8 +12443,6 @@ IMPORTANT DATA READ-ONLY RULES:
 - Call transcripts are READ-ONLY — they're immutable historical records.
 
 If the user asks you to refresh any of the AI analyses (sentiment, pitch, coaching, intel), use the rerun_analysis tool.
-
-${fullCtx}${fileContext ? `\n${fileContext}` : ""}
 
 YOUR ROLE:
 You are a hands-on strategist who knows every field in this workspace AND can directly modify any data. When the user asks to change, update, set, or create anything — USE YOUR TOOLS to make the change immediately. Do not just suggest changes; execute them.
@@ -13134,6 +15070,16 @@ function AppMain() {
   const [addIcpText,     setAddIcpText]     = useState("");
   const [addIcpCount,   setAddIcpCount]    = useState(1);
   const [icpPreviews,   setIcpPreviews]    = useState<any[]|null>(null);
+  // CSV → Persona import state
+  const [csvImportState, setCsvImportState] = useState<null | { fileName: string; headers: string[]; rows: any[]; importing: boolean }>(null);
+  // Source → cross-platform update proposals (handles transcripts AND documents)
+  const [wbProposals, setWbProposals] = useState<null | {
+    sourceType: "transcript" | "document";
+    sourceId: string;   // callId for transcripts, synthetic id for docs
+    sourceLabel: string;
+    proposals: any[]; // each { id, entityType, entityId, entityLabel, fieldId, fieldLabel, currentValue, proposedValue, mode, confidence, reasoning, quote, _selected }
+    loading: boolean;
+  }>(null);
   const [addPopPos,      setAddPopPos]      = useState<{top:number;left:number}|null>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [showQS,         setShowQS]         = useState(false);
@@ -13196,8 +15142,28 @@ function AppMain() {
   const [products,       setProducts]       = useState<any[]>([]);
   const [offers,         setOffers]         = useState<any[]>([]);
   const [strategy,       setStrategy]       = useState<any>(null);
+  // When true, StrategyPage auto-fires generateRoadmap on mount (used after DFY purchase).
+  const [strategyAutoRun, setStrategyAutoRun] = useState(false);
   const [strategyGen,    setStrategyGen]    = useState<{running:boolean;step:number}>({running:false,step:0});
   const [campaigns,      setCampaigns]      = useState<any[]>([]);
+  const [rtsLists,       setRtsLists]       = useState<any[]>([]);
+  // Auto-promote phases "pending" → "in_progress" when a phase-linked campaign gets real sending activity.
+  // Manual overrides (in_progress, completed, skipped) are preserved.
+  useEffect(() => {
+    if (!strategy?.phases?.length) return;
+    let changed = false;
+    const nextPhases = strategy.phases.map((p:any) => {
+      if (p.status !== "pending") return p;
+      const hasLiveCampaign = (p.campaigns || []).some((_c:any, ci:number) => {
+        const specId = `${p.id || p.number}_${ci}`;
+        const linked = campaigns.find((rc:any) => rc.strategyPhaseId === specId);
+        return linked && (linked.performance?.metrics?.sent || 0) > 0;
+      });
+      if (hasLiveCampaign) { changed = true; return { ...p, status: "in_progress" }; }
+      return p;
+    });
+    if (changed) setStrategy({ ...strategy, phases: nextPhases });
+  }, [campaigns, strategy?.phases?.length]);
   const [playbooks,      setPlaybooks]      = useState<any[]>([]);
   const [contentAssets,  setContentAssets]  = useState<any[]>([]);
   const [battlecards,    setBattlecards]    = useState<any[]>([]);
@@ -13325,6 +15291,7 @@ function AppMain() {
     setOffers(saved?.offers ?? []);
     setStrategy(saved?.strategy ?? null);
     setCampaigns(saved?.campaigns ?? []);
+    setRtsLists(saved?.rtsLists ?? []);
     setPlaybooks(Array.isArray(saved?.playbooks) ? saved.playbooks.filter((p:any) => p && p.id && p.productId) : []);
     setContentAssets(saved?.contentAssets ?? []);
     setBattlecards(saved?.battlecards ?? []);
@@ -13351,6 +15318,7 @@ function AppMain() {
       campaigns: saved?.campaigns || [],
       strategy: saved?.strategy,
       offers: saved?.offers || [],
+      rtsLists: saved?.rtsLists || [],
       playbooks: saved?.playbooks || [],
       battlecards: saved?.battlecards || [],
       contentAssets: saved?.contentAssets || [],
@@ -13378,10 +15346,10 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords, slackComms, aiAnalyses });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, rtsLists, playbooks, contentAssets, battlecards, dfySetup, callRecords, slackComms, aiAnalyses });
     // Build the global full-context snapshot — every AI generator calling with useFullContext:true reads this.
     (window as any).__workspaceCtx = buildFullContext({
-      companyData, products, personas: icps, campaigns, strategy, offers, playbooks, battlecards, contentAssets, dfySetup, roiConfig, perfLogs, callRecords, slackComms, wsFiles, wsLinks,
+      companyData, products, personas: icps, campaigns, strategy, offers, rtsLists, playbooks, battlecards, contentAssets, dfySetup, roiConfig, perfLogs, callRecords, slackComms, wsFiles, wsLinks,
       sentiment: aiAnalyses?.sentiment?.result, pitch: aiAnalyses?.pitch?.result, coaching: aiAnalyses?.coaching?.result, intel: aiAnalyses?.intel?.result,
       stratAnalysis: (window as any)[`__stratAnalysis_${activeWorkspace.id}`]?.result,
     });
@@ -13400,7 +15368,7 @@ function AppMain() {
         if (patch.name) setActiveWorkspace((prev: any) => prev ? { ...prev, name: patch.name } : prev);
       }
     }
-  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, playbooks, contentAssets, battlecards, dfySetup, callRecords, aiAnalyses]);
+  }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, rtsLists, playbooks, contentAssets, battlecards, dfySetup, callRecords, aiAnalyses]);
 
   // sync keys into global + localStorage
   useEffect(() => {
@@ -13453,7 +15421,7 @@ function AppMain() {
   }, [showAddPop]);
 
   const icpsWithOutputs = icps.filter(i=>i.outputs).length;
-  const companyPct = Math.round(ALL_COMPANY_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/ALL_COMPANY_FIELDS.length*100);
+  const companyPct = Math.round(AI_FILLABLE_ALL_COMPANY_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/AI_FILLABLE_ALL_COMPANY_FIELDS.length*100);
   const prefsPct = Math.round(PREFERENCES_FIELDS.filter(f=>fieldFilled(f,companyData[f.id])).length/PREFERENCES_FIELDS.length*100);
   const editingICP = icps.find(i=>i.id===editingId) ?? null;
 
@@ -13583,6 +15551,882 @@ Raw JSON only.`;
     }
     setIcpFilling(null);
   }, [icps, companyData, addToast, updateToast]);
+
+  // ─── UNIFIED CAMPAIGN CREATION ────────────────────────────────────────────
+  // Single entry point for creating a campaign. Every entry point (manual, matrix, copilot, strategy phase)
+  // routes through this so campaign shape stays consistent. Returns the created campaign.
+  const createCampaign = useCallback((input: {
+    channel?: "email"|"linkedin"|"rts_ai_call";
+    productId?: string;
+    personaId?: string;
+    offerId?: string;
+    name?: string;
+    strategyPhaseId?: string|null;
+    audienceSource?: "people_search"|"custom_list"|"rts_list";
+    rtsListId?: string|null;
+    customListName?: string;
+    source?: "manual"|"matrix"|"copilot"|"strategy"|"quickstart";
+    extra?: Record<string, any>;
+  }) => {
+    const channel = input.channel || "email";
+    const c: any = EMPTY_CAMPAIGN();
+
+    // Resolve basic linkage
+    c.channel = channel;
+    c.type = channel === "email" ? "cold_email" : channel === "linkedin" ? "linkedin_message" : "rts_calling"; // legacy compat
+    if (input.productId) c.productId = input.productId;
+    if (input.personaId) c.personaIds = [input.personaId];
+    if (input.offerId) c.offerId = input.offerId;
+    if (input.strategyPhaseId) c.strategyPhaseId = input.strategyPhaseId;
+
+    // Audience source
+    c.audienceSource = input.audienceSource || "people_search";
+    if (input.rtsListId) c.rtsListId = input.rtsListId;
+    if (input.customListName) c.customListName = input.customListName;
+
+    // Intent tier — RTS-sourced campaigns are high-intent: short sequence, direct CTA, faster cadence
+    if (c.rtsListId || c.audienceSource === "rts_list") {
+      c.intentTier = "high";
+      // Shorter test window (signals decay fast — 1-2 days, not 3-5)
+      c.testPlan = { ...c.testPlan, initialTestDays: 2, firstIterationVariable: "cta", iterationSchedule: "D1-2 initial, D3-4 CTA tier, D5-6 opening hook — signals decay, move fast" };
+      // Stricter safety — bouncing high-intent list wastes the signal
+      c.safetyLimits = { ...c.safetyLimits, bouncePauseThreshold: 5, lowReplyThreshold: { sentCount: 150, repliesAtMost: 0 } };
+      // Guidance fields a CSM (or AI) reads when building the sequence
+      c.handoffCriteria = "HIGH-INTENT: reference the buying signal in touch 1. Direct meeting ask — not a soft content offer. 2-3 touches max over 5-7 days.";
+    }
+
+    // Auto-name if not provided
+    if (input.name) {
+      c.name = input.name;
+    } else {
+      const prod = products.find((p:any) => p.id === input.productId);
+      const pers = icps.find((p:any) => p.id === input.personaId);
+      const channelLabel = channel === "email" ? "Email" : channel === "linkedin" ? "LinkedIn" : "RTS Call";
+      c.name = `${pers?.name || "Persona"} × ${prod?.name || "Product"} — ${channelLabel}`;
+    }
+
+    // Auto-populate targeting from the linked persona
+    const pers = icps.find((p:any) => p.id === input.personaId);
+    if (pers?.data) {
+      const d = pers.data;
+      c.targeting = {
+        ...c.targeting,
+        titles: d.buyer || "",
+        industries: d.industries || "",
+        companySizes: Array.isArray(d.co_sizes) ? d.co_sizes.join(", ") : (d.co_sizes || ""),
+        revenue: d.revenue || "",
+        personLocation: d.geo || "",
+        companyLocation: d.geo || "",
+        keywords: d.keywords || "",
+        technologies: d.tech || "",
+        intentTopics: d.intent_topics || "",
+        excludedDomains: d.neg || "",
+      };
+    }
+    // Merge company-level exclusions
+    const cd = companyData as Record<string,string>;
+    if (cd.co_exclude) c.targeting.excludedCompetitors = cd.co_exclude;
+
+    // Channel-specific defaults
+    if (channel === "linkedin") {
+      // LinkedIn hard limits per account per day: 10 connection requests + 10 direct messages.
+      // Total daily volume scales with available accounts (co_linkedin_accounts).
+      const liAccts = Math.max(1, parseInt(cd.co_linkedin_accounts || "1") || 1);
+      const connPerAcct = 10, msgPerAcct = 10;
+      c.senderConfig = {
+        accountsNeeded: liAccts,
+        warmupRequired: false,
+        dailyVolumePerAccount: connPerAcct + msgPerAcct,
+      };
+      c.linkedinLimits = {
+        accounts: liAccts,
+        connectionsPerAccountPerDay: connPerAcct,
+        messagesPerAccountPerDay: msgPerAcct,
+        maxDailyConnections: liAccts * connPerAcct,
+        maxDailyMessages: liAccts * msgPerAcct,
+      };
+      c.dailySendVolume = liAccts * (connPerAcct + msgPerAcct);
+    } else if (channel === "rts_ai_call") {
+      c.senderConfig = { accountsNeeded: 0, warmupRequired: false, dailyVolumePerAccount: 0 };
+      c.dailySendVolume = 100;
+    }
+
+    // AI-calling campaigns require an RTS list link
+    if (channel === "rts_ai_call") {
+      const list = rtsLists.find((l:any) => l.id === input.rtsListId);
+      if (!list) {
+        addToast({ title:"RTS list required", status:"error", message:"AI calling campaigns must be linked to an RTS list" });
+        return null;
+      }
+      c.audienceSource = "rts_list";
+      c.rtsListId = input.rtsListId;
+    }
+
+    // Per-campaign benchmark calibration — replaces the old company-level defaults.
+    // Runs AFTER channel/type/intent/audienceSource are settled so calibration sees the final shape.
+    c.benchmarks = calibrateCampaignBenchmarks(c);
+
+    // Apply any extra overrides last
+    if (input.extra) Object.assign(c, input.extra);
+
+    setCampaigns(prev => [...prev, c]);
+
+    // Back-link to RTS list if applicable
+    if (c.rtsListId) {
+      setRtsLists(prev => prev.map((l:any) => l.id === c.rtsListId ? { ...l, linkedCampaignIds: [...(l.linkedCampaignIds||[]), c.id], updatedAt: new Date().toISOString() } : l));
+    }
+
+    addToast({ title: "Campaign created", status: "success", message: c.name });
+    return c;
+  }, [products, icps, companyData, rtsLists, addToast]);
+
+  // ─── CSV → Persona Import ───────────────────────────────────────────────────
+  // Parses a contacts CSV, asks AI to synthesize a persona around the rows + score fit per product.
+  const parseContactsCSV = (text: string) => {
+    text = text.replace(/^\uFEFF/, ""); // strip BOM
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (!lines.length) return { headers: [], rows: [] };
+    const parseLine = (line: string) => {
+      const out: string[] = [];
+      let cur = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+          else inQ = !inQ;
+        } else if (ch === "," && !inQ) { out.push(cur); cur = ""; }
+        else cur += ch;
+      }
+      out.push(cur);
+      return out.map(s => s.trim().replace(/^"|"$/g, ""));
+    };
+    const headers = parseLine(lines[0]);
+    const rows = lines.slice(1).map(l => {
+      const vals = parseLine(l);
+      return Object.fromEntries(headers.map((h, i) => [h, vals[i] || ""]));
+    });
+    return { headers, rows };
+  };
+
+  const handleCsvFileSelect = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = String(e.target?.result || "");
+      const { headers, rows } = parseContactsCSV(text);
+      if (!rows.length) { addToast({ title:"Empty CSV", status:"error", message:"No data rows found" }); return; }
+      setCsvImportState({ fileName: file.name, headers, rows, importing: false });
+    };
+    reader.onerror = () => addToast({ title:"Read failed", status:"error", message:"Couldn't read the file" });
+    reader.readAsText(file);
+  };
+
+  const generatePersonaFromCsv = async () => {
+    if (!csvImportState) return;
+    setCsvImportState({ ...csvImportState, importing: true });
+    try {
+      // Sample up to 100 rows to keep the prompt manageable on large files
+      const sampleRows = csvImportState.rows.slice(0, 100);
+      const csvSnippet = [csvImportState.headers.join(","), ...sampleRows.map(r => csvImportState.headers.map(h => (r[h] || "").replace(/"/g,'""')).map(v => /[,"\n]/.test(v) ? `"${v}"` : v).join(","))].join("\n").slice(0, 9000);
+      const productList = products.map((p:any) => `- ${p.id}: ${p.name} (${p.category || "?"}) — ${(p.valueProposition || p.description || p.problemsSolved || "").slice(0, 200)}`).join("\n");
+
+      const prompt = `Analyze this CSV of contacts and synthesize ONE B2B persona that represents the common pattern. Then score the persona's fit against each workspace product.
+
+${NAMING_RULES.persona}
+
+CSV FILE: ${csvImportState.fileName} — ${csvImportState.rows.length} total contacts (sample of ${sampleRows.length} shown below)
+
+CSV SAMPLE:
+${csvSnippet}
+
+WORKSPACE PRODUCTS (${products.length}):
+${productList || "(no products defined)"}
+
+Return ONLY JSON:
+{
+  "name": "<persona name per rules>",
+  "fields": {
+    "industries": "", "co_sizes": ["SMB 1–50"|"Mid-Market 51–500"|"Enterprise 500+"],
+    "geo": "", "revenue": "", "tech": "", "keywords": "",
+    "dream_accts": "", "neg": "", "intent_topics": "", "real_filters": "",
+    "buyer": "", "champ": "", "goals": "", "fears": "", "metrics": "",
+    "objections": "", "sub_personas": "",
+    "pain1": "", "pain2": "", "gains": "", "triggers": "",
+    "buying_signals_direct": "", "buying_signals_indirect": "",
+    "sq_cost": "", "friction_points": "",
+    "tone": "", "hook": "", "cta": "", "why_client_wins": "", "icp_proof": "",
+    "seq_strategy": "", "seq_cta_style": "",
+    "current_solutions": "", "incumbent_strengths": "", "switching_triggers": "", "displacement_messaging": "",
+    "win_loss_patterns": "",
+    "best_channel": "", "best_time": "", "linkedin_activity": "", "phone_accessibility": "", "email_preference": "",
+    "interested_criteria": "", "warm_criteria": "", "meeting_ready_criteria": "", "not_now_criteria": "", "dead_criteria": ""
+  },
+  "productFitScores": [
+    { "productId": "<exact id from the product list above>", "productName": "<name>", "score": <0-100>, "reasoning": "<1-2 sentence rationale tying the CSV pattern to this product>" }
+  ],
+  "sourceSummary": "<2-3 sentence summary of what the CSV contains: common titles, industries, sizes, any notable pattern>"
+}
+
+RULES:
+- Score EVERY product in the list, not just the best fit. Low scores are fine when the persona doesn't match.
+- Ground the persona in the ACTUAL CSV data — cite specific patterns you saw (titles, industries, company indicators).
+- If columns include emails, infer domain patterns → industry/size signals.
+- productFitScores.productId MUST be one of the ids listed above (copy-paste).
+- Raw JSON only, no markdown.`;
+
+      const raw = await callAI(prompt, "Return ONLY valid JSON. No markdown.", 6000, { useFullContext: true });
+      const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+      const persona: any = newICP(icps.length, parsed.fields || {}, parsed.name || `Persona from ${csvImportState.fileName.replace(/\.csv$/i,"")}`, {});
+      persona.productFitScores = (parsed.productFitScores || []).filter((s:any) => s && s.productId);
+      persona.csvSource = { fileName: csvImportState.fileName, rowCount: csvImportState.rows.length, summary: parsed.sourceSummary || "", importedAt: new Date().toISOString() };
+      // Auto-link strong matches (score >= 70) to products so Coverage Matrix picks them up
+      persona.linkedProductIds = (parsed.productFitScores || []).filter((s:any) => s.score >= 70 && s.productId).map((s:any) => s.productId);
+
+      setIcps((prev:any) => [...prev, persona]);
+      addToast({ title:"Persona generated", status:"success", message: `"${persona.name}" — ${csvImportState.rows.length} contacts analyzed` });
+      setCsvImportState(null);
+      setEditingId(persona.id);
+    } catch (e) {
+      console.error("CSV persona generation failed:", e);
+      addToast({ title:"Generation failed", status:"error", message:"Try again — AI didn't return a valid persona" });
+      setCsvImportState(s => s ? { ...s, importing: false } : null);
+    }
+  };
+
+  // ─── Transcript → Cross-Platform Field Updates ─────────────────────────────
+  // AI reads a call transcript + current workspace state and proposes exact field-level updates
+  // across company/personas/products/offers. User reviews + approves selectively; approved ones
+  // are dispatched via the relevant state setters.
+  const proposeWorkspaceUpdates = async (rec: any) => {
+    if (!rec?.transcript) { addToast({ title:"No transcript", status:"error", message:"This call record doesn't have a transcript" }); return; }
+    setWbProposals({ sourceType: "transcript", sourceId: rec.id, sourceLabel: `${callTypeLabel(rec.callType)} · ${rec.callDate || ""}`, proposals: [], loading: true });
+    try {
+      const cd = companyData as Record<string,string>;
+      // Summarize current workspace state for the AI — show what's already filled
+      const companyBlock = Object.entries(cd).filter(([k,v]) => !k.startsWith("_") && v && String(v).trim())
+        .map(([k,v]) => `  ${k}: ${String(v).slice(0, 200)}`).join("\n") || "  (empty)";
+      const personasBlock = icps.map((p:any, i:number) => {
+        const d = p.data || {};
+        const keyFields = ["buyer","industries","pain1","pain2","goals","triggers","objections","current_solutions","tone","hook","cta","best_channel"];
+        const filled = keyFields.filter(k => d[k] && String(d[k]).trim()).map(k => `    ${k}: ${String(d[k]).slice(0,150)}`).join("\n");
+        return `  [persona:${p.id}] ${p.name || `Persona ${i+1}`}\n${filled || "    (mostly empty)"}`;
+      }).join("\n") || "  (no personas)";
+      const productsBlock = products.map((p:any, i:number) => {
+        const keyFields = ["description","valueProposition","problemsSolved","useCases","idealCustomer","competitors","buyerObjections","proofPoints","acv","avgDealSize"];
+        const filled = keyFields.filter(k => (p as any)[k] && String((p as any)[k]).trim()).map(k => `    ${k}: ${String((p as any)[k]).slice(0,150)}`).join("\n");
+        return `  [product:${p.id}] ${p.name || `Product ${i+1}`}\n${filled || "    (mostly empty)"}`;
+      }).join("\n") || "  (no products)";
+
+      const prompt = `You are a workspace-data write-back engine. Analyze this call transcript and propose SPECIFIC FIELD UPDATES across the workspace. The CX rep will review and selectively apply your proposals.
+
+CALL: ${rec.callType} on ${rec.callDate || "?"}
+TRANSCRIPT (truncated if long):
+${(rec.transcript || "").slice(0, 12000)}
+
+CURRENT WORKSPACE STATE (what's already filled):
+
+## COMPANY
+${companyBlock}
+
+## PERSONAS
+${personasBlock}
+
+## PRODUCTS
+${productsBlock}
+
+PROPOSABLE FIELDS BY ENTITY:
+
+COMPANY (entityType="company", entityId omitted):
+  co_name, co_pitch, co_industry, co_deal, co_cycle, co_goal, co_customers,
+  co_competitors, co_mailbox_count, co_existing_lists, co_notes, co_avoid, co_exclude
+
+PERSONA (entityType="persona", entityId=<existing id from list above>):
+  buyer, champ, industries, geo, revenue, co_sizes, tech, keywords, dream_accts, neg,
+  intent_topics, pain1, pain2, gains, goals, fears, metrics, objections, triggers,
+  buying_signals_direct, buying_signals_indirect, sq_cost, friction_points,
+  current_solutions, incumbent_strengths, switching_triggers, displacement_messaging,
+  tone, hook, cta, best_channel, best_time, linkedin_activity, phone_accessibility
+
+PRODUCT (entityType="product", entityId=<existing id from list above>):
+  description, valueProposition, problemsSolved, useCases, keyFeatures, idealCustomer,
+  competitors, buyerObjections, switchTriggers, acv, mrr, avgDealSize, ltv,
+  avgDaysToClose, dealStakeholders, proofPoints, roiMetrics, caseStudies,
+  industryProof, socialProof, objectionRebuttals, unsolvedImpact,
+  elevatorPitch, positioningStatement, messagingDos, messagingDonts
+
+Return ONLY JSON:
+{
+  "proposals": [
+    {
+      "id": "<unique short id>",
+      "entityType": "company" | "persona" | "product",
+      "entityId": "<id from list above, or empty string for company>",
+      "entityLabel": "<human label — e.g. 'Company' or 'Persona: SaaS — VP Sales' or 'Product: Lead Finder'>",
+      "fieldId": "<exact field key from the lists above>",
+      "fieldLabel": "<human-readable field name>",
+      "currentValue": "<what's there now, truncated>",
+      "proposedValue": "<new value to set>",
+      "mode": "set_if_empty" | "append" | "replace",
+      "confidence": <0-100>,
+      "reasoning": "<1-2 sentences on why this update>",
+      "quote": "<direct transcript excerpt ≤200 chars that supports this>"
+    }
+  ]
+}
+
+RULES:
+- ONLY propose updates backed by EXPLICIT evidence in the transcript. If it isn't said, don't propose it.
+- Prefer "set_if_empty" when current is blank. Use "append" for list-like fields (co_notes, co_customers, co_competitors, objections, pain2). Use "replace" only when the transcript DIRECTLY supersedes the current value (client says "we actually moved off Competitor X" etc.).
+- entityId MUST exactly match an id in the workspace lists above (for persona/product). For company, use entityId="".
+- fieldId MUST exactly match one of the field keys listed.
+- Include a quote for EVERY proposal — no evidence, no proposal.
+- Skip low-confidence (<55) proposals entirely.
+- Batch related updates (don't propose 8 edits to the same field).
+- Prefer proposing a FEW high-signal updates over many low-signal ones.
+- Raw JSON only, no markdown.`;
+
+      const raw = await callAI(prompt, "Return ONLY valid JSON.", 6000, { useFullContext: true });
+      const parsed = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+      const proposals = (parsed.proposals || []).map((p:any) => ({ ...p, id: p.id || uid(), _selected: (p.confidence||0) >= 70 }));
+      setWbProposals(prev => prev ? { ...prev, proposals, loading: false } : null);
+      if (!proposals.length) addToast({ title:"No updates proposed", status:"info", message:"Nothing in the transcript warranted a field update" });
+    } catch (e) {
+      console.error("Workspace write-back failed:", e);
+      addToast({ title:"Proposal generation failed", status:"error", message:"AI didn't return valid proposals — try again" });
+      setWbProposals(null);
+    }
+  };
+
+  // ─── HubSpot Sync (Company page header) ────────────────────────────────────
+  // Pulls HubSpot company properties + emails. Maps HS keys → our companyData fields.
+  // Blank fields are auto-filled. Fields with existing content that differ are queued for
+  // per-field review (approve / reject / edit) via the existing write-back modal.
+  const [hubspotSyncing, setHubspotSyncing] = useState(false);
+  const syncHubspotForCompanyPage = async () => {
+    if (!getHubspotToken()) { addToast({ title:"Add HubSpot token first", status:"error", message:"Profile menu → API Keys → HubSpot Private App Token" }); return; }
+    const cd = companyData as Record<string,string>;
+    const domain = (cd.co_website || "").trim();
+    if (!domain) { addToast({ title:"Set company website first", status:"error", message:"Need a website to match a HubSpot company" }); return; }
+    setHubspotSyncing(true);
+    const toastId = addToast({ title:"Syncing HubSpot…", status:"loading", message:`Looking up ${domain}` });
+    try {
+      const company = await hubspotFindCompanyByDomain(domain);
+      if (!company?.id) throw new Error(`No HubSpot company matches domain "${domain}"`);
+      updateToast(toastId, { message:"Fetching all company properties…" });
+      const full = await hubspotGetCompanyFull(company.id);
+      updateToast(toastId, { message:"Fetching email history…" });
+      const emails = await hubspotGetCompanyEmails(company.id);
+      const hsProps = full?.properties || {};
+
+      // Transforms for values that need reshaping before they fit our field format
+      const toEmployeeBand = (raw: any): string => {
+        const n = parseInt(String(raw));
+        if (isNaN(n) || n <= 0) return "";
+        if (n <= 10) return "1–10 employees";
+        if (n <= 50) return "10–50 employees";
+        if (n <= 200) return "50–200 employees";
+        if (n <= 500) return "200–500 employees";
+        if (n <= 1000) return "500–1000 employees";
+        return "1000+ employees";
+      };
+      const toRevenueText = (raw: any): string => {
+        const n = parseFloat(String(raw).replace(/[^\d.]/g, ""));
+        if (isNaN(n) || n <= 0) return "";
+        if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B ARR`;
+        if (n >= 1_000_000)     return `$${(n / 1_000_000).toFixed(1)}M ARR`;
+        if (n >= 1_000)         return `$${Math.round(n / 1_000)}K ARR`;
+        return `$${n} ARR`;
+      };
+
+      // HubSpot key → { our field id, optional transform }
+      const fieldMap: Array<{ hsKey: string; localField: string; transform?: (v:any)=>string }> = [
+        { hsKey: "name",              localField: "co_name" },
+        { hsKey: "industry",          localField: "co_industry" },
+        { hsKey: "description",       localField: "co_pitch" },
+        { hsKey: "website",           localField: "co_website" },
+        { hsKey: "numberofemployees", localField: "co_size",    transform: toEmployeeBand },
+        { hsKey: "annualrevenue",     localField: "co_revenue", transform: toRevenueText },
+        { hsKey: "about_us",          localField: "co_pitch" }, // fallback source for pitch
+        { hsKey: "linkedin_company_page", localField: "co_website" }, // fallback if no website
+      ];
+
+      const autoFill: Record<string, string> = {};
+      const proposals: any[] = [];
+      const seenFields = new Set<string>();
+
+      for (const { hsKey, localField, transform } of fieldMap) {
+        const hsRaw = hsProps[hsKey];
+        if (!hsRaw) continue;
+        const newValue = (transform ? transform(hsRaw) : String(hsRaw)).trim();
+        if (!newValue) continue;
+        if (seenFields.has(localField)) continue; // first mapping per field wins
+        const currentValue = String((cd as any)[localField] || "").trim();
+        if (!currentValue) {
+          autoFill[localField] = newValue;
+          seenFields.add(localField);
+        } else if (currentValue !== newValue) {
+          const fieldDef = ALL_COMPANY_FIELDS.find((f:any) => f.id === localField);
+          proposals.push({
+            id: uid(),
+            entityType: "company",
+            entityId: "",
+            entityLabel: "Company",
+            fieldId: localField,
+            fieldLabel: fieldDef?.label || localField,
+            currentValue,
+            proposedValue: newValue,
+            mode: "replace",
+            confidence: 85,
+            reasoning: `HubSpot has a different value for ${fieldDef?.label || localField}. Review whether to replace.`,
+            quote: `HubSpot → ${hsKey}: "${String(hsRaw).slice(0, 200)}"`,
+            _selected: false, // default unchecked — replacements require explicit approval
+          });
+          seenFields.add(localField);
+        }
+      }
+
+      // Apply auto-fills + HubSpot snapshot in one pass
+      setCompanyData((prev:any) => ({
+        ...prev,
+        ...autoFill,
+        _hubspotProps: hsProps,
+        _hubspotCompanyId: company.id,
+      }));
+
+      // Import new emails into slackComms (deduped by HubSpot id)
+      const existingHsIds = new Set((slackComms||[]).filter((c:any) => c.source === "hubspot").map((c:any) => c.hsId));
+      const newEmails = emails
+        .filter((e:any) => e.id && !existingHsIds.has(e.id))
+        .map((e:any) => {
+          const p = e.properties || {};
+          const dir = p.hs_email_direction || "UNKNOWN";
+          const body = p.hs_email_text || (p.hs_email_html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+          return {
+            id: `hs_${e.id}`, hsId: e.id, type: "email", source: "hubspot",
+            date: (p.hs_timestamp || p.hs_createdate || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+            subject: p.hs_email_subject || "",
+            participants: [p.hs_email_from_email, p.hs_email_to_email].filter(Boolean).join(" → "),
+            direction: dir,
+            content: `[${dir}] From: ${p.hs_email_from_email||"?"} | To: ${p.hs_email_to_email||"?"} | Subject: ${p.hs_email_subject||""}\n\n${body}`.trim(),
+          };
+        });
+      if (newEmails.length) setSlackComms((prev:any) => [...newEmails, ...(prev||[])]);
+
+      // If there are conflicts, open the review modal (reuses the write-back UI)
+      if (proposals.length > 0) {
+        setWbProposals({
+          sourceType: "document",
+          sourceId: `hubspot_${Date.now()}`,
+          sourceLabel: `HubSpot sync · ${company.properties?.name || domain}`,
+          proposals,
+          loading: false,
+        });
+      }
+
+      const filledCount = Object.keys(autoFill).length;
+      const msgParts: string[] = [];
+      if (filledCount > 0) msgParts.push(`${filledCount} blank field${filledCount!==1?"s":""} filled`);
+      if (proposals.length > 0) msgParts.push(`${proposals.length} update${proposals.length!==1?"s":""} to review`);
+      if (newEmails.length > 0) msgParts.push(`${newEmails.length} new email${newEmails.length!==1?"s":""}`);
+      if (msgParts.length === 0) msgParts.push("Already in sync — no changes");
+
+      updateToast(toastId, {
+        status: "success",
+        title: "HubSpot synced",
+        message: msgParts.join(" · "),
+      });
+    } catch (err:any) {
+      console.error("[HubSpot] sync failed:", err);
+      updateToast(toastId, { status:"error", title:"HubSpot sync failed", message:(err?.message || "Check console").slice(0, 120) });
+    }
+    setHubspotSyncing(false);
+  };
+
+  // ─── Slack Sync (Integrations page) ────────────────────────────────────────
+  // Fetches new messages from the configured Slack channel since last sync, groups by day,
+  // dedupes, and appends to slackComms. Mirrors the existing Client Intel sync behavior.
+  const [slackSyncing, setSlackSyncing] = useState(false);
+  const syncSlackForIntegrations = async () => {
+    if (!getSlackToken()) { addToast({ title:"Add Slack token first", status:"error", message:"Integrations → Slack → Bot Token" }); return; }
+    const cd = companyData as Record<string,string>;
+    const channelId = cd.co_slack_channel;
+    if (!channelId) { addToast({ title:"Configure a Slack channel", status:"error", message:"Go to Client Intel → Slack Integration → Configure to pick a channel" }); return; }
+    setSlackSyncing(true);
+    const toastId = addToast({ title:"Syncing Slack…", status:"loading", message:"Fetching messages" });
+    try {
+      const userMap = await fetchSlackUsers();
+      const lastSync = cd.co_slack_last_sync || "";
+      const oldest = lastSync ? String(new Date(lastSync).getTime() / 1000) : undefined;
+      const result = await fetchSlackMessages(channelId, oldest);
+      if (!result.ok) {
+        updateToast(toastId, { status:"error", title:"Slack sync failed", message: result.error || "" });
+        setSlackSyncing(false);
+        return;
+      }
+      const msgs = result.messages
+        .filter((m:any) => m.type === "message" && !m.subtype && m.text)
+        .reverse();
+      if (msgs.length === 0) {
+        updateToast(toastId, { status:"info", title:"No new messages", message:"Slack channel is up to date" });
+        setSlackSyncing(false);
+        return;
+      }
+      // Group messages by day
+      const byDay: Record<string, string[]> = {};
+      for (const m of msgs) {
+        const day = new Date(parseFloat(m.ts) * 1000).toISOString().slice(0,10);
+        (byDay[day] = byDay[day] || []).push(`[${userMap[m.user] || m.user || "Unknown"}] ${m.text}`);
+      }
+      // Add each day as a slackComm, skipping days we already have
+      const existingDayKeys = new Set((slackComms || []).filter((c:any) => c.type === "slack" && c.channel).map((c:any) => `${c.date}:${c.channel}`));
+      const channelLabel = cd.co_slack_channel_name ? `#${cd.co_slack_channel_name}` : `#${channelId}`;
+      let added = 0;
+      const newComms: any[] = [];
+      for (const [day, dayMsgs] of Object.entries(byDay)) {
+        if (existingDayKeys.has(`${day}:${channelLabel}`)) continue;
+        newComms.push({
+          id: uid(),
+          type: "slack",
+          channel: channelLabel,
+          date: day,
+          content: dayMsgs.join("\n"),
+          messageCount: dayMsgs.length,
+          autoSynced: true,
+        });
+        added++;
+      }
+      if (newComms.length) setSlackComms(prev => [...newComms, ...(prev || [])]);
+      setCompanyData((prev:any) => ({ ...prev, co_slack_last_sync: new Date().toISOString() }));
+      updateToast(toastId, { status:"success", title:`Synced ${msgs.length} message${msgs.length!==1?"s":""}`, message: `${added} day${added!==1?"s":""} added to Client Intel` });
+    } catch (e:any) {
+      console.error("[Slack] sync failed:", e);
+      updateToast(toastId, { status:"error", title:"Slack sync failed", message:(e?.message || "Check console").slice(0, 120) });
+    }
+    setSlackSyncing(false);
+  };
+
+  // ─── Sales → CX Handoff Brief ──────────────────────────────────────────────
+  // Synthesizes a pre-onboarding handoff document from HubSpot data + email/Slack comms + any sales-era calls.
+  // Persists on companyData._handoffBrief so it survives reloads.
+  const [handoffGenerating, setHandoffGenerating] = useState(false);
+  const [handoffBriefOpen, setHandoffBriefOpen] = useState(false);
+  const generateHandoffBrief = async () => {
+    const cd = companyData as Record<string,any>;
+    const hsProps = cd._hubspotProps || {};
+    const hsPropCount = Object.keys(hsProps).filter(k => hsProps[k] != null && hsProps[k] !== "").length;
+    const emailComms = (slackComms || []).filter((c:any) => c.type === "email");
+    const slackMsgs = (slackComms || []).filter((c:any) => c.type === "slack");
+    const calls = callRecords || [];
+    const totalSignals = hsPropCount + emailComms.length + slackMsgs.length + calls.length;
+    if (totalSignals < 3) {
+      addToast({ title:"Not enough source data", status:"error", message:"Connect HubSpot or upload emails / call transcripts first — need at least a few data points for a meaningful brief." });
+      return;
+    }
+    setHandoffGenerating(true);
+    try {
+      const hsBlock = hsPropCount > 0
+        ? Object.entries(hsProps).filter(([k,v]) => v != null && v !== "" && !k.startsWith("hs_")).slice(0, 60)
+            .map(([k,v]) => `  ${k}: ${String(v).slice(0, 300)}`).join("\n")
+        : "(no HubSpot data connected)";
+      const emailBlock = emailComms.slice(0, 20).map((c:any) => {
+        const clean = (c.content || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").slice(0, 800);
+        return `[${c.date || "?"}] ${c.source ? `(${c.source}) ` : ""}${c.subject ? c.subject + " — " : ""}${clean}`;
+      }).join("\n\n") || "(no email communications)";
+      const slackBlock = slackMsgs.slice(0, 20).map((c:any) => {
+        const clean = (c.content || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").slice(0, 500);
+        return `[slack ${c.date || "?"}] ${clean}`;
+      }).join("\n") || "(no Slack communications)";
+      const callsBlock = calls.slice(0, 5).map((r:any) => `[${callTypeLabel(r.callType)} · ${r.callDate || "?"}]\n${(r.transcript || "").slice(0, 2500)}`).join("\n\n---\n\n") || "(no call transcripts)";
+
+      const prompt = `You are producing a SALES → CX HANDOFF BRIEF for a new client workspace. The CX rep has just been assigned this account and needs to quickly understand what sales discussed, promised, and learned — before the first onboarding call.
+
+SOURCES:
+
+## HUBSPOT DATA (${hsPropCount} fields populated)
+${hsBlock}
+
+## EMAIL COMMUNICATIONS (${emailComms.length} emails, showing up to 20)
+${emailBlock}
+
+## SLACK MESSAGES (${slackMsgs.length} messages, showing up to 20)
+${slackBlock}
+
+## CALL TRANSCRIPTS (${calls.length} calls, showing up to 5)
+${callsBlock}
+
+Produce a structured handoff brief in Markdown. Each section must be grounded in the sources above — cite specific evidence (date, quote, or HubSpot field) inline. If a section has no evidence, say so explicitly ("No evidence in sources") — do NOT hallucinate.
+
+Return ONLY JSON:
+{
+  "brief": {
+    "oneLiner": "<one sentence summary of this client and the sales context>",
+    "clientOverview": "<markdown paragraph: who they are, what they do, industry, size hints from HubSpot or comms>",
+    "salesJourney": "<markdown paragraph: who on sales team talked to them, when, how it progressed. Cite dates.>",
+    "whatTheyCareAbout": "<markdown bullets — stated priorities, goals, outcomes they want. Evidence required.>",
+    "expectationsSet": "<markdown bullets — what sales promised them or what they expect from the service. Evidence required.>",
+    "stakeholders": [{"name": "", "role": "", "signal": "<what we know about them / their sentiment>"}],
+    "topicsDiscussed": ["<specific subjects that came up — not generic>"],
+    "alignment": "<markdown: where client is aligned with our approach>",
+    "concerns": "<markdown: objections raised, hesitations, things they pushed back on>",
+    "watchouts": ["<specific red flags or things the CX rep should handle carefully>"],
+    "openQuestions": ["<things the onboarding call should explicitly cover>"]
+  },
+  "fieldProposals": [
+    {
+      "id": "<unique id>",
+      "entityType": "company" | "persona" | "product",
+      "entityId": "<existing id or empty for company>",
+      "entityLabel": "<human label>",
+      "fieldId": "<exact field key>",
+      "fieldLabel": "<human label>",
+      "currentValue": "<what's there now>",
+      "proposedValue": "<new value>",
+      "mode": "set_if_empty" | "append" | "replace",
+      "confidence": <0-100>,
+      "reasoning": "<1-2 sentences>",
+      "quote": "<exact excerpt from sources ≤200 chars>"
+    }
+  ]
+}
+
+FIELD PROPOSALS — ONLY include updates with explicit evidence:
+- Company fields (entityType="company"): co_name, co_pitch, co_industry, co_deal, co_cycle, co_goal, co_customers, co_competitors, co_notes, co_avoid
+- Don't propose persona/product updates unless the sales-era sources directly describe a persona or product — usually the CX onboarding will cover that.
+- Be CONSERVATIVE with field proposals: prefer set_if_empty, only propose 3-8 high-signal updates.
+
+RULES:
+- EVERY brief section must cite evidence from the sources or say "No evidence in sources".
+- Stakeholders array: only include people explicitly mentioned by name.
+- topicsDiscussed: specific — not "business needs" but "lead volume concerns in Q1" style.
+- Raw JSON only, no markdown wrapping.`;
+
+      const raw = await callAI(prompt, "Return ONLY valid JSON.", 8000, { useFullContext: true });
+      const parsed = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+      const brief = parsed.brief || {};
+      const result = {
+        content: brief,
+        sources: { hubspot: hsPropCount, email: emailComms.length, slack: slackMsgs.length, calls: calls.length },
+        generatedAt: new Date().toISOString(),
+      };
+      setCompanyData((prev:any) => ({ ...prev, _handoffBrief: result }));
+      setHandoffBriefOpen(true);
+      addToast({ title:"Handoff brief ready", status:"success", message: brief.oneLiner || `Synthesized from ${totalSignals} signals` });
+
+      // If AI proposed field updates, offer them via the existing write-back engine
+      if (Array.isArray(parsed.fieldProposals) && parsed.fieldProposals.length > 0) {
+        const proposals = parsed.fieldProposals.map((p:any) => ({ ...p, id: p.id || uid(), _selected: (p.confidence||0) >= 70 }));
+        // Queue the proposals — user can open via a CTA in the brief modal
+        (window as any).__handoffBriefProposals = proposals;
+      } else {
+        (window as any).__handoffBriefProposals = null;
+      }
+    } catch (e) {
+      console.error("Handoff brief failed:", e);
+      addToast({ title:"Brief generation failed", status:"error", message:"AI didn't return a valid brief — try again" });
+    }
+    setHandoffGenerating(false);
+  };
+  const openHandoffWritebacks = () => {
+    const proposals = (window as any).__handoffBriefProposals;
+    if (!proposals?.length) { addToast({ title:"No field updates proposed", status:"info", message:"The brief didn't surface specific field updates" }); return; }
+    setWbProposals({
+      sourceType: "document",
+      sourceId: `handoff_${Date.now()}`,
+      sourceLabel: "Sales → CX handoff brief",
+      proposals,
+      loading: false,
+    });
+  };
+
+  // Implementation doc → cross-platform update proposals. Uses the same write-back engine as transcripts.
+  const importImplementationDoc = async (file: File) => {
+    const fileName = file.name;
+    const ext = (fileName.split(".").pop() || "").toLowerCase();
+    setWbProposals({ sourceType: "document", sourceId: `doc_${Date.now()}`, sourceLabel: `Implementation doc · ${fileName}`, proposals: [], loading: true });
+    let text = "";
+    try {
+      if (ext === "docx") {
+        const buf = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer: buf });
+        text = result.value || "";
+      } else if (ext === "txt" || ext === "md" || ext === "csv") {
+        text = await file.text();
+      } else {
+        // Fallback: try as plain text (works for .txt, .rtf partially, etc.)
+        text = await file.text();
+      }
+      if (!text.trim() || text.length < 50) {
+        addToast({ title:"Document appears empty", status:"error", message: ext === "pdf" ? "PDF support not built in — export to DOCX or TXT first" : "Couldn't extract meaningful content" });
+        setWbProposals(null);
+        return;
+      }
+    } catch (e) {
+      console.error("Doc read failed:", e);
+      addToast({ title:"Couldn't read document", status:"error", message: ext === "pdf" ? "PDF not supported — export to DOCX or TXT" : "File read error" });
+      setWbProposals(null);
+      return;
+    }
+    // Now run AI on the doc text — same prompt shape as transcripts, with adjusted framing
+    try {
+      const cd = companyData as Record<string,string>;
+      const companyBlock = Object.entries(cd).filter(([k,v]) => !k.startsWith("_") && v && String(v).trim())
+        .map(([k,v]) => `  ${k}: ${String(v).slice(0, 200)}`).join("\n") || "  (empty)";
+      const personasBlock = icps.map((p:any, i:number) => {
+        const d = p.data || {};
+        const keyFields = ["buyer","industries","pain1","pain2","goals","triggers","objections","current_solutions","tone","hook","cta","best_channel"];
+        const filled = keyFields.filter(k => d[k] && String(d[k]).trim()).map(k => `    ${k}: ${String(d[k]).slice(0,150)}`).join("\n");
+        return `  [persona:${p.id}] ${p.name || `Persona ${i+1}`}\n${filled || "    (mostly empty)"}`;
+      }).join("\n") || "  (no personas)";
+      const productsBlock = products.map((p:any, i:number) => {
+        const keyFields = ["description","valueProposition","problemsSolved","useCases","idealCustomer","competitors","buyerObjections","proofPoints","acv","avgDealSize"];
+        const filled = keyFields.filter(k => (p as any)[k] && String((p as any)[k]).trim()).map(k => `    ${k}: ${String((p as any)[k]).slice(0,150)}`).join("\n");
+        return `  [product:${p.id}] ${p.name || `Product ${i+1}`}\n${filled || "    (mostly empty)"}`;
+      }).join("\n") || "  (no products)";
+
+      const prompt = `You are a workspace-data write-back engine. Analyze this implementation document (filled out by the client during onboarding) and propose SPECIFIC FIELD UPDATES across the workspace. The CX rep will review and selectively apply your proposals.
+
+Implementation documents typically contain structured answers about: company description, products/services, target audience, expectations and outcomes, prior experiences, goals, budget, timeline, preferences, and constraints. Treat each answer as direct from the client (high-trust source).
+
+FILE: ${fileName}
+
+DOCUMENT CONTENT (truncated if long):
+${text.slice(0, 16000)}
+
+CURRENT WORKSPACE STATE:
+
+## COMPANY
+${companyBlock}
+
+## PERSONAS
+${personasBlock}
+
+## PRODUCTS
+${productsBlock}
+
+PROPOSABLE FIELDS BY ENTITY:
+
+COMPANY (entityType="company", entityId=""):
+  co_name, co_pitch, co_industry, co_deal, co_cycle, co_goal, co_customers,
+  co_competitors, co_mailbox_count, co_existing_lists, co_notes, co_avoid, co_exclude
+
+PERSONA (entityType="persona", entityId=<id from list above>):
+  buyer, champ, industries, geo, revenue, co_sizes, tech, keywords, dream_accts, neg,
+  intent_topics, pain1, pain2, gains, goals, fears, metrics, objections, triggers,
+  buying_signals_direct, buying_signals_indirect, sq_cost, friction_points,
+  current_solutions, incumbent_strengths, switching_triggers, displacement_messaging,
+  tone, hook, cta, best_channel, best_time, linkedin_activity, phone_accessibility
+
+PRODUCT (entityType="product", entityId=<id from list above>):
+  description, valueProposition, problemsSolved, useCases, keyFeatures, idealCustomer,
+  competitors, buyerObjections, switchTriggers, acv, mrr, avgDealSize, ltv,
+  avgDaysToClose, dealStakeholders, proofPoints, roiMetrics, caseStudies,
+  industryProof, socialProof, objectionRebuttals, unsolvedImpact,
+  elevatorPitch, positioningStatement, messagingDos, messagingDonts
+
+Return ONLY JSON:
+{
+  "proposals": [
+    {
+      "id": "<unique short id>",
+      "entityType": "company" | "persona" | "product",
+      "entityId": "<id from list above, or empty string for company>",
+      "entityLabel": "<human label — e.g. 'Company' or 'Persona: SaaS — VP Sales'>",
+      "fieldId": "<exact field key>",
+      "fieldLabel": "<human-readable field name>",
+      "currentValue": "<what's there now>",
+      "proposedValue": "<new value>",
+      "mode": "set_if_empty" | "append" | "replace",
+      "confidence": <0-100>,
+      "reasoning": "<1-2 sentences on why>",
+      "quote": "<exact excerpt from the document ≤200 chars>"
+    }
+  ]
+}
+
+RULES:
+- Implementation-doc content is AUTHORITATIVE for fields the client directly stated. Prefer "replace" mode when the doc provides a direct answer AND the workspace has a clearly outdated or generic value.
+- Use "set_if_empty" for fields the doc answers but are currently blank.
+- Use "append" for list-like fields (co_notes, co_customers, co_competitors, objections, pain2).
+- entityId MUST exactly match an id in the lists above (for persona/product). Use "" for company.
+- fieldId MUST exactly match one of the field keys listed.
+- Include a quote (from the doc) for EVERY proposal.
+- Confidence should be high (≥75) for answers given directly in the doc.
+- Don't propose updates for anything not clearly addressed.
+- Raw JSON only, no markdown.`;
+
+      const raw = await callAI(prompt, "Return ONLY valid JSON.", 6000, { useFullContext: true });
+      const parsed = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+      const proposals = (parsed.proposals || []).map((p:any) => ({ ...p, id: p.id || uid(), _selected: (p.confidence||0) >= 70 }));
+      setWbProposals(prev => prev ? { ...prev, proposals, loading: false } : null);
+      if (!proposals.length) addToast({ title:"No updates proposed", status:"info", message:"Couldn't extract actionable updates from the document" });
+    } catch (e) {
+      console.error("Doc analysis failed:", e);
+      addToast({ title:"Analysis failed", status:"error", message:"AI didn't return valid proposals — try again" });
+      setWbProposals(null);
+    }
+  };
+
+  // Merge helper: applies a proposal according to its mode (replace / append / set_if_empty)
+  const mergeValue = (current: any, proposed: string, mode: string): string => {
+    const cur = String(current || "");
+    if (mode === "set_if_empty") return cur.trim() ? cur : proposed;
+    if (mode === "append") return cur.trim() ? `${cur}\n${proposed}` : proposed;
+    return proposed; // replace (default)
+  };
+
+  const applyWorkspaceUpdates = () => {
+    if (!wbProposals) return;
+    const selected = wbProposals.proposals.filter((p:any) => p._selected);
+    if (!selected.length) { addToast({ title:"Nothing selected", status:"info", message:"" }); return; }
+
+    // Group by entity
+    const companyPatches: Record<string,string> = {};
+    const personaPatchesById: Record<string, Record<string,string>> = {};
+    const productPatchesById: Record<string, Record<string,string>> = {};
+
+    selected.forEach((p:any) => {
+      if (p.entityType === "company") {
+        const current = (companyData as any)[p.fieldId];
+        companyPatches[p.fieldId] = mergeValue(current, p.proposedValue, p.mode);
+      } else if (p.entityType === "persona" && p.entityId) {
+        const persona = icps.find((x:any) => x.id === p.entityId);
+        if (!persona) return;
+        if (!personaPatchesById[p.entityId]) personaPatchesById[p.entityId] = {};
+        const current = persona.data?.[p.fieldId];
+        personaPatchesById[p.entityId][p.fieldId] = mergeValue(current, p.proposedValue, p.mode);
+      } else if (p.entityType === "product" && p.entityId) {
+        const product = products.find((x:any) => x.id === p.entityId);
+        if (!product) return;
+        if (!productPatchesById[p.entityId]) productPatchesById[p.entityId] = {};
+        const current = (product as any)[p.fieldId];
+        productPatchesById[p.entityId][p.fieldId] = mergeValue(current, p.proposedValue, p.mode);
+      }
+    });
+
+    // Dispatch
+    if (Object.keys(companyPatches).length) {
+      setCompanyData((prev:any) => ({ ...prev, ...companyPatches }));
+    }
+    if (Object.keys(personaPatchesById).length) {
+      setIcps((prev:any) => prev.map((p:any) => personaPatchesById[p.id]
+        ? { ...p, data: { ...(p.data||{}), ...personaPatchesById[p.id] } }
+        : p));
+    }
+    if (Object.keys(productPatchesById).length) {
+      setProducts((prev:any) => prev.map((p:any) => productPatchesById[p.id]
+        ? { ...p, ...productPatchesById[p.id] }
+        : p));
+    }
+
+    // Audit trail — only transcripts have a persistent call record to back-reference.
+    if (wbProposals.sourceType === "transcript") {
+      setCallRecords(prev => (prev||[]).map((r:any) => r.id === wbProposals.sourceId
+        ? { ...r, appliedWritebacks: [...(r.appliedWritebacks||[]), ...selected.map((s:any) => ({ id: s.id, fieldId: s.fieldId, entityType: s.entityType, entityId: s.entityId, appliedAt: new Date().toISOString() }))] }
+        : r));
+    }
+
+    addToast({ title:`${selected.length} update${selected.length!==1?"s":""} applied`, status:"success", message: `Company: ${Object.keys(companyPatches).length} · Personas: ${Object.values(personaPatchesById).reduce((a,o) => a + Object.keys(o).length, 0)} · Products: ${Object.values(productPatchesById).reduce((a,o) => a + Object.keys(o).length, 0)}` });
+    setWbProposals(null);
+  };
 
   const handleQSComplete = useCallback(result => {
     // Merge AI fields with existing data — don't overwrite manual fields
@@ -13767,6 +16611,8 @@ Raw JSON only.`;
         @keyframes obSubIn{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
         @keyframes aiSpark{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes stratSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+        @keyframes stratPulse{0%,100%{opacity:.5}50%{opacity:1}}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes aiSheen{0%{left:-60%;opacity:0}10%{opacity:1}40%{left:130%;opacity:0}100%{left:130%;opacity:0}}
         @keyframes qsBolt{0%,100%{transform:translateY(0) scale(1)}40%{transform:translateY(-3px) scale(1.15)}60%{transform:translateY(1px) scale(0.95)}}
@@ -13947,6 +16793,23 @@ Raw JSON only.`;
                     </button>
                   )}
 
+                  {/* RTS Leads */}
+                  {(
+                    <button onClick={()=>guardedNav(()=>setView("rtsleads"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="rtsleads" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="rtsleads")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="rtsleads")(e.currentTarget as HTMLButtonElement).style.background=view==="rtsleads"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="rtsleads"?C2.accent:C2.muted }}>⚡</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="rtsleads"?700:500, color:view==="rtsleads"?C2.text:C2.textSoft }}>RTS Leads</span>
+                      {rtsLists.length > 0 && (
+                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, marginLeft:"auto", padding:"1px 6px", borderRadius:8, background:C2.faint }}>{rtsLists.length}/{MAX_RTS_LISTS_PER_WORKSPACE}</span>
+                      )}
+                    </button>
+                  )}
+
                   {/* Analytics */}
                   {(
                     <button onClick={()=>guardedNav(()=>setView("analytics"))}
@@ -13993,6 +16856,18 @@ Raw JSON only.`;
                       <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="calls"?700:500, color:view==="calls"?C2.text:C2.textSoft }}>Client Intel</span>
                     </button>
                   )}
+
+                  {/* Integrations */}
+                  <button onClick={()=>guardedNav(()=>setView("integrations"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="integrations" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
+                    onMouseEnter={e=>{ if(view!=="integrations")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="integrations")(e.currentTarget as HTMLButtonElement).style.background=view==="integrations"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="integrations"?C2.accent:C2.muted }}>⚿</span>
+                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="integrations"?700:500, color:view==="integrations"?C2.text:C2.textSoft }}>Integrations</span>
+                  </button>
                 </>
               )}
             </div>
@@ -14150,7 +17025,7 @@ Raw JSON only.`;
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -14241,7 +17116,7 @@ Raw JSON only.`;
                       const wsData = loadWorkspaceData(c.id);
                       const wsIcps: any[] = wsData?.icps ?? [];
                       const wsCoData = wsData?.companyData ?? {};
-                      const wsPct = Math.round(ALL_COMPANY_FIELDS.filter(f => fieldFilled(f, (wsCoData as any)[f.id])).length / ALL_COMPANY_FIELDS.length * 100);
+                      const wsPct = Math.round(AI_FILLABLE_ALL_COMPANY_FIELDS.filter(f => fieldFilled(f, (wsCoData as any)[f.id])).length / AI_FILLABLE_ALL_COMPANY_FIELDS.length * 100);
                       const wsReady = wsIcps.filter(i => i.outputs).length;
                       return (
                         <div key={c.id}
@@ -14453,14 +17328,14 @@ Raw JSON only.`;
                           background:activeColor, opacity:0.15+i*0.12,
                           // @ts-ignore
                           "--r": `${30+i*10}px`,
-                          animation:`qsOrbitLg ${3+i*0.6}s linear infinite`,
-                          animationDelay:`${i*0.3}s` } as any} />
+                          animation:`qsOrbitLg ${(3+i*0.6)/1.2}s linear infinite`,
+                          animationDelay:`${(i*0.3)/1.2}s` } as any} />
                       ))}
                       <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
                         width:52, height:52, borderRadius:16,
                         background: done ? `linear-gradient(135deg, ${C2.green}, #00B894)` : `linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
                         display:"flex", alignItems:"center", justifyContent:"center",
-                        animation: done ? undefined : `qsGlowLg 2s ease-in-out infinite`,
+                        animation: done ? undefined : `qsGlowLg ${2/1.2}s ease-in-out infinite`,
                         boxShadow:`0 8px 32px ${done ? C2.green : activeColor}33` }}>
                         <span style={{ fontSize:done?22:20, color:"#fff" }}>{done ? "✓" : activeStep?.icon || "◎"}</span>
                       </div>
@@ -14588,14 +17463,14 @@ Raw JSON only.`;
                             background:activeColor, opacity:0.15+i*0.12,
                             // @ts-ignore
                             "--r": `${30+i*10}px`,
-                            animation:`qsOrbitLg ${3+i*0.6}s linear infinite`,
-                            animationDelay:`${i*0.3}s` } as any} />
+                            animation:`qsOrbitLg ${(3+i*0.6)/1.2}s linear infinite`,
+                            animationDelay:`${(i*0.3)/1.2}s` } as any} />
                         ))}
                         <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
                           width:52, height:52, borderRadius:16,
                           background: done ? `linear-gradient(135deg, ${C2.green}, #00B894)` : `linear-gradient(135deg, ${activeColor}, ${activeColor}88)`,
                           display:"flex", alignItems:"center", justifyContent:"center",
-                          animation: done ? undefined : `qsGlowLg 2s ease-in-out infinite`,
+                          animation: done ? undefined : `qsGlowLg ${2/1.2}s ease-in-out infinite`,
                           boxShadow:`0 8px 32px ${done ? C2.green : activeColor}33` }}>
                           <span style={{ fontSize:done?22:20, color:"#fff" }}>{done ? "✓" : activeStep?.icon || "◎"}</span>
                         </div>
@@ -14834,6 +17709,78 @@ Raw JSON only.`;
                 } else if (iters.length >= 3 && lastIter?.result !== "Winner ✓" && lastIter?.result !== "—" && lastIter?.result !== "Continuing →") {
                   attention.push({ camp: c, reason: "3 iterations, no winner", action: "Kill or pivot", actionView: "campaigns" });
                 }
+
+                // Stage 9: high-urgency analyzed replies awaiting response
+                const newHighUrgencyReplies = (c.analyzedReplies || []).filter((r:any) =>
+                  r.status === "new" && r.urgency === "high"
+                ).length;
+                if (newHighUrgencyReplies > 0) {
+                  attention.push({ camp: c, reason: `${newHighUrgencyReplies} high-urgency repl${newHighUrgencyReplies!==1?"ies":"y"} awaiting response`, action: "Review replies", actionView: "campaigns" });
+                }
+
+                // Stage 3 follow-up: new AI iteration proposals not yet acted on
+                const liveIteration = (c.iterations || []).find((it:any) => it.status === "live");
+                if (liveIteration && liveIteration.startedAt) {
+                  const daysLive = Math.floor((Date.now() - new Date(liveIteration.startedAt).getTime()) / 86400000);
+                  if (daysLive >= (liveIteration.durationDays || 3)) {
+                    attention.push({ camp: c, reason: `Iteration "${(liveIteration.testVariable||"").replace(/_/g," ")}" ended — decide outcome`, action: "Mark winner/flat/worse", actionView: "campaigns" });
+                  }
+                }
+              }
+
+              // Stage 3 surface: call transcripts that haven't been used for workspace write-backs yet
+              const callsNotWrittenBack = (callRecords || []).filter((r:any) =>
+                r.transcript && (!r.appliedWritebacks || r.appliedWritebacks.length === 0)
+              );
+              if (callsNotWrittenBack.length > 0) {
+                attention.push({
+                  camp: { name: `${callsNotWrittenBack.length} call transcript${callsNotWrittenBack.length!==1?"s":""} pending write-back` },
+                  reason: `AI hasn't proposed field updates for ${callsNotWrittenBack.length} recent call${callsNotWrittenBack.length!==1?"s":""}`,
+                  action: "Propose updates",
+                  actionView: "calls",
+                });
+              }
+
+              // Stage 5/6 surface: DFY domains purchased but no strategy yet
+              if ((dfySetup as any)?.purchasedAt && !strategy?.phases?.length) {
+                attention.push({
+                  camp: { name: "DFY purchased — strategy not generated" },
+                  reason: "Domains marked as purchased but no strategy roadmap exists yet",
+                  action: "Generate roadmap",
+                  actionView: "strategy",
+                });
+              }
+
+              // RTS lists without any linked campaign (high-intent decaying)
+              const orphanedRtsLists = (rtsLists || []).filter((l:any) =>
+                (l.linkedCampaignIds || []).filter((id:string) => allCamps.some((c:any) => c.id === id)).length === 0
+              );
+              if (orphanedRtsLists.length > 0) {
+                attention.push({
+                  camp: { name: `${orphanedRtsLists.length} RTS list${orphanedRtsLists.length!==1?"s":""} not linked to a campaign` },
+                  reason: "High-intent signals decay fast — connect these to live campaigns",
+                  action: "Manage RTS",
+                  actionView: "rtsleads",
+                });
+              }
+
+              // Strategy phases in_progress with no live campaigns
+              const stalledPhases = (strategy?.phases || []).filter((p:any) => {
+                if (p.status !== "in_progress") return false;
+                const liveInPhase = (p.campaigns || []).some((_c:any, ci:number) => {
+                  const specId = `${p.id || p.number}_${ci}`;
+                  const linked = allCamps.find((rc:any) => rc.strategyPhaseId === specId);
+                  return linked && (linked.performance?.metrics?.sent || 0) > 0;
+                });
+                return !liveInPhase;
+              });
+              if (stalledPhases.length > 0) {
+                attention.push({
+                  camp: { name: `Phase "${stalledPhases[0].name}" stalled${stalledPhases.length > 1 ? ` (+${stalledPhases.length - 1} more)` : ""}` },
+                  reason: "Phase marked in-progress but no campaigns have sending activity",
+                  action: "Review strategy",
+                  actionView: "strategy",
+                });
               }
 
               // Setup completeness
@@ -14890,6 +17837,55 @@ Raw JSON only.`;
                   })()}
 
                   {((window as any).__homeTab || "overview") === "overview" && (<>
+
+                  {/* Sales → CX Handoff Brief */}
+                  {(() => {
+                    const hb = (companyData as any)._handoffBrief;
+                    const hsProps = (companyData as any)._hubspotProps || {};
+                    const hsPropCount = Object.keys(hsProps).filter(k => hsProps[k] != null && hsProps[k] !== "").length;
+                    const emailCount = (slackComms || []).filter((c:any) => c.type === "email").length;
+                    const slackCount = (slackComms || []).filter((c:any) => c.type === "slack").length;
+                    const callCount = (callRecords || []).length;
+                    const totalSignals = hsPropCount + emailCount + slackCount + callCount;
+                    const canGenerate = totalSignals >= 3;
+                    if (!hb && !canGenerate) return null; // hide card entirely if no signals + no brief
+                    return (
+                      <div style={{ background: hb ? `${C2.accent}05` : C2.card, border:`1px solid ${hb ? C2.accent + "30" : C2.border}`, borderRadius:14, padding:"18px 22px", marginBottom:20 }}>
+                        <div style={{ display:"flex", alignItems:"flex-start", gap:12, marginBottom: hb ? 12 : 10 }}>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, marginBottom:4, textTransform:"uppercase" as const }}>
+                              📥 Sales → CX Handoff
+                            </div>
+                            <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.35 }}>
+                              {hb ? (hb.content?.oneLiner || "Handoff brief generated") : "Generate the sales handoff brief"}
+                            </div>
+                            <div style={{ fontSize:11.5, color:C2.muted, fontFamily:body, marginTop:4, lineHeight:1.5 }}>
+                              {hb
+                                ? `Synthesized ${new Date(hb.generatedAt).toLocaleString()} · From ${[hb.sources?.hubspot && `${hb.sources.hubspot} HubSpot`, hb.sources?.email && `${hb.sources.email} emails`, hb.sources?.slack && `${hb.sources.slack} Slack`, hb.sources?.calls && `${hb.sources.calls} calls`].filter(Boolean).join(" · ")}`
+                                : canGenerate
+                                  ? `AI will synthesize a pre-onboarding brief from ${[hsPropCount && `${hsPropCount} HubSpot fields`, emailCount && `${emailCount} emails`, slackCount && `${slackCount} Slack msgs`, callCount && `${callCount} calls`].filter(Boolean).join(" · ")}. Covers: who they are, expectations, stakeholders, topics, watchouts.`
+                                  : "Connect HubSpot or upload emails / calls to enable this."}
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                            {hb && (
+                              <button onClick={()=>setHandoffBriefOpen(true)}
+                                style={{ padding:"8px 14px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.text, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                                View Brief
+                              </button>
+                            )}
+                            <button onClick={generateHandoffBrief} disabled={!canGenerate || handoffGenerating}
+                              style={{ padding:"8px 14px", borderRadius:8, border:"none",
+                                background: (!canGenerate || handoffGenerating) ? C2.muted : C2.accent, color:"#fff",
+                                fontSize:11, fontFamily:head, fontWeight:700, cursor: handoffGenerating ? "wait" : !canGenerate ? "not-allowed" : "pointer",
+                                boxShadow: (!canGenerate || handoffGenerating) ? "none" : `0 2px 6px ${C2.accent}44` }}>
+                              {handoffGenerating ? "◌ Analyzing…" : hb ? "Regenerate" : "Generate Brief"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Setup progress (only show if not fully complete) */}
                   {setupDone < setupTotal && (
@@ -15804,7 +18800,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                     onChange={setCompanyData}
                     onConfChange={(id: string, score: number) => setCompanyConf((p:any) => ({ ...p, [id]: score }))}
                     onConfLock={(id: string, locked: boolean) => setCompanyConfLocked((p:any) => ({ ...p, [id]: locked }))}
-                    fileContext={buildFileContext(wsFiles)} />
+                    fileContext={buildFileContext(wsFiles)} addToast={addToast} />
                 </div>
               </div>
             )}
@@ -15848,24 +18844,66 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                     <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
                       companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast}
                       genState={strategyGen} onGenStateChange={setStrategyGen}
-                      activeWorkspace={activeWorkspace} />
+                      activeWorkspace={activeWorkspace}
+                      workspaceCampaigns={campaigns}
+                      rtsLists={rtsLists}
+                      autoRun={strategyAutoRun}
+                      onAutoRunConsumed={() => setStrategyAutoRun(false)}
+                      onLaunchPhaseCampaign={(spec: any) => {
+                        // Resolve name refs to IDs
+                        const prod = products.find((p:any) => p.name === spec.productName);
+                        const pers = icps.find((p:any) => p.name === spec.personaName);
+                        if (!prod || !pers) {
+                          addToast({ title:"Couldn't resolve product/persona", status:"error", message:`"${spec.productName}" × "${spec.personaName}" — create them first or rename to match.` });
+                          return null;
+                        }
+                        // Resolve RTS list by name (fuzzy match, case-insensitive)
+                        const rtsListName = (spec.rtsListName || "").trim().toLowerCase();
+                        const resolvedRtsList = rtsListName ? rtsLists.find((l:any) => (l.name || "").toLowerCase() === rtsListName)
+                          || rtsLists.find((l:any) => (l.name || "").toLowerCase().includes(rtsListName)) : null;
+                        const isHighIntent = spec.intentTier === "high" || spec.type === "rts_high_intent" || !!resolvedRtsList;
+                        // Map type → channel. rts_high_intent falls back to email (safe default); CSM can switch to linkedin in editor.
+                        const channel = spec.type === "linkedin_message" || spec.type === "linkedin_connection" ? "linkedin"
+                          : spec.type === "rts_calling" ? "rts_ai_call"
+                          : spec.type === "rts_high_intent" ? "email"
+                          : "email";
+                        // Warn if high-intent but no matching RTS list found
+                        if (isHighIntent && spec.rtsListName && !resolvedRtsList) {
+                          addToast({ title:"RTS list not found", status:"warning", message:`Strategy referenced "${spec.rtsListName}" but no matching list exists. Campaign created without RTS link — attach one in the editor.` });
+                        }
+                        // Find matching offer by tier
+                        const matchingOffer = offers.find((o:any) => o.productId === prod.id && o.personaId === pers.id && o.tier === spec.offerTier);
+                        const c = createCampaign({
+                          channel,
+                          productId: prod.id,
+                          personaId: pers.id,
+                          offerId: matchingOffer?.id,
+                          strategyPhaseId: spec._phaseSpecId,
+                          name: `${spec._phaseLabel} — ${pers.name} × ${prod.name}${isHighIntent ? " (RTS)" : ""}`,
+                          source: "strategy",
+                          audienceSource: resolvedRtsList ? "rts_list" : "people_search",
+                          rtsListId: resolvedRtsList?.id || null,
+                          extra: {
+                            dailySendVolume: spec.dailyVolume || 100,
+                            // Explicit intent-tier override — createCampaign auto-flips to "high" on rtsListId, but this lets the strategy promote high-intent even without an RTS match.
+                            ...(isHighIntent ? { intentTier: "high" } : {}),
+                          },
+                        });
+                        // Note: phase status advances automatically when real sending activity is uploaded —
+                        // the "LIVE" badge is derived from performance.metrics.sent, not from campaign creation.
+                        return c;
+                      }} />
                   )}
                   {stratTab==="coverage" && (
-                    <CoverageMatrix products={products} personas={icps} offers={offers} campaigns={campaigns} v2={true}
+                    <CoverageMatrix products={products} personas={icps} offers={offers} campaigns={campaigns} rtsLists={rtsLists} v2={true}
                       onCreateCampaign={(productId: string, personaId: string) => {
-                        const c = EMPTY_CAMPAIGN();
-                        c.productId = productId;
-                        c.personaIds = [personaId];
-                        const persona = icps.find((i:any)=>i.id===personaId);
-                        const product = products.find((p:any)=>p.id===productId);
-                        c.name = `${persona?.name||"Persona"} × ${product?.name||"Product"}`;
-                        setCampaigns(prev => [...prev, c]);
-                        setView("campaigns");
-                        addToast({ title:"Campaign created", status:"success", message:c.name });
+                        const c = createCampaign({ productId, personaId, channel: "email", source: "matrix" });
+                        if (c) setView("campaigns");
                       }}
                       onViewCampaign={(_campaignId: string) => {
                         setView("campaigns");
                       }}
+                      onGoToRts={() => setView("rtsleads")}
                     />
                   )}
                 </div>
@@ -15879,7 +18917,18 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                   <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
                     personas={icps} products={products} offers={offers} onOffersChange={setOffers}
                     companyData={companyData} strategy={strategy} v2={true} addToast={addToast}
-                    activeWorkspace={activeWorkspace} />
+                    activeWorkspace={activeWorkspace}
+                    onCreateCampaign={createCampaign}
+                    rtsLists={rtsLists} />
+                </div>
+              </div>
+            )}
+
+            {view==="rtsleads" && (
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
+                  <RTSLeadsPage rtsLists={rtsLists} onRtsListsChange={setRtsLists} campaigns={campaigns} products={products} personas={icps} addToast={addToast} />
                 </div>
               </div>
             )}
@@ -15892,7 +18941,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                 {editingId && (() => {
                   const editingICP = (icps as any[]).find(i => i.id === editingId);
                   if (!editingICP) return null;
-                  const filled = ALL_ICP_FIELDS.filter((f: any) => fieldFilled(f, editingICP.data[f.id])).length;
+                  const filled = AI_FILLABLE_ICP_FIELDS.filter((f: any) => fieldFilled(f, editingICP.data[f.id])).length;
                   const icpPct = Math.round(filled / TOTAL_FIELDS * 100);
                   return (
                     <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
@@ -15936,6 +18985,19 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                         </p>
                       </div>
                       <div style={{ display:"flex", gap:8 }}>
+                        <button onClick={()=>{
+                          const input = document.createElement("input");
+                          input.type = "file"; input.accept = ".csv,text/csv";
+                          input.onchange = (e) => {
+                            const f = (e.target as HTMLInputElement).files?.[0];
+                            if (f) handleCsvFileSelect(f);
+                          };
+                          input.click();
+                        }}
+                          style={{ padding:"9px 18px", borderRadius:10, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.text,
+                            fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                          📤 Import Contacts CSV
+                        </button>
                         <button onClick={()=>{ const p = newICP(icps.length); setIcps((prev:any) => [...prev, p]); setEditingId(p.id); }}
                           style={{ padding:"9px 20px", borderRadius:10, border:"none", background:C2.accent, color:"#fff",
                             fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${C2.accent}44` }}>
@@ -15964,7 +19026,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12, paddingBottom:24 }}>
                         {(icps as any[]).map((icp: any, i: number) => {
                           const d = icp.data || {};
-                          const icpFilled = ALL_ICP_FIELDS.filter((f: any) => fieldFilled(f, d[f.id])).length;
+                          const icpFilled = AI_FILLABLE_ICP_FIELDS.filter((f: any) => fieldFilled(f, d[f.id])).length;
                           const icpPct = Math.round(icpFilled / TOTAL_FIELDS * 100);
                           return (
                             <div key={icp.id} onClick={()=>setEditingId(icp.id)}
@@ -17184,6 +20246,357 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                     </div>
                   )}
 
+                  {/* Export & Purchase — copy domains to paste into B2B Rocket + auto usable-date countdown */}
+                  {(dfy.approvedDomains||[]).length > 0 && (() => {
+                    const approved = dfy.approvedDomains || [];
+                    const SETUP_DAYS = 3;    // buying domains + mailboxes + setup
+                    const WARMUP_DAYS = 14;  // mailbox warmup
+                    const TOTAL_DAYS = SETUP_DAYS + WARMUP_DAYS;
+                    const purchasedAt = dfy.purchasedAt ? new Date(dfy.purchasedAt) : null;
+                    const now = Date.now();
+                    const daysSince = purchasedAt ? Math.floor((now - purchasedAt.getTime()) / 86400000) : 0;
+                    const usableAt = purchasedAt ? new Date(purchasedAt.getTime() + TOTAL_DAYS * 86400000) : null;
+                    const daysRemaining = usableAt ? Math.max(0, Math.ceil((usableAt.getTime() - now) / 86400000)) : TOTAL_DAYS;
+                    const isReady = purchasedAt && daysSince >= TOTAL_DAYS;
+                    const phase = !purchasedAt ? "pending" : daysSince < SETUP_DAYS ? "setup" : daysSince < TOTAL_DAYS ? "warmup" : "ready";
+                    const fmt = (d: Date) => d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+
+                    return (
+                      <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:20, marginBottom:24 }}>
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, marginBottom:14, textTransform:"uppercase" as const }}>
+                          Export & Purchase
+                        </div>
+
+                        {/* Action buttons */}
+                        <div style={{ display:"flex", gap:10, flexWrap:"wrap" as const, marginBottom: purchasedAt ? 16 : 0 }}>
+                          <button onClick={()=>{
+                            const text = approved.join("\n");
+                            navigator.clipboard.writeText(text);
+                            addToast({ title:`${approved.length} domains copied`, status:"success", message:"Paste into B2B Rocket purchase screen" });
+                          }}
+                            style={{ padding:"10px 18px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
+                              fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
+                            📋 Copy All Domains ({approved.length})
+                          </button>
+                          <button onClick={()=>{
+                            const text = approved.join(", ");
+                            navigator.clipboard.writeText(text);
+                            addToast({ title:"Copied comma-separated", status:"success", message:"For forms that expect CSV format" });
+                          }}
+                            style={{ padding:"10px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft,
+                              fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                            Copy as CSV
+                          </button>
+                          {!purchasedAt ? (
+                            <button onClick={()=>{
+                              if (!confirm(`Mark these ${approved.length} domains as purchased? This starts a ${TOTAL_DAYS}-day timer: ${SETUP_DAYS} days to complete setup + ${WARMUP_DAYS} days mailbox warmup. The client's usable date will be ${fmt(new Date(now + TOTAL_DAYS * 86400000))}.`)) return;
+                              upd({ purchasedAt: new Date().toISOString() });
+                              addToast({ title:"Purchase recorded", status:"success", message:`Usable on ${fmt(new Date(now + TOTAL_DAYS * 86400000))}` });
+                            }}
+                              style={{ padding:"10px 18px", borderRadius:10, border:"none", background:_C.green, color:"#fff",
+                                fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.green}44`, marginLeft:"auto" }}>
+                              ✓ Mark as Purchased
+                            </button>
+                          ) : (
+                            <button onClick={()=>{
+                              if (!confirm("Reset the purchase timer? The usable date will no longer be tracked.")) return;
+                              upd({ purchasedAt: null });
+                              addToast({ title:"Timer reset", status:"info", message:"Click 'Mark as Purchased' to restart" });
+                            }}
+                              style={{ padding:"10px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted,
+                                fontSize:11, fontFamily:mono, fontWeight:600, cursor:"pointer", marginLeft:"auto" }}>
+                              Reset timer
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Timeline / countdown */}
+                        {purchasedAt && (
+                          <div style={{ padding:"16px 18px", borderRadius:12,
+                            background: isReady ? _C.greenLo : `${_C.accent}06`,
+                            border: `1px solid ${isReady ? _C.greenBorder : _C.accent + "22"}` }}>
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10, flexWrap:"wrap" as const, gap:8 }}>
+                              <div>
+                                <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, letterSpacing:.4, color: isReady ? _C.green : _C.accent, textTransform:"uppercase" as const }}>
+                                  {phase === "setup" ? `Setup — ${SETUP_DAYS - daysSince} day${SETUP_DAYS - daysSince !== 1 ? "s" : ""} left`
+                                    : phase === "warmup" ? `Warming up — ${TOTAL_DAYS - daysSince} day${TOTAL_DAYS - daysSince !== 1 ? "s" : ""} left`
+                                    : phase === "ready" ? "● Ready to send"
+                                    : ""}
+                                </div>
+                                <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:_C.text, marginTop:4 }}>
+                                  {isReady ? `Mailboxes active since ${fmt(usableAt!)}` : `Usable on ${fmt(usableAt!)}`}
+                                </div>
+                                <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
+                                  Purchased {fmt(purchasedAt)} · {SETUP_DAYS} day setup + {WARMUP_DAYS} day warmup
+                                </div>
+                              </div>
+                              {!isReady && (
+                                <div style={{ textAlign:"right" as const }}>
+                                  <div style={{ fontSize:28, fontWeight:800, fontFamily:head, color:_C.accent, lineHeight:1 }}>{daysRemaining}</div>
+                                  <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, letterSpacing:.4 }}>DAY{daysRemaining !== 1 ? "S" : ""} REMAINING</div>
+                                </div>
+                              )}
+                            </div>
+                            {/* Progress bar */}
+                            <div style={{ height:6, borderRadius:3, background:_C.faint, overflow:"hidden", marginTop:6 }}>
+                              <div style={{ height:"100%", width:`${Math.min(100, (daysSince / TOTAL_DAYS) * 100)}%`,
+                                background: isReady ? _C.green : `linear-gradient(90deg, ${_C.accent}, ${_C.accentHi || _C.accent})`,
+                                transition:"width .6s ease" }} />
+                            </div>
+                            {/* Phase markers */}
+                            <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:9, fontFamily:mono, color:_C.muted }}>
+                              <span>Purchased</span>
+                              <span style={{ opacity: daysSince >= SETUP_DAYS ? 1 : 0.5 }}>Setup done · Day {SETUP_DAYS}</span>
+                              <span style={{ opacity: isReady ? 1 : 0.5, color: isReady ? _C.green : _C.muted, fontWeight: isReady ? 700 : 500 }}>Ready · Day {TOTAL_DAYS}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Post-purchase CTA: auto-trigger strategy generation if no strategy yet */}
+                        {purchasedAt && (() => {
+                          const hasStrategy = !!strategy?.phases?.length;
+                          return (
+                            <div style={{ marginTop:14, padding:"14px 16px", borderRadius:10,
+                              background: hasStrategy ? _C.faint : `${_C.accent}08`,
+                              border: `1px solid ${hasStrategy ? _C.border : _C.accent + "33"}`,
+                              display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" as const }}>
+                              <div style={{ flex:1, minWidth:180 }}>
+                                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:hasStrategy ? _C.muted : _C.accent, letterSpacing:.4, marginBottom:3, textTransform:"uppercase" as const }}>
+                                  {hasStrategy ? "✓ Strategy generated" : "Next step"}
+                                </div>
+                                <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>
+                                  {hasStrategy ? `Strategy roadmap has ${strategy.phases.length} phase${strategy.phases.length !== 1 ? "s" : ""}` : "Generate the strategy roadmap"}
+                                </div>
+                                <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2, lineHeight:1.4 }}>
+                                  {hasStrategy
+                                    ? "View or regenerate on the Strategy page."
+                                    : "12-month campaign plan — 3 months POC + 9 months expansion. Auto-kicks off when you click."}
+                                </div>
+                              </div>
+                              <button onClick={()=>{
+                                if (!hasStrategy) setStrategyAutoRun(true);
+                                setView("strategy");
+                              }}
+                                style={{ padding:"9px 18px", borderRadius:10,
+                                  border: hasStrategy ? `1px solid ${_C.border}` : "none",
+                                  background: hasStrategy ? _C.canvas : _C.accent, color: hasStrategy ? _C.text : "#fff",
+                                  fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer",
+                                  boxShadow: hasStrategy ? "none" : `0 2px 8px ${_C.accent}44` }}>
+                                {hasStrategy ? "View Strategy →" : "Generate Strategy Roadmap →"}
+                              </button>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })()}
+
+                </div>
+              </div>);
+            })()}
+
+            {/* ── INTEGRATIONS ── */}
+            {view==="integrations" && (() => {
+              const _C = C2;
+              const cd = companyData as Record<string,string>;
+              const hsConnected = !!getHubspotToken();
+              const slackConnected = !!getSlackToken();
+              const claudeConnected = !!apiKey;
+              const hsPropCount = Object.keys(((cd as any)._hubspotProps) || {}).filter(k => (cd as any)._hubspotProps[k] != null && (cd as any)._hubspotProps[k] !== "").length;
+              const hsEmailCount = (slackComms || []).filter((c:any) => c.source === "hubspot").length;
+              const slackMsgCount = (slackComms || []).filter((c:any) => c.type === "slack").length;
+
+              return (
+              <div style={{ position:"absolute" as const, inset:0, overflow:"auto", padding:"24px clamp(20px, 3vw, 48px)",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ maxWidth:960, margin:"0 auto" }}>
+                  <div style={{ marginBottom:20 }}>
+                    <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Integrations</h2>
+                    <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
+                      Connect external tools. Credentials are stored locally in your browser only.
+                    </p>
+                  </div>
+
+                  {/* ═══════ BULK IMPORTS ═══════ */}
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>
+                    Bulk Imports
+                  </div>
+
+                  {/* Implementation Doc */}
+                  <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10, gap:12 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <span style={{ fontSize:16 }}>📄</span>
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Implementation Document</div>
+                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
+                            Upload a client-filled implementation form (DOCX / TXT / MD). AI parses it and proposes cross-platform field updates for your review.
+                          </div>
+                        </div>
+                      </div>
+                      <button onClick={()=>{
+                        const input = document.createElement("input");
+                        input.type = "file"; input.accept = ".docx,.txt,.md,text/plain";
+                        input.onchange = (e) => {
+                          const f = (e.target as HTMLInputElement).files?.[0];
+                          if (f) importImplementationDoc(f);
+                        };
+                        input.click();
+                      }}
+                        style={{ padding:"8px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff",
+                          fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const, flexShrink:0,
+                          boxShadow:`0 2px 6px ${_C.accent}44` }}>
+                        📤 Upload Doc
+                      </button>
+                    </div>
+                    <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const }}>
+                      Supports .docx, .txt, .md · PDF not yet supported — export to DOCX first
+                    </div>
+                  </div>
+
+                  {/* ═══════ AI PROVIDERS ═══════ */}
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginTop:24, marginBottom:8, textTransform:"uppercase" as const }}>
+                    AI Providers
+                  </div>
+
+                  {/* Anthropic (Claude) */}
+                  <div style={{ background:_C.canvas, border:`1px solid ${claudeConnected ? _C.greenBorder : _C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <div style={{ width:8, height:8, borderRadius:4, background: claudeConnected ? _C.green : _C.muted }} />
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Anthropic (Claude)</div>
+                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Required — powers all AI features (research, sequences, analyses, write-backs).</div>
+                        </div>
+                      </div>
+                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5,
+                        background: claudeConnected ? `${_C.green}15` : `${_C.red}15`, color: claudeConnected ? _C.green : _C.red }}>
+                        {claudeConnected ? "CONNECTED" : "REQUIRED"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>API Key</div>
+                    <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-api03-…"
+                      style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none" }} />
+                  </div>
+
+                  {/* OpenAI + Gemini (AI Council) */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                    {[
+                      { label:"OpenAI (GPT-4o)", ph:"sk-…", val:openaiKey, set:setOpenaiKey, connected:!!openaiKey, hint:"AI Council — second opinion" },
+                      { label:"Google (Gemini)", ph:"AIza…", val:geminiKey, set:setGeminiKey, connected:!!geminiKey, hint:"AI Council — third opinion" },
+                    ].map(k => (
+                      <div key={k.label} style={{ background:_C.canvas, border:`1px solid ${k.connected ? _C.greenBorder : _C.border}`, borderRadius:14, padding:"14px 16px" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                          <div style={{ width:6, height:6, borderRadius:3, background: k.connected ? _C.green : _C.muted }} />
+                          <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{k.label}</div>
+                        </div>
+                        <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:6 }}>{k.hint}</div>
+                        <input type="password" value={k.val} onChange={e=>k.set(e.target.value)} placeholder={k.ph}
+                          style={{ width:"100%", padding:"6px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:11, boxSizing:"border-box" as const, outline:"none" }} />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ═══════ CRM & SALES TOOLS ═══════ */}
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginTop:24, marginBottom:8, textTransform:"uppercase" as const }}>
+                    CRM &amp; Sales Tools
+                  </div>
+
+                  {/* HubSpot */}
+                  <div style={{ background:_C.canvas, border:`1px solid ${hsConnected ? "#ff7a5944" : _C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <div style={{ width:8, height:8, borderRadius:4, background: hsConnected ? "#ff7a59" : _C.muted }} />
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>HubSpot</div>
+                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Pull company properties + email history into the Company page and Client Intel.</div>
+                        </div>
+                      </div>
+                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5,
+                        background: hsConnected ? `#ff7a5918` : _C.faint, color: hsConnected ? "#ff7a59" : _C.muted }}>
+                        {hsConnected ? "CONNECTED" : "NOT CONNECTED"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Private App Token</div>
+                    <input type="password" value={hubspotKey}
+                      onChange={e=>{setHubspotKey(e.target.value); setHubspotToken(e.target.value);}}
+                      placeholder="pat-na1-…"
+                      style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", marginBottom:10 }} />
+                    {hsConnected && (
+                      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                        <button onClick={syncHubspotForCompanyPage} disabled={hubspotSyncing}
+                          style={{ padding:"7px 14px", borderRadius:7, border:"none",
+                            background: hubspotSyncing ? _C.muted : "#ff7a59", color:"#fff",
+                            fontSize:11, fontFamily:head, fontWeight:700, cursor: hubspotSyncing ? "wait" : "pointer" }}>
+                          {hubspotSyncing ? "◌ Syncing…" : "Sync Now"}
+                        </button>
+                        <div style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
+                          {hsPropCount > 0
+                            ? `Last sync: ${hsPropCount} propert${hsPropCount!==1?"ies":"y"} · ${hsEmailCount} email${hsEmailCount!==1?"s":""} imported`
+                            : "Never synced for this workspace"}
+                        </div>
+                      </div>
+                    )}
+                    {!hsConnected && (
+                      <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const }}>
+                        Create a Private App in HubSpot → Settings → Integrations → Private Apps. Grant scopes: <code>crm.objects.companies.read</code>, <code>crm.objects.emails.read</code>.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Slack */}
+                  <div style={{ background:_C.canvas, border:`1px solid ${slackConnected ? "#4a154b44" : _C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <div style={{ width:8, height:8, borderRadius:4, background: slackConnected ? "#4a154b" : _C.muted }} />
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Slack</div>
+                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Auto-sync Slack channel messages into Client Intel. Configure channel in Client Intel page.</div>
+                        </div>
+                      </div>
+                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5,
+                        background: slackConnected ? `#4a154b18` : _C.faint, color: slackConnected ? "#4a154b" : _C.muted }}>
+                        {slackConnected ? "CONNECTED" : "NOT CONNECTED"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Bot Token</div>
+                    <input type="password" value={slackKey}
+                      onChange={e=>{setSlackKey(e.target.value); setSlackToken(e.target.value);}}
+                      placeholder="xoxb-…"
+                      style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", marginBottom:10 }} />
+                    {slackConnected && (() => {
+                      const channelConfigured = !!cd.co_slack_channel;
+                      return (
+                        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                          <button onClick={syncSlackForIntegrations} disabled={slackSyncing || !channelConfigured}
+                            title={channelConfigured ? "Fetch new Slack messages since last sync" : "Configure a channel in Client Intel → Slack Integration first"}
+                            style={{ padding:"7px 14px", borderRadius:7, border:"none",
+                              background: (slackSyncing || !channelConfigured) ? _C.muted : "#4a154b", color:"#fff",
+                              fontSize:11, fontFamily:head, fontWeight:700,
+                              cursor: slackSyncing ? "wait" : (channelConfigured ? "pointer" : "not-allowed"),
+                              opacity: (!channelConfigured && !slackSyncing) ? 0.6 : 1 }}>
+                            {slackSyncing ? "◌ Syncing…" : "Sync Now"}
+                          </button>
+                          <div style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
+                            {!channelConfigured
+                              ? "Channel not configured — set one in Client Intel"
+                              : cd.co_slack_last_sync
+                                ? `Last sync: ${new Date(cd.co_slack_last_sync).toLocaleString()} · ${slackMsgCount} message${slackMsgCount!==1?"s":""} imported`
+                                : `Never synced for this workspace${slackMsgCount > 0 ? ` · ${slackMsgCount} existing messages` : ""}`}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {!slackConnected && (
+                      <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const }}>
+                        Create a Slack Bot in api.slack.com. Required scopes: <code>channels:history</code>, <code>groups:history</code>, <code>users:read</code>.
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:16, padding:"12px 16px", background:_C.faint, borderRadius:10, lineHeight:1.5 }}>
+                    🔒 All credentials are stored in your browser's local storage only — they never leave your device except when making direct API calls to the respective services.
+                  </div>
                 </div>
               </div>);
             })()}
@@ -19015,7 +22428,18 @@ FORMAT:
                             {/* Workspace Sync Recommendations */}
                             {rec.syncRecs && (
                               <>
-                                <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, margin:"18px 0 10px", textTransform:"uppercase" as const }}>WORKSPACE SYNC</div>
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", margin:"18px 0 10px" }}>
+                                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.5, textTransform:"uppercase" as const }}>WORKSPACE SYNC</div>
+                                  <button
+                                    disabled={wbProposals?.sourceId === rec.id && wbProposals.loading}
+                                    onClick={()=>proposeWorkspaceUpdates(rec)}
+                                    style={{ padding:"6px 12px", borderRadius:7, border:"none",
+                                      background: (wbProposals?.sourceId === rec.id && wbProposals.loading) ? _C.muted : _C.accent, color:"#fff",
+                                      fontSize:10, fontFamily:mono, fontWeight:700, cursor: (wbProposals?.sourceId === rec.id && wbProposals.loading) ? "wait" : "pointer",
+                                      boxShadow: (wbProposals?.sourceId === rec.id && wbProposals.loading) ? "none" : `0 2px 6px ${_C.accent}44` }}>
+                                    {(wbProposals?.sourceId === rec.id && wbProposals.loading) ? "◌ Analyzing…" : "⚡ Propose Field Updates"}
+                                  </button>
+                                </div>
 
                                 {/* Risk Flags */}
                                 {rec.syncRecs.riskFlags?.length > 0 && (
@@ -20495,7 +23919,7 @@ Be specific and evidence-based. Reference actual conversation moments.` }
             prog(7);
             const combos = products.flatMap((p:any) => personas.map((pe:any) => ({ prodName:p.name, prodId:p.id, persName:pe.name, persId:pe.id, pain:pe.data?.pain1||"", buyer:pe.data?.buyer||"" })));
 
-            const [offersResult, intelResult, guardrailsResult] = await Promise.all([
+            const [offersResult, intelResult, guardrailsResult, rtsResult] = await Promise.all([
               // Offers — all combos in parallel
               Promise.allSettled(combos.map(async (combo: any) => {
                 try {
@@ -20532,6 +23956,35 @@ Be specific and evidence-based. Reference actual conversation moments.` }
                   );
                   return JSON.parse(salesRaw.replace(/```json|```/g,"").trim());
                 } catch { return null; }
+              })(),
+              // RTS list proposals — one per persona (capped at 5), pre-filled in Bebop's exact shape
+              (async () => {
+                try {
+                  const rtsPersonas = personas.slice(0, MAX_RTS_LISTS_PER_WORKSPACE);
+                  const primaryProduct = products[0];
+                  const rtsPrompt = `You are generating RTS (Real-Time Signals) list proposals for Bebop. RTS lists are fundamentally different from cold outbound lists — they are triple-qualified, high-intent leads refreshed daily based on active buying signals (hiring, funding, tech changes, stated intent, RFPs, competitor churn, etc.).\n\nThe leads on an RTS list are ALREADY showing intent — the list's job is to tell Bebop which SIGNALS to look for. The ICP demographics are the filter AFTER the signal, not the primary lens.\n\nCOMPANY: ${coFields.co_name||""} (${coFields.co_industry||""})\nWEBSITE: ${coFields.co_site||""}\nVALUE PROP: ${coFields.co_pitch||""}\nCOMPETITORS: ${coFields.co_competitors||""}\nPRIMARY PRODUCT: ${primaryProduct?.name||""} — ${primaryProduct?.description||""}\n\nPERSONAS:\n${rtsPersonas.map((p:any,i:number)=>`${i}: ${p.name} — buyer: ${p.data?.buyer||""}, industries: ${p.data?.industries||""}, pain: ${p.data?.pain1||""}, direct signals: ${p.data?.buying_signals_direct||""}, indirect signals: ${p.data?.buying_signals_indirect||""}, triggers: ${p.data?.triggers||""}, intent topics: ${p.data?.intent_topics||""}, switch triggers: ${p.data?.switching_triggers||""}`).join("\n")}\n\nReturn ONLY a JSON array, ONE RTS list per persona (${rtsPersonas.length} items) in matching order. Each item uses Bebop's exact form shape:\n[{"personaIndex":0,"name":"<signal-led name — e.g. 'Just-hired VPEs at Series B SaaS' not 'VP Engineering list'>","websiteUrl":"<URL>","productDisplayName":"<display name>","sellingDescription":"<1-2 sentences framing the offer AGAINST the signal: why they need this now, given what just happened to them>","campaignGoal":"<measurable, time-bound — 'Book 8 discovery calls per month with companies who just posted a Sr. Platform Eng role'>","additionalContext":"<geography, company size, any targeting nuance>","salesMethodologies":"<pick methodology that fits high-intent: Challenger, MEDDIC, value-selling>","competitorUrls":"<URLs>","customerProfile":"<LONG-FORM. Lead with the SIGNAL (3-4 sentences: what event / behavior / trigger makes this lead high-intent, WHY that signal predicts buying readiness). THEN the demographic filter applied on top of the signal (3-4 sentences: titles, seniority, company size, industry, revenue, tech stack). The signal comes FIRST — the demographics narrow the signal."}]\n\nRULES:\n- customerProfile MUST lead with the buying signal, not demographic fit. That's what makes an RTS list different from a cold list.\n- Use concrete signals from the persona's direct/indirect signals, triggers, switch_triggers, and intent_topics fields — not generic ones.\n- campaignGoal must be measurable and reflect high-intent volume (smaller numbers, higher conversion rates).\n- Raw JSON only, no markdown.`;
+                  const rtsRaw = await callAI(rtsPrompt, "", 5000, { useFullContext: true });
+                  const parsed = JSON.parse(rtsRaw.replace(/```json|```/g,"").trim());
+                  if (!Array.isArray(parsed)) return [];
+                  return parsed.map((r:any) => {
+                    const pIdx = typeof r.personaIndex === "number" ? r.personaIndex : -1;
+                    const linkedPersona = pIdx >= 0 && pIdx < rtsPersonas.length ? rtsPersonas[pIdx] : null;
+                    const list = EMPTY_RTS_LIST();
+                    list.name = r.name || (linkedPersona ? `${linkedPersona.name} — RTS` : "RTS list");
+                    list.bebopSetup = {
+                      websiteUrl: r.websiteUrl || coFields.co_site || "",
+                      productDisplayName: r.productDisplayName || primaryProduct?.name || "",
+                      sellingDescription: r.sellingDescription || "",
+                      campaignGoal: r.campaignGoal || "",
+                      additionalContext: r.additionalContext || "",
+                      salesMethodologies: r.salesMethodologies || "",
+                      competitorUrls: r.competitorUrls || coFields.co_competitors || "",
+                      customerProfile: r.customerProfile || "",
+                      emailRecipients: "",
+                    };
+                    return list;
+                  });
+                } catch (e) { console.warn("[QS] RTS list generation failed:", e); return []; }
               })(),
             ]);
 
@@ -20586,6 +24039,15 @@ Be specific and evidence-based. Reference actual conversation moments.` }
             prog(9, "guardrails", `✓`);
             await new Promise(ok => setTimeout(ok, 300));
 
+            // Process RTS lists — cap to MAX_RTS_LISTS_PER_WORKSPACE
+            let newRtsLists: any[] = [];
+            try {
+              if (Array.isArray(rtsResult) && rtsResult.length) {
+                newRtsLists = rtsResult.slice(0, MAX_RTS_LISTS_PER_WORKSPACE);
+                _tf += newRtsLists.length * 9; _ts += newRtsLists.length * 420;
+              }
+            } catch (e) { console.warn("RTS processing failed:", e); }
+
             // Apply everything
             setCompanyData((prev:any) => { const m = {...prev}; for (const [k,v] of Object.entries(coFields)) { if (v && String(v).trim()) m[k]=v; } return m; });
             setCompanyConf((prev:any) => ({ ...prev, ...coConf }));
@@ -20595,6 +24057,7 @@ Be specific and evidence-based. Reference actual conversation moments.` }
             if (newBattlecards.length) setBattlecards((prev:any) => [...prev, ...newBattlecards]);
             if (newPlaybooks.length) setPlaybooks((prev:any) => [...prev, ...newPlaybooks]);
             if (newContentAssets.length) setContentAssets((prev:any) => [...prev, ...newContentAssets]);
+            if (newRtsLists.length) setRtsLists((prev:any) => [...prev, ...newRtsLists].slice(0, MAX_RTS_LISTS_PER_WORKSPACE));
 
             // Step 10: Finalize
             prog(10, "validate", `${_tf}`);
@@ -20633,6 +24096,351 @@ Be specific and evidence-based. Reference actual conversation moments.` }
           <div style={{ height:3, background:C2.faint }}>
             <div style={{ height:"100%", background:C2.accent, transition:"width .4s ease",
               width:`${Math.min(100, Math.round(dfyProgress.found / dfyProgress.needed * 100))}%` }} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Sales → CX Handoff Brief Modal */}
+      {handoffBriefOpen && (companyData as any)._handoffBrief && createPortal(
+        (() => {
+        const hb = (companyData as any)._handoffBrief;
+        const b = hb.content || {};
+        const hasProposals = !!(window as any).__handoffBriefProposals?.length;
+        const proposalCount = ((window as any).__handoffBriefProposals || []).length;
+        return (
+          <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483647,
+            display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(4px)", padding:24 }}
+            onClick={()=>setHandoffBriefOpen(false)}>
+            <div onClick={e=>e.stopPropagation()}
+              style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`,
+                boxShadow:"0 24px 64px rgba(13,15,26,0.22)", maxWidth:820, width:"100%", maxHeight:"90vh",
+                overflow:"hidden", display:"flex", flexDirection:"column" as const,
+                animation:"toastIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+              <div style={{ padding:"20px 24px", borderBottom:`1px solid ${C2.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                  <div>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, textTransform:"uppercase" as const }}>📥 Sales → CX Handoff Brief</div>
+                    <div style={{ fontSize:17, fontWeight:800, fontFamily:head, color:C2.text, marginTop:4, lineHeight:1.35 }}>{b.oneLiner || "Handoff Brief"}</div>
+                  </div>
+                  <button onClick={()=>setHandoffBriefOpen(false)}
+                    style={{ width:28, height:28, borderRadius:7, border:`1px solid ${C2.border}`, background:"transparent", color:C2.muted, cursor:"pointer", fontSize:14 }}>✕</button>
+                </div>
+                <div style={{ fontSize:11, color:C2.muted, fontFamily:mono, marginTop:10 }}>
+                  Generated {new Date(hb.generatedAt).toLocaleString()} ·
+                  {` ${hb.sources?.hubspot || 0} HubSpot · ${hb.sources?.email || 0} emails · ${hb.sources?.slack || 0} Slack · ${hb.sources?.calls || 0} calls`}
+                </div>
+              </div>
+              <div style={{ flex:1, overflowY:"auto", padding:"20px 24px", fontFamily:body, fontSize:13, color:C2.text, lineHeight:1.6 }}>
+                {b.clientOverview && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Client Overview</div>
+                    <div style={{ whiteSpace:"pre-wrap" as const }}>{b.clientOverview}</div>
+                  </div>
+                )}
+                {b.salesJourney && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Sales Journey</div>
+                    <div style={{ whiteSpace:"pre-wrap" as const }}>{b.salesJourney}</div>
+                  </div>
+                )}
+                {b.whatTheyCareAbout && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.green, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>What They Care About</div>
+                    <div style={{ whiteSpace:"pre-wrap" as const }}>{b.whatTheyCareAbout}</div>
+                  </div>
+                )}
+                {b.expectationsSet && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Expectations Set</div>
+                    <div style={{ whiteSpace:"pre-wrap" as const }}>{b.expectationsSet}</div>
+                  </div>
+                )}
+                {Array.isArray(b.stakeholders) && b.stakeholders.length > 0 && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Stakeholders</div>
+                    {b.stakeholders.map((s:any, i:number) => (
+                      <div key={i} style={{ padding:"8px 12px", borderRadius:8, background:C2.faint, marginBottom:6 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C2.text }}>{s.name}{s.role ? <span style={{ fontWeight:500, color:C2.muted }}> · {s.role}</span> : null}</div>
+                        {s.signal && <div style={{ fontSize:11, color:C2.textSoft, marginTop:2 }}>{s.signal}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {Array.isArray(b.topicsDiscussed) && b.topicsDiscussed.length > 0 && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Topics Discussed</div>
+                    <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
+                      {b.topicsDiscussed.map((t:string, i:number) => (
+                        <span key={i} style={{ padding:"4px 10px", borderRadius:5, background:C2.faint, border:`1px solid ${C2.border}`, fontSize:11, fontFamily:body, color:C2.textSoft }}>{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {b.alignment && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.green, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Alignment</div>
+                    <div style={{ whiteSpace:"pre-wrap" as const }}>{b.alignment}</div>
+                  </div>
+                )}
+                {b.concerns && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.amber, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Concerns / Objections</div>
+                    <div style={{ whiteSpace:"pre-wrap" as const }}>{b.concerns}</div>
+                  </div>
+                )}
+                {Array.isArray(b.watchouts) && b.watchouts.length > 0 && (
+                  <div style={{ marginBottom:18 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.red, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Watch-outs for CX</div>
+                    {b.watchouts.map((w:string, i:number) => (
+                      <div key={i} style={{ padding:"8px 12px", borderRadius:8, background:`${C2.red}08`, border:`1px solid ${C2.red}22`, marginBottom:6, fontSize:12, color:C2.text }}>⚠ {w}</div>
+                    ))}
+                  </div>
+                )}
+                {Array.isArray(b.openQuestions) && b.openQuestions.length > 0 && (
+                  <div style={{ marginBottom:8 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Open Questions for Onboarding Call</div>
+                    {b.openQuestions.map((q:string, i:number) => (
+                      <div key={i} style={{ padding:"8px 12px", borderRadius:8, background:`${C2.accent}08`, border:`1px solid ${C2.accent}22`, marginBottom:6, fontSize:12, color:C2.text }}>→ {q}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div style={{ padding:"14px 24px", borderTop:`1px solid ${C2.border}`, display:"flex", gap:8, justifyContent:"flex-end" as const }}>
+                <button onClick={()=>{
+                  // Copy the brief as markdown for sharing
+                  const sections = [
+                    `# ${b.oneLiner || "Sales → CX Handoff Brief"}`,
+                    b.clientOverview && `## Client Overview\n${b.clientOverview}`,
+                    b.salesJourney && `## Sales Journey\n${b.salesJourney}`,
+                    b.whatTheyCareAbout && `## What They Care About\n${b.whatTheyCareAbout}`,
+                    b.expectationsSet && `## Expectations Set\n${b.expectationsSet}`,
+                    b.stakeholders?.length && `## Stakeholders\n${b.stakeholders.map((s:any) => `- **${s.name}** (${s.role || "?"}) — ${s.signal || ""}`).join("\n")}`,
+                    b.topicsDiscussed?.length && `## Topics Discussed\n${b.topicsDiscussed.map((t:string) => `- ${t}`).join("\n")}`,
+                    b.alignment && `## Alignment\n${b.alignment}`,
+                    b.concerns && `## Concerns / Objections\n${b.concerns}`,
+                    b.watchouts?.length && `## Watch-outs\n${b.watchouts.map((w:string) => `- ⚠ ${w}`).join("\n")}`,
+                    b.openQuestions?.length && `## Open Questions\n${b.openQuestions.map((q:string) => `- ${q}`).join("\n")}`,
+                  ].filter(Boolean).join("\n\n");
+                  navigator.clipboard.writeText(sections);
+                  addToast({ title:"Brief copied", status:"success", message:"Markdown copied to clipboard" });
+                }}
+                  style={{ padding:"10px 16px", borderRadius:8, border:`1px solid ${C2.border}`, background:"transparent", color:C2.text, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  Copy as Markdown
+                </button>
+                {hasProposals && (
+                  <button onClick={()=>{ setHandoffBriefOpen(false); openHandoffWritebacks(); }}
+                    style={{ padding:"10px 16px", borderRadius:8, border:"none", background:C2.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${C2.accent}44` }}>
+                    Apply {proposalCount} field update{proposalCount !== 1 ? "s" : ""} →
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })(),
+      document.body
+      )}
+
+      {/* Transcript → Cross-Platform Field Update Modal — renamed to avoid confusing name */}
+      {wbProposals && !wbProposals.loading && createPortal(
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483647,
+          display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(4px)", padding:24 }}
+          onClick={()=>setWbProposals(null)}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`,
+              boxShadow:"0 24px 64px rgba(13,15,26,0.22)", maxWidth:820, width:"100%", maxHeight:"88vh",
+              overflow:"hidden", display:"flex", flexDirection:"column" as const,
+              animation:"toastIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ padding:"18px 22px", borderBottom:`1px solid ${C2.border}` }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C2.text }}>⚡ Proposed Field Updates</div>
+                  <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:4, lineHeight:1.5 }}>
+                    From {wbProposals.sourceType === "document" ? "document" : "call"}: {wbProposals.sourceLabel} — {wbProposals.proposals.length} proposed update{wbProposals.proposals.length!==1?"s":""} · {wbProposals.proposals.filter((p:any)=>p._selected).length} selected
+                  </div>
+                </div>
+                <button onClick={()=>setWbProposals(null)}
+                  style={{ width:28, height:28, borderRadius:7, border:`1px solid ${C2.border}`, background:"transparent", color:C2.muted, cursor:"pointer", fontSize:14 }}>✕</button>
+              </div>
+              {wbProposals.proposals.length > 0 && (
+                <div style={{ display:"flex", gap:8, marginTop:12 }}>
+                  <button onClick={()=>setWbProposals(prev => prev ? { ...prev, proposals: prev.proposals.map((p:any) => ({ ...p, _selected: true })) } : null)}
+                    style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>Select all</button>
+                  <button onClick={()=>setWbProposals(prev => prev ? { ...prev, proposals: prev.proposals.map((p:any) => ({ ...p, _selected: false })) } : null)}
+                    style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>Deselect all</button>
+                  <button onClick={()=>setWbProposals(prev => prev ? { ...prev, proposals: prev.proposals.map((p:any) => ({ ...p, _selected: (p.confidence||0) >= 70 })) } : null)}
+                    style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>Only ≥70% confidence</button>
+                </div>
+              )}
+            </div>
+            <div style={{ flex:1, overflowY:"auto", padding:"8px 22px 18px" }}>
+              {wbProposals.proposals.length === 0 ? (
+                <div style={{ padding:"40px 20px", textAlign:"center" as const, color:C2.muted, fontSize:13, fontFamily:body }}>
+                  No updates proposed — the transcript didn't contain explicit field-level information.
+                </div>
+              ) : (() => {
+                // Group proposals by entity for readability
+                const groups: Record<string, any[]> = {};
+                wbProposals.proposals.forEach((p:any) => {
+                  const key = `${p.entityType}:${p.entityId || ""}:${p.entityLabel}`;
+                  (groups[key] = groups[key] || []).push(p);
+                });
+                return Object.entries(groups).map(([key, items]:any) => (
+                  <div key={key} style={{ marginTop:14 }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:8, textTransform:"uppercase" as const }}>
+                      {items[0].entityLabel} ({items.length} update{items.length!==1?"s":""})
+                    </div>
+                    {items.map((p:any) => {
+                      const modeColor = p.mode === "replace" ? C2.amber : p.mode === "append" ? C2.blue : C2.green;
+                      const confColor = p.confidence >= 80 ? C2.green : p.confidence >= 60 ? C2.amber : C2.muted;
+                      return (
+                        <div key={p.id} style={{ padding:"12px 14px", borderRadius:10, background: p._selected ? `${C2.accent}06` : C2.canvas,
+                          border:`1px solid ${p._selected ? C2.accent + "33" : C2.border}`, marginBottom:8, transition:"all .15s" }}>
+                          <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                            <input type="checkbox" checked={p._selected} onChange={()=>setWbProposals(prev => prev ? { ...prev, proposals: prev.proposals.map((x:any) => x.id === p.id ? { ...x, _selected: !x._selected } : x) } : null)}
+                              style={{ marginTop:3, accentColor:C2.accent, cursor:"pointer", flexShrink:0 }} />
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, flexWrap:"wrap" as const }}>
+                                <span style={{ fontSize:11, fontWeight:700, fontFamily:head, color:C2.text }}>{p.fieldLabel || p.fieldId}</span>
+                                <span style={{ fontSize:8, fontFamily:mono, color:C2.muted, padding:"1px 5px", borderRadius:3, background:C2.faint }}>{p.fieldId}</span>
+                                <span style={{ fontSize:8, fontFamily:mono, fontWeight:700, color:modeColor, padding:"1px 5px", borderRadius:3, background:`${modeColor}14`, letterSpacing:.3 }}>{p.mode?.toUpperCase().replace(/_/g,' ')}</span>
+                                <span style={{ fontSize:8, fontFamily:mono, fontWeight:700, color:confColor, marginLeft:"auto" }}>{p.confidence}%</span>
+                              </div>
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:6 }}>
+                                <div>
+                                  <div style={{ fontSize:8, fontFamily:mono, color:C2.muted, fontWeight:700, marginBottom:2, letterSpacing:.3 }}>CURRENT</div>
+                                  <div style={{ fontSize:11, fontFamily:body, color:C2.muted, padding:"5px 8px", borderRadius:5, background:C2.faint, minHeight:28, lineHeight:1.4, whiteSpace:"pre-wrap" as const }}>{p.currentValue || <em style={{ opacity:.6 }}>(empty)</em>}</div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize:8, fontFamily:mono, color:C2.accent, fontWeight:700, marginBottom:2, letterSpacing:.3 }}>PROPOSED</div>
+                                  <div style={{ fontSize:11, fontFamily:body, color:C2.text, padding:"5px 8px", borderRadius:5, background:`${C2.accent}08`, border:`1px solid ${C2.accent}22`, minHeight:28, lineHeight:1.4, whiteSpace:"pre-wrap" as const }}>{p.proposedValue}</div>
+                                </div>
+                              </div>
+                              {p.reasoning && (
+                                <div style={{ fontSize:10, color:C2.textSoft, fontFamily:body, marginBottom:4 }}>{p.reasoning}</div>
+                              )}
+                              {p.quote && (
+                                <div style={{ fontSize:10, color:C2.muted, fontFamily:body, fontStyle:"italic" as const, padding:"4px 8px", borderLeft:`2px solid ${C2.border}`, lineHeight:1.4 }}>"{p.quote}"</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
+            </div>
+            <div style={{ padding:"14px 22px", borderTop:`1px solid ${C2.border}`, display:"flex", gap:8 }}>
+              <button onClick={()=>setWbProposals(null)}
+                style={{ flex:1, padding:"10px", borderRadius:8, border:`1px solid ${C2.border}`, background:"transparent", color:C2.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                Cancel
+              </button>
+              <button onClick={applyWorkspaceUpdates} disabled={!wbProposals.proposals.some((p:any) => p._selected)}
+                style={{ flex:2, padding:"10px", borderRadius:8, border:"none",
+                  background: wbProposals.proposals.some((p:any) => p._selected) ? C2.accent : C2.muted, color:"#fff",
+                  fontSize:12, fontFamily:head, fontWeight:700, cursor: wbProposals.proposals.some((p:any) => p._selected) ? "pointer" : "not-allowed", boxShadow: wbProposals.proposals.some((p:any) => p._selected) ? `0 2px 8px ${C2.accent}44` : "none" }}>
+                Apply {wbProposals.proposals.filter((p:any)=>p._selected).length} update{wbProposals.proposals.filter((p:any)=>p._selected).length!==1?"s":""} →
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Transcript → Cross-Platform Updates: Loading Overlay */}
+      {wbProposals && wbProposals.loading && createPortal(
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483647,
+          display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(4px)" }}>
+          <div style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`, padding:"32px 44px", textAlign:"center" as const, minWidth:320,
+            animation:"toastIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ width:36, height:36, margin:"0 auto 14px", borderRadius:"50%", border:`3px solid ${C2.faint}`, borderTopColor:C2.accent, animation:"stratSpin 1.2s linear infinite" }} />
+            <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:4 }}>Analyzing transcript…</div>
+            <div style={{ fontSize:11, color:C2.muted, fontFamily:body, lineHeight:1.5 }}>
+              Scanning for field-level updates across company, personas, and products.
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* CSV → Persona Import Modal */}
+      {csvImportState && createPortal(
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483647,
+          display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(4px)", padding:24 }}
+          onClick={()=>!csvImportState.importing && setCsvImportState(null)}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`,
+              boxShadow:"0 24px 64px rgba(13,15,26,0.22)", maxWidth:640, width:"100%", maxHeight:"85vh",
+              overflow:"hidden", display:"flex", flexDirection:"column" as const,
+              animation:"toastIn .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ padding:"18px 22px", borderBottom:`1px solid ${C2.border}` }}>
+              <div style={{ fontSize:16, fontWeight:800, fontFamily:head, color:C2.text }}>📤 Import Contacts → Generate Persona</div>
+              <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:4, lineHeight:1.5 }}>
+                AI will analyze the CSV, synthesize a persona around the common pattern, and score fit against each product.
+              </div>
+            </div>
+            <div style={{ flex:1, overflowY:"auto", padding:"18px 22px" }}>
+              <div style={{ padding:"12px 14px", borderRadius:10, background:C2.faint, marginBottom:14 }}>
+                <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:4 }}>FILE</div>
+                <div style={{ fontSize:13, fontWeight:600, fontFamily:body, color:C2.text }}>{csvImportState.fileName}</div>
+                <div style={{ fontSize:11, color:C2.muted, fontFamily:mono, marginTop:4 }}>
+                  {csvImportState.rows.length.toLocaleString()} contact{csvImportState.rows.length!==1?"s":""} · {csvImportState.headers.length} columns
+                </div>
+              </div>
+              {/* Columns detected */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:5, letterSpacing:.4 }}>COLUMNS DETECTED</div>
+                <div style={{ display:"flex", flexWrap:"wrap" as const, gap:4 }}>
+                  {csvImportState.headers.slice(0, 20).map((h:string, i:number) => (
+                    <span key={i} style={{ fontSize:10, fontFamily:mono, padding:"3px 7px", borderRadius:5, background:C2.canvas, border:`1px solid ${C2.border}`, color:C2.textSoft }}>{h}</span>
+                  ))}
+                  {csvImportState.headers.length > 20 && (
+                    <span style={{ fontSize:10, fontFamily:mono, color:C2.muted, padding:"3px 7px" }}>+{csvImportState.headers.length - 20} more</span>
+                  )}
+                </div>
+              </div>
+              {/* Sample preview */}
+              {csvImportState.rows.length > 0 && (
+                <div>
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, marginBottom:5, letterSpacing:.4 }}>PREVIEW (first 3 rows)</div>
+                  <div style={{ background:C2.faint, borderRadius:8, overflow:"auto", maxHeight:200, fontSize:11, fontFamily:mono }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse" as const }}>
+                      <thead>
+                        <tr>{csvImportState.headers.slice(0, 6).map((h:string, i:number) => (
+                          <th key={i} style={{ padding:"6px 8px", textAlign:"left" as const, borderBottom:`1px solid ${C2.border}`, color:C2.muted, fontWeight:700, whiteSpace:"nowrap" as const }}>{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody>
+                        {csvImportState.rows.slice(0, 3).map((r:any, ri:number) => (
+                          <tr key={ri}>{csvImportState.headers.slice(0, 6).map((h:string, i:number) => (
+                            <td key={i} style={{ padding:"6px 8px", borderBottom:ri<2?`1px solid ${C2.border}`:"none", color:C2.textSoft, maxWidth:140, overflow:"hidden" as const, textOverflow:"ellipsis" as const, whiteSpace:"nowrap" as const }}>{r[h] || ""}</td>
+                          ))}</tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {products.length === 0 && (
+                <div style={{ marginTop:12, padding:"10px 12px", borderRadius:8, background:`${C2.amber}08`, border:`1px solid ${C2.amber}25`, fontSize:11, fontFamily:body, color:C2.amber }}>
+                  No products defined yet — fit scoring will be skipped. Add products first for per-product scoring.
+                </div>
+              )}
+            </div>
+            <div style={{ padding:"14px 22px", borderTop:`1px solid ${C2.border}`, display:"flex", gap:8 }}>
+              <button onClick={()=>setCsvImportState(null)} disabled={csvImportState.importing}
+                style={{ flex:1, padding:"10px", borderRadius:8, border:`1px solid ${C2.border}`, background:"transparent", color:C2.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:csvImportState.importing?"not-allowed":"pointer", opacity:csvImportState.importing?0.5:1 }}>
+                Cancel
+              </button>
+              <button onClick={generatePersonaFromCsv} disabled={csvImportState.importing}
+                style={{ flex:2, padding:"10px", borderRadius:8, border:"none",
+                  background: csvImportState.importing ? C2.muted : C2.accent, color:"#fff",
+                  fontSize:12, fontFamily:head, fontWeight:700, cursor: csvImportState.importing ? "wait" : "pointer", boxShadow: csvImportState.importing ? "none" : `0 2px 8px ${C2.accent}44` }}>
+                {csvImportState.importing ? "◌ Analyzing contacts…" : "✨ Generate Persona"}
+              </button>
+            </div>
           </div>
         </div>,
         document.body
