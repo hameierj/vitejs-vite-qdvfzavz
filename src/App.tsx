@@ -8039,12 +8039,14 @@ RULES:
 }
 
 // ─── COVERAGE MATRIX ─────────────────────────────────────────────────────────
-function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], v2 = false, onCreateCampaign, onViewCampaign, onGoToRts }: {
+function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], v2 = false, onCreateCampaign, onViewCampaign, onGoToRts, onGenerateFit }: {
   products: any[]; personas: any[]; offers: any[]; campaigns: any[]; rtsLists?: any[]; v2?: boolean;
   onCreateCampaign?: (productId:string, personaId:string) => void;
   onViewCampaign?: (campaignId:string) => void;
   onGoToRts?: () => void;
+  onGenerateFit?: () => Promise<void> | void;
 }) {
+  const [fitRunning, setFitRunning] = useState(false);
   const _C = v2 ? C2 : C;
   if (products.length === 0 || personas.length === 0) {
     return (
@@ -8121,6 +8123,17 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
           <span style={{ padding:"4px 10px", borderRadius:6, background:_C.faint, color:_C.muted, fontSize:11, fontFamily:mono, fontWeight:600, border:`1px dashed ${_C.border}` }}>
             {fitCounts.unknown} unrated
           </span>
+        )}
+        {onGenerateFit && (
+          <button onClick={async ()=>{ if (fitRunning) return; setFitRunning(true); try { await onGenerateFit(); } finally { setFitRunning(false); } }}
+            disabled={fitRunning}
+            style={{ marginLeft:"auto", padding:"5px 12px", borderRadius:6, border:`1px solid ${_C.border}`,
+              background: fitRunning ? _C.faint : _C.canvas, color: fitRunning ? _C.muted : _C.textSoft,
+              fontSize:11, fontFamily:head, fontWeight:600, cursor: fitRunning ? "wait" : "pointer",
+              display:"flex", alignItems:"center", gap:6 }}
+            title="Run AI fit analysis across every product × persona combo using the same criteria as Quickstart. Temporary button — planning to auto-run after persona/product creation.">
+            {fitRunning ? "◌ Analyzing…" : (fitCounts.unknown > 0 ? `⚡ Analyze fit (${fitCounts.unknown} unrated)` : "↻ Re-run fit analysis")}
+          </button>
         )}
       </div>
 
@@ -21441,6 +21454,74 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                         setView("campaigns");
                       }}
                       onGoToRts={() => setView("rtsleads")}
+                      onGenerateFit={async () => {
+                        // Mirror the Quickstart research-brief matrix criteria — rate every product × persona combo
+                        // as high | medium | low | skip with a short rationale. Writes results onto each persona's
+                        // linkedProductFit and linkedProductFitReason so the Coverage Matrix renders them.
+                        if (!products.length || !icps.length) {
+                          addToast({ title:"Add products and personas first", status:"error", message:"Fit analysis needs both to exist" });
+                          return;
+                        }
+                        const toastId = addToast({ title:"Analyzing fit…", status:"loading", message:`${products.length} × ${icps.length} combos` });
+                        try {
+                          const cd = companyData as Record<string,string>;
+                          const productBlock = products.map((p:any, i:number) => `${i}: "${p.name}" — ${(p.description || p.valueProposition || "").slice(0, 180)} · ideal customer: ${(p.idealCustomer || "").slice(0, 120)}`).join("\n");
+                          const personaBlock = icps.map((p:any, i:number) => `${i}: "${p.name}" — industries: ${(p.data?.industries || "").slice(0, 120)} · buyer: ${(p.data?.buyer || "").slice(0, 120)} · primary pain: ${(p.data?.pain1 || "").slice(0, 140)} · company size: ${Array.isArray(p.data?.co_sizes) ? p.data.co_sizes.join("/") : (p.data?.co_sizes || "")}`).join("\n");
+                          const prompt = `You are a senior B2B GTM strategist. Rate the product × persona fit for every combination below. Use the SAME criteria Quickstart uses on the research-brief review screen.
+
+COMPANY: ${cd.co_name || "?"} (${cd.co_industry || "?"})
+VALUE PROP: ${cd.co_pitch || ""}
+
+PRODUCTS (${products.length}):
+${productBlock}
+
+PERSONAS (${icps.length}):
+${personaBlock}
+
+For EVERY product × persona combination (${products.length * icps.length} cells), return a priority + rationale:
+- "high"   = strong ICP fit. Primary pain aligns tightly with the product, buyer has authority + budget, clear wedge.
+- "medium" = good fit but secondary. Pain is adjacent or buyer needs more internal alignment.
+- "low"    = plausible but de-prioritized. Edge-case buyer, messaging would need heavy reframing.
+- "skip"   = wrong audience for this product. Don't build a campaign here.
+
+Return ONLY a JSON array, one entry per combination:
+[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":"1 sentence on why — reference the actual pain / buyer / fit signal"}, ...]
+
+Every combination MUST appear in the array. Rationale under 160 characters each. Raw JSON only.`;
+                          const raw = await callAI(prompt, "Return only a JSON array. No prose, no fences.", 4000, { useFullContext: true, model: "claude-haiku-4-5-20251001" });
+                          const parsed = safeJsonParse(raw);
+                          const matrix: any[] = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.matrix) ? parsed.matrix : []);
+                          if (!matrix.length) throw new Error("AI returned no matrix entries");
+
+                          // Pre-build id lookups so we can apply the matrix by index → id
+                          const productIdByIdx: Record<number,string> = {};
+                          products.forEach((p:any, i:number) => { productIdByIdx[i] = p.id; });
+                          // Rebuild each persona's linkedProductFit map from scratch so stale entries don't linger.
+                          const fitByPersonaIdx: Record<number, { fit: Record<string,string>; reason: Record<string,string> }> = {};
+                          for (const m of matrix) {
+                            const pIdx = typeof m?.productIdx === "number" ? m.productIdx : parseInt(m?.productIdx);
+                            const prIdx = typeof m?.personaIdx === "number" ? m.personaIdx : parseInt(m?.personaIdx);
+                            if (!Number.isFinite(pIdx) || !Number.isFinite(prIdx)) continue;
+                            const prodId = productIdByIdx[pIdx];
+                            if (!prodId) continue;
+                            if (!fitByPersonaIdx[prIdx]) fitByPersonaIdx[prIdx] = { fit: {}, reason: {} };
+                            const priority = String(m.priority || "").toLowerCase();
+                            if (priority === "high" || priority === "medium" || priority === "low" || priority === "skip") {
+                              fitByPersonaIdx[prIdx].fit[prodId] = priority;
+                              if (m.rationale) fitByPersonaIdx[prIdx].reason[prodId] = String(m.rationale).slice(0, 200);
+                            }
+                          }
+                          setIcps(prev => prev.map((p:any, i:number) => {
+                            const entry = fitByPersonaIdx[i];
+                            if (!entry || Object.keys(entry.fit).length === 0) return p;
+                            return { ...p, linkedProductFit: { ...entry.fit }, linkedProductFitReason: { ...entry.reason } };
+                          }));
+                          updateToast(toastId, { status:"success", title:"Fit analysis ready", message:`${matrix.length} combo${matrix.length!==1?"s":""} rated` });
+                        } catch (e:any) {
+                          console.error("[CoverageMatrix] fit gen failed:", e);
+                          updateToast(toastId, { status:"error", title:"Fit analysis failed", message:(e?.message || "Check console").slice(0, 120) });
+                        }
+                      }}
                     />
                   )}
                 </div>
