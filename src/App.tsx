@@ -2674,7 +2674,11 @@ function scoreWithAI(f: any, v: any): Promise<number> {
 function newICP(idx, data = {}, name = "", confidence = {}) {
   return { id:uid(), color:ICP_COLORS[idx%ICP_COLORS.length], name, data, outputs:null,
            approval:"draft", sectionApprovals:{}, comments:[], confidence,
-           linkedProductIds:[] as string[], linkedOfferIds:[] as string[] };
+           linkedProductIds:[] as string[], linkedOfferIds:[] as string[],
+           // Per-product fit: { productId: "high" | "medium" | "low" | "skip" }. Populated from the
+           // Quickstart priority matrix and used by the Coverage Matrix to color-code cells.
+           linkedProductFit: {} as Record<string,string>,
+           linkedProductFitReason: {} as Record<string,string> };
 }
 
 // Naming rules injected into every AI prompt that generates product/persona names
@@ -8059,20 +8063,42 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
   const totalCombos = products.length * personas.length;
   let covered = 0;
 
-  // Build cell data: find the campaign for each product × persona combo
+  // Fit map colors — same palette as Quickstart review so the two surfaces match visually.
+  // "high" = strong fit / priority one · "medium" = good fit · "low" = possible but de-prioritize · "skip" = wrong audience for this product
+  const FIT_COLORS: Record<string,{color:string;bg:string;label:string}> = {
+    high:   { color:"#00D68F", bg:"#00D68F22", label:"High fit" },
+    medium: { color:"#FFC048", bg:"#FFC04822", label:"Medium fit" },
+    low:    { color:"#8E94A7", bg:"#8E94A722", label:"Low fit" },
+    skip:   { color:"#FF6B6B", bg:"#FF6B6B22", label:"Skip" },
+  };
+  const getFitFor = (pers: any, prodId: string): string => {
+    const raw = String(pers?.linkedProductFit?.[prodId] || "").toLowerCase();
+    return raw === "high" || raw === "medium" || raw === "low" || raw === "skip" ? raw : "";
+  };
+
+  // Build cell data: find the campaign + fit for each product × persona combo
   const cellData = products.map((prod: any) => personas.map((pers: any) => {
     const campaign = campaigns.find((c: any) => (c.personaIds || [])[0] === pers.id && c.productId === prod.id);
     if (campaign) covered++;
-    return { campaign };
+    const fit = getFitFor(pers, prod.id);
+    const fitReason = pers?.linkedProductFitReason?.[prod.id] || "";
+    return { campaign, fit, fitReason };
   }));
 
   const coveragePct = totalCombos > 0 ? Math.round(covered / totalCombos * 100) : 0;
   const gaps = totalCombos - covered;
 
+  // Fit summary across all product × persona combos
+  const fitCounts = { high: 0, medium: 0, low: 0, skip: 0, unknown: 0 };
+  for (const row of cellData) for (const c of row) {
+    if (c.fit === "high" || c.fit === "medium" || c.fit === "low" || c.fit === "skip") fitCounts[c.fit]++;
+    else fitCounts.unknown++;
+  }
+
   return (
     <div style={{ padding:"28px 32px", overflowY:"auto", height:"100%" }}>
       {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
         <div>
           <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Coverage</h2>
           <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
@@ -8083,52 +8109,20 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
           color:coveragePct===100?_C.green:coveragePct>=50?_C.accent:_C.muted }}>{coveragePct}%</div>
       </div>
 
-      {/* RTS (High-Intent) Coverage strip — only shown when workspace has RTS lists */}
-      {rtsLists.length > 0 && (() => {
-        const rtsWithCampaign = rtsLists.filter((l:any) => campaigns.some((c:any) => c.rtsListId === l.id));
-        const rtsWithout = rtsLists.filter((l:any) => !campaigns.some((c:any) => c.rtsListId === l.id));
-        return (
-          <div style={{ marginBottom:20, padding:"14px 16px", borderRadius:12, background:`#B946F208`, border:`1px solid #B946F222` }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:"#B946F2", letterSpacing:.4 }}>⚡ HIGH-INTENT (RTS)</span>
-                <span style={{ fontSize:11, color:_C.muted, fontFamily:body }}>
-                  {rtsWithCampaign.length}/{rtsLists.length} lists have a campaign
-                </span>
-              </div>
-              {onGoToRts && (
-                <button onClick={onGoToRts}
-                  style={{ padding:"4px 10px", borderRadius:6, border:`1px solid #B946F244`, background:"transparent", color:"#B946F2", fontSize:10, fontFamily:mono, fontWeight:700, cursor:"pointer" }}>
-                  Manage lists →
-                </button>
-              )}
-            </div>
-            <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
-              {rtsLists.map((l:any) => {
-                const linked = campaigns.find((c:any) => c.rtsListId === l.id);
-                return (
-                  <div key={l.id}
-                    onClick={()=>linked ? onViewCampaign?.(linked.id) : onGoToRts?.()}
-                    style={{ padding:"5px 10px", borderRadius:8, cursor:"pointer",
-                      background: linked ? "#B946F215" : _C.canvas,
-                      border: `1px dashed ${linked ? "#B946F266" : _C.border}`,
-                      fontSize:10, fontFamily:mono, fontWeight:600,
-                      color: linked ? "#B946F2" : _C.muted,
-                      display:"flex", alignItems:"center", gap:6 }}>
-                    <span>{linked ? "✓" : "○"}</span>
-                    <span>{l.name || "Unnamed list"}</span>
-                  </div>
-                );
-              })}
-            </div>
-            {rtsWithout.length > 0 && (
-              <div style={{ marginTop:8, fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" }}>
-                {rtsWithout.length} RTS list{rtsWithout.length!==1?"s":""} without a campaign — high-intent leads are decaying
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      {/* Fit summary — same counts Quickstart shows on the review screen */}
+      <div style={{ marginBottom:20, display:"flex", gap:8, flexWrap:"wrap" as const, alignItems:"center" }}>
+        <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, textTransform:"uppercase" as const }}>Fit:</span>
+        {(["high","medium","low","skip"] as const).map(k => (
+          <span key={k} style={{ padding:"4px 10px", borderRadius:6, background:FIT_COLORS[k].bg, color:FIT_COLORS[k].color, fontSize:11, fontFamily:mono, fontWeight:700 }}>
+            {fitCounts[k]} {FIT_COLORS[k].label.toLowerCase()}
+          </span>
+        ))}
+        {fitCounts.unknown > 0 && (
+          <span style={{ padding:"4px 10px", borderRadius:6, background:_C.faint, color:_C.muted, fontSize:11, fontFamily:mono, fontWeight:600, border:`1px dashed ${_C.border}` }}>
+            {fitCounts.unknown} unrated
+          </span>
+        )}
+      </div>
 
       {/* Grid */}
       <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, overflow:"auto", boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
@@ -8159,7 +8153,9 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
                   </div>
                 </td>
                 {products.map((prod: any, pri: number) => {
-                  const { campaign } = cellData[pri][pi];
+                  const { campaign, fit, fitReason } = cellData[pri][pi];
+                  const fitMeta = fit ? FIT_COLORS[fit] : null;
+                  const fitTitle = fitReason || (fitMeta ? `${fitMeta.label} (Quickstart priority matrix)` : "");
                   if (campaign) {
                     const statusObj = CAMPAIGN_STATUSES.find(s => s.id === campaign.status) || CAMPAIGN_STATUSES[0];
                     const seqLen = campaign.sequence?.length || 0;
@@ -8168,8 +8164,10 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
                       <td key={prod.id} style={{ padding:"8px 10px", textAlign:"center",
                         borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none" }}>
                         <div onClick={()=>onViewCampaign?.(campaign.id)}
+                          title={fitTitle}
                           style={{ padding:"8px 12px", borderRadius:10, background:`${statusObj.color}0C`,
-                            border:`1px solid ${statusObj.color}22`, cursor:"pointer", transition:"all .15s", position:"relative" as const }}
+                            border:`1px solid ${statusObj.color}22`, cursor:"pointer", transition:"all .15s", position:"relative" as const,
+                            borderLeft: fitMeta ? `3px solid ${fitMeta.color}` : `1px solid ${statusObj.color}22` }}
                           onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=statusObj.color;(e.currentTarget as HTMLElement).style.background=`${statusObj.color}18`;}}
                           onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=statusObj.color+"22";(e.currentTarget as HTMLElement).style.background=`${statusObj.color}0C`;}}>
                           {isHigh && (
@@ -8180,25 +8178,36 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
                             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                             {campaign.name || "Untitled"}
                           </div>
-                          <div style={{ display:"flex", gap:4, justifyContent:"center" }}>
+                          <div style={{ display:"flex", gap:4, justifyContent:"center", alignItems:"center", flexWrap:"wrap" as const }}>
                             <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"1px 6px", borderRadius:4,
                               background:`${statusObj.color}18`, color:statusObj.color }}>{statusObj.label}</span>
                             <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{seqLen} steps</span>
+                            {fitMeta && (
+                              <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"1px 6px", borderRadius:4,
+                                background:fitMeta.bg, color:fitMeta.color }}>{fitMeta.label}</span>
+                            )}
                           </div>
                         </div>
                       </td>
                     );
                   }
-                  // Empty cell — click to create
+                  // Empty cell — click to create. Fit-aware styling so unrated/skip cells look different from plausible ones.
+                  const emptyBorder = fitMeta ? `${fitMeta.color}55` : _C.border;
+                  const emptyBg = fitMeta ? `${fitMeta.color}08` : "transparent";
+                  const emptyColor = fitMeta ? fitMeta.color : _C.muted;
+                  const emptyLabel = fit === "skip" ? "Skip · wrong fit" : fit === "low" ? "+ Campaign (low)" : fit === "medium" ? "+ Campaign · med fit" : fit === "high" ? "+ Campaign · HIGH fit" : "+ Campaign";
                   return (
                     <td key={prod.id} style={{ padding:"8px 10px", textAlign:"center",
                       borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none" }}>
-                      <div onClick={()=>onCreateCampaign?.(prod.id, pers.id)}
-                        style={{ padding:"10px 12px", borderRadius:10, border:`2px dashed ${_C.border}`,
-                          cursor:"pointer", transition:"all .15s", color:_C.muted, fontSize:11, fontFamily:head, fontWeight:500 }}
-                        onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=_C.accent; el.style.color=_C.accent; el.style.background=`${_C.accent}06`;}}
-                        onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=_C.border; el.style.color=_C.muted; el.style.background="transparent";}}>
-                        + Campaign
+                      <div onClick={()=>{ if (fit === "skip") return; onCreateCampaign?.(prod.id, pers.id); }}
+                        title={fitTitle}
+                        style={{ padding:"10px 12px", borderRadius:10, border:`2px dashed ${emptyBorder}`,
+                          background:emptyBg,
+                          cursor: fit === "skip" ? "not-allowed" : "pointer", transition:"all .15s", color:emptyColor, fontSize:11, fontFamily:head, fontWeight:500,
+                          opacity: fit === "skip" ? 0.5 : 1 }}
+                        onMouseEnter={e=>{ if (fit === "skip") return; const el=e.currentTarget as HTMLElement; el.style.borderColor=fitMeta?fitMeta.color:_C.accent; el.style.color=fitMeta?fitMeta.color:_C.accent; el.style.background=fitMeta?`${fitMeta.color}15`:`${_C.accent}06`; }}
+                        onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=emptyBorder; el.style.color=emptyColor; el.style.background=emptyBg;}}>
+                        {emptyLabel}
                       </div>
                     </td>
                   );
@@ -26815,18 +26824,45 @@ Be specific and evidence-based. Reference actual conversation moments.` }
             }
             prog(5, "products", `${_tf}`);
 
+            // Build lookup for the priority matrix captured during Phase A's research brief.
+            // briefMatrix entries: { productIdx, personaIdx, priority: "high"|"medium"|"low"|"skip", rationale }
+            // Persisting these onto personas lets the Coverage Matrix show fit per cell.
+            const briefMatrix: any[] = Array.isArray(brief?.matrix) ? brief.matrix : [];
+            const productIdByBriefIdx: Record<number,string> = {};
+            selProds.forEach((brIdx: number, k: number) => { productIdByBriefIdx[brIdx] = products[k]?.id || ""; });
+            const buildFitMaps = (personaBriefIdx: number): { fit: Record<string,string>; reason: Record<string,string> } => {
+              const fit: Record<string,string> = {};
+              const reason: Record<string,string> = {};
+              for (const m of briefMatrix) {
+                if (m?.personaIdx !== personaBriefIdx) continue;
+                const prodId = productIdByBriefIdx[m.productIdx];
+                if (!prodId) continue;
+                fit[prodId] = String(m.priority || "").toLowerCase();
+                if (m.rationale) reason[prodId] = String(m.rationale);
+              }
+              return { fit, reason };
+            };
+
             const personas: any[] = [];
             for (const r of personaResults) {
               if (r.status === "fulfilled" && r.value.parsed) {
                 const { parsed, pe, idx } = r.value;
                 const persona = newICP(idx, parsed.fields||{}, parsed.name||pe.name, parsed.confidence||{});
                 persona.linkedProductIds = products.map((p:any) => p.id);
+                const { fit, reason } = buildFitMaps(idx);
+                persona.linkedProductFit = fit;
+                persona.linkedProductFitReason = reason;
                 const fc = Object.keys(parsed.fields||{}).filter(k=>(parsed.fields||{})[k]&&String((parsed.fields||{})[k]).trim()).length;
                 _tf += fc; _ts += fc * 120;
                 personas.push(persona);
               } else if (r.status === "fulfilled") {
                 const { pe, idx } = r.value;
-                personas.push(newICP(idx, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {})); _tf += 3; _ts += 300;
+                const fallback = newICP(idx, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {});
+                const { fit, reason } = buildFitMaps(idx);
+                fallback.linkedProductFit = fit;
+                fallback.linkedProductFitReason = reason;
+                personas.push(fallback);
+                _tf += 3; _ts += 300;
               }
             }
             prog(6, "personas", `${_tf}`);
