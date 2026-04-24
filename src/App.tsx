@@ -22940,11 +22940,20 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
               <div style={{ position:"absolute" as const, inset:0, overflow:"auto", padding:"24px clamp(20px, 3vw, 48px)",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
                 <div style={{ maxWidth:960, margin:"0 auto" }}>
-                  <div style={{ marginBottom:20 }}>
-                    <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Integrations</h2>
-                    <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
-                      Connect external tools. Credentials are stored locally in your browser only.
-                    </p>
+                  <div style={{ marginBottom:20, display:"flex", justifyContent:"space-between", alignItems:"flex-end", gap:12, flexWrap:"wrap" as const }}>
+                    <div>
+                      <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Integrations</h2>
+                      <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
+                        Connect external tools. Credentials are stored locally in your browser only.
+                      </p>
+                    </div>
+                    <button onClick={()=>{ (window as any).__intKeysVisible = !((window as any).__intKeysVisible); setCompanyData(p=>({...p})); }}
+                      title={(window as any).__intKeysVisible ? "Hide API keys" : "Show API keys"}
+                      style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas,
+                        color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer",
+                        display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap" as const }}>
+                      {(window as any).__intKeysVisible ? "👁‍🗨 Hide keys" : "👁 Show keys"}
+                    </button>
                   </div>
 
                   {/* ═══════ BULK IMPORTS ═══════ */}
@@ -23005,7 +23014,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       </span>
                     </div>
                     <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>API Key</div>
-                    <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-api03-…"
+                    <input type={(window as any).__intKeysVisible ? "text" : "password"} value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-api03-…"
                       style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none" }} />
                   </div>
 
@@ -23021,7 +23030,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                           <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{k.label}</div>
                         </div>
                         <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:6 }}>{k.hint}</div>
-                        <input type="password" value={k.val} onChange={e=>k.set(e.target.value)} placeholder={k.ph}
+                        <input type={(window as any).__intKeysVisible ? "text" : "password"} value={k.val} onChange={e=>k.set(e.target.value)} placeholder={k.ph}
                           style={{ width:"100%", padding:"6px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:11, boxSizing:"border-box" as const, outline:"none" }} />
                       </div>
                     ))}
@@ -23048,7 +23057,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       </span>
                     </div>
                     <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Private App Token</div>
-                    <input type="password" value={hubspotKey}
+                    <input type={(window as any).__intKeysVisible ? "text" : "password"} value={hubspotKey}
                       onChange={e=>{setHubspotKey(e.target.value); setHubspotToken(e.target.value);}}
                       placeholder="pat-na1-…"
                       style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", marginBottom:10 }} />
@@ -23110,7 +23119,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       </span>
                     </div>
                     <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Bot Token</div>
-                    <input type="password" value={slackKey}
+                    <input type={(window as any).__intKeysVisible ? "text" : "password"} value={slackKey}
                       onChange={e=>{setSlackKey(e.target.value); setSlackToken(e.target.value);}}
                       placeholder="xoxb-…"
                       style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", marginBottom:10 }} />
