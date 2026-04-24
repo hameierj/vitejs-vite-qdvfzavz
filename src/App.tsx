@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, Fragment } from "react";
 import { createPortal } from "react-dom";
 import mammoth from "mammoth";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -531,7 +531,7 @@ const PRODUCT_SECTIONS: Record<string, {label:string; fields:any[]}> = {
   ]},
 };
 const PRODUCT_FIELDS = Object.values(PRODUCT_SECTIONS).flatMap(s => s.fields) as any[];
-const EMPTY_PRODUCT = () => ({ id:uid(), ...Object.fromEntries(PRODUCT_FIELDS.map(f=>[f.id,""])), createdAt:new Date().toISOString() });
+const EMPTY_PRODUCT = () => ({ id:uid(), ...Object.fromEntries(PRODUCT_FIELDS.map(f=>[f.id,""])), sourceUrl:"", createdAt:new Date().toISOString() });
 // Get visible product fields based on dealType (filters out irrelevant commercial fields)
 const getVisibleProductFields = (product: any) => {
   const dt = (product?.dealType || "").toLowerCase();
@@ -596,6 +596,285 @@ const PHASE_STATUSES = [
   { id:"completed",   label:"Completed",   color:"#00D68F" },
   { id:"skipped",     label:"Skipped",     color:"#D0D3DA" },
 ];
+
+// ─── PLAYBOOKS ───────────────────────────────────────────────────────────────
+// Generation profiles modeled on real public figures the LLM has dense training coverage of.
+// Each playbook is a BUNDLE of voice + strategy + opening move + proof preference + CTA pattern
+// + channel adaptations, selected per-campaign and injected into every AI prompt the campaign runs.
+// Figure names live ONLY in the system prompt — the UI surfaces neutral labels so the product
+// doesn't visibly trade on third-party names.
+type PlaybookKey =
+  | "auto" | "value_stack" | "high_energy" | "trust_patient" | "tactical_negotiator"
+  | "craft_copywriter" | "concise_idea" | "data_story" | "permission_challenger"
+  | "technical_founder" | "plainspoken_trade";
+
+interface Playbook {
+  key: PlaybookKey;
+  label: string;         // UI-facing neutral name
+  figure: string;        // server-side: the real person the LLM should emulate
+  tagline: string;       // one-line pitch for picker
+  fit: string;           // ICP/context cues
+  voice: string[];       // voice mechanics
+  strategy: string;      // sequence arc
+  opening: string;       // opening-move pattern
+  proof: string;         // proof-point preference
+  cta: string;           // CTA/escalation pattern
+  linkedin: string;      // channel adaptation for LinkedIn
+  voice_agent: string;   // channel adaptation for AI voice call
+  avoid: string;         // anti-caricature guardrail
+}
+
+const PLAYBOOKS: Record<PlaybookKey, Playbook> = {
+  auto: {
+    key: "auto",
+    label: "Auto (follow persona tone)",
+    figure: "",
+    tagline: "Use the persona's tone/strategy fields as-is — no voice override.",
+    fit: "Default. Backward compatible with existing persona-driven tone.",
+    voice: [], strategy: "", opening: "", proof: "", cta: "", linkedin: "", voice_agent: "", avoid: "",
+  },
+  value_stack: {
+    key: "value_stack",
+    label: "Value-Stack Operator",
+    figure: "Alex Hormozi",
+    tagline: "Offer-led, value-stacked, dollar-specific — action energy for SMB buyers.",
+    fit: "SMB, B2B SaaS, agencies, service businesses. Works when buyers think in dollars and hours.",
+    voice: [
+      "Short sentences. One thought per line.",
+      "Concrete $ and % numbers (\"save $47K/yr\", not \"save money\").",
+      "Value-stack: list 3 things they get, then the ask.",
+      "Reframe objections as features (\"too expensive\" → \"cheaper than one missed deal\").",
+      "Zero filler adjectives — every word earns its spot.",
+    ],
+    strategy: "Hook with a dollar-denominated pain → stack the value → hard CTA early → scarcity on follow-ups.",
+    opening: "Lead with a concrete $ or hour cost of the current problem. No pleasantries.",
+    proof: "Before/after numbers from comparable customers. Stack 2–3 stats.",
+    cta: "Hard ask by touch 2 (15-min call, calendar link). Escalate scarcity on touch 4.",
+    linkedin: "Same voice, tighter. Connection note = one pain-stat + 'open to a quick chat?' Messages under 300 chars.",
+    voice_agent: "State the stat in 5 seconds. Question. Stack value in ≤20 seconds. Book.",
+    avoid: "Don't overuse 'here's the thing' or 'most people won't read this' — it becomes caricature.",
+  },
+  high_energy: {
+    key: "high_energy",
+    label: "High-Energy Hustler",
+    figure: "Gary Vaynerchuk",
+    tagline: "Urgent, informal, do-the-work energy — for creators, agencies, SMB operators.",
+    fit: "Creator economy, agencies, SMB services, local businesses.",
+    voice: [
+      "Conversational and informal — contractions and fragments OK.",
+      "Urgency without threat. 'Now' energy, not 'or else'.",
+      "Direct second-person — 'you' in every sentence.",
+      "Respectful hustle — acknowledge how hard their work is.",
+      "Short paragraphs. Line breaks for rhythm.",
+    ],
+    strategy: "Respect the grind → call out the real headache → simple bridge to the solution → low-friction ask.",
+    opening: "Observation about how hard their specific world is right now. No flattery.",
+    proof: "Peer testimonial in plain voice — 'Mike at [similar co] told me...'",
+    cta: "Soft ask up front ('worth 10 min?'), escalate to direct on touch 3.",
+    linkedin: "Like a DM to a friend. Voice-note offer on touch 2 is on-brand.",
+    voice_agent: "Warm hello, acknowledge the grind, ask one real question, short pitch, book.",
+    avoid: "Don't shout or bro-out. Skip 'crushing it' and 'legends'.",
+  },
+  trust_patient: {
+    key: "trust_patient",
+    label: "Trust-Led Analyst",
+    figure: "Warren Buffett",
+    tagline: "Folksy precision, long-game trust — for finance, wealth, enterprise.",
+    fit: "Finance, wealth management, enterprise, regulated industries.",
+    voice: [
+      "Folksy but precise. Plain words with exact numbers.",
+      "Analogies grounded in everyday life (not hype).",
+      "Understatement over overstatement.",
+      "Patience signaled every sentence — 'over time', 'when it makes sense'.",
+      "First-person singular for credibility, not pronouns-as-pose.",
+    ],
+    strategy: "Establish credibility → name a specific risk they face → offer to talk when it fits → zero pressure.",
+    opening: "A plainspoken observation about their industry's current dynamics. One number.",
+    proof: "Named comparable firm + track record of time ('worked with them 4 years').",
+    cta: "Permission-based, patient ('whenever it's useful, I'd welcome 15 minutes').",
+    linkedin: "Short, formal-warm. Connection note cites a shared peer or signal, not a pitch.",
+    voice_agent: "Calm pace, exact words, no fillers. Explicitly respect their time.",
+    avoid: "Don't perform folksiness. Don't quote Buffett-isms.",
+  },
+  tactical_negotiator: {
+    key: "tactical_negotiator",
+    label: "Tactical Negotiator",
+    figure: "Chris Voss",
+    tagline: "Calibrated questions, labels, tactical empathy — for procurement and enterprise.",
+    fit: "Enterprise, procurement-heavy cycles, negotiation-first deals.",
+    voice: [
+      "Open with calibrated questions: 'How would you...?' 'What would need to be true...?'",
+      "Use labels to acknowledge emotion — 'It seems like timing matters here.'",
+      "No-oriented openers: 'Would it be ridiculous to...?' 'Have you given up on...?'",
+      "Mirror the last 2–3 words of their pain language.",
+      "Slow, deliberate pacing. No rush.",
+    ],
+    strategy: "Open a no-pressure door → label their situation → ask a calibrated question → let them pull.",
+    opening: "A no-oriented question that invites a 'no' (which feels safe and opens conversation).",
+    proof: "Case framed as a negotiation lesson, not a metric win.",
+    cta: "Pull, don't push. 'Would it be crazy to grab 15 minutes?'",
+    linkedin: "Calibrated question in the connection note — no pitch, all curiosity.",
+    voice_agent: "Slow, low cadence. Calibrated question, silence, response. No hard closing.",
+    avoid: "Don't weaponize the technique. Stay genuinely curious, never manipulative.",
+  },
+  craft_copywriter: {
+    key: "craft_copywriter",
+    label: "Classic Craft Copywriter",
+    figure: "David Ogilvy",
+    tagline: "Facts-as-persuasion, elegant structure, no filler — for brand and premium buyers.",
+    fit: "Brand, creative agencies, premium B2B, design-led buyers.",
+    voice: [
+      "Concrete facts over adjectives. 'The 1963 study showed...' beats 'industry-leading'.",
+      "Short opener, substantial middle, short close — classic ad rhythm.",
+      "One specific anecdote per message.",
+      "Respect the reader's intelligence. No selling — only informing well.",
+      "No jargon, no hype words, no emojis.",
+    ],
+    strategy: "Earn the read with a fact → deliver one substantial idea → invite a considered reply.",
+    opening: "A surprising, verifiable fact about their market.",
+    proof: "Named client + the specific outcome + one small detail that proves it's real.",
+    cta: "Considered ask ('If this is worth exploring, I can send a short memo.').",
+    linkedin: "Same craft adapted to 500 chars. Still a fact, still concrete.",
+    voice_agent: "Measured pace, complete sentences, no fillers. Sounds like a senior consultant.",
+    avoid: "Don't get florid. Ogilvy was rigorous, not ornate.",
+  },
+  concise_idea: {
+    key: "concise_idea",
+    label: "Idea-Forward Minimalist",
+    figure: "Seth Godin",
+    tagline: "One idea, three sentences, permission-based — for marketing leaders.",
+    fit: "Marketing buyers, thought leaders, permission-marketing-aligned audiences.",
+    voice: [
+      "Paragraphs of 1–3 sentences. Line breaks do work.",
+      "One idea per message. Never two.",
+      "No hype, no superlatives, no adjective stacks.",
+      "Permission framing — 'if this is for you...'",
+      "Parable or tiny anecdote when useful, never padding.",
+    ],
+    strategy: "Plant one idea → let it breathe → ask permission to continue.",
+    opening: "An idea, stated. Not a pain, not a pitch. An idea.",
+    proof: "One sentence. 'X did this, Y happened.' Nothing more.",
+    cta: "'Want the rest?' / 'Should I send more?' — permission, not pressure.",
+    linkedin: "One idea. Two lines. 'Want to hear how we did it?'",
+    voice_agent: "Short. State the idea. Ask one question. Wait.",
+    avoid: "Don't preach. Don't lean on signature words as crutches.",
+  },
+  data_story: {
+    key: "data_story",
+    label: "Data Storyteller",
+    figure: "Andrew Chen",
+    tagline: "Metric → hypothesis → outcome, crisp frameworks — for SaaS and growth buyers.",
+    fit: "B2B SaaS, growth/product, data-literate buyers.",
+    voice: [
+      "Structure: 'we saw X → we hypothesized Y → we tested Z → result.'",
+      "Name the metric explicitly and move on (don't explain basics).",
+      "Crisp frameworks with 2–4 labeled parts.",
+      "Growth vocab: retention, activation, north-star, cohort.",
+      "Skeptical-but-optimistic tone — 'here's what actually moved the number'.",
+    ],
+    strategy: "Lead with a metric they probably track → hypothesis → a peer result → framework offer.",
+    opening: "'We looked at [metric] across 12 [company type]s — here's the pattern.'",
+    proof: "A single peer cohort result with the exact metric moved.",
+    cta: "Offer the framework/teardown ('I can share the breakdown — 15 min?').",
+    linkedin: "Metric + pattern + 'want the teardown?' — max 2 lines.",
+    voice_agent: "State metric, state pattern, ask if they've seen it, offer teardown, book.",
+    avoid: "Don't invent metrics. If you don't have a real number, fall back to pattern language.",
+  },
+  permission_challenger: {
+    key: "permission_challenger",
+    label: "Permission Challenger",
+    figure: "Josh Braun",
+    tagline: "Pattern interrupt, takeaway selling, permission-based — modern SDR voice.",
+    fit: "Modern SDR outbound, skeptical buyers, crowded inboxes.",
+    voice: [
+      "Pattern-interrupt openers: 'This is probably not a fit, but...'",
+      "Takeaway selling: state why it might NOT work for them.",
+      "Permission before pitch: 'Mind if I share why I reached out?'",
+      "Short, human, slightly self-deprecating.",
+      "No features, no claims — only pain language mirrored back.",
+    ],
+    strategy: "Pattern interrupt → mirror their likely objection → one permission-based ask → honest breakup.",
+    opening: "'Maybe totally off-base — [specific pain-guess about their role]?'",
+    proof: "'Two teams that had the same issue solved it by [X]. Happy to share how.'",
+    cta: "Permission-based ('Worth me sending a 2-line version?'). Escalate slowly.",
+    linkedin: "Pattern interrupt, 1–2 lines, no pitch. 'Not sure you're the right person for this...'",
+    voice_agent: "Interrupt the autopilot response, permission ask, takeaway, book.",
+    avoid: "Don't overdo 'probably not a fit' — once per sequence max.",
+  },
+  technical_founder: {
+    key: "technical_founder",
+    label: "Technical Founder Essayist",
+    figure: "Paul Graham",
+    tagline: "First-principles clarity, short declaratives, intellectual honesty — for engineers.",
+    fit: "Technical founders, dev tools, engineering leaders, infra/AI buyers.",
+    voice: [
+      "Short declarative sentences. No hedging.",
+      "First principles — say what's actually true, not what sounds smart.",
+      "No jargon. If a term is needed, define it in one clause.",
+      "Intellectual honesty — admit what you don't know.",
+      "'Here's what I actually think' framing over 'industry trends show'.",
+    ],
+    strategy: "State a clear claim → one concrete example → invite a technical conversation.",
+    opening: "A crisp claim about their stack/problem space. One sentence.",
+    proof: "A specific technical detail from a comparable team ('they dropped P99 from X to Y by Z').",
+    cta: "'Worth 20 minutes to compare notes?' — peer-to-peer framing.",
+    linkedin: "One technical claim. One line. 'Curious if you've seen this too.'",
+    voice_agent: "Precise. Pauses for thought. Engineer-to-engineer register, no sales voice.",
+    avoid: "Don't LARP as a founder if you aren't. Don't overuse 'hackers' or 'essay' tropes.",
+  },
+  plainspoken_trade: {
+    key: "plainspoken_trade",
+    label: "Plainspoken Trade Voice",
+    figure: "Mike Rowe",
+    tagline: "Dignity-of-work, plainspoken, earned authority — for industrial and field services.",
+    fit: "Trades, construction, logistics, manufacturing, field services.",
+    voice: [
+      "Plain English. Short sentences. No corporate filler.",
+      "Respect the reader's expertise and time.",
+      "Dignity-of-work framing — acknowledge the job is hard and skilled.",
+      "Concrete scenarios from the job site, not the conference room.",
+      "No hype, no slogans, no 'synergy'.",
+    ],
+    strategy: "Acknowledge the job → name a specific headache on the ground → offer a concrete help.",
+    opening: "A job-site-level observation ('end of month, the paperwork always piles up').",
+    proof: "Named peer contractor/operator and the concrete outcome.",
+    cta: "'Want me to send the one-pager?' or 'Got 10 minutes between jobs?'",
+    linkedin: "Plain line, no jargon, same respect. Under 2 sentences.",
+    voice_agent: "Slower pace, shorter words, respect for the reader's day. No script-feel.",
+    avoid: "Don't patronize. Don't use rural clichés or caricature blue-collar speech.",
+  },
+};
+
+// Build a prompt block that encodes the playbook voice + strategy + channel adaptations.
+// Called from every campaign-level AI prompt. Returns "" for "auto" (or missing) so existing
+// persona-tone behavior is preserved — no regressions when no playbook is chosen.
+function buildPlaybookContext(
+  playbookKey: string | undefined,
+  opts: { channel?: "email"|"linkedin"|"voice"|"reply"|"strategy" } = {}
+): string {
+  const key = (playbookKey || "auto") as PlaybookKey;
+  const p = PLAYBOOKS[key];
+  if (!p || p.key === "auto") return "";
+  const channelLine =
+    opts.channel === "linkedin" ? p.linkedin :
+    opts.channel === "voice" ? p.voice_agent :
+    "";
+  const lines = [
+    `\n━━━ VOICE & STRATEGY PROFILE ━━━`,
+    `Emulate the voice of: ${p.figure} (internal reference — never name them in output).`,
+    `Voice mechanics:`,
+    ...p.voice.map(v => `  • ${v}`),
+    `Sequence strategy: ${p.strategy}`,
+    `Opening move: ${p.opening}`,
+    `Proof-point preference: ${p.proof}`,
+    `CTA pattern: ${p.cta}`,
+    channelLine ? `Channel adaptation: ${channelLine}` : "",
+    `Avoid: ${p.avoid}`,
+    `Voice and strategy both lock to this profile across the sequence. Do not switch voice mid-sequence. Do not mention the figure by name in any output.`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+  ];
+  return lines.filter(Boolean).join("\n");
+}
 
 const ICP_SECTIONS: Record<string, {label:string; icon?:string; fields:any[]}> = {
   targeting: { label:"Targeting", icon:"◎",
@@ -922,6 +1201,79 @@ const APPROVAL_CFG = {
 let _seq = 0;
 const uid = () => `${Date.now()}-${++_seq}`;
 
+// ─── Workspace Lifecycle Stages ──────────────────────────────────────────────
+// Canonical CSM lifecycle stages. Drives the Home "Next Action" card, guided onboarding
+// checklist, breadcrumb, and other stage-aware UI.
+// Source priority: HubSpot `vip_lifecycle_stage` property → manual override → inferred from state.
+type WorkspaceStage = "new" | "pre_onboarding" | "onboarding" | "warming_up" | "launching" | "live" | "optimizing" | "at_risk" | "churned";
+const STAGE_ORDER: WorkspaceStage[] = ["new", "pre_onboarding", "onboarding", "warming_up", "launching", "live", "optimizing", "at_risk", "churned"];
+const STAGE_META: Record<WorkspaceStage, { label: string; short: string; description: string; color: string }> = {
+  new:            { label: "New",            short: "New",          description: "Just created — sync HubSpot and generate the handoff brief.", color: "#9CA3AF" },
+  pre_onboarding: { label: "Pre-Onboarding", short: "Pre-Onboard",  description: "Handoff brief ready — prep for the onboarding call.",         color: "#54A0FF" },
+  onboarding:     { label: "Onboarding",     short: "Onboarding",   description: "Kickoff in progress — upload transcript + implementation doc.", color: "#54A0FF" },
+  warming_up:     { label: "Warming Up",     short: "Warmup",       description: "Domains purchased — waiting for the 17-day ramp.",              color: "#FFC048" },
+  launching:      { label: "Launching",      short: "Launch",       description: "Setup done — first campaigns being prepared.",                 color: "#FFC048" },
+  live:           { label: "Live",           short: "Live",         description: "Campaigns actively sending — monitor health + iterate.",        color: "#00D68F" },
+  optimizing:     { label: "Optimizing",     short: "Optimize",     description: "Steady state — tests running, playbooks refining.",             color: "#00D68F" },
+  at_risk:        { label: "At Risk",        short: "At Risk",      description: "Health signals flagging churn risk — triage and respond.",      color: "#FF6B6B" },
+  churned:        { label: "Churned",        short: "Churned",      description: "Client has ended the engagement.",                              color: "#6B7280" },
+};
+// Map common HubSpot lifecycle strings → canonical stages. Case-insensitive, substring match.
+const HS_STAGE_MAP: Array<[RegExp, WorkspaceStage]> = [
+  [/\bchurn(ed)?\b|lost|cancel/i, "churned"],
+  [/at[\s-]?risk|danger|red/i, "at_risk"],
+  [/optimiz|mature|steady|qbr/i, "optimizing"],
+  [/live|active|running|in[\s-]?market/i, "live"],
+  [/launch/i, "launching"],
+  [/warm[\s-]?up|ramp/i, "warming_up"],
+  [/onboard|kickoff/i, "onboarding"],
+  [/pre[\s-]?onboard|pre[\s-]?kick/i, "pre_onboarding"],
+  [/new|prospect/i, "new"],
+];
+
+// Returns { stage, source } where source ∈ "hubspot" | "manual" | "inferred".
+// `data` is companyData (or a facsimile). Pass additional state for inference: { campaigns, strategy, dfySetup }.
+function getWorkspaceStage(data: any, extra: { campaigns?: any[]; strategy?: any; dfySetup?: any } = {}): { stage: WorkspaceStage; source: "hubspot" | "manual" | "inferred"; hsRaw?: string } {
+  // 1) Manual override wins (user explicitly set it)
+  const manual = data?._stageOverride;
+  if (manual && STAGE_ORDER.includes(manual)) return { stage: manual as WorkspaceStage, source: "manual" };
+
+  // 2) HubSpot's vip_lifecycle_stage (or common variants)
+  const hs = data?._hubspotProps || {};
+  const hsRaw: string = hs.vip_lifecycle_stage || hs.vip_lifecyclestage || hs.vip_stage || hs.cs_lifecycle_stage || "";
+  if (hsRaw) {
+    for (const [rx, stage] of HS_STAGE_MAP) {
+      if (rx.test(hsRaw)) return { stage, source: "hubspot", hsRaw };
+    }
+  }
+
+  // 3) Inferred from workspace state
+  const campaigns = extra.campaigns || [];
+  const hasLiveCampaign = campaigns.some((c:any) => (c.performance?.metrics?.sent || 0) > 0);
+  const hasCampaignDraft = campaigns.length > 0;
+  const dfy = extra.dfySetup || data?.dfySetup;
+  const purchasedAt = dfy?.purchasedAt ? new Date(dfy.purchasedAt) : null;
+  const daysSincePurchase = purchasedAt ? Math.floor((Date.now() - purchasedAt.getTime()) / 86400000) : -1;
+  const totalWarmupDays = 17; // 3-day setup + 14-day warmup
+  const isWarmupDone = purchasedAt && daysSincePurchase >= totalWarmupDays;
+  const hasStrategy = (extra.strategy?.phases?.length || 0) > 0;
+  const hasHandoff = !!data?._handoffBrief;
+  const hasOnboardingTranscript = false; // callers pass extra if they want to detect this; keep simple
+  const hasAnyCoreResearch = !!(data?.co_name || data?.co_pitch || data?.co_industry);
+
+  if (hasLiveCampaign) {
+    // Count iteration activity to distinguish live from optimizing
+    const totalIterations = campaigns.reduce((acc:number, c:any) => acc + (c.iterations?.length || 0), 0);
+    return { stage: totalIterations >= 5 ? "optimizing" : "live", source: "inferred" };
+  }
+  if (hasCampaignDraft) return { stage: "launching", source: "inferred" };
+  if (isWarmupDone) return { stage: "launching", source: "inferred" };
+  if (purchasedAt) return { stage: "warming_up", source: "inferred" };
+  if (hasStrategy) return { stage: "onboarding", source: "inferred" };
+  if (hasHandoff || hasAnyCoreResearch) return { stage: "pre_onboarding", source: "inferred" };
+  return { stage: "new", source: "inferred" };
+}
+
 const CALL_TYPE_LABELS: Record<string,string> = {
   onboarding: "Onboarding",
   launch: "Launch Call",
@@ -1032,6 +1384,65 @@ async function hubspotGetCompanyEmails(companyId: string): Promise<any[]> {
   const batch = await hubspotApiFetch("/crm/v3/objects/emails/batch/read", "POST", {
     inputs: emailIds.map(id => ({ id })),
     properties: ["hs_email_subject", "hs_email_text", "hs_email_html", "hs_email_from_email", "hs_email_to_email", "hs_email_direction", "hs_timestamp", "hs_createdate"],
+  });
+  return batch?.results || [];
+}
+
+// Search HubSpot companies by name (fallback when domain match doesn't work).
+// Returns up to 10 candidates with their name, domain, and id so the user can pick the right one.
+async function hubspotSearchCompaniesByName(query: string): Promise<any[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const result = await hubspotApiFetch("/crm/v3/objects/companies/search", "POST", {
+    filterGroups: [{
+      filters: [{ propertyName: "name", operator: "CONTAINS_TOKEN", value: q }],
+    }],
+    properties: ["name", "domain", "website", "industry", "numberofemployees", "city", "state", "country"],
+    limit: 10,
+    sorts: [{ propertyName: "hs_lastmodifieddate", direction: "DESCENDING" }],
+  });
+  return result?.results || [];
+}
+
+// Fetch a HubSpot company by its explicit id (used after the user picks/confirms a company).
+async function hubspotGetCompanyById(companyId: string): Promise<any> {
+  const result = await hubspotApiFetch(`/crm/v3/objects/companies/${companyId}?properties=name,domain,website,industry,numberofemployees,city,state,country`, "GET");
+  return result?.id ? result : null;
+}
+
+// Get all meetings associated with a HubSpot company
+async function hubspotGetCompanyMeetings(companyId: string): Promise<any[]> {
+  const assoc = await hubspotApiFetch(`/crm/v3/objects/companies/${companyId}/associations/meetings`, "GET");
+  const ids: string[] = (assoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean);
+  if (!ids.length) return [];
+  const batch = await hubspotApiFetch("/crm/v3/objects/meetings/batch/read", "POST", {
+    inputs: ids.map(id => ({ id })),
+    properties: ["hs_meeting_title", "hs_meeting_body", "hs_meeting_start_time", "hs_meeting_end_time", "hs_meeting_outcome", "hs_meeting_location", "hs_meeting_external_url", "hs_timestamp", "hs_createdate"],
+  });
+  return batch?.results || [];
+}
+
+// Get all logged calls associated with a HubSpot company (HubSpot's call engagement type,
+// separate from our own call-scoring records).
+async function hubspotGetCompanyCalls(companyId: string): Promise<any[]> {
+  const assoc = await hubspotApiFetch(`/crm/v3/objects/companies/${companyId}/associations/calls`, "GET");
+  const ids: string[] = (assoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean);
+  if (!ids.length) return [];
+  const batch = await hubspotApiFetch("/crm/v3/objects/calls/batch/read", "POST", {
+    inputs: ids.map(id => ({ id })),
+    properties: ["hs_call_title", "hs_call_body", "hs_call_direction", "hs_call_disposition", "hs_call_duration", "hs_call_from_number", "hs_call_to_number", "hs_call_recording_url", "hs_call_status", "hs_timestamp", "hs_createdate"],
+  });
+  return batch?.results || [];
+}
+
+// Get all notes associated with a HubSpot company
+async function hubspotGetCompanyNotes(companyId: string): Promise<any[]> {
+  const assoc = await hubspotApiFetch(`/crm/v3/objects/companies/${companyId}/associations/notes`, "GET");
+  const ids: string[] = (assoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean);
+  if (!ids.length) return [];
+  const batch = await hubspotApiFetch("/crm/v3/objects/notes/batch/read", "POST", {
+    inputs: ids.map(id => ({ id })),
+    properties: ["hs_note_body", "hs_attachment_ids", "hs_timestamp", "hs_createdate"],
   });
   return batch?.results || [];
 }
@@ -1222,7 +1633,57 @@ function buildFullContext(d: any): string {
     return `[${o.tier || "?"}] ${prod?.name || "?"} × ${pers?.name || "?"}: "${o.ctaText || o.name || ""}" — ${o.whatTheyGet || ""}`;
   }).join("\n"));
   // Campaigns
-  if (d.campaigns?.length) push("CAMPAIGNS", d.campaigns.map((c: any) => `[${c.lifecycleStatus || "?"}] ${c.label || "Untitled"} — Persona: ${c.personaIds?.[0] || "?"}, Product: ${c.productId || "?"}, Offer: ${c.offerTier || "?"}, Channel: ${c.channel || "?"}${c.intentTier === "high" || c.rtsListId ? ", INTENT: HIGH (RTS)" : ""}${(c.iterations||[]).length ? `, iterations: ${(c.iterations||[]).length}` : ""}`).join("\n"));
+  if (d.campaigns?.length) push("CAMPAIGNS", d.campaigns.map((c: any) => {
+    const persName = (d.personas || []).find((p:any) => p.id === (c.personaIds||[])[0])?.name || c.personaIds?.[0] || "?";
+    const prodName = (d.products || []).find((p:any) => p.id === c.productId)?.name || c.productId || "?";
+    const offer = (d.offers || []).find((o:any) => o.id === c.offerId);
+    const offerStr = offer ? `${offer.tier || "?"} — "${offer.ctaText || offer.name || ""}"` : (c.offerId || "?");
+    const m = c.performance?.metrics || {};
+    const hasMetrics = (m.sent || m.allReplies || m.meetings);
+    const metricsStr = hasMetrics
+      ? ` | METRICS: sent=${m.sent||0} delivered=${m.delivered||0} bounce=${m.bounce||0} replies=${m.allReplies||0} (interested=${m.opportunityReplies||0}, not-interested=${m.notInterestedReplies||0}, OOO=${m.oooReplies||0}, wrong-person=${m.wrongPersonReplies||0}) opens=${m.opens||0} meetings=${m.meetings||0}`
+      : "";
+    const timePeriodStr = c.performance?.timePeriod?.label ? ` [period: ${c.performance.timePeriod.label}]` : "";
+    const importedStr = c.performance?.source === "imported_external" ? " [IMPORTED]" : "";
+    const seqStr = c.sequence?.length ? ` | ${c.sequence.length} steps` : "";
+    const iterStr = (c.iterations||[]).length ? ` | iterations: ${(c.iterations||[]).length}` : "";
+    const goalStr = c.goal ? ` | Goal: ${c.goal.slice(0,140)}` : "";
+    const playbookStr = c.playbook && c.playbook !== "auto" ? ` | Playbook: ${c.playbook}` : "";
+    const rtsStr = (c.intentTier === "high" || c.rtsListId) ? ", INTENT: HIGH (RTS)" : "";
+    // Full sequence content — subject + body per step, with variants. The copilot needs the entire email
+    // body to answer "why is step 2 underperforming" / "rewrite the breakup email" / "what's the CTA" questions.
+    // Bodies are NOT truncated — the whole email matters.
+    let sequenceContent = "";
+    if (c.sequence?.length) {
+      const stepLines = c.sequence.map((s:any, idx:number) => {
+        const day = Number.isFinite(s.dayOffset) ? `Day +${s.dayOffset}` : "";
+        const role = s.role ? ` · ${s.role}` : "";
+        const subj = s.subject ? `\n    Subject: ${s.subject}` : "";
+        const body = s.body ? `\n    Body:\n${String(s.body).split(/\n/).map(l => `      ${l}`).join("\n")}` : "";
+        const variants = (s.variants || []).length
+          ? "\n    Variants:\n" + s.variants.map((v:any) => {
+              const vSubj = v.subject ? `\n        Subject: ${v.subject}` : "";
+              const vBody = v.body ? `\n        Body:\n${String(v.body).split(/\n/).map((l:string)=>`          ${l}`).join("\n")}` : "";
+              return `      [${v.label||"Variant"} · testing ${v.testVariable||"?"}]${vSubj}${vBody}`;
+            }).join("\n")
+          : "";
+        return `  Step ${s.stepNumber || idx+1} (${day}${role}):${subj}${body}${variants}`;
+      }).join("\n");
+      sequenceContent = `\n  SEQUENCE:\n${stepLines}`;
+    }
+    // Contact sample summary — listed inline so the copilot can cite specific rows (e.g. "most of your contacts are CFOs at mid-market SaaS")
+    let contactSampleStr = "";
+    if (c.contactSample?.rows?.length) {
+      const cs = c.contactSample;
+      const previewRows = cs.rows.slice(0, 15).map((r:any, i:number) => {
+        const cells = cs.headers.map((h:string) => `${h}=${String(r[h] ?? "").slice(0, 60)}`).join(", ");
+        return `    ${i+1}. ${cells}`;
+      }).join("\n");
+      const remaining = cs.rows.length > 15 ? `\n    … and ${cs.rows.length - 15} more row(s) in sample` : "";
+      contactSampleStr = `\n  CONTACT SAMPLE (${cs.rows.length}/${cs.totalRows} rows from "${cs.fileName}" — columns: ${cs.headers.join(", ")}):\n${previewRows}${remaining}`;
+    }
+    return `[${c.status || "?"}] ${c.name || "Untitled"}${importedStr}${timePeriodStr} — Persona: ${persName}, Product: ${prodName}, Offer: ${offerStr}, Channel: ${c.channel || c.type || "?"}${rtsStr}${seqStr}${iterStr}${playbookStr}${goalStr}${metricsStr}${sequenceContent}${contactSampleStr}`;
+  }).join("\n"));
   // RTS lists — high-intent, triple-qualified, refreshed daily. Different playbook from cold.
   if (d.rtsLists?.length) push("RTS LISTS (HIGH-INTENT)", d.rtsLists.map((l: any, i: number) => {
     const b = l.bebopSetup || {};
@@ -1299,17 +1760,26 @@ function getFullContext(): string {
   return (window as any).__workspaceCtx || "";
 }
 
-async function callAI(prompt: string, sys = "", tokens = 800, optionsOrRetries: number | { retries?: number; useFullContext?: boolean } = 5) {
+// Model options:
+//   "claude-sonnet-4-6"      — default. Strongest reasoning, best for synthesis + voice-sensitive generation.
+//   "claude-haiku-4-5-20251001" — ~1/3 cost of Sonnet. Use for structured extraction, classification, JSON
+//                                reformatting, single-field fills, and scoring tasks where quality is
+//                                near-identical to Sonnet but cost matters.
+type ClaudeModel = "claude-sonnet-4-6" | "claude-haiku-4-5-20251001";
+async function callAI(prompt: string, sys = "", tokens = 800, optionsOrRetries: number | { retries?: number; useFullContext?: boolean; images?: Array<{mediaType:string; base64:string}>; model?: ClaudeModel } = 5) {
   const key = getApiKey();
   if (!key) { alert("Please enter your Anthropic API key first (top-right corner)."); return ""; }
   const _retries = typeof optionsOrRetries === "number" ? optionsOrRetries : (optionsOrRetries?.retries ?? 5);
   const _useFullContext = typeof optionsOrRetries === "object" && optionsOrRetries?.useFullContext === true;
+  const _images = (typeof optionsOrRetries === "object" && optionsOrRetries?.images) || [];
+  const _model: ClaudeModel = (typeof optionsOrRetries === "object" && optionsOrRetries?.model) || "claude-sonnet-4-6";
   const fullCtx = _useFullContext ? getFullContext() : "";
   // Build messages: if using full context, prepend it as a cacheable block so the same context
   // across many calls hits the Anthropic ephemeral cache (5-min TTL).
-  const userContent: any = fullCtx
+  const userContent: any = (fullCtx || _images.length > 0)
     ? [
-        { type: "text", text: `WORKSPACE CONTEXT (read-only snapshot):\n${fullCtx}`, cache_control: { type: "ephemeral" } },
+        ...(fullCtx ? [{ type: "text", text: `WORKSPACE CONTEXT (read-only snapshot):\n${fullCtx}`, cache_control: { type: "ephemeral", ttl: "1h" } }] : []),
+        ..._images.map(img => ({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.base64 } })),
         { type: "text", text: prompt },
       ]
     : prompt;
@@ -1322,10 +1792,11 @@ async function callAI(prompt: string, sys = "", tokens = 800, optionsOrRetries: 
           "Content-Type":"application/json",
           "x-api-key": key,
           "anthropic-version": "2023-06-01",
+          "anthropic-beta": "extended-cache-ttl-2025-04-11",
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model:"claude-sonnet-4-6", max_tokens: tokens,
+          model: _model, max_tokens: tokens,
           system: sys || "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.",
           messages:[{ role:"user", content: userContent }],
         }),
@@ -1525,7 +1996,7 @@ const COPILOT_TOOLS = [
   },
   {
     name: "create_campaign",
-    description: "Create a new campaign. Must include 'name'. Can include personaId, productId, type, purpose, channels, status, sequence.",
+    description: "Create a new campaign. Must include 'name'. Optional fields: personaId (or personaIds array), productId, offerId, channel ('email'|'linkedin'|'rts_ai_call'), type, status, goal, handoffCriteria, playbook, audienceSource ('people_search'|'custom_list'|'rts_list'), rtsListId (or rtsListName to look up by name), customListName, targeting (object with titles/industries/companySizes/keywords/etc.). IMPORTANT: when creating a campaign tied to an RTS list, ALWAYS pass rtsListId (or rtsListName) — the handler auto-sets audienceSource='rts_list', intentTier='high', and adjusts test plan + safety limits for signal decay. Persona targeting is auto-mirrored into campaign.targeting when personaId is provided.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -1841,7 +2312,51 @@ async function callAIStreamWithTools(
   return { text: "", toolCalls: [] };
 }
 
-// Fetch a web page's raw HTML via CORS proxy (tries multiple proxies)
+// Fetch a page via r.jina.ai — a free "reader" service that runs the page through a
+// headless browser and returns clean markdown. We wrap the markdown in a minimal HTML
+// shell (converting # / ## / ### to h1/h2/h3) so the existing htmlToText + structure
+// extractor keep working without special-casing markdown downstream.
+async function fetchRenderedPage(url: string): Promise<string> {
+  try {
+    const r = await fetch(`https://r.jina.ai/${url}`, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) { console.warn(`[fetch-rendered] r.jina.ai HTTP ${r.status} for ${url}`); return ""; }
+    const md = await r.text();
+    if (!md || md.length < 200) return "";
+    // Markdown → minimal HTML shell so H-tag extraction still works.
+    const escapeAttr = (s:string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    let html = escapeAttr(md)
+      .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+      .replace(/\n\n/g, '</p><p>');
+    html = `<html><body><p>${html}</p></body></html>`;
+    console.log(`[fetch-rendered] ✓ r.jina.ai returned ${md.length} chars markdown for ${url}`);
+    return html;
+  } catch (e:any) {
+    console.warn(`[fetch-rendered] r.jina.ai threw for ${url}:`, e?.message || e);
+    return "";
+  }
+}
+
+// Heuristic: does this HTML look like a JS-rendered shell with no useful content?
+// Used to decide whether to fall back to a headless-render fetch.
+function looksEmptyShell(html: string): boolean {
+  if (!html) return true;
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("script,style,noscript,svg,iframe").forEach(el => el.remove());
+    const text = (doc.body?.textContent || "").replace(/\s+/g, " ").trim();
+    const headings = doc.querySelectorAll("h1, h2, h3").length;
+    // Classic SPA shells: <div id="root"> / <div id="__next"> / <div id="app"> with very little body text
+    // OR a page that loads but has no headings and minimal text = probably JS-rendered
+    return (text.length < 1200) || (text.length < 3000 && headings < 2);
+  } catch { return false; }
+}
+
+// Fetch a web page's raw HTML via CORS proxy (tries multiple proxies).
+// If all proxies fail OR the returned HTML is an empty JS shell, falls back to r.jina.ai
+// which does server-side headless rendering.
 async function fetchPageHTML(url: string): Promise<string> {
   // Try the given URL first, then fall back to www. variant (or bare if www. was given) —
   // many sites have SSL certs only valid for the www. subdomain (or vice versa).
@@ -1861,6 +2376,7 @@ async function fetchPageHTML(url: string): Promise<string> {
     { name:"allorigins",   make:(u:string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
     { name:"thingproxy",   make:(u:string) => `https://thingproxy.freeboard.io/fetch/${u}` },
   ];
+  let bestProxyHtml = "";
   for (const variantUrl of variants) {
     for (const p of proxies) {
       try {
@@ -1876,13 +2392,23 @@ async function fetchPageHTML(url: string): Promise<string> {
           continue;
         }
         console.log(`[fetch] ✓ ${p.name} returned ${html.length} chars for ${variantUrl}`);
-        return html;
+        // If this looks like a good static fetch, return it immediately.
+        if (!looksEmptyShell(html)) return html;
+        // Otherwise keep it as a fallback candidate and try other proxies / rendered path.
+        if (html.length > bestProxyHtml.length) bestProxyHtml = html;
+        console.warn(`[fetch] ${p.name} returned an empty-shell-looking page (${html.length} chars) — will try rendered fallback if nothing better emerges`);
       } catch (e:any) {
         console.warn(`[fetch] ${p.name} threw for ${variantUrl}:`, e?.message || e);
       }
     }
   }
-  console.error(`[fetch] ALL proxies failed for all variants of ${url}`);
+  // All proxies either failed or returned JS shells — try the headless renderer.
+  console.log(`[fetch] Falling back to r.jina.ai for ${url} (proxies returned ${bestProxyHtml.length} chars, shell-like)`);
+  const rendered = await fetchRenderedPage(url);
+  if (rendered) return rendered;
+  // If rendered also fails, return whatever shell we got (better than nothing).
+  if (bestProxyHtml) return bestProxyHtml;
+  console.error(`[fetch] ALL proxies AND rendered fallback failed for ${url}`);
   return "";
 }
 
@@ -1891,6 +2417,44 @@ function htmlToText(html: string, maxLen = 6000): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("script,style,noscript,svg,iframe").forEach(el => el.remove());
   return (doc.body?.textContent || "").replace(/\s+/g, " ").trim().slice(0, maxLen || 10000);
+}
+
+// Extract the "offering structure" from an HTML page — nav items + heading hierarchy.
+// This is passed to the research-brief prompt as a LABELED STRUCTURE block so the AI
+// can read the site's offering taxonomy directly from DOM semantics instead of inferring
+// it from free-form body text (which is where hallucinations creep in).
+function extractOfferingStructure(html: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("script,style,noscript,svg,iframe").forEach(el => el.remove());
+    const lines: string[] = [];
+    const clean = (s: string) => s.replace(/\s+/g, " ").trim();
+
+    // Nav/header anchor text — companies list their offerings as nav dropdowns
+    const navItems: string[] = [];
+    const seenNav = new Set<string>();
+    doc.querySelectorAll("nav a, header a, [role='navigation'] a, [class*='menu'] a, [class*='nav'] a").forEach(a => {
+      const text = clean(a.textContent || "");
+      const key = text.toLowerCase();
+      if (text && text.length >= 2 && text.length <= 60 && !seenNav.has(key)) {
+        seenNav.add(key);
+        navItems.push(text);
+      }
+    });
+    if (navItems.length) lines.push(`NAV ITEMS (${navItems.length}): ${navItems.slice(0, 60).join(" | ")}`);
+
+    // Heading hierarchy — H1/H2/H3/H4 capture the "Solutions / Services" section structure
+    const headings: string[] = [];
+    doc.querySelectorAll("h1, h2, h3, h4").forEach(h => {
+      const text = clean(h.textContent || "");
+      if (text && text.length >= 2 && text.length <= 140) {
+        headings.push(`${h.tagName}: ${text}`);
+      }
+    });
+    if (headings.length) lines.push(`HEADINGS (${headings.length}):\n${headings.slice(0, 80).join("\n")}`);
+
+    return lines.length ? lines.join("\n") : "";
+  } catch { return ""; }
 }
 
 // Extract all links from HTML, resolve relative URLs
@@ -2002,6 +2566,74 @@ async function callGemini(prompt: string, tokens = 1000): Promise<string> {
   if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
   if (!j.candidates?.length) throw new Error(`Gemini returned no candidates. Full response: ${JSON.stringify(j).slice(0,300)}`);
   return j.candidates[0]?.content?.parts?.[0]?.text ?? "";
+}
+
+// Lenient JSON parser for AI responses. Handles the common failure modes:
+//   1. Markdown fences (```json ... ```)
+//   2. Stray prose before/after the JSON
+//   3. Unescaped control characters inside string literals (raw newlines/tabs from transcript quotes)
+//   4. Wrapping object like {"data": [...]} when caller expected the inner array
+// Returns the parsed value or throws with the original parse error.
+function safeJsonParse(raw: string): any {
+  const stripped = String(raw || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
+  // Try direct parse first (fast path)
+  try { return JSON.parse(stripped); } catch {}
+  // Find the JSON structure — first '{' or '[' and walk to the matching close, tracking string state
+  // so we can (a) skip braces inside strings and (b) escape control chars inside strings.
+  const findStructureEnd = (s: string, start: number): number => {
+    const open = s[start]; if (open !== "{" && open !== "[") return -1;
+    const close = open === "{" ? "}" : "]";
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < s.length; i++) {
+      const ch = s[i];
+      if (esc) { esc = false; continue; }
+      if (ch === "\\" && inStr) { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === open) depth++;
+      else if (ch === close) { depth--; if (depth === 0) return i; }
+    }
+    return -1;
+  };
+  // Escape raw control chars (\n, \r, \t, etc.) that appear INSIDE JSON string literals.
+  const escapeControlCharsInStrings = (s: string): string => {
+    let out = "";
+    let inStr = false, esc = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      const code = ch.charCodeAt(0);
+      if (esc) { out += ch; esc = false; continue; }
+      if (inStr && ch === "\\") { out += ch; esc = true; continue; }
+      if (ch === '"') { out += ch; inStr = !inStr; continue; }
+      if (inStr && code < 0x20) {
+        // Raw control char inside a string — replace with the JSON-escaped form.
+        if (ch === "\n") out += "\\n";
+        else if (ch === "\r") out += "\\r";
+        else if (ch === "\t") out += "\\t";
+        else if (ch === "\b") out += "\\b";
+        else if (ch === "\f") out += "\\f";
+        else out += "\\u" + code.toString(16).padStart(4, "0");
+        continue;
+      }
+      out += ch;
+    }
+    return out;
+  };
+  for (const opener of ["{", "["]) {
+    const start = stripped.indexOf(opener);
+    if (start < 0) continue;
+    const end = findStructureEnd(stripped, start);
+    if (end < 0) continue;
+    const slice = stripped.slice(start, end + 1);
+    // Try plain parse first on the sliced region
+    try { return JSON.parse(slice); } catch {}
+    // Retry after escaping control chars in strings
+    try { return JSON.parse(escapeControlCharsInStrings(slice)); } catch {}
+  }
+  // Final retry on the full escaped string (in case our structure-finder missed something weird)
+  try { return JSON.parse(escapeControlCharsInStrings(stripped)); } catch {}
+  // Give up — let JSON.parse's error bubble up
+  return JSON.parse(stripped);
 }
 
 function fileToBase64(file) {
@@ -3217,8 +3849,13 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
   const [selectedExisting, setSelectedExisting] = useState<Set<string>>(new Set());
   const [showFilePicker, setShowFilePicker] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Products & Services manual override — bypasses URL scraping for JS-rendered sites.
+  // Anything here becomes AUTHORITATIVE in the research-brief prompt.
+  const [offeringsText, setOfferingsText] = useState("");
+  const [offeringsImages, setOfferingsImages] = useState<File[]>([]);
+  const offeringsImageRef = useRef<HTMLInputElement>(null);
 
-  const canRun = url || linkedin || text || files.length > 0 || selectedExisting.size > 0;
+  const canRun = url || linkedin || text || files.length > 0 || selectedExisting.size > 0 || offeringsText.trim() || offeringsImages.length > 0;
 
   const run = async () => {
     // Close modal immediately — run in background
@@ -3236,6 +3873,10 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     _progress(0);
 
     let context = "";
+    // structureContext collects the DOM-extracted nav/heading blocks separately from body text.
+    // It's prepended to the research-brief prompt so the offering taxonomy is always visible
+    // and never truncated by the context length cap (body text can push structure out).
+    let structureContext = "";
     const sources = [];
     let pagesFetched = 0;
 
@@ -3252,7 +3893,13 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
             const homeHTML = await fetchPageHTML(normalizedUrl);
             if (homeHTML) { pagesFetched++; _progress(0, "fetch", `${pagesFetched}`); }
             const homeText = homeHTML ? htmlToText(homeHTML) : "";
-            context += homeText ? `\n\nWEBSITE HOMEPAGE (${normalizedUrl}):\n${homeText}` : `\n\nWEBSITE URL: ${normalizedUrl}`;
+            const homeStructure = homeHTML ? extractOfferingStructure(homeHTML) : "";
+            if (homeText) {
+              context += `\n\nWEBSITE HOMEPAGE (${normalizedUrl}):\n${homeText}`;
+              if (homeStructure) structureContext += `\n\n── HOMEPAGE (${normalizedUrl}) ──\n${homeStructure}`;
+            } else {
+              context += `\n\nWEBSITE URL: ${normalizedUrl}`;
+            }
 
             // Discover product pages via sitemaps — all in parallel
             const baseDomain = new URL(normalizedUrl).hostname.replace(/^www\./, "");
@@ -3304,7 +3951,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
               if (picks.length > 0) {
                 const pageResults = await Promise.allSettled(picks.map(async u => {
                   const html = await fetchPageHTML(u);
-                  return { url: u, text: html ? htmlToText(html, 6000) : "" };
+                  return { url: u, text: html ? htmlToText(html, 6000) : "", structure: html ? extractOfferingStructure(html) : "" };
                 }));
                 for (const r of pageResults) {
                   if (r.status === "fulfilled") {
@@ -3312,7 +3959,8 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
                       pagesFetched++;
                       _progress(0, "fetch", `${pagesFetched}`);
                       context += `\n\nPRODUCT/ABOUT PAGE (${r.value.url}):\n${r.value.text}`;
-                      console.log(`[QS] ✓ ${r.value.url}: ${r.value.text.length} chars`);
+                      if (r.value.structure) structureContext += `\n\n── ${r.value.url} ──\n${r.value.structure}`;
+                      console.log(`[QS] ✓ ${r.value.url}: ${r.value.text.length} chars (structure: ${r.value.structure.length} chars)`);
                     } else {
                       console.warn(`[QS] ✗ ${r.value.url}: only ${r.value.text.length} chars (probably 404 or empty)`);
                     }
@@ -3321,7 +3969,7 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
               }
             }
           })(),
-          new Promise(r => setTimeout(r, 30000)) // 30s timeout for entire discovery
+          new Promise(r => setTimeout(r, 120000)) // 120s timeout for entire discovery — accommodates r.jina.ai fallback on 10+ sub-pages
         ]);
       } catch (e) { console.warn("Website fetch failed:", e); context += `\n\nWEBSITE URL: ${url}`; }
     }
@@ -3335,18 +3983,19 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
         console.log("[QS] Fetching extra URLs:", urls);
         const results = await Promise.allSettled(urls.slice(0, 12).map(async u => {
           const html = await fetchPageHTML(u);
-          return { url: u, html, text: html ? htmlToText(html, 6000) : "" };
+          return { url: u, html, text: html ? htmlToText(html, 6000) : "", structure: html ? extractOfferingStructure(html) : "" };
         }));
         let extraSuccess = 0, extraFail = 0;
         for (const result of results) {
           if (result.status === "fulfilled") {
-            const { url: u, text, html } = result.value;
+            const { url: u, text, html, structure } = result.value;
             if (text && text.length > 100) {
               extraSuccess++;
               pagesFetched++;
               _progress(0, "fetch", `${pagesFetched}`);
               context += `\n\nADDITIONAL PAGE (${u}):\n${text}`;
-              console.log(`[QS] ✓ Fetched ${u}: ${text.length} chars`);
+              if (structure) structureContext += `\n\n── ${u} ──\n${structure}`;
+              console.log(`[QS] ✓ Fetched ${u}: ${text.length} chars (structure: ${structure.length} chars)`);
             } else {
               extraFail++;
               console.warn(`[QS] ✗ Empty content from ${u} (html=${html?.length||0} chars)`);
@@ -3391,11 +4040,26 @@ function QuickStartModal({ onComplete, onClose, addToast, updateToast, existingF
     context = normalizeIntake(context);
 
     _progress(1);
+    // Convert user-uploaded offerings screenshots early so the company profile call can also see them
+    // (company name often appears in the header of a product/solutions screenshot).
+    const earlyImageBlocks: Array<{mediaType:string; base64:string}> = [];
+    for (const img of offeringsImages) {
+      try {
+        const b64 = await fileToBase64(img) as string;
+        earlyImageBlocks.push({ mediaType: img.type || "image/png", base64: b64 });
+      } catch {}
+    }
+    const coSys = "Return ONLY valid JSON — no prose, no markdown fences, no explanatory text before or after the JSON object. Output must be parseable by JSON.parse().";
     const coRaw = await callAI(`
-Analyze this company for B2B cold outreach. Sources: ${context||"(limited — use your best judgment based on any signals available)"}
+Analyze this company for B2B cold outreach.
+
+${normalizedUrl ? `WEBSITE URL: ${normalizedUrl}\n(Infer co_website from this URL. Infer co_name from the hostname/brand as a strong starting point, then refine using page content.)\n` : ""}${linkedin ? `LINKEDIN: ${linkedin}\n` : ""}${(offeringsText && offeringsText.trim()) ? `USER-PROVIDED PRODUCTS & SERVICES (authoritative):\n${offeringsText.trim()}\n\n` : ""}${structureContext ? `DOM-EXTRACTED STRUCTURE (nav + headings from fetched pages — often contains company name, tagline, and offering categories):\n${structureContext.slice(0,4000)}\n\n` : ""}SOURCES (body text from fetched pages): ${context||"(limited — use your best judgment based on any signals available)"}
 
 CRITICAL RULES:
 - Every single field MUST be filled. Never leave any field as an empty string.
+- co_name: use the company's actual brand name as shown on their site / in screenshots / in the URL hostname (strip "www." and TLDs). Never return empty.
+- co_website: if a WEBSITE URL was provided above, use it verbatim. Never return empty when a URL was provided.
+- co_industry: infer from offerings + page content (e.g. MSP, SaaS, Fintech, Healthcare IT). Never return empty.
 - If information is not explicitly stated, make a confident best guess based on context, company type, and industry norms.
 - Set confidence 85–100 for facts clearly stated, 55–79 for reasonable inferences, 30–54 for educated guesses.
 - co_exclude and co_avoid: infer sensible defaults based on the company's type and segment.
@@ -3423,16 +4087,61 @@ co_buying_motion: how deals actually happen — direct, channel, inbound
 co_trust_risks: what makes prospects hesitate before engaging
 co_customers: known current customers if any
 co_dream: ideal target companies
-Raw JSON only.`, "", 5000);
+Raw JSON only.`, coSys, 5000);
+    // Note: images are intentionally NOT passed to the company profile call. They go to the research brief
+    // call instead, where they're most needed (for product extraction). The company profile gets enough signal
+    // from URL + LinkedIn + DOM structure + user-typed offerings text.
     let coFields: any = {}, coConf: any = {};
-    try {
-      const p = JSON.parse(coRaw.replace(/```json|```/g,"").trim());
-      coFields=p.fields??{}; coConf=p.confidence??{};
-      // Normalize all string fields
-      for (const [k, v] of Object.entries(coFields)) {
-        if (typeof v === "string") coFields[k] = normalizeIntake(v);
+    // Extract the first valid JSON object from the response — tolerant of markdown fences,
+    // stray prose, or explanatory text that occasionally slips past the "JSON only" instruction.
+    const extractJson = (raw: string): any => {
+      const stripped = (raw || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
+      // Direct parse
+      try { return JSON.parse(stripped); } catch {}
+      // Fallback: find the first '{' and walk to its matching '}'
+      const firstBrace = stripped.indexOf("{");
+      if (firstBrace < 0) throw new Error("No JSON object found in response");
+      let depth = 0, inStr = false, esc = false;
+      for (let i = firstBrace; i < stripped.length; i++) {
+        const ch = stripped[i];
+        if (esc) { esc = false; continue; }
+        if (ch === "\\" && inStr) { esc = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === "{") depth++;
+        else if (ch === "}") {
+          depth--;
+          if (depth === 0) {
+            return JSON.parse(stripped.slice(firstBrace, i + 1));
+          }
+        }
       }
-    } catch {}
+      throw new Error("Unbalanced braces in response");
+    };
+    let coParseAttempts = 0;
+    let coRawForRetry = coRaw;
+    while (coParseAttempts < 2) {
+      try {
+        const p = extractJson(coRawForRetry);
+        coFields = p.fields ?? {}; coConf = p.confidence ?? {};
+        for (const [k, v] of Object.entries(coFields)) {
+          if (typeof v === "string") coFields[k] = normalizeIntake(v);
+        }
+        break;
+      } catch (e) {
+        coParseAttempts++;
+        console.error(`[QS] Company profile JSON parse failed (attempt ${coParseAttempts}/2):`, e, "\nRaw response:", coRawForRetry?.slice(0, 2000));
+        if (coParseAttempts < 2) {
+          // Retry with a simpler, stricter prompt
+          coRawForRetry = await callAI(
+            `Extract this company's profile as JSON. Sources (first 8000 chars): ${(context||"").slice(0,8000)}\n\nReturn ONLY a JSON object with this exact shape, no prose, no markdown:\n{"fields":{"co_name":"","co_industry":"","co_website":"","co_size":"","co_revenue":"","co_pitch":"","co_we_help":"","co_who_struggle":"","co_by_providing":"","co_unlike":"","co_we_uniquely":"","co_core_problem":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":""},"confidence":{}}`,
+            coSys, 5000
+          );
+        } else {
+          addToast({ title:"Company profile parse failed", status:"warning", message:"AI returned malformed JSON after retry. Raw response logged. Company fields can be filled manually." });
+        }
+      }
+    }
 
     // ── Step 3: Generate Research Brief ──
     const coFilledKeys = Object.keys(coFields).filter(k=>coFields[k]&&String(coFields[k]).trim());
@@ -3441,9 +4150,14 @@ Raw JSON only.`, "", 5000);
     _totalFields += coFieldCount; _totalSeconds += coTimeSaved;
     _progress(2, "company", `${coFieldCount}`);
 
-    console.log(`[QS] Context built: ${context.length} chars, ${sources.length} sources, ${pagesFetched} pages fetched`);
-    if (context.length < 500) {
-      addToast({ title:"Very little source content", status:"warning", message:`Only ${context.length} chars of context — AI may generate generic results. Add a website URL or upload docs.` });
+    // Reuse the already-encoded offerings screenshots from the company-profile step (no re-encoding).
+    const offeringsImageBlocks = earlyImageBlocks;
+    const hasManualOverride = offeringsText.trim().length > 0 || offeringsImageBlocks.length > 0;
+
+    console.log(`[QS] Context built: ${context.length} chars body, ${structureContext.length} chars structure, ${sources.length} sources, ${pagesFetched} pages fetched, manualOverride=${hasManualOverride}`);
+    if (structureContext) console.log(`[QS] Structure sample:\n${structureContext.slice(0, 1500)}`);
+    if (context.length < 500 && !hasManualOverride) {
+      addToast({ title:"Very little source content", status:"warning", message:`Only ${context.length} chars of context — AI may generate generic results. Add a website URL, paste your offerings list, upload a screenshot, or attach docs.` });
     }
 
     // Generate comprehensive research brief — ONE call that identifies everything
@@ -3453,42 +4167,57 @@ Raw JSON only.`, "", 5000);
         `You are a senior B2B GTM strategist. Analyze this company and produce a comprehensive research brief.
 
 COMPANY: ${JSON.stringify(coFields)}
-SOURCES (${context.length} chars):
-${context.slice(0,15000)}
+
+${hasManualOverride ? `USER-PROVIDED PRODUCT LIST (AUTHORITATIVE — USE THIS AS GROUND TRUTH):
+The user has explicitly provided the company's offering list${offeringsImageBlocks.length ? ` (including ${offeringsImageBlocks.length} screenshot${offeringsImageBlocks.length>1?"s":""} — attached as images above)` : ""}. This OVERRIDES anything you infer from scraped page content or DOM structure. Extract products EXACTLY as listed/shown — same names, same count, same order. Do not add, drop, rename, or synthesize.
+${offeringsText.trim() ? `\nTyped list:\n${offeringsText.trim()}\n` : ""}${offeringsImageBlocks.length ? `\nScreenshot(s): read the product/service names directly from the attached image(s).\n` : ""}──────────────────────────────────
+
+` : ""}${structureContext ? `DOM-EXTRACTED STRUCTURE (secondary — use if no manual override):
+This block contains the nav items and heading hierarchy (H1/H2/H3/H4) pulled directly from the fetched pages' HTML. This is the most reliable signal for the company's actual offering taxonomy. When you see H2/H3 headings that clearly list categories (e.g. "Managed Cloud", "Managed Security", "Managed IT"), those are the authoritative product categories — use them verbatim.
+${structureContext.slice(0,8000)}
+──────────────────────────────────
+
+` : ""}SOURCES (${context.length} chars — body text):
+${context.slice(0,30000)}
 
 CRITICAL GROUNDING RULES — these override everything else:
-- ONLY identify products/services that are EXPLICITLY MENTIONED in the SOURCES text above. Do not infer from the company name.
-- If the sources mention specific named services (e.g., a nav menu listing "Amazon", "Walmart", "Consulting"), use THOSE EXACT NAMES as the products.
-- Do NOT invent or guess products based on what a company with this name "typically sells". If sources don't mention a product, it doesn't exist.
+- IGNORE the COMPANY.co_product and COMPANY.co_prod_breakdown fields for product extraction. Those are lossy company-level summaries written by a different model; they often hallucinate or collapse products. Use the STRUCTURE / USER OVERRIDE / SOURCES blocks below as the source of truth for products.
+- The DOM-EXTRACTED STRUCTURE block above is authoritative. If it lists offerings as H2/H3 headings, use EXACTLY those names — same count, same order, no renaming.
+- ONLY identify offerings that are EXPLICITLY NAMED in the SOURCES text above. Do not infer from the company name, industry, or what a "typical" company like this sells.
+- B2B companies label their offerings many ways: "Products", "Solutions", "Services", "Capabilities", "Offerings", "What We Do", "Platform Modules". Look for ALL of these — not just the word "Products".
+- The AUTHORITATIVE list is whatever the company displays on a dedicated offerings/solutions/services page or in the main nav menu as category headings. If such a list exists in SOURCES, use EXACTLY those items — same names, same count, same order.
+- Do NOT rename, merge, split, generalize, or create composite names. If the source says "Managed Security", the product name is "Managed Security" — not "Cybersecurity & SOC Services". If it says "Unified Communications", keep that — don't expand to "Voice & Collaboration Suite".
+- Do NOT add plausible-but-unmentioned offerings. Do NOT invent "Disaster Recovery", "Microsoft 365 Management", "Backup", or similar just because the industry typically sells them.
+- CATEGORY-WITH-SUB-ITEMS HANDLING: Prefer the FINEST-GRAINED offerings that have their OWN dedicated page or nav entry. If a top-level category (e.g. "Managed Cloud") has sub-items underneath (e.g. "DaaS", "IaaS") and each sub-item has its own page/link, then each sub-item IS a product — return all of them. The category heading is just taxonomy; it should not be returned as a product when its sub-items are the actual sellable offerings. Only fall back to the category-as-product when sub-items don't have their own pages (they're just bullet points under the heading with no individual presence). Include EVERY sub-item you find — if the site has 12 named sub-offerings across 5 categories, return 12 products, not 5.
+- Before you write a product name, verify you can point to the exact heading, nav item, or page in SOURCES where that name appears verbatim. If you can't, don't include it.
+- sourceUrl: SOURCES blocks are labeled with their URL (e.g. "PRODUCT/ABOUT PAGE (https://example.com/daas):"). When you extract a product that matches one of those pages, fill sourceUrl with that exact URL. If no dedicated page was fetched, leave sourceUrl empty.
 - If SOURCES is under 1000 chars or mostly company-name only, return empty products/personas arrays — don't fabricate.
 
 Identify:
-1. ALL distinct products/services this company sells (not features — actual separate things they sell) — ONLY from what's explicitly in SOURCES
+1. Every offering the company sells, as named in SOURCES — no more, no fewer.
 2. ALL viable buyer personas (distinct roles/industries that buy these products)
 3. For each product×persona combination: is it viable? What priority? Why?
 
-For each PRODUCT include: name, description, reasoning (why this is a distinct product worth separate outreach), dealSize, category.
+For each PRODUCT include: name, description, reasoning (why this is a distinct product worth separate outreach), dealSize, category, sourceUrl (the URL of the product's dedicated page if one was fetched, else empty).
 For each PERSONA include: name, buyerTitles, industries, primaryPain, reasoning (why this persona buys which products and what drives them).
 For the MATRIX: for each product×persona combo, include priority (high/medium/low/skip) and a brief rationale.
 
 ${NAMING_RULES.product}
 ${NAMING_RULES.persona}
 
-PRODUCT IDENTIFICATION RULES:
-- Look for the company's CORE NAMED PRODUCTS — the ones with their own branded name and dedicated page
-- If the website has a "Products" dropdown with 3 items, those are the 3 products. Not more, not fewer.
-- Features, capabilities, or use cases within a product are NOT separate products
-- If a page describes a feature or workflow of a larger product, it's NOT a separate product
-- Cross-check: if the about/home page lists "Our Products: X, Y, Z" — use exactly those
-- Only include products that are GENUINELY different offerings, not features or variants
-- Only include personas that represent DISTINCT buyer segments with different pains/motivations
-- Be thorough but not redundant — 2-8 products, 2-6 personas is typical
-- Priority should consider deal size, market size, and competitive advantage
-- "skip" means the combination doesn't make sense (wrong buyer for this product)
+EXTRACTION METHOD (follow in order):
+1. Scan SOURCES for an explicit offering list — nav menus, "Our Solutions"/"Our Services"/"What We Do" sections, footer menus, pricing-page product cards, solution grids.
+2. If you find such a list, THAT IS the product list. Use exactly those names, exactly that count, in the order they appear.
+3. Features, use cases, benefits, outcomes, and capabilities within an offering are NOT separate products.
+4. Bundles, add-ons, or sub-tiers of a parent offering are NOT separate products.
+5. Only include personas that represent DISTINCT buyer segments with different pains/motivations.
+6. There is NO target count — extract exactly what's on the site. If there are 3 offerings, return 3. If there are 7, return 7. Never pad to hit a number.
+7. Priority should consider deal size, market size, and competitive advantage.
+8. "skip" means the combination doesn't make sense (wrong buyer for this product).
 
 Return ONLY valid JSON:
-{"products":[{"name":"","description":"","reasoning":"","dealSize":"","category":""}],"personas":[{"name":"","buyerTitles":"","industries":"","primaryPain":"","reasoning":""}],"matrix":[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":""}]}`,
-        "Return only valid JSON. Be thorough and specific.", 12000, { useFullContext: true }
+{"products":[{"name":"","description":"","reasoning":"","dealSize":"","category":"","sourceUrl":""}],"personas":[{"name":"","buyerTitles":"","industries":"","primaryPain":"","reasoning":""}],"matrix":[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":""}]}`,
+        "Return only valid JSON. Be thorough and specific.", 12000, { useFullContext: true, images: offeringsImageBlocks }
       );
       const brief = JSON.parse(briefRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
       const pCount = brief.products?.length || 0;
@@ -3516,7 +4245,7 @@ Return ONLY valid JSON:
     let products: any[] = [];
     try {
       const prodRaw = await callAI(
-        `Analyze this company and identify ALL distinct products/services they offer.\n\n${NAMING_RULES.product}\n\nCompany: ${JSON.stringify(coFields)}\nRaw sources: ${context.slice(0,12000)}\n\nIMPORTANT: Look for products mentioned on sub-pages (about, products, services, solutions, pricing) — not just the homepage.\n\nFor each product/service, provide ALL of these fields (never leave empty):\n- name, description, category (Software|Platform|Service|Hardware|Consulting|Other)\n- useCases, keyFeatures, problemsSolved, valueProposition, timeToValue\n- idealCustomer, marketMaturity, competitors, buyerObjections, switchTriggers\n- dealType (Recurring/One-Time/Both), acv, mrr, contractLength, renewalRate, expansionRevenue, ltv, avgDealSize, repeatRate, referralRate\n- avgDaysToClose, closeRateByStage, dealStakeholders, discountAuthority, paymentTerms\n- proofPoints, roiMetrics, caseStudies, industryProof, socialProof, objectionRebuttals, unsolvedImpact\n- elevatorPitch, positioningStatement, messagingDos, messagingDonts\n\nunsolvedImpact: what happens if the customer does nothing — the cost of inaction (lost revenue, competitive disadvantage, scaling limits)\nFor dealType: infer from context (SaaS = recurring, project-based = one-time). Fill relevant commercial fields, leave irrelevant ones empty.\n\nReturn ONLY valid JSON array.`, "", 5000);
+        `Analyze this company and identify ALL distinct products/services they offer.\n\n${NAMING_RULES.product}\n\nCompany: ${JSON.stringify(coFields)}\n\n${structureContext ? `DOM-EXTRACTED STRUCTURE (authoritative — read this FIRST):\nNav items and heading hierarchy pulled from the fetched pages' HTML. This is the most reliable signal for the company's offering taxonomy. When H2/H3 headings list offering categories, use EXACTLY those names — same count, same order, no renaming.\n${structureContext.slice(0,6000)}\n──────────────────────────────────\n\n` : ""}Raw sources (body text): ${context.slice(0,12000)}\n\nGROUNDING RULES (strict):\n- DOM-EXTRACTED STRUCTURE above is authoritative. If it lists offerings, use those verbatim.\n- Use ONLY the offerings explicitly named in the sources — look for "Solutions", "Services", "Products", "Capabilities", "What We Do", "Offerings" sections, nav menus, and solution grids.\n- Use the EXACT names shown on the site. Do not rename, generalize, or create composite names.\n- Do NOT invent plausible offerings that aren't mentioned (e.g. don't add "DRaaS" to an MSP just because MSPs typically sell it).\n- CATEGORY-WITH-SUB-ITEMS: if the site shows a top-level category (e.g. "Managed Cloud") with sub-items beneath it ("DaaS", "IaaS"), the CATEGORY is the product — the sub-items go into keyFeatures/description, not as separate products.\n- Return products in the order they appear on the site. No padding to hit a target count.\n\nIMPORTANT: Look for products mentioned on sub-pages (about, products, services, solutions, pricing) — not just the homepage.\n\nFor each product/service, provide ALL of these fields (never leave empty):\n- name, description, category (Software|Platform|Service|Hardware|Consulting|Other)\n- useCases, keyFeatures, problemsSolved, valueProposition, timeToValue\n- idealCustomer, marketMaturity, competitors, buyerObjections, switchTriggers\n- dealType (Recurring/One-Time/Both), acv, mrr, contractLength, renewalRate, expansionRevenue, ltv, avgDealSize, repeatRate, referralRate\n- avgDaysToClose, closeRateByStage, dealStakeholders, discountAuthority, paymentTerms\n- proofPoints, roiMetrics, caseStudies, industryProof, socialProof, objectionRebuttals, unsolvedImpact\n- elevatorPitch, positioningStatement, messagingDos, messagingDonts\n\nunsolvedImpact: what happens if the customer does nothing — the cost of inaction (lost revenue, competitive disadvantage, scaling limits)\nFor dealType: infer from context (SaaS = recurring, project-based = one-time). Fill relevant commercial fields, leave irrelevant ones empty.\n\nReturn ONLY valid JSON array.`, "", 5000);
       const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
       if (Array.isArray(parsed)) {
         products = parsed.map((p: any) => ({
@@ -3538,7 +4267,7 @@ Return ONLY valid JSON:
     if (products.length > 0) {
       try {
         const offerRaw = await callAI(
-          `For each product below, generate 3 offer tiers (soft, medium, hard) optimized for cold B2B outreach.\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue prop: ${coFields.co_pitch||""}\n\nProducts:\n${products.map((p:any)=>`- ${p.name}: ${p.problemsSolved}. Ideal customer: ${p.idealCustomer}. Competitors: ${p.competitors}`).join("\n")}\n\nFor EACH product + tier combination, provide:\n- productName: exact product name from list above\n- tier: "soft"|"medium"|"hard"\n- name: short offer name (e.g., "Free ROI Calculator")\n- ctaText: the EXACT words to use in the email CTA\n- whatTheyGet: what the prospect receives\n- frictionReduction: why this is easy to say yes to\n\nSoft = zero commitment (free resource, educational). Medium = small commitment (personalized audit, custom report). Hard = direct ask (demo, pricing call).\n\nReturn ONLY valid JSON array.`, "", 2500);
+          `For each product below, generate 3 offer tiers (soft, medium, hard) optimized for cold B2B outreach.\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue prop: ${coFields.co_pitch||""}\n\nProducts:\n${products.map((p:any)=>`- ${p.name}: ${p.problemsSolved}. Ideal customer: ${p.idealCustomer}. Competitors: ${p.competitors}`).join("\n")}\n\nFor EACH product + tier combination, provide:\n- productName: exact product name from list above\n- tier: "soft"|"medium"|"hard"\n- name: short offer name (e.g., "Free ROI Calculator")\n- ctaText: the EXACT words to use in the email CTA\n- whatTheyGet: what the prospect receives\n- frictionReduction: why this is easy to say yes to\n\nSoft = zero commitment (free resource, educational). Medium = small commitment (personalized audit, custom report). Hard = direct ask (demo, pricing call).\n\nReturn ONLY valid JSON array.`, "", 2500, { model: "claude-haiku-4-5-20251001" });
         const parsed = JSON.parse(offerRaw.replace(/```json|```/g,"").trim());
         if (Array.isArray(parsed)) {
           offers = parsed.map((o: any) => {
@@ -3641,8 +4370,10 @@ Raw JSON only.`, "", 2000);
     // ── Step 7: Build Intelligence ──
     _progress(7);
     let fbBattlecards: any[] = [], fbPlaybooks: any[] = [], fbContentAssets: any[] = [];
+    let intelObjectionCount = 0;
+    let intelRaw = "";
     try {
-      const intelRaw = await callAI(
+      intelRaw = await callAI(
         `Generate competitive intelligence for: ${coFields.co_name||""} (${coFields.co_industry||""}).
 Products: ${products.map((p:any)=>p.name).join(", ")||"general"}
 Personas: ${icps.map((p:any)=>p.name).join(", ")||"general"}
@@ -3659,17 +4390,19 @@ Generate: 2-3 battlecards, 5-8 objections, full playbook, 4-6 content suggestion
       );
       const intel = JSON.parse(intelRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
       if (intel.battlecards?.length) { fbBattlecards = intel.battlecards.map((bc:any) => ({ ...EMPTY_BATTLECARD(), ...bc })); _totalFields += fbBattlecards.length * 6; _totalSeconds += fbBattlecards.length * 600; }
-      if (intel.playbooks?.length) {
-        fbPlaybooks = intel.playbooks.map((pb:any) => {
-          const objs = (pb.objections||[]).map((o:any) => ({ ...EMPTY_OBJECTION(), ...o }));
-          const sigs = (pb.signals||[]).map((s:any) => ({ ...EMPTY_SIGNAL(), ...s }));
-          return { ...EMPTY_PLAYBOOK(pb.productId||"", pb.personaId||""), ...pb, objections: objs, signals: sigs };
-        });
-        _totalFields += fbPlaybooks.length * 10; _totalSeconds += fbPlaybooks.length * 900;
+      // Schema returns `playbook` (singular object) + top-level `objections` array — wrap into a single playbook record.
+      if (intel.playbook && typeof intel.playbook === "object") {
+        const pb = intel.playbook;
+        const objs = Array.isArray(intel.objections) ? intel.objections.map((o:any) => ({ ...EMPTY_OBJECTION(), ...o })) : [];
+        intelObjectionCount = objs.length;
+        fbPlaybooks = [{ ...EMPTY_PLAYBOOK("", ""), ...pb, objections: objs, signals: [] }];
+        _totalFields += 10 + objs.length * 5; _totalSeconds += 900 + objs.length * 180;
       }
       if (intel.contentAssets?.length) { fbContentAssets = intel.contentAssets.map((c:any) => ({ ...EMPTY_CONTENT_ASSET(), ...c })); _totalFields += fbContentAssets.length * 3; _totalSeconds += fbContentAssets.length * 180; }
-    } catch (e) { console.warn("Fallback intelligence failed:", e); }
-    _progress(7, "intelligence", `${fbBattlecards.length + fbPlaybooks.length}`);
+    } catch (e) {
+      console.error("[QS] Intelligence failed:", e, "\nRaw response:", intelRaw?.slice(0, 2000));
+    }
+    _progress(7, "intelligence", `${fbBattlecards.length + fbPlaybooks.length + intelObjectionCount + fbContentAssets.length}`);
 
     _progress(8, "guardrails", `${guardFieldCount}`);
     updateToast(toastId, { message:"Validating & finalizing…", step:9, totalSteps:10 });
@@ -3809,6 +4542,42 @@ Generate: 2-3 battlecards, 5-8 objections, full playbook, 4-6 content suggestion
                 </div>
               )}
             </div>
+            <div style={{ padding:"12px 14px", borderRadius:9, background:C.accentLo, border:`1.5px solid ${C.accentBorder}` }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C.accent, letterSpacing:.3, textTransform:"uppercase" as const }}>Products &amp; Services — Override</span>
+                <span style={{ fontSize:10, fontFamily:body, color:C.muted }}>(optional — authoritative if provided)</span>
+              </div>
+              <div style={{ fontSize:11, fontFamily:body, color:C.textSoft, marginBottom:10, lineHeight:1.5 }}>
+                Use this if the AI misses your products (common with JS-rendered sites). Paste a screenshot of your solutions/services page, type the list out, or both. Anything here overrides the AI's web-scraping guess.
+              </div>
+              <textarea value={offeringsText} onChange={e=>setOfferingsText(e.target.value)} rows={3}
+                placeholder={"One per line, e.g.:\nDesktop as a Service (DaaS)\nInfrastructure as a Service (IaaS)\nManaged Detection & Response"}
+                style={{ width:"100%", padding:"9px 11px", borderRadius:7, border:`1.5px solid ${C.border}`,
+                  background:C.canvas, color:C.text, fontSize:12, fontFamily:body, resize:"vertical", outline:"none", marginBottom:8 }} />
+              <div onClick={() => offeringsImageRef.current?.click()} style={{
+                padding:"12px 14px", borderRadius:7,
+                border:`1.5px dashed ${offeringsImages.length>0 ? C.accent+"66" : C.border}`,
+                background: offeringsImages.length>0 ? C.canvas : "transparent",
+                cursor:"pointer", textAlign:"center", transition:"all .2s" }}>
+                <input ref={offeringsImageRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif" style={{ display:"none" }}
+                  onChange={e => setOfferingsImages(Array.from((e.target as HTMLInputElement).files ?? []))} />
+                {offeringsImages.length > 0 ? (
+                  <div>
+                    {offeringsImages.map((f:any)=>(
+                      <div key={f.name} style={{ fontSize:11, color:C.accent, fontFamily:mono, marginBottom:2 }}>
+                        🖼 {f.name} <span style={{ color:C.muted }}>({Math.round(f.size/1024)}KB)</span>
+                      </div>
+                    ))}
+                    <div style={{ fontSize:10, color:C.muted, fontFamily:body, marginTop:4 }}>Click to replace</div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize:12, color:C.textSoft, fontFamily:body }}>
+                    📸 Drop a screenshot of your solutions/products page
+                    <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>PNG, JPG, WebP, GIF · Claude Vision reads it directly</div>
+                  </div>
+                )}
+              </div>
+            </div>
             <div>
               <label style={{ display:"block", fontSize:11, fontFamily:mono, fontWeight:600, color:C.textSoft, marginBottom:5 }}>
                 Paste Text <span style={{ color:C.muted, fontWeight:400 }}>(notes, emails, briefs)</span>
@@ -3901,7 +4670,7 @@ function CampaignAnalyzerModal({ companyData, icps: existingIcps, onComplete, on
           headers:{ "Content-Type":"application/json", "x-api-key":key,
             "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
           body: JSON.stringify({
-            model:"claude-sonnet-4-6", max_tokens:2000,
+            model:"claude-haiku-4-5-20251001", max_tokens:2000,
             messages:[{ role:"user", content:[
               { type:"image", source:{ type:"base64", media_type:mime, data:images[i].b64 } },
               { type:"text", text:`Analyze this screenshot thoroughly. It may contain ANY of the following — extract everything you can see:\n\n1. CONTACT/PROSPECT DATA: email addresses, phone numbers, names, titles, company/organization names. For each domain or company, infer the likely industry, business type, and company size.\n\n2. EMAIL/LINKEDIN COPY: subjects, bodies, signatures, message sequences. Include exact text verbatim.\n\n3. TARGETING FILTERS: industries, titles, geo, company size, revenue, intent topics, keywords, exclusions.\n\n4. CAMPAIGN SETTINGS: sequence names, timing, channels, number of steps.\n\n5. PERFORMANCE METRICS: sent, opens, replies, meetings, conversion rates.\n\n6. AUDIENCE PATTERNS: Look at the companies/domains listed and identify patterns — what industry are they in? What size? What type of business? What do they have in common?\n\nIMPORTANT: If you see a list of contacts, companies, or domains, analyze the PATTERN. For example, if you see bike shops and cycling businesses, note that the target audience is "bicycle retail / cycling industry." Infer the ICP from what you observe.\n\nReturn a detailed plain text extraction with your analysis of what this data tells us about the target audience and campaign strategy.` }
@@ -5447,7 +6216,7 @@ Raw JSON only.`;
     setAiOn(f.id);
     const extra = instructions ? `\nExtra instructions: ${instructions}` : "";
     const v = await callAI(
-      `Fill this ICP field.\nCompany: ${JSON.stringify(companyData)}\nICP so far: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}${fileContext ? `\n${fileContext}` : ""}\nReturn ONLY the answer. 1–3 sentences max.`, "", 200);
+      `Fill this ICP field.\nCompany: ${JSON.stringify(companyData)}\nICP so far: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}${fileContext ? `\n${fileContext}` : ""}\nReturn ONLY the answer. 1–3 sentences max.`, "", 200, { model: "claude-haiku-4-5-20251001" });
     upd(f.id, v.trim(), f, true);
     setAiOn(null);
   };
@@ -5533,7 +6302,7 @@ Scoring guide:
 - pain: 0=vague, 1=recognizable, 2=precise visceral pain
 - tone: 0=salesy, 1=conversational, 2=peer-level authentic
 - credibility: 0=no proof, 1=vague claim, 2=specific metric/outcome
-- cta: 0=high commitment, 1=ok, 2=frictionless low-commitment`, "", 700);
+- cta: 0=high commitment, 1=ok, 2=frictionless low-commitment`, "", 700, { model: "claude-haiku-4-5-20251001" });
       const jsonMatch = scoreRaw.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const scores = JSON.parse(jsonMatch[0]);
@@ -6350,7 +7119,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
     try {
       const result = await callAI(
         `Fill this product field.\nProduct: ${selected.name || "unnamed"}\nAll product data: ${JSON.stringify(selected)}\nCompany context: ${JSON.stringify(companyData)}\nField: "${f.label}"\nHint: ${f.ph || ""}\n${fileContext ? `Files:\n${fileContext}` : ""}\nReturn ONLY the field value, no explanation.`,
-        "", 400
+        "", 400, { model: "claude-haiku-4-5-20251001" }
       );
       const val = result.trim();
       if (val && !val.startsWith("Error")) {
@@ -7585,23 +8354,99 @@ Return ONLY a JSON array of 6 phases. Each campaign MUST include:
 - testPeriod (e.g. "3 days"), testMetrics (what to watch)
 - ifBenchmarksMet (next action), ifBenchmarksNotMet (specific test sequence)
 
-Keep each campaign object compact. No nested objects except as specified.`,
-        "Return ONLY valid JSON array. No markdown.", 4000,
+Keep each campaign object compact. No nested objects except as specified.
+
+RETURN SHAPE — return EXACTLY this shape, no wrapper object, just the array:
+[
+  {
+    "id": "phase-1",
+    "name": "Months 1-3: Aggressive Launch",
+    "monthRange": "Months 1-3",
+    "focus": "short description",
+    "campaigns": [ { ...campaign fields listed above... } ]
+  },
+  ...6 phases total
+]`,
+        "Return ONLY valid JSON array (no wrapper object, no markdown fences, no explanatory prose). Must be parseable by JSON.parse().", 10000,
         { useFullContext: true }
       );
       let phases: any[];
+      // Robust JSON extraction — tolerates markdown fences, leading/trailing prose, and
+      // responses wrapped in an object like {"phases":[...]} instead of a bare array.
+      const extractPhases = (raw: string): any[] => {
+        const stripped = (raw || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
+        // 1. Direct parse
+        try {
+          const p = JSON.parse(stripped);
+          if (Array.isArray(p)) return p;
+          if (p && Array.isArray(p.phases)) return p.phases;
+          if (p && Array.isArray(p.roadmap)) return p.roadmap;
+          if (p && Array.isArray(p.data)) return p.data;
+        } catch {}
+        // 2. Find the first "[" and walk to the matching "]" (string-aware)
+        const firstBr = stripped.indexOf("[");
+        if (firstBr >= 0) {
+          let depth = 0, inStr = false, esc = false;
+          for (let i = firstBr; i < stripped.length; i++) {
+            const ch = stripped[i];
+            if (esc) { esc = false; continue; }
+            if (ch === "\\" && inStr) { esc = true; continue; }
+            if (ch === '"') { inStr = !inStr; continue; }
+            if (inStr) continue;
+            if (ch === "[") depth++;
+            else if (ch === "]") {
+              depth--;
+              if (depth === 0) {
+                try {
+                  const p = JSON.parse(stripped.slice(firstBr, i + 1));
+                  if (Array.isArray(p)) return p;
+                } catch {}
+                break;
+              }
+            }
+          }
+        }
+        // 3. Truncation salvage — find the last complete object inside the array so a cut-off
+        //    response still yields whatever phases DID finish.
+        const openBr = stripped.indexOf("[");
+        if (openBr >= 0) {
+          // Collect every complete top-level object inside the array
+          const collected: string[] = [];
+          let i = openBr + 1;
+          while (i < stripped.length) {
+            // Skip whitespace + commas
+            while (i < stripped.length && /[\s,]/.test(stripped[i])) i++;
+            if (stripped[i] !== "{") break;
+            const objStart = i;
+            let depth = 0, inStr = false, esc = false;
+            for (; i < stripped.length; i++) {
+              const ch = stripped[i];
+              if (esc) { esc = false; continue; }
+              if (ch === "\\" && inStr) { esc = true; continue; }
+              if (ch === '"') { inStr = !inStr; continue; }
+              if (inStr) continue;
+              if (ch === "{") depth++;
+              else if (ch === "}") { depth--; if (depth === 0) { i++; break; } }
+            }
+            if (depth !== 0) break; // unfinished object — stop
+            collected.push(stripped.slice(objStart, i));
+          }
+          if (collected.length) {
+            try { return JSON.parse("[" + collected.join(",") + "]"); } catch {}
+          }
+        }
+        throw new Error("Could not parse phases from model response");
+      };
       try {
-        phases = JSON.parse(phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+        phases = extractPhases(phasesRaw);
       } catch (parseErr) {
-        // Try to salvage truncated JSON by finding the last complete object
-        const trimmed = phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim();
-        const lastBracket = trimmed.lastIndexOf("}]");
-        if (lastBracket > 0) {
-          try { phases = JSON.parse(trimmed.slice(0, lastBracket + 2)); }
-          catch { throw new Error("Could not parse strategy response"); }
-        } else { throw new Error("Invalid response format"); }
+        console.error("[Roadmap] Parse failed. Raw response (first 2000 chars):", phasesRaw?.slice(0, 2000));
+        throw new Error("Could not parse strategy response — model may have returned malformed or truncated JSON. See console for raw response.");
       }
-      if (!Array.isArray(phases) || phases.length === 0) throw new Error("No phases generated");
+      if (!Array.isArray(phases) || phases.length === 0) {
+        console.error("[Roadmap] Empty phases. Raw:", phasesRaw?.slice(0, 2000));
+        throw new Error("No phases generated");
+      }
 
       // Step 2: Generate benchmarks + decision trees for each phase
       setGenStep(2);
@@ -8206,6 +9051,16 @@ const EMPTY_CAMPAIGN = () => ({
   type: "cold_email" as string, // legacy — kept for backwards compat, derived from channel going forward
   // Intent tier: "cold" = standard outbound, "high" = RTS-sourced high-intent lead (fast cadence, direct CTA, short sequence)
   intentTier: "cold" as "cold"|"high",
+  // Playbook: campaign-level voice + strategy profile. "auto" falls back to persona.tone/seq_strategy.
+  // Specific keys (e.g. "value_stack") inject a full voice/strategy override into every AI prompt
+  // that runs for this campaign — emails, LinkedIn, voice scripts, reply handlers, optimization.
+  playbook: "auto" as PlaybookKey,
+  // Campaign Goal — the business objective (e.g. "book 5 qualified demos/week with construction CFOs").
+  // Distinct from handoffCriteria, which is the "when does a lead pass to sales" rule.
+  goal: "" as string,
+  // Diagnostic — AI-generated health report that runs on the Analytics tab. Cached via contentHash
+  // + generatedAt so we don't re-run on every tab open. Shape: see DiagnosticReport in runCampaignDiagnostic.
+  diagnostic: null as any,
   personaIds: [] as string[], productId: "", offerId: "",
   strategyPhaseId: null as string|null,
   // Audience source — determines where leads come from
@@ -8464,8 +9319,10 @@ const EMPTY_STEP = (stepNum: number) => ({
   variants: [] as any[],
 });
 
-function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, onOffersChange, companyData, strategy, v2 = false, addToast = (_t:any)=>"", activeWorkspace = null as any, onCreateCampaign = null as any, rtsLists = [] as any[] }: {
+function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, onOffersChange, onPersonasChange, onFillPersona, companyData, strategy, v2 = false, addToast = (_t:any)=>"", activeWorkspace = null as any, onCreateCampaign = null as any, rtsLists = [] as any[] }: {
   campaigns: any[]; onCampaignsChange: (c: any[]) => void; personas: any[]; products: any[]; offers: any[]; onOffersChange?: (o:any[])=>void;
+  onPersonasChange?: ((updater: any) => void) | null;
+  onFillPersona?: ((icp: any, userContext: string) => void) | null;
   companyData: any; strategy: any; v2?: boolean; addToast?: (t:any)=>string;
   activeWorkspace?: any;
   onCreateCampaign?: ((input: any) => any) | null;
@@ -8473,7 +9330,11 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
 }) {
   const _C = v2 ? C2 : C;
   const [selectedId, setSelectedId] = useState<string|null>(null);
-  const [tab, setTab] = useState<"config"|"offers"|"sequence"|"replies"|"benchmarks"|"preview">("config");
+  const [tab, setTab] = useState<"settings"|"audience"|"sequence"|"analytics">("settings");
+  // Subtabs inside Sequence (offers, steps, reply handlers, preview) and Analytics (benchmarks, reply analyzer).
+  const [seqSubtab, setSeqSubtab] = useState<"steps"|"offers"|"replies"|"preview">("steps");
+  // Settings: Operations section collapse (Start Date, Volume, Schedule, Safety, Sender Config)
+  const [opsOpen, setOpsOpen] = useState(false);
   const [genOfferLoading, setGenOfferLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [bulkGenSeq, setBulkGenSeq] = useState(false);
@@ -8484,6 +9345,307 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
   const [analyzingReplies, setAnalyzingReplies] = useState(false);
   const [replyFilter, setReplyFilter] = useState<string>("all");
   const [benchRatGenerating, setBenchRatGenerating] = useState(false);
+  // Import Existing Campaign flow — user pastes screenshots/text from another tool (Instantly, Smartlead, HubSpot, B2BR)
+  // and we parse with vision + create a real Campaign so it shares the same analytics/iteration flows.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importName, setImportName] = useState("");
+  const [importTimePeriod, setImportTimePeriod] = useState("");
+  const [importAnalyticsImages, setImportAnalyticsImages] = useState<File[]>([]);
+  const [importSequenceImages, setImportSequenceImages] = useState<File[]>([]);
+  const [importSequenceText, setImportSequenceText] = useState("");
+  const [importContactsCsv, setImportContactsCsv] = useState<File|null>(null);
+  const [importParsing, setImportParsing] = useState(false);
+  const [importParsed, setImportParsed] = useState<any|null>(null); // { metrics, timePeriod, sequence, audienceSummary, personaAnalysis, campaignName }
+  // Parsed CSV held outside the AI-parsed object so we can persist a sample to the campaign on commit.
+  const [importCsvParsed, setImportCsvParsed] = useState<{ headers: string[]; rows: Record<string,string>[]; totalRows: number } | null>(null);
+  // User's chosen action on the persona match — overrides the AI's recommendedAction if they pick differently
+  const [importPersonaAction, setImportPersonaAction] = useState<"link_existing"|"create_new"|"skip">("skip");
+  const [importPersonaLinkId, setImportPersonaLinkId] = useState<string>(""); // workspace persona id when linking
+  const resetImport = () => {
+    setImportName(""); setImportTimePeriod(""); setImportAnalyticsImages([]);
+    setImportSequenceImages([]); setImportSequenceText(""); setImportContactsCsv(null);
+    setImportParsed(null); setImportParsing(false); setImportCsvParsed(null);
+    setImportPersonaAction("skip"); setImportPersonaLinkId("");
+  };
+  const parseImport = async () => {
+    if (importAnalyticsImages.length === 0 && !importSequenceText.trim() && importSequenceImages.length === 0 && !importContactsCsv) {
+      addToast({ title:"Nothing to parse", status:"warning", message:"Add at least one analytics screenshot, sequence, or contacts CSV." }); return;
+    }
+    setImportParsing(true);
+    try {
+      const toBlocks = async (files: File[]) => {
+        const out: Array<{mediaType:string; base64:string}> = [];
+        for (const f of files) {
+          try { const b64 = await fileToBase64(f) as string; out.push({ mediaType: f.type || "image/png", base64: b64 }); } catch {}
+        }
+        return out;
+      };
+      const analyticsBlocks = await toBlocks(importAnalyticsImages);
+      const seqImageBlocks = await toBlocks(importSequenceImages);
+      let csvSample = "", csvRowCount = 0;
+      // Parse full CSV into structured rows so we can both show the AI the sample AND persist it onto the campaign.
+      // Capped at 100 rows to keep the campaign record / workspace context manageable.
+      if (importContactsCsv) {
+        try {
+          const text = await importContactsCsv.text();
+          // Split CSV — respects quoted commas. Good enough for most export formats.
+          const parseCsvLine = (line: string): string[] => {
+            const out: string[] = [];
+            let cur = "", inStr = false;
+            for (let i = 0; i < line.length; i++) {
+              const ch = line[i];
+              if (ch === '"') {
+                if (inStr && line[i+1] === '"') { cur += '"'; i++; }
+                else { inStr = !inStr; }
+              } else if (ch === "," && !inStr) {
+                out.push(cur); cur = "";
+              } else { cur += ch; }
+            }
+            out.push(cur);
+            return out.map(s => s.trim());
+          };
+          const allLines = text.split(/\r?\n/).filter(l => l.trim());
+          if (allLines.length > 0) {
+            const headers = parseCsvLine(allLines[0]);
+            const dataLines = allLines.slice(1);
+            csvRowCount = dataLines.length;
+            const sampleSize = Math.min(100, dataLines.length);
+            const rows: Record<string,string>[] = [];
+            for (let i = 0; i < sampleSize; i++) {
+              const cells = parseCsvLine(dataLines[i]);
+              const row: Record<string,string> = {};
+              headers.forEach((h, j) => { row[h] = cells[j] || ""; });
+              rows.push(row);
+            }
+            setImportCsvParsed({ headers, rows, totalRows: csvRowCount });
+            // Build the AI-facing sample as text — 50 rows for persona inference (enough to surface
+            // multi-industry patterns; 10 rows was too small and made the AI pick whichever industry
+            // happened to dominate the top of the list).
+            const aiSampleCount = Math.min(50, dataLines.length);
+            csvSample = [allLines[0], ...allLines.slice(1, 1 + aiSampleCount)].join("\n");
+          }
+        } catch (e) { console.warn("[Import] CSV parse failed:", e); }
+      } else {
+        setImportCsvParsed(null);
+      }
+      const imgOrderNote: string[] = [];
+      if (analyticsBlocks.length) imgOrderNote.push(`${analyticsBlocks.length} ANALYTICS image(s)`);
+      if (seqImageBlocks.length) imgOrderNote.push(`${seqImageBlocks.length} SEQUENCE image(s)`);
+      // Trim persona list for the prompt — enough signal for match, not so much that it bloats tokens.
+      const personaSnapshot = personas.map((p:any, i:number) => `[${i}] id="${p.id}" name="${p.name||"Unnamed"}" titles="${(p.data?.buyer||"").slice(0,140)}" industries="${(p.data?.industries||"").slice(0,140)}" sizes="${Array.isArray(p.data?.co_sizes) ? p.data.co_sizes.join("/") : (p.data?.co_sizes||"")}" primary_pain="${(p.data?.pain1||"").slice(0,140)}"`).join("\n");
+      const prompt = `You are parsing an EXISTING B2B cold outreach campaign already running in another tool (Instantly, Smartlead, HubSpot, B2B Rocket, Apollo, Lemlist, etc.). The user wants to import its data so they can analyze performance against our benchmarks.
+
+Inputs provided (in image order): ${imgOrderNote.join(" + ") || "(no images)"}.
+${importName.trim() ? `\nCAMPAIGN NAME (user-provided — contains STRONG signal about the intended target segment, e.g. "IT Decision Makers | Regulated | Batch 1" means multi-industry regulated targets, NOT a single industry):\n"${importName.trim()}"\n` : ""}${importSequenceText.trim() ? `\nSEQUENCE TEXT:\n${importSequenceText.trim()}\n` : ""}TIME PERIOD (user-stated): ${importTimePeriod || "(not specified — read it from screenshots or leave empty)"}
+${csvRowCount ? `\nCONTACTS CSV: ${csvRowCount} total rows. Sample below (header + up to 50 rows):\n${csvSample}\n` : ""}
+${personas.length ? `\nEXISTING PERSONAS IN THIS WORKSPACE (${personas.length}) — use for match analysis:\n${personaSnapshot}\n` : ""}
+
+Return ONLY a JSON object with this exact shape. Use 0 for unknown numbers. Use empty strings/arrays for unknown text/lists.
+{
+  "campaignName": "inferred from the dashboard header if visible, else empty",
+  "timePeriod": { "start": "YYYY-MM-DD or empty", "end": "YYYY-MM-DD or empty", "durationDays": 0, "label": "human label e.g. 'Last 30 days'" },
+  "metrics": {
+    "sent": 0, "delivered": 0, "bounce": 0,
+    "opens": 0, "clicks": 0,
+    "allReplies": 0, "humanReplies": 0, "oooReplies": 0, "wrongPersonReplies": 0,
+    "notInterestedReplies": 0, "opportunityReplies": 0, "otherReplies": 0,
+    "unsubscribed": 0, "meetings": 0, "revenue": 0
+  },
+  "sequence": [ { "stepNumber": 1, "role": "hook|proof|value|urgency|breakup", "dayOffset": 0, "subject": "", "body": "" } ],
+  "audienceSummary": { "contactCount": 0, "primaryTitles": [], "primaryIndustries": [], "primaryCompanySizes": [] },
+  "personaAnalysis": {
+    "inferredName": "[Industry/Segment] — [Buyer Role] (40 chars max, follow persona naming rules; use a theme like 'Regulated Industries' when contacts span related verticals rather than defaulting to the most common single industry)",
+    "inferredTitles": "",
+    "inferredIndustries": "",
+    "inferredCompanySizes": "",
+    "inferredGeo": "",
+    "inferredPain": "primary pain — must match the THEME not a single industry (e.g. 'Compliance risk across audits, data-sovereignty, access control' not 'HIPAA compliance')",
+    "inferredGains": "what these buyers want instead",
+    "inferredTriggers": "buying triggers likely to move them",
+    "inferredObjections": "2-3 objections this persona commonly raises",
+    "inferredTone": "Consultative & Educational | Direct & Punchy | Casual & Conversational | Formal & Executive | Data-driven & Analytical | Blue Collar & Human | Blunt & Edgy | Confrontational",
+    "inferredKeywords": "search keywords for prospecting",
+    "bestExistingMatchIndex": null,
+    "bestExistingMatchId": "",
+    "matchScore": 0,
+    "matchReasoning": "2-3 sentences comparing the CSV contacts to the best-matching existing persona — what's similar, what's different",
+    "recommendedAction": "link_existing" | "create_new" | "skip"
+  },
+  "notes": "anything important you couldn't fit into the fields above"
+}
+
+RULES:
+- Read NUMBERS precisely from screenshots — do not round unless the UI rounds.
+- If a screenshot shows percentages, compute absolute counts (sent × pct/100). Don't put percentages in integer fields.
+- Map vendor labels to our schema: "Not interested" → notInterestedReplies; "Out of office"/"OOO" → oooReplies; "Wrong person"/"Not a fit" → wrongPersonReplies; "Positive"/"Interested"/"Meeting booked"/"Opportunity" → opportunityReplies; other replies → otherReplies. allReplies = sum of all sub-categories if visible.
+- Sequence steps: extract subject + body verbatim. Step 1 dayOffset = 0; subsequent days measured from step 1 send date.
+- audienceSummary comes from the CSV — infer titles/industries from its columns and sample rows.
+- TIME PERIOD — read it from the screenshot in this order of priority:
+  1. Explicit date-range picker text at the top of the dashboard (e.g. "Jan 1, 2026 – Jan 31, 2026", "Last 30 days", "Mar 15 – Apr 14").
+  2. X-AXIS date labels under time-series graphs — the leftmost label is the start date, the rightmost is the end date. Example: if the graph's x-axis shows "Mar 15 ... Mar 22 ... Mar 29 ... Apr 5 ... Apr 12", then start=2026-03-15, end=2026-04-12.
+  3. Any "since campaign launched" or single-date text visible elsewhere.
+  Always fill both timePeriod.start and timePeriod.end in YYYY-MM-DD format whenever any date text is visible on the screenshot. Compute durationDays = (end - start) + 1. Write timePeriod.label as a human-readable range (e.g. "Mar 15 – Apr 12, 2026") unless the dashboard shows a preset like "Last 30 days" — use that preset verbatim.
+- personaAnalysis: ONLY populate if a CSV was provided. If no CSV, return all empty/0 and recommendedAction="skip".
+  - matchScore 0-100. 80+ = strong match (same ICP); 50-79 = overlapping but meaningfully different (new variant); 0-49 = different persona.
+  - If matchScore ≥ 80, recommendedAction="link_existing" and fill bestExistingMatchIndex + bestExistingMatchId from the workspace list above.
+  - If matchScore < 80 OR no existing personas, recommendedAction="create_new" and leave bestExistingMatchIndex null.
+  - inferredName should follow the pattern "[Industry/Segment] — [Buyer Role]" (e.g. "SaaS — VP Sales", "Construction SMB — Owner"). When the target is a theme that spans industries (see below), use the theme as the segment.
+  - CRITICAL — DO NOT OVER-INDEX ON A SINGLE INDUSTRY: When analyzing contacts, always read the CAMPAIGN NAME and USER-PROVIDED PRODUCT LIST first to understand the INTENDED segment. Examples:
+    * Campaign name "IT Decision Makers | Regulated | Batch 1" with CSV containing healthcare + finance + legal + government contacts → inferredIndustries = "Healthcare, Financial Services, Legal, Government, Pharma (regulated verticals)" — NOT "Healthcare" alone. inferredName = "Regulated Industries — IT Decision Makers".
+    * Campaign name "SaaS Founders" with a mix of B2B + B2C SaaS → keep it as "SaaS — Founder" even if one sub-vertical dominates the sample.
+    * If the campaign name is generic but contacts genuinely cluster in one industry (80%+), only then narrow to that industry.
+  - Use CSV column values AND company-name patterns to infer industry. Read ALL 50 sample rows before deciding — do not anchor on the first 5.
+  - For inferredIndustries: if contacts span 2+ clearly related industries (e.g. regulated: healthcare, finance, gov), list them all with a parenthetical theme. Do not drop any.
+  - For inferredPain: the pain should match the THEME, not a single industry. "Compliance risk, audit burden, data-sovereignty requirements" for regulated IT buyers, not "HIPAA compliance" alone.
+- NEVER invent metrics, sequence content, or time periods. Leave fields blank if not provided.`;
+      const raw = await callAI(prompt, "Return only valid JSON. No prose, no markdown fences.", 6000, {
+        images: [...analyticsBlocks, ...seqImageBlocks]
+      });
+      const cleaned = (raw || "").replace(/```json?\s*/gi,"").replace(/```/g,"").trim();
+      let parsed: any = null;
+      try { parsed = JSON.parse(cleaned); }
+      catch {
+        const first = cleaned.indexOf("{"); const last = cleaned.lastIndexOf("}");
+        if (first >= 0 && last > first) parsed = JSON.parse(cleaned.slice(first, last + 1));
+      }
+      if (!parsed) throw new Error("Couldn't parse JSON");
+      setImportParsed(parsed);
+      if (!importName && parsed.campaignName) setImportName(parsed.campaignName);
+      if (!importTimePeriod && parsed.timePeriod?.label) setImportTimePeriod(parsed.timePeriod.label);
+      // Seed the persona action + link id from the AI's recommendation.
+      const pa = parsed.personaAnalysis || {};
+      const aiAction = pa.recommendedAction as "link_existing"|"create_new"|"skip"|undefined;
+      if (aiAction === "link_existing" && pa.bestExistingMatchId) {
+        // Validate that the ID actually exists in our persona list (AI could hallucinate).
+        const exists = personas.find((p:any) => p.id === pa.bestExistingMatchId);
+        if (exists) { setImportPersonaAction("link_existing"); setImportPersonaLinkId(pa.bestExistingMatchId); }
+        else if (typeof pa.bestExistingMatchIndex === "number" && personas[pa.bestExistingMatchIndex]) {
+          setImportPersonaAction("link_existing"); setImportPersonaLinkId(personas[pa.bestExistingMatchIndex].id);
+        } else { setImportPersonaAction("create_new"); setImportPersonaLinkId(""); }
+      } else if (aiAction === "create_new") {
+        setImportPersonaAction("create_new"); setImportPersonaLinkId("");
+      } else {
+        setImportPersonaAction(importContactsCsv ? "create_new" : "skip"); setImportPersonaLinkId("");
+      }
+    } catch (e:any) {
+      console.error("[Import] Parse failed:", e);
+      addToast({ title:"Couldn't parse import", status:"error", message:"Check the screenshots/text and try again. See console for details." });
+    }
+    setImportParsing(false);
+  };
+  const commitImport = () => {
+    if (!importParsed) return;
+    const c: any = EMPTY_CAMPAIGN();
+    c.name = (importName.trim() || importParsed.campaignName || "Imported Campaign");
+    c.status = "active";
+    c.channel = "email"; c.type = "cold_email";
+    c.audienceSource = "custom_list";
+    c.customListName = importContactsCsv?.name || "Imported from external tool";
+    c.performance = {
+      metrics: { ...EMPTY_CAMPAIGN_METRICS(), ...(importParsed.metrics || {}) },
+      updatedAt: new Date().toISOString(),
+      importedAt: new Date().toISOString(),
+      source: "imported_external",
+      timePeriod: importParsed.timePeriod || null,
+      audienceSummary: importParsed.audienceSummary || null,
+      importNotes: importParsed.notes || "",
+    };
+    // Persist a sample of imported contacts on the campaign so the copilot and future
+    // analysis (persona drift, performance-by-segment) can reference them.
+    if (importCsvParsed && importCsvParsed.rows.length > 0) {
+      c.contactSample = {
+        fileName: importContactsCsv?.name || "contacts.csv",
+        importedAt: new Date().toISOString(),
+        totalRows: importCsvParsed.totalRows,
+        headers: importCsvParsed.headers,
+        rows: importCsvParsed.rows, // up to 100 structured rows
+        personaAnalysis: importParsed.personaAnalysis || null, // the AI's audience inference at import time
+      };
+    }
+    if (Array.isArray(importParsed.sequence) && importParsed.sequence.length) {
+      c.sequence = importParsed.sequence.map((s:any, i:number) => ({
+        id: uid(),
+        stepNumber: s.stepNumber || i + 1,
+        role: s.role || "hook",
+        dayOffset: Number.isFinite(s.dayOffset) ? s.dayOffset : i * 3,
+        channel: "email",
+        subject: s.subject || "",
+        body: s.body || "",
+        variants: [],
+      }));
+    }
+
+    // Persona wiring: link existing, create new, or skip.
+    let personaMessage = "";
+    const pa = importParsed.personaAnalysis || {};
+    if (importPersonaAction === "link_existing" && importPersonaLinkId) {
+      const target = personas.find((p:any) => p.id === importPersonaLinkId);
+      if (target) {
+        c.personaIds = [target.id];
+        // Mirror targeting fields from the persona so the campaign has sensible defaults.
+        const d = target.data || {};
+        c.targeting = {
+          ...c.targeting,
+          titles: d.buyer || c.targeting.titles,
+          industries: d.industries || c.targeting.industries,
+          companySizes: Array.isArray(d.co_sizes) ? d.co_sizes.join(", ") : (d.co_sizes || c.targeting.companySizes),
+        };
+        personaMessage = ` · linked to "${target.name}"`;
+      }
+    } else if (importPersonaAction === "create_new" && onPersonasChange) {
+      // Create a new persona seeded with all the AI's inferred fields. A second pass (onFillPersona)
+      // auto-fills the remaining ~36 fields in the background so the persona reaches Quickstart parity.
+      const co_sizes = pa.inferredCompanySizes
+        ? (Array.isArray(pa.inferredCompanySizes) ? pa.inferredCompanySizes : String(pa.inferredCompanySizes).split(/[,;]+/).map((s:string)=>s.trim()).filter(Boolean))
+        : [];
+      const newPersona: any = {
+        id: uid(),
+        name: (pa.inferredName || "Imported Persona").slice(0, 60),
+        data: {
+          industries: pa.inferredIndustries || "",
+          buyer: pa.inferredTitles || "",
+          co_sizes,
+          geo: pa.inferredGeo || "",
+          keywords: pa.inferredKeywords || "",
+          pain1: pa.inferredPain || "",
+          gains: pa.inferredGains || "",
+          triggers: pa.inferredTriggers || "",
+          objections: pa.inferredObjections || "",
+          tone: pa.inferredTone || "",
+          persona_notes: `Auto-created from imported campaign "${c.name}".${pa.matchReasoning ? ` Match analysis: ${pa.matchReasoning}` : ""} Contacts sample: ${importCsvParsed?.totalRows || 0} rows from "${importContactsCsv?.name || "CSV"}".`.trim(),
+        },
+        confidence: {},
+        linkedProductIds: products.map((pp:any) => pp.id),
+        createdAt: new Date().toISOString(),
+      };
+      onPersonasChange((prev:any[]) => [...prev, newPersona]);
+      c.personaIds = [newPersona.id];
+      c.targeting = {
+        ...c.targeting,
+        titles: newPersona.data.buyer,
+        industries: newPersona.data.industries,
+        companySizes: newPersona.data.co_sizes.join(", "),
+        keywords: newPersona.data.keywords || c.targeting.keywords || "",
+      };
+      personaMessage = ` · created new persona "${newPersona.name}"`;
+      // Fire the full AI fill in the background — populates the remaining ~36 ICP fields so the new
+      // persona is as complete as one drafted by Quickstart. Uses the campaign name + inferred intent
+      // as userContext so the fill respects the "theme" (e.g. "Regulated Industries") rather than
+      // narrowing to a single vertical.
+      if (onFillPersona) {
+        const userContext = `This persona was derived from imported campaign "${c.name || "Untitled"}"${c.goal ? ` (goal: ${c.goal})` : ""}. Target segment intent: ${pa.inferredName || "unspecified"}. Primary pain signal: ${pa.inferredPain || "unspecified"}. Treat the inferredIndustries as the authoritative target scope; do not narrow to a single vertical if multiple are listed.`;
+        // Defer slightly so the persona is registered in state before fill runs.
+        setTimeout(() => { try { onFillPersona({ ...newPersona }, userContext); } catch {} }, 300);
+      }
+    }
+
+    onCampaignsChange([...campaigns, c]);
+    setSelectedId(c.id);
+    setImportOpen(false);
+    resetImport();
+    const metricCount = Object.values(c.performance.metrics).filter((v:any) => Number(v) > 0).length;
+    addToast({ title:"Campaign imported", status:"success", message:`"${c.name}" — ${c.sequence?.length || 0} steps, ${metricCount} metrics populated${personaMessage}` });
+  };
 
   const selected = campaigns.find(c => c.id === selectedId) || null;
 
@@ -8595,6 +9757,8 @@ Rules:
 Include: what to say when they pick up, how to handle "not interested", how to handle "send me info", the specific CTA ask.
 Rules: Natural spoken language, not formal. Include pauses and questions.`;
 
+      const playbookChannel: "email"|"linkedin"|"voice" = isLinkedIn ? "linkedin" : isCalling ? "voice" : "email";
+      const playbookCtx = buildPlaybookContext(selected.playbook, { channel: playbookChannel });
       const prompt = `Generate a ${typeObj?.label || selected.type} outreach sequence.
 
 COMPANY: ${cd.co_name || "?"} — ${cd.co_industry || "?"}
@@ -8602,7 +9766,7 @@ PRODUCT: ${product?.name || "General"} — ${product?.valueProposition || produc
 OFFER (${offer?.tier || "soft"} CTA): "${offer?.ctaText || offer?.name || "Worth a quick chat?"}"
 PERSONA: ${persona?.name || "General"} — Titles: ${persona?.data?.buyer || "?"}, Pain: ${persona?.data?.pain1 || "?"}
 COMPETITOR: Currently using: ${persona?.data?.current_solutions || "unknown"}. Displacement: ${persona?.data?.displacement_messaging || "N/A"}
-TONE: ${isHighIntent ? "Direct, specific, signal-led — these leads are already showing intent" : (persona?.data?.tone || "Consultative")}
+TONE: ${playbookCtx ? "(see Voice & Strategy Profile below — it overrides persona tone for this campaign)" : (isHighIntent ? "Direct, specific, signal-led — these leads are already showing intent" : (persona?.data?.tone || "Consultative"))}${playbookCtx}
 ${isHighIntent && linkedRtsList ? `\nHIGH-INTENT LIST CONTEXT (read this carefully — the copy MUST reference the signal from this list):
 LIST NAME: ${linkedRtsList.name}
 SIGNAL / ICP (the buying signal these leads are showing): ${linkedRtsList.bebopSetup?.customerProfile || ""}
@@ -8654,6 +9818,197 @@ Return ONLY valid JSON:
     setGenerating(false);
   };
 
+  // ─── Campaign Diagnostic ────────────────────────────────────────────────
+  // A comprehensive health report that auto-runs when the user opens the Analytics tab.
+  // Caches via a content hash so we don't re-run on every tab mount. Triggers a fresh run
+  // when the inputs meaningfully change (metrics, sequence, persona, offer, product).
+  // `diagnosticContentHash(campaign, persona, offer, product)` — stable signature of the inputs
+  // that materially affect the diagnostic. Any change invalidates the cache.
+  const diagnosticContentHash = (c:any, persona:any, offer:any, product:any) => {
+    if (!c) return "";
+    const m = c.performance?.metrics || {};
+    const seq = (c.sequence || []).map((s:any) => `${s.stepNumber||""}|${s.dayOffset||0}|${s.role||""}|${(s.subject||"").length}|${(s.body||"").length}`).join(",");
+    const contactsHash = c.contactSample ? `${c.contactSample.totalRows}|${(c.contactSample.rows||[]).length}|${(c.contactSample.headers||[]).join(",")}` : "";
+    const parts = [
+      c.id, c.name || "", c.status || "", c.channel || "", c.playbook || "",
+      c.goal || "", c.handoffCriteria || "",
+      (c.personaIds || []).join("/"), c.productId || "", c.offerId || "",
+      m.sent || 0, m.delivered || 0, m.bounce || 0, m.allReplies || 0,
+      m.humanReplies || 0, m.opportunityReplies || 0, m.meetings || 0,
+      m.oooReplies || 0, m.wrongPersonReplies || 0, m.notInterestedReplies || 0,
+      c.performance?.timePeriod?.label || "",
+      seq, contactsHash,
+      persona?.id || "", persona?.name || "",
+      (persona?.data?.buyer || "").slice(0, 80), (persona?.data?.industries || "").slice(0, 80),
+      offer?.id || "", offer?.tier || "",
+      product?.id || "", product?.name || "",
+    ];
+    return parts.join("::");
+  };
+  const DIAGNOSTIC_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+  const [diagRunning, setDiagRunning] = useState<string|null>(null); // campaign id currently running
+  // Auto-run the diagnostic when the user opens the Analytics tab. Skip if the cached diagnostic
+  // still matches the current content hash and is fresh (<2h).
+  useEffect(() => {
+    if (tab !== "analytics" || !selected) return;
+    const persona = personas.find((p:any) => p.id === (selected.personaIds||[])[0]) || null;
+    const product = products.find((p:any) => p.id === selected.productId) || null;
+    const offer = offers.find((o:any) => o.id === selected.offerId) || null;
+    const hash = diagnosticContentHash(selected, persona, offer, product);
+    const current = selected.diagnostic;
+    const isFresh = current?.contentHash === hash && current?.generatedAt && (Date.now() - new Date(current.generatedAt).getTime() < DIAGNOSTIC_MAX_AGE_MS);
+    if (!isFresh && diagRunning !== selected.id) {
+      runCampaignDiagnostic(selected);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, selectedId, selected?.performance?.updatedAt, selected?.sequence?.length, selected?.personaIds?.[0], selected?.productId, selected?.offerId]);
+  const runCampaignDiagnostic = async (c: any, opts: { force?: boolean } = {}) => {
+    if (!c) return;
+    const persona = personas.find((p:any) => p.id === (c.personaIds||[])[0]) || null;
+    const product = products.find((p:any) => p.id === c.productId) || null;
+    const offer = offers.find((o:any) => o.id === c.offerId) || null;
+    const hash = diagnosticContentHash(c, persona, offer, product);
+    // Skip if cached diagnostic matches current inputs and is still fresh
+    if (!opts.force && c.diagnostic?.contentHash === hash && c.diagnostic?.generatedAt) {
+      const age = Date.now() - new Date(c.diagnostic.generatedAt).getTime();
+      if (age < DIAGNOSTIC_MAX_AGE_MS) return;
+    }
+    if (diagRunning === c.id) return;
+    setDiagRunning(c.id);
+    try {
+      const cd = companyData as Record<string,string>;
+      const m = c.performance?.metrics || {};
+      const timePeriod = c.performance?.timePeriod || null;
+      const now = new Date();
+      // Compute campaign age in days
+      const startIso = timePeriod?.start || c.startDate || c.performance?.importedAt || c.createdAt;
+      const campaignAgeDays = startIso ? Math.max(0, Math.round((now.getTime() - new Date(startIso).getTime()) / (24*3600*1000))) : null;
+      // Contact sample — a SAMPLE of 30 rows (narrow columns) for audience alignment check
+      const contactsBlock = (() => {
+        if (!c.contactSample?.rows?.length) return "";
+        const cs = c.contactSample;
+        const sample = cs.rows.slice(0, 30);
+        const keyCols = cs.headers.filter((h:string) => /title|job|role|position|industry|company|size|employee|vertical/i.test(h)).slice(0, 6);
+        const cols = keyCols.length ? keyCols : cs.headers.slice(0, 5);
+        const rows = sample.map((r:any, i:number) => `  ${i+1}. ${cols.map((h:string) => `${h}=${String(r[h] ?? "").slice(0, 50)}`).join(" · ")}`).join("\n");
+        return `\nCONTACT SAMPLE (${sample.length}/${cs.totalRows} rows from "${cs.fileName}", focused on alignment-relevant columns):\n${rows}`;
+      })();
+      const seqBlock = (c.sequence || []).map((s:any, i:number) => {
+        const subj = s.subject || "";
+        const bodyFirst = String(s.body || "").slice(0, 300).replace(/\s+/g, " ");
+        return `  Step ${s.stepNumber || i+1} (Day +${s.dayOffset ?? "?"}${s.role ? ", "+s.role : ""}): subject="${subj}" body-preview="${bodyFirst}"`;
+      }).join("\n") || "  (no sequence content)";
+      const personaBlock = persona ? `Linked persona: "${persona.name}"\n  industries: ${persona.data?.industries || ""}\n  buyer: ${persona.data?.buyer || ""}\n  co_sizes: ${Array.isArray(persona.data?.co_sizes) ? persona.data.co_sizes.join(", ") : (persona.data?.co_sizes || "")}\n  primary_pain: ${persona.data?.pain1 || ""}` : "(no persona linked)";
+      const productBlock = product ? `Linked product: "${product.name}" — ${(product.valueProposition || product.description || "").slice(0, 200)}` : "(no product linked)";
+      const offerBlock = offer ? `Linked offer: [${offer.tier}] "${offer.ctaText || offer.name || ""}"` : "(no offer linked)";
+      const dailyVolume = c.dailySendVolume || 0;
+      const warmupNote = c.senderConfig?.warmupRequired ? "(fresh warmup required)" : "";
+
+      const prompt = `You are a senior B2B outreach strategist producing a CAMPAIGN DIAGNOSTIC REPORT. Treat every input as real data about a running campaign. Your job is to tell the CSM what's actually going on and what to do about it — proactively and specifically. No filler, no recaps.
+
+COMPANY: ${cd.co_name || "?"} (${cd.co_industry || "?"})
+COMPANY PITCH: ${cd.co_pitch || ""}
+
+CAMPAIGN: "${c.name}"
+  Status: ${c.status || "?"} | Channel: ${c.channel || c.type || "?"} | Intent tier: ${c.intentTier || "cold"}
+  Goal: ${c.goal || "(not set)"}
+  Lead handoff criteria: ${c.handoffCriteria || "(not set)"}
+  Playbook: ${c.playbook && c.playbook !== "auto" ? c.playbook : "(auto / persona default)"}
+  Audience source: ${c.audienceSource || "?"}${c.customListName ? ` (${c.customListName})` : ""}
+  Campaign age: ${campaignAgeDays ?? "?"} days ${timePeriod?.label ? `[period: ${timePeriod.label}]` : ""}
+  Daily send volume: ${dailyVolume} ${warmupNote}
+  Source: ${c.performance?.source === "imported_external" ? "IMPORTED from external tool" : "native"}
+
+METRICS:
+  sent=${m.sent||0}, delivered=${m.delivered||0}, bounce=${m.bounce||0}
+  replies: all=${m.allReplies||0}, human=${m.humanReplies||0}, OOO=${m.oooReplies||0}, wrong-person=${m.wrongPersonReplies||0}, not-interested=${m.notInterestedReplies||0}, opportunity/interested=${m.opportunityReplies||0}, other=${m.otherReplies||0}
+  meetings=${m.meetings||0}, unsubscribed=${m.unsubscribed||0}
+
+${personaBlock}
+${productBlock}
+${offerBlock}
+${contactsBlock}
+
+SEQUENCE (${c.sequence?.length || 0} steps):
+${seqBlock}
+
+HEURISTICS TO APPLY (internalize these — they encode how the CSM team actually reads cold-outreach data):
+- Fresh domains / warmup < 3 weeks + 0 OOO + 0 wrong-person replies at >500 sent = LIKELY DELIVERABILITY issue (spam/promotions placement), not messaging failure. Don't touch copy yet. Frame to the client as "week 1 is infrastructure data, not campaign data."
+- 0 opens is NOT a signal if the team disabled open tracking (standard cold-outreach best practice for deliverability — do not flag as a problem unless the user has explicitly said tracking is on).
+- Persona mismatch: compare the linked persona's industries/buyer field to the actual CSV contacts. If the persona says "Finance — CISO" but CSV contacts cluster in healthcare/nonprofit/government, flag as CRITICAL audience alignment issue.
+- Junior titles (Assistant Manager, Coordinator, Associate, Intern) in a buyer-level campaign = dilution. Suggest suppressing.
+- Company size outliers: if persona targets 100+ employees but contacts include small clinics/local nonprofits, flag.
+- Same subject line across ALL steps = missed pattern interrupt. Flag (vary_subjects action).
+- No offerId linked = missing CTA anchor. Flag (map_offer action).
+- No productId linked = AI can't personalize to product. Flag (map_product action).
+- Sequence < 3 steps or > 7 steps on cold email = structural concern.
+- Reply rate benchmarks: cold email healthy at ≥3% replies, ≥1% interested. LinkedIn healthy at ≥12% replies. Don't judge below 200 sent.
+- Campaign age < 7 days with incomplete sequence = TOO EARLY — push to wait_for. Don't over-suggest copy changes before data is in.
+- Bounce rate: <5% healthy, 5-8% watch, 8-12% action, >12% critical.
+
+Produce a complete DiagnosticReport JSON with this shape:
+{
+  "bottomLine": "1-2 sentence punchline that summarizes the campaign state and the single most important takeaway",
+  "dataMaturity": "too_early" | "partial" | "ready" | "stale",
+  "dataMaturityWhy": "1 sentence explanation of the maturity call",
+  "infrastructureAssessment": {
+    "verdict": "healthy" | "concerning" | "unknown",
+    "notes": ["specific observations about warmup, bounce, deliverability signals"]
+  },
+  "audienceAlignment": {
+    "verdict": "aligned" | "mismatch" | "partial",
+    "notes": ["specific observations comparing persona to contacts and titles"]
+  },
+  "setupGaps": ["list missing/misconfigured setup items: no offer, no product, same subject across steps, junior titles in list, etc. Be specific."],
+  "sequenceIssues": ["specific issues with the actual sequence content — subject variance, CTA quality, pain-to-product alignment"],
+  "workingWell": ["what IS working or structurally sound — bounce rate healthy, sequence length reasonable, etc."],
+  "priorities": [
+    {
+      "severity": "critical" | "high" | "medium" | "low",
+      "title": "short action-oriented title",
+      "detail": "2-3 sentences explaining what to do and why",
+      "applyTool": "retag_persona" | "map_offer" | "map_product" | "vary_subjects" | "suppress_junior_titles" | "wait_for_data" | null,
+      "applyParams": { }
+    }
+  ],
+  "clientFraming": {
+    "thisWeek": "1-2 sentences the CSM can send to the client THIS WEEK given the current data maturity",
+    "weeks3to6Expectation": "what the client should expect in the coming weeks",
+    "draftUpdateEmail": "full draft email (subject + body) the CSM can copy-paste to update the client — only include if dataMaturity is too_early or partial"
+  },
+  "waitFor": {
+    "date": "YYYY-MM-DD target date to re-evaluate, else empty",
+    "criteria": "what to watch for at that date (e.g. 'full sequence completion + 14 days post-send')"
+  },
+  "changesToShipNow": ["safe changes to make immediately — infrastructure, audience hygiene, setup completeness. Usually NOT copy changes."],
+  "changesToWaitOn": ["changes to wait on until more data arrives — usually copy/strategy rewrites"]
+}
+
+RULES:
+- Return ONLY valid JSON. No prose, no markdown fences.
+- Be specific to the actual data. Cite numbers and names verbatim.
+- If data is clearly too early (young campaign + fresh infra + sparse replies), say so prominently and DO NOT recommend copy changes.
+- Priorities are ranked — critical first. Max 6 priorities.
+- Only include draftUpdateEmail when it genuinely helps — i.e. early-stage campaigns where the CSM needs to manage expectations.`;
+
+      const raw = await callAI(prompt, "Return only valid JSON. No prose, no markdown fences.", 4000, { useFullContext: true });
+      const cleaned = (raw || "").replace(/```json?\s*/gi,"").replace(/```/g,"").trim();
+      let parsed: any = null;
+      try { parsed = JSON.parse(cleaned); }
+      catch {
+        const first = cleaned.indexOf("{"); const last = cleaned.lastIndexOf("}");
+        if (first >= 0 && last > first) parsed = JSON.parse(cleaned.slice(first, last + 1));
+      }
+      if (!parsed) throw new Error("Diagnostic JSON parse failed");
+      const record = { ...parsed, contentHash: hash, generatedAt: new Date().toISOString() };
+      updCampaign(c.id, { diagnostic: record });
+    } catch (e:any) {
+      console.error("[Diagnostic] Run failed:", e);
+      addToast({ title:"Diagnostic failed", status:"error", message:"Check console. Try regenerating." });
+    }
+    setDiagRunning(null);
+  };
+
   // AI-driven "Propose Next Test" — reads campaign health + iteration history, returns concrete variants to test
   const proposeNextTest = async () => {
     if (!selected) return;
@@ -8684,8 +10039,12 @@ Return ONLY valid JSON:
       };
       const guidance = stateGuidance[health.state] || stateGuidance.weak;
 
+      const optChannel: "email"|"linkedin"|"voice" =
+        selected.channel === "linkedin" ? "linkedin" :
+        selected.channel === "rts_ai_call" ? "voice" : "email";
+      const optPlaybookCtx = buildPlaybookContext(selected.playbook, { channel: optChannel });
       const prompt = `You are the campaign optimization lead. Diagnose the specific failure mode and propose the ONE next test (not multiple).
-
+${optPlaybookCtx ? `\nNew variant copy MUST stay inside this campaign's Voice & Strategy Profile.${optPlaybookCtx}\n` : ""}
 CAMPAIGN: ${selected.name}
 CHANNEL: ${selected.channel} | INTENT TIER: ${selected.intentTier || "cold"}${isHighIntent ? " (high-intent RTS-sourced)" : ""}
 HEALTH STATE: ${health.label} — ${health.diagnosis}
@@ -8923,8 +10282,12 @@ RULES:
         `  [${i}] category=${o.category || "?"} severity=${o.severity || "?"}\n    objection: ${o.objection || ""}\n    rebuttal: ${o.rebuttal || ""}\n    talk track: ${o.talkTrack || ""}`
       ).join("\n") || "  (no playbook objections defined)";
 
+      const replyChannel: "email"|"linkedin"|"voice" =
+        selected.channel === "linkedin" ? "linkedin" :
+        selected.channel === "rts_ai_call" ? "voice" : "email";
+      const replyPlaybookCtx = buildPlaybookContext(selected.playbook, { channel: replyChannel });
       const prompt = `You are a cold-outreach reply analyzer. For each inbound reply, classify it, flag urgency, suggest the response approach, and cite a matching Bebop playbook objection if one exists.
-
+${replyPlaybookCtx ? `\nEvery suggestedResponse MUST be written in the campaign's Voice & Strategy Profile below — same voice the prospect has already been engaging with. Do not change voice just because they replied.${replyPlaybookCtx}\n` : ""}
 CAMPAIGN: ${selected.name}
 CHANNEL: ${selected.channel || selected.type}
 COMPANY: ${cd.co_name || ""} (${cd.co_industry || ""})
@@ -8979,7 +10342,7 @@ RESPONSE RULES:
 
 Raw JSON only, no markdown.`;
 
-      const result = await callAI(prompt, "Return only valid JSON.", 6000, { useFullContext: true });
+      const result = await callAI(prompt, "Return only valid JSON.", 6000, { useFullContext: true, model: "claude-haiku-4-5-20251001" });
       const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(cleaned);
       const analyses = Array.isArray(parsed.analyses) ? parsed.analyses : [];
@@ -9091,10 +10454,15 @@ Raw JSON only, no markdown.`;
           </div>
           {/* Tab bar */}
           <div style={{ display:"flex", alignItems:"center", gap:4, padding:"12px 24px", borderBottom:`1px solid ${_C.border}`, flexShrink:0 }}>
-            {(["config","offers","sequence","replies","benchmarks","preview"] as const).map(t => {
+            {(["settings","audience","sequence","analytics"] as const).map(t => {
               const on = tab === t;
               const campaignOffers = selected ? offers.filter((o:any) => (selected.personaIds||[]).some((pid:string)=>o.personaId===pid) && o.productId===selected.productId) : [];
-              const labels = { config:"Setup", offers:`Offers (${campaignOffers.length})`, sequence:`Sequence (${selected.sequence?.length||0})`, replies:"Replies", benchmarks:"Benchmarks", preview:"Preview" };
+              const labels = {
+                settings: "Settings",
+                audience: "Audience",
+                sequence: `Sequence (${(selected.sequence?.length||0) + (campaignOffers.length ? ` · ${campaignOffers.length} offers` : "")})`.replace(" · ", " · "),
+                analytics: "Analytics",
+              };
               return (
                 <button key={t} onClick={()=>setTab(t)}
                   style={{ padding:"7px 16px", borderRadius:8, border:"none",
@@ -9262,51 +10630,260 @@ Raw JSON only, no markdown.`;
           {/* Tab content */}
           <div style={{ flex:1, overflowY:"auto", padding:"24px 28px" }}>
 
-            {/* CONFIG TAB */}
-            {tab === "config" && (
+            {/* SETTINGS TAB */}
+            {tab === "settings" && (
               <div style={{ display:"flex", flexDirection:"column", gap:16, maxWidth:700, animation:"contentFade .3s ease" }}>
                 <div>
                   <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Campaign Name</label>
                   <input value={selected.name} onChange={e=>updCampaign(selected.id, {name:e.target.value})}
                     placeholder="e.g., Cold Email — Manufacturing CEOs — Equipment Financing" style={inputSt} />
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14 }}>
-                  <div>
-                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Channel <span style={{ fontWeight:400, color:_C.muted }}>(single-channel)</span></label>
-                    <select value={selected.channel || "email"} onChange={e=>{
-                      const ch = e.target.value as "email"|"linkedin"|"rts_ai_call";
-                      const legacyType = ch === "email" ? "cold_email" : ch === "linkedin" ? "linkedin_message" : "rts_calling";
-                      updCampaign(selected.id, { channel: ch, type: legacyType });
-                    }} style={{...inputSt, cursor:"pointer"}}>
-                      <option value="email">Email</option>
-                      <option value="linkedin">LinkedIn</option>
-                      <option value="rts_ai_call">RTS AI Call (opt-in only)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Audience Source</label>
-                    <select value={selected.audienceSource || "people_search"} onChange={e=>updCampaign(selected.id, {audienceSource: e.target.value})}
-                      style={{...inputSt, cursor:"pointer"}}>
-                      <option value="people_search">B2BR People Search</option>
-                      <option value="custom_list">Custom CSV upload</option>
-                      <option value="rts_list">RTS Lead List</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Status</label>
-                    <select value={selected.status} onChange={e=>updCampaign(selected.id, {status:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
-                      {CAMPAIGN_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Channel <span style={{ fontWeight:400, color:_C.muted }}>(single-channel per campaign)</span></label>
+                  <select value={selected.channel || "email"} onChange={e=>{
+                    const ch = e.target.value as "email"|"linkedin"|"rts_ai_call";
+                    const legacyType = ch === "email" ? "cold_email" : ch === "linkedin" ? "linkedin_message" : "rts_calling";
+                    updCampaign(selected.id, { channel: ch, type: legacyType });
+                  }} style={{...inputSt, cursor:"pointer"}}>
+                    <option value="email">Email</option>
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="rts_ai_call">RTS AI Call (opt-in only)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                    Campaign Goal <span style={{ fontWeight:400, color:_C.muted }}>(the business outcome this campaign is trying to achieve)</span>
+                  </label>
+                  <textarea value={selected.goal||""} onChange={e=>updCampaign(selected.id, {goal:e.target.value})}
+                    rows={2} placeholder="e.g., 'Book 5 qualified demos/week with construction CFOs in the Midwest' — specific, measurable, and time-boxed." style={inputSt} />
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Product / Service</label>
+                  <select value={selected.productId} onChange={e=>updCampaign(selected.id, {productId:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
+                    <option value="">Select product…</option>
+                    {products.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                    Voice &amp; Strategy Profile <span style={{ fontWeight:400, color:_C.muted }}>(locks voice + strategy across every AI generation in this campaign)</span>
+                  </label>
+                  <select value={selected.playbook || "auto"} onChange={e=>updCampaign(selected.id, { playbook: e.target.value as PlaybookKey })}
+                    style={{...inputSt, cursor:"pointer"}}>
+                    {(Object.values(PLAYBOOKS) as Playbook[]).map(pb => (
+                      <option key={pb.key} value={pb.key}>{pb.figure ? `${pb.label} — e.g. ${pb.figure}` : pb.label}</option>
+                    ))}
+                  </select>
+                  {(() => {
+                    const pb = PLAYBOOKS[(selected.playbook || "auto") as PlaybookKey];
+                    if (!pb || pb.key === "auto") return (
+                      <div style={{ marginTop:6, fontSize:11, fontFamily:body, color:_C.muted, lineHeight:1.5 }}>
+                        Using the selected persona's tone and sequence-strategy fields. Pick a named profile to lock a specific voice and strategy across emails, LinkedIn, voice scripts, and reply handlers.
+                      </div>
+                    );
+                    return (
+                      <div style={{ marginTop:8, padding:"10px 12px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}`, fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.55 }}>
+                        <div style={{ fontWeight:600, color:_C.text, marginBottom:3 }}>{pb.tagline}</div>
+                        {pb.figure && <div style={{ color:_C.muted, marginBottom:6, fontSize:10.5, fontStyle:"italic" }}>Think: {pb.figure}</div>}
+                        <div style={{ color:_C.muted, marginBottom:6 }}><strong style={{ color:_C.textSoft }}>Best fit:</strong> {pb.fit}</div>
+                        <div style={{ color:_C.muted }}><strong style={{ color:_C.textSoft }}>Strategy:</strong> {pb.strategy}</div>
+                        <div style={{ color:_C.muted, marginTop:3 }}><strong style={{ color:_C.textSoft }}>CTA pattern:</strong> {pb.cta}</div>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Lead Handoff Criteria</label>
+                  <textarea value={selected.handoffCriteria||""} onChange={e=>updCampaign(selected.id, {handoffCriteria:e.target.value})}
+                    rows={2} placeholder="When should a lead be handed to sales? e.g., 'Replied positively + asked about pricing'" style={inputSt} />
+                </div>
+
+                {/* ── Operations & Delivery (collapsed) ── */}
+                <div style={{ borderTop:`1px solid ${_C.border}`, paddingTop:16, marginTop:8 }}>
+                  <button onClick={()=>setOpsOpen(!opsOpen)}
+                    style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:0, background:"transparent", border:"none", cursor:"pointer", textAlign:"left" }}>
+                    <span style={{ fontSize:12, color:_C.textSoft, transition:"transform .15s", transform: opsOpen ? "rotate(90deg)" : "rotate(0)" }}>▸</span>
+                    <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>Operations &amp; Delivery</span>
+                    <span style={{ fontSize:10, color:_C.muted, fontFamily:body }}>· Start date, volume, schedule, safety, sender config</span>
+                  </button>
+                  {opsOpen && (
+                    <div style={{ marginTop:14, display:"flex", flexDirection:"column", gap:16 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                        <div>
+                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Start Date</label>
+                          <input type="date" value={selected.startDate||""} onChange={e=>updCampaign(selected.id, {startDate:e.target.value})} style={inputSt} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Daily Send Volume</label>
+                          <input type="number" value={selected.dailySendVolume||""} onChange={e=>updCampaign(selected.id, {dailySendVolume:parseInt(e.target.value)||0})}
+                            placeholder="100" style={inputSt} />
+                          {selected.channel === "linkedin" && (() => {
+                            const cd = companyData as any;
+                            const liAccts = Math.max(1, parseInt(cd.co_linkedin_accounts || "1") || 1);
+                            const maxConn = liAccts * 10;
+                            const maxMsg = liAccts * 10;
+                            const maxTotal = maxConn + maxMsg;
+                            const overLimit = (selected.dailySendVolume || 0) > maxTotal;
+                            return (
+                              <div style={{ marginTop:6, padding:"6px 10px", borderRadius:6,
+                                background: overLimit ? `${_C.red}10` : `${_C.accent}08`,
+                                border: `1px solid ${overLimit ? _C.red + "33" : _C.accent + "22"}`,
+                                fontSize:10, fontFamily:mono, lineHeight:1.5 }}>
+                                <div style={{ fontWeight:700, color: overLimit ? _C.red : _C.accent, marginBottom:2, letterSpacing:.3, textTransform:"uppercase" as const }}>
+                                  {overLimit ? "⚠ Over capacity" : "LinkedIn capacity"}
+                                </div>
+                                <div style={{ color: _C.textSoft }}>
+                                  {liAccts} account{liAccts!==1?"s":""} × 10 connections + 10 messages = <strong style={{ color: overLimit ? _C.red : _C.text }}>{maxTotal}/day max</strong>
+                                </div>
+                                {overLimit && <div style={{ color:_C.red, marginTop:3 }}>Exceeds cap by {(selected.dailySendVolume || 0) - maxTotal}/day — add accounts or lower volume.</div>}
+                                {!cd.co_linkedin_accounts && <div style={{ color:_C.muted, marginTop:3 }}>No LinkedIn account count set on Company profile (defaulting to 1).</div>}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Sender Config */}
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.textSoft, marginBottom:8, letterSpacing:.3, textTransform:"uppercase" as const }}>Sender Config</div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:14, alignItems:"end" }}>
+                          <div>
+                            <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Accounts Needed</label>
+                            <input type="number" value={selected.senderConfig?.accountsNeeded ?? 3}
+                              onChange={e=>updCampaign(selected.id, { senderConfig: { ...selected.senderConfig, accountsNeeded: parseInt(e.target.value) || 0 } })} style={inputSt} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Volume / Account / Day</label>
+                            <input type="number" value={selected.senderConfig?.dailyVolumePerAccount ?? 50}
+                              onChange={e=>updCampaign(selected.id, { senderConfig: { ...selected.senderConfig, dailyVolumePerAccount: parseInt(e.target.value) || 0 } })} style={inputSt} />
+                          </div>
+                          <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontFamily:body, color:_C.textSoft, cursor:"pointer", paddingBottom:10 }}>
+                            <input type="checkbox" checked={!!selected.senderConfig?.warmupRequired}
+                              onChange={e=>updCampaign(selected.id, { senderConfig: { ...selected.senderConfig, warmupRequired: e.target.checked } })} />
+                            Warmup required
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Sending Schedule */}
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.textSoft, marginBottom:8, letterSpacing:.3, textTransform:"uppercase" as const }}>Sending Schedule</div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr 1fr", gap:14 }}>
+                          <div>
+                            <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Timezone</label>
+                            <select value={selected.sendingSchedule?.timezone || "client_local"}
+                              onChange={e=>updCampaign(selected.id, { sendingSchedule: { ...selected.sendingSchedule, timezone: e.target.value } })}
+                              style={{...inputSt, cursor:"pointer"}}>
+                              <option value="client_local">Client local</option>
+                              <option value="UTC">UTC</option>
+                              <option value="America/New_York">America/New_York</option>
+                              <option value="America/Los_Angeles">America/Los_Angeles</option>
+                              <option value="Europe/London">Europe/London</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Start Hour</label>
+                            <input type="number" min={0} max={23} value={selected.sendingSchedule?.startHour ?? 9}
+                              onChange={e=>updCampaign(selected.id, { sendingSchedule: { ...selected.sendingSchedule, startHour: parseInt(e.target.value) || 0 } })} style={inputSt} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>End Hour</label>
+                            <input type="number" min={0} max={23} value={selected.sendingSchedule?.endHour ?? 17}
+                              onChange={e=>updCampaign(selected.id, { sendingSchedule: { ...selected.sendingSchedule, endHour: parseInt(e.target.value) || 0 } })} style={inputSt} />
+                          </div>
+                        </div>
+                        <div style={{ marginTop:10 }}>
+                          <div style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:6 }}>Days</div>
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                            {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => {
+                              const active = (selected.sendingSchedule?.days || []).includes(d);
+                              return (
+                                <button key={d} onClick={()=>{
+                                  const days = (selected.sendingSchedule?.days || []);
+                                  const next = active ? days.filter((x:string) => x !== d) : [...days, d];
+                                  updCampaign(selected.id, { sendingSchedule: { ...selected.sendingSchedule, days: next } });
+                                }}
+                                  style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${active ? _C.accent : _C.border}`,
+                                    background: active ? `${_C.accent}14` : _C.canvas, color: active ? _C.accent : _C.textSoft,
+                                    fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                                  {d}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Safety Limits */}
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.textSoft, marginBottom:8, letterSpacing:.3, textTransform:"uppercase" as const }}>Safety Limits</div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:14, alignItems:"center" }}>
+                            <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontFamily:body, color:_C.textSoft, cursor:"pointer" }}>
+                              <input type="checkbox" checked={!!selected.safetyLimits?.autoPauseOnBounce}
+                                onChange={e=>updCampaign(selected.id, { safetyLimits: { ...selected.safetyLimits, autoPauseOnBounce: e.target.checked } })} />
+                              Auto-pause on high bounce
+                            </label>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <span style={{ fontSize:11, color:_C.muted }}>Threshold (%)</span>
+                              <input type="number" value={selected.safetyLimits?.bouncePauseThreshold ?? 8}
+                                onChange={e=>updCampaign(selected.id, { safetyLimits: { ...selected.safetyLimits, bouncePauseThreshold: parseInt(e.target.value) || 0 } })}
+                                style={{...inputSt, maxWidth:100}} />
+                            </div>
+                          </div>
+                          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr 1fr", gap:14, alignItems:"center" }}>
+                            <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontFamily:body, color:_C.textSoft, cursor:"pointer" }}>
+                              <input type="checkbox" checked={!!selected.safetyLimits?.autoPauseOnLowReply}
+                                onChange={e=>updCampaign(selected.id, { safetyLimits: { ...selected.safetyLimits, autoPauseOnLowReply: e.target.checked } })} />
+                              Auto-pause on low reply
+                            </label>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <span style={{ fontSize:11, color:_C.muted }}>After # sent</span>
+                              <input type="number" value={selected.safetyLimits?.lowReplyThreshold?.sentCount ?? 300}
+                                onChange={e=>updCampaign(selected.id, { safetyLimits: { ...selected.safetyLimits, lowReplyThreshold: { ...selected.safetyLimits?.lowReplyThreshold, sentCount: parseInt(e.target.value) || 0 } } })}
+                                style={{...inputSt, maxWidth:120}} />
+                            </div>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <span style={{ fontSize:11, color:_C.muted }}>Replies ≤</span>
+                              <input type="number" value={selected.safetyLimits?.lowReplyThreshold?.repliesAtMost ?? 0}
+                                onChange={e=>updCampaign(selected.id, { safetyLimits: { ...selected.safetyLimits, lowReplyThreshold: { ...selected.safetyLimits?.lowReplyThreshold, repliesAtMost: parseInt(e.target.value) || 0 } } })}
+                                style={{...inputSt, maxWidth:100}} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* AUDIENCE TAB */}
+            {tab === "audience" && (
+              <div style={{ display:"flex", flexDirection:"column", gap:16, maxWidth:760, animation:"contentFade .3s ease" }}>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Persona <span style={{ fontWeight:400, color:_C.muted }}>(one per campaign)</span></label>
+                  <select value={(selected.personaIds||[])[0]||""} onChange={e=>updCampaign(selected.id, {personaIds:e.target.value?[e.target.value]:[]})}
+                    style={{...inputSt, cursor:"pointer"}}>
+                    <option value="">Select persona…</option>
+                    {personas.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Audience Source</label>
+                  <select value={selected.audienceSource || "people_search"} onChange={e=>updCampaign(selected.id, {audienceSource: e.target.value})}
+                    style={{...inputSt, cursor:"pointer"}}>
+                    <option value="people_search">B2BR People Search</option>
+                    <option value="custom_list">Custom CSV upload</option>
+                    <option value="rts_list">RTS Lead List</option>
+                  </select>
                 </div>
                 {selected.audienceSource === "rts_list" && (
                   <div>
                     <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>RTS List <span style={{ fontWeight:400, color:_C.muted }}>(required)</span></label>
                     <select value={selected.rtsListId || ""} onChange={e=>updCampaign(selected.id, { rtsListId: e.target.value || null })} style={{...inputSt, cursor:"pointer"}}>
                       <option value="">Select an RTS list…</option>
-                      {rtsLists.map((l:any) => (
-                        <option key={l.id} value={l.id}>{l.name}</option>
-                      ))}
+                      {rtsLists.map((l:any) => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                   </div>
                 )}
@@ -9317,88 +10894,152 @@ Raw JSON only, no markdown.`;
                       placeholder="e.g. Q2 Conference Attendees CSV" style={inputSt} />
                   </div>
                 )}
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
-                    Persona <span style={{ fontWeight:400, color:_C.muted }}>(one persona per campaign)</span>
-                  </label>
-                  <select value={(selected.personaIds||[])[0]||""} onChange={e=>updCampaign(selected.id, {personaIds:e.target.value?[e.target.value]:[]})}
-                    style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
-                      background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, cursor:"pointer", outline:"none" }}>
-                    <option value="">Select persona…</option>
-                    {personas.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
-                  </select>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
-                  <div>
-                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Product</label>
-                    <select value={selected.productId} onChange={e=>updCampaign(selected.id, {productId:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
-                      <option value="">Select product...</option>
-                      {products.map((p:any) => <option key={p.id} value={p.id}>{p.name || "Unnamed"}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Offer</label>
-                    <select value={selected.offerId} onChange={e=>updCampaign(selected.id, {offerId:e.target.value})} style={{...inputSt, cursor:"pointer"}}>
-                      <option value="">Select offer...</option>
-                      {offers.filter((o:any) => !selected.productId || o.productId === selected.productId).map((o:any) => {
-                        const tier = OFFER_TIERS.find(t=>t.id===o.tier);
-                        return <option key={o.id} value={o.id}>{tier?.label}: {o.name || o.ctaText || "Unnamed"}</option>;
-                      })}
-                    </select>
-                  </div>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
-                  <div>
-                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Daily Send Volume</label>
-                    <input type="number" value={selected.dailySendVolume||""} onChange={e=>updCampaign(selected.id, {dailySendVolume:parseInt(e.target.value)||0})}
-                      placeholder="100" style={inputSt} />
-                    {selected.channel === "linkedin" && (() => {
-                      const cd = companyData as any;
-                      const liAccts = Math.max(1, parseInt(cd.co_linkedin_accounts || "1") || 1);
-                      const maxConn = liAccts * 10;
-                      const maxMsg = liAccts * 10;
-                      const maxTotal = maxConn + maxMsg;
-                      const overLimit = (selected.dailySendVolume || 0) > maxTotal;
-                      return (
-                        <div style={{ marginTop:6, padding:"6px 10px", borderRadius:6,
-                          background: overLimit ? `${_C.red}10` : `${_C.accent}08`,
-                          border: `1px solid ${overLimit ? _C.red + "33" : _C.accent + "22"}`,
-                          fontSize:10, fontFamily:mono, lineHeight:1.5 }}>
-                          <div style={{ fontWeight:700, color: overLimit ? _C.red : _C.accent, marginBottom:2, letterSpacing:.3, textTransform:"uppercase" as const }}>
-                            {overLimit ? "⚠ Over capacity" : "LinkedIn capacity"}
+
+                {/* ── Imported Contact Sample — shown whenever the campaign was populated via CSV import ── */}
+                {selected.contactSample?.rows?.length > 0 && (() => {
+                  const cs = selected.contactSample;
+                  const pa = cs.personaAnalysis;
+                  const score = Number(pa?.matchScore) || 0;
+                  const scoreColor = score >= 80 ? (_C.green || "#00D68F") : score >= 50 ? (_C.amber || "#FFC048") : (_C.red || "#FF6B6B");
+                  return (
+                    <div style={{ borderTop:`1px solid ${_C.border}`, paddingTop:14, display:"flex", flexDirection:"column", gap:12 }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                        <div>
+                          <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.textSoft, letterSpacing:.3, textTransform:"uppercase" as const }}>Imported Contact Sample</div>
+                          <div style={{ fontSize:11, fontFamily:body, color:_C.muted, marginTop:2 }}>
+                            {cs.fileName} · <strong style={{ color:_C.textSoft }}>{cs.rows.length} / {cs.totalRows}</strong> rows kept as sample · imported {cs.importedAt ? new Date(cs.importedAt).toLocaleDateString() : "recently"}
                           </div>
-                          <div style={{ color: _C.textSoft }}>
-                            {liAccts} account{liAccts!==1?"s":""} × 10 connections + 10 messages = <strong style={{ color: overLimit ? _C.red : _C.text }}>{maxTotal}/day max</strong>
+                        </div>
+                      </div>
+
+                      {/* Persona analysis summary if present */}
+                      {pa && (pa.inferredTitles || pa.inferredIndustries || pa.matchReasoning) && (
+                        <div style={{ padding:"10px 12px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                            <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:4, background:`${scoreColor}14`, color: scoreColor }}>
+                              {score}% match
+                            </span>
+                            <span style={{ fontSize:11, fontFamily:body, color:_C.textSoft }}>
+                              {(() => {
+                                const linked = personas.find((p:any) => p.id === (selected.personaIds||[])[0]);
+                                return linked ? <>Linked: <strong style={{ color:_C.text }}>{linked.name}</strong></> : <span style={{ color:_C.muted }}>No persona linked</span>;
+                              })()}
+                            </span>
                           </div>
-                          {overLimit && (
-                            <div style={{ color:_C.red, marginTop:3 }}>
-                              Exceeds cap by {(selected.dailySendVolume || 0) - maxTotal}/day — add accounts or lower volume.
-                            </div>
-                          )}
-                          {!cd.co_linkedin_accounts && (
-                            <div style={{ color:_C.muted, marginTop:3 }}>
-                              No LinkedIn account count set on Company profile (defaulting to 1).
+                          <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.55 }}>
+                            {pa.inferredName && <div><strong style={{ color:_C.text }}>Inferred:</strong> {pa.inferredName}</div>}
+                            {pa.inferredTitles && <div><strong style={{ color:_C.text }}>Titles:</strong> {pa.inferredTitles}</div>}
+                            {pa.inferredIndustries && <div><strong style={{ color:_C.text }}>Industries:</strong> {pa.inferredIndustries}</div>}
+                            {pa.inferredPain && <div><strong style={{ color:_C.text }}>Primary pain (AI guess):</strong> {pa.inferredPain}</div>}
+                          </div>
+                          {pa.matchReasoning && (
+                            <div style={{ fontSize:10, fontFamily:body, color:_C.muted, marginTop:8, lineHeight:1.5, fontStyle:"italic" }}>
+                              {pa.matchReasoning}
                             </div>
                           )}
                         </div>
-                      );
-                    })()}
+                      )}
+
+                      {/* Contact table preview */}
+                      <div style={{ border:`1px solid ${_C.border}`, borderRadius:8, background:_C.canvas, overflow:"hidden" }}>
+                        <div style={{ maxHeight: 360, overflow:"auto" }}>
+                          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, fontFamily:body }}>
+                            <thead>
+                              <tr style={{ background:_C.faint, position:"sticky" as const, top:0, zIndex:1 }}>
+                                <th style={{ padding:"6px 8px", textAlign:"left" as const, fontWeight:700, fontFamily:mono, fontSize:10, color:_C.textSoft, borderBottom:`1px solid ${_C.border}`, letterSpacing:.3, textTransform:"uppercase" as const, whiteSpace:"nowrap" as const }}>#</th>
+                                {cs.headers.slice(0, 8).map((h:string) => (
+                                  <th key={h} style={{ padding:"6px 8px", textAlign:"left" as const, fontWeight:700, fontFamily:mono, fontSize:10, color:_C.textSoft, borderBottom:`1px solid ${_C.border}`, letterSpacing:.3, textTransform:"uppercase" as const, whiteSpace:"nowrap" as const }}>
+                                    {h}
+                                  </th>
+                                ))}
+                                {cs.headers.length > 8 && (
+                                  <th style={{ padding:"6px 8px", fontWeight:600, fontFamily:mono, fontSize:10, color:_C.muted, borderBottom:`1px solid ${_C.border}` }}>
+                                    +{cs.headers.length - 8} cols
+                                  </th>
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cs.rows.map((r:any, i:number) => (
+                                <tr key={i} style={{ borderBottom:`1px solid ${_C.border}` }}>
+                                  <td style={{ padding:"5px 8px", color:_C.muted, fontFamily:mono, fontSize:10 }}>{i+1}</td>
+                                  {cs.headers.slice(0, 8).map((h:string) => (
+                                    <td key={h} style={{ padding:"5px 8px", color:_C.textSoft, maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }} title={String(r[h] ?? "")}>
+                                      {String(r[h] ?? "")}
+                                    </td>
+                                  ))}
+                                  {cs.headers.length > 8 && <td style={{ padding:"5px 8px", color:_C.muted }}>…</td>}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                      <div style={{ fontSize:10, fontFamily:body, color:_C.muted, lineHeight:1.5 }}>
+                        This sample is available to the AI copilot for questions about your audience, to the persona-match analyzer, and to any future segmentation flows.
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {selected.audienceSource === "people_search" && (
+                  <div style={{ borderTop:`1px solid ${_C.border}`, paddingTop:14 }}>
+                    <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.textSoft, marginBottom:10, letterSpacing:.3, textTransform:"uppercase" as const }}>
+                      Targeting Filters <span style={{ fontWeight:400, textTransform:"none" as const, color:_C.muted, letterSpacing:0 }}>— plug into B2BR People Search filter-for-filter</span>
+                    </div>
+                    {([
+                      ["titles", "Titles / Roles", "VP of Sales, CRO, Head of RevOps…"],
+                      ["seniority", "Seniority", "Director, VP, C-Level"],
+                      ["departments", "Departments", "Sales, Marketing, Operations"],
+                      ["industries", "Industries", "B2B SaaS, Healthcare IT, Manufacturing"],
+                      ["companySizes", "Company Size", "SMB 1–50, Mid-Market 51–500"],
+                      ["revenue", "Revenue", "$5M–$50M"],
+                      ["personLocation", "Person Location", "North America, UK"],
+                      ["companyLocation", "Company Location", "US, EU"],
+                      ["keywords", "Keywords", "equipment financing, short-term loan"],
+                      ["technologies", "Technologies", "Salesforce, HubSpot, SAP"],
+                      ["intentTopics", "Intent Topics", "equipment leasing, SBA loans"],
+                      ["excludedDomains", "Excluded Domains", "competitor1.com, vendor2.com"],
+                      ["excludedCompetitors", "Excluded Competitors", "Competitor names"],
+                    ] as const).map(([k, label, ph]) => (
+                      <div key={k} style={{ marginBottom:10 }}>
+                        <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>{label}</label>
+                        <input value={(selected.targeting as any)?.[k] || ""}
+                          onChange={e=>updCampaign(selected.id, { targeting: { ...selected.targeting, [k]: e.target.value } })}
+                          placeholder={ph} style={inputSt} />
+                      </div>
+                    ))}
                   </div>
-                  <div>
-                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Start Date</label>
-                    <input type="date" value={selected.startDate||""} onChange={e=>updCampaign(selected.id, {startDate:e.target.value})} style={inputSt} />
-                  </div>
-                </div>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Lead Handoff Criteria</label>
-                  <textarea value={selected.handoffCriteria||""} onChange={e=>updCampaign(selected.id, {handoffCriteria:e.target.value})}
-                    rows={2} placeholder="When should a lead be handed to sales? e.g., 'Replied positively + asked about pricing'" style={inputSt} />
-                </div>
+                )}
+              </div>
+            )}
+
+            {/* SEQUENCE subtab nav */}
+            {tab === "sequence" && (
+              <div style={{ display:"flex", gap:4, marginBottom:16, borderBottom:`1px solid ${_C.border}`, paddingBottom:10 }}>
+                {(["steps","offers","replies","preview"] as const).map(st => {
+                  const on = seqSubtab === st;
+                  const campaignOffers = selected ? offers.filter((o:any) => (selected.personaIds||[]).some((pid:string)=>o.personaId===pid) && o.productId===selected.productId) : [];
+                  const labels = {
+                    steps: `Steps (${selected.sequence?.length||0})`,
+                    offers: `Offers (${campaignOffers.length})`,
+                    replies: "Reply Handlers",
+                    preview: "Preview",
+                  };
+                  return (
+                    <button key={st} onClick={()=>setSeqSubtab(st)}
+                      style={{ padding:"5px 12px", borderRadius:6, border:"none",
+                        background: on ? `${_C.accent}14` : "transparent", color: on ? _C.accent : _C.muted,
+                        fontSize:11, fontFamily:head, fontWeight: on ? 700 : 500, cursor:"pointer" }}>
+                      {labels[st]}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
             {/* OFFERS TAB */}
-            {tab === "offers" && selected && (() => {
+            {tab === "sequence" && seqSubtab === "offers" && selected && (() => {
               const campaignOffers = offers.filter((o:any) =>
                 (selected.personaIds||[]).some((pid:string)=>o.personaId===pid) && o.productId===selected.productId
               );
@@ -9499,8 +11140,8 @@ Raw JSON only, no markdown.`;
               );
             })()}
 
-            {/* SEQUENCE TAB */}
-            {tab === "sequence" && (
+            {/* SEQUENCE TAB — Steps subtab */}
+            {tab === "sequence" && seqSubtab === "steps" && (
               <div style={{ animation:"contentFade .3s ease" }}>
                 {(selected.sequence || []).length === 0 ? (
                   <div style={{ textAlign:"center", padding:"48px 20px" }}>
@@ -9594,9 +11235,8 @@ Raw JSON only, no markdown.`;
               </div>
             )}
 
-            {/* BENCHMARKS TAB */}
-            {/* REPLIES TAB */}
-            {tab === "replies" && selected && (() => {
+            {/* SEQUENCE TAB — Reply Handlers subtab */}
+            {tab === "sequence" && seqSubtab === "replies" && selected && (() => {
               const persona = personas.find((p:any) => (selected.personaIds||[])[0] === p.id);
               const product = products.find((p:any) => p.id === selected.productId);
               const replies = selected.replyHandlers || [];
@@ -9849,8 +11489,214 @@ Raw JSON only, no markdown.`;
               );
             })()}
 
-            {tab === "benchmarks" && (
+            {/* ANALYTICS TAB */}
+            {tab === "analytics" && (
               <div style={{ maxWidth:720, animation:"contentFade .3s ease" }}>
+                {/* ── Campaign Diagnostic — auto-runs on tab open, cached 2h ── */}
+                {(() => {
+                  const diag = selected.diagnostic;
+                  const running = diagRunning === selected.id;
+                  const severityColor = (s:string) => s === "critical" ? (_C.red || "#FF6B6B") : s === "high" ? (_C.amber || "#FFC048") : s === "medium" ? (_C.accent) : _C.muted;
+                  const maturityColor = (m:string) => m === "ready" ? (_C.green || "#00D68F") : m === "partial" ? (_C.amber || "#FFC048") : m === "too_early" ? (_C.accent) : _C.muted;
+                  const applyPriority = (p:any) => {
+                    const tool = p.applyTool;
+                    if (!tool) return;
+                    if (tool === "map_offer") { setTab("sequence"); setSeqSubtab("offers"); addToast({ title:"Jump to Offers", status:"info", message:"Link an offer here" }); }
+                    else if (tool === "map_product") { setTab("settings"); addToast({ title:"Jump to Settings", status:"info", message:"Product selector is on the Settings tab" }); }
+                    else if (tool === "retag_persona") { setTab("audience"); addToast({ title:"Jump to Audience", status:"info", message:"Change the persona linkage here" }); }
+                    else if (tool === "vary_subjects") { setTab("sequence"); setSeqSubtab("steps"); addToast({ title:"Jump to Steps", status:"info", message:"Vary subject lines across steps here" }); }
+                    else if (tool === "suppress_junior_titles") {
+                      const prev = selected.targeting?.keywords || "";
+                      const add = "Exclude: Assistant, Coordinator, Associate, Intern";
+                      updCampaign(selected.id, { targeting: { ...selected.targeting, keywords: prev ? `${prev}\n${add}` : add } });
+                      addToast({ title:"Note added", status:"success", message:"Junior title exclusion appended to keywords — review in Audience" });
+                    } else if (tool === "wait_for_data") {
+                      addToast({ title:"Noted — waiting for more data", status:"info", message:"Diagnostic will refresh when metrics update" });
+                    }
+                  };
+                  const copyClientEmail = () => {
+                    const email = diag?.clientFraming?.draftUpdateEmail || "";
+                    if (!email) return;
+                    navigator.clipboard.writeText(email);
+                    addToast({ title:"Client update copied", status:"success", message:"Paste into email or Slack" });
+                  };
+                  return (
+                    <div style={{ marginBottom:18, padding:"14px 16px", borderRadius:12, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10, gap:10 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <span style={{ fontSize:11, fontFamily:head, fontWeight:700, color:_C.text, letterSpacing:.3, textTransform:"uppercase" as const }}>Diagnostic Report</span>
+                          {diag?.dataMaturity && (
+                            <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:4, background:`${maturityColor(diag.dataMaturity)}14`, color: maturityColor(diag.dataMaturity), textTransform:"uppercase" as const, letterSpacing:.3 }}>
+                              {diag.dataMaturity.replace("_", " ")}
+                            </span>
+                          )}
+                          {diag?.generatedAt && !running && (
+                            <span style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>
+                              · generated {new Date(diag.generatedAt).toLocaleString(undefined, { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" })}
+                            </span>
+                          )}
+                        </div>
+                        <button onClick={()=>runCampaignDiagnostic(selected, { force: true })}
+                          disabled={running}
+                          style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas,
+                            color:_C.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor: running ? "wait" : "pointer", opacity: running ? 0.6 : 1 }}>
+                          {running ? "◌ Analyzing…" : diag ? "↻ Regenerate" : "▶ Run"}
+                        </button>
+                      </div>
+
+                      {!diag && running && (
+                        <div style={{ fontSize:11, fontFamily:body, color:_C.muted, padding:"8px 0" }}>
+                          Analyzing campaign setup, audience alignment, infrastructure, and sequence quality…
+                        </div>
+                      )}
+                      {!diag && !running && (
+                        <div style={{ fontSize:11, fontFamily:body, color:_C.muted, padding:"8px 0" }}>
+                          No diagnostic yet. Click "Run" to analyze this campaign.
+                        </div>
+                      )}
+
+                      {diag && (
+                        <>
+                          {diag.bottomLine && (
+                            <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.55, padding:"10px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:12 }}>
+                              <strong style={{ fontWeight:700 }}>Bottom line:</strong> {diag.bottomLine}
+                              {diag.dataMaturityWhy && <div style={{ fontSize:10, fontFamily:body, color:_C.muted, marginTop:6, fontStyle:"italic" }}>{diag.dataMaturityWhy}</div>}
+                            </div>
+                          )}
+
+                          {/* Priorities */}
+                          {Array.isArray(diag.priorities) && diag.priorities.length > 0 && (
+                            <div style={{ marginBottom:12 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.textSoft, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:6 }}>Top Priorities</div>
+                              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                                {diag.priorities.map((p:any, i:number) => (
+                                  <div key={i} style={{ padding:"8px 10px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`, borderLeft:`3px solid ${severityColor(p.severity)}` }}>
+                                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:3 }}>
+                                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"1px 6px", borderRadius:3, background:`${severityColor(p.severity)}18`, color: severityColor(p.severity), textTransform:"uppercase" as const, letterSpacing:.3 }}>{p.severity}</span>
+                                        <span style={{ fontSize:12, fontFamily:head, fontWeight:700, color:_C.text }}>{p.title}</span>
+                                      </div>
+                                      {p.applyTool && (
+                                        <button onClick={()=>applyPriority(p)}
+                                          style={{ padding:"3px 10px", borderRadius:5, border:`1px solid ${_C.accent}33`, background:`${_C.accent}14`, color:_C.accent, fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const }}>
+                                          Do it →
+                                        </button>
+                                      )}
+                                    </div>
+                                    {p.detail && <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.5 }}>{p.detail}</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Section grid — infra / audience / setup / sequence / working */}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+                            {[
+                              { key:"infrastructureAssessment", title:"Infrastructure", verdict: diag.infrastructureAssessment?.verdict, notes: diag.infrastructureAssessment?.notes },
+                              { key:"audienceAlignment", title:"Audience Alignment", verdict: diag.audienceAlignment?.verdict, notes: diag.audienceAlignment?.notes },
+                            ].map((sec:any) => {
+                              const verdict = sec.verdict;
+                              const vColor = (verdict === "healthy" || verdict === "aligned") ? (_C.green || "#00D68F")
+                                           : (verdict === "concerning" || verdict === "mismatch") ? (_C.red || "#FF6B6B")
+                                           : (verdict === "partial") ? (_C.amber || "#FFC048") : _C.muted;
+                              return (
+                                <div key={sec.key} style={{ padding:"10px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+                                    <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.textSoft, letterSpacing:.3, textTransform:"uppercase" as const }}>{sec.title}</span>
+                                    {verdict && <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"1px 6px", borderRadius:3, background:`${vColor}18`, color:vColor, textTransform:"uppercase" as const }}>{verdict}</span>}
+                                  </div>
+                                  {Array.isArray(sec.notes) && sec.notes.length > 0 ? (
+                                    <ul style={{ margin:0, padding:"0 0 0 14px", fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.6 }}>
+                                      {sec.notes.slice(0, 4).map((n:string, i:number) => <li key={i}>{n}</li>)}
+                                    </ul>
+                                  ) : <div style={{ fontSize:11, fontFamily:body, color:_C.muted }}>No findings.</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Gaps + issues + working */}
+                          {(Array.isArray(diag.setupGaps) || Array.isArray(diag.sequenceIssues) || Array.isArray(diag.workingWell)) && (
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
+                              {[
+                                { title:"Setup Gaps", items: diag.setupGaps, color: _C.red || "#FF6B6B" },
+                                { title:"Sequence Issues", items: diag.sequenceIssues, color: _C.amber || "#FFC048" },
+                                { title:"Working Well", items: diag.workingWell, color: _C.green || "#00D68F" },
+                              ].filter((sec:any) => Array.isArray(sec.items) && sec.items.length > 0).map((sec:any) => (
+                                <div key={sec.title} style={{ padding:"10px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`, borderTop:`2px solid ${sec.color}` }}>
+                                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.textSoft, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:5 }}>{sec.title}</div>
+                                  <ul style={{ margin:0, padding:"0 0 0 14px", fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.6 }}>
+                                    {sec.items.slice(0, 6).map((n:string, i:number) => <li key={i}>{n}</li>)}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Ship now / wait on */}
+                          {(Array.isArray(diag.changesToShipNow) || Array.isArray(diag.changesToWaitOn)) && (
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+                              <div style={{ padding:"10px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.green || "#00D68F", letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:5 }}>Ship This Week</div>
+                                {Array.isArray(diag.changesToShipNow) && diag.changesToShipNow.length ? (
+                                  <ul style={{ margin:0, padding:"0 0 0 14px", fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.6 }}>
+                                    {diag.changesToShipNow.map((n:string, i:number) => <li key={i}>{n}</li>)}
+                                  </ul>
+                                ) : <div style={{ fontSize:11, fontFamily:body, color:_C.muted }}>Nothing urgent to change.</div>}
+                              </div>
+                              <div style={{ padding:"10px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:5 }}>Wait On</div>
+                                {Array.isArray(diag.changesToWaitOn) && diag.changesToWaitOn.length ? (
+                                  <ul style={{ margin:0, padding:"0 0 0 14px", fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.6 }}>
+                                    {diag.changesToWaitOn.map((n:string, i:number) => <li key={i}>{n}</li>)}
+                                  </ul>
+                                ) : <div style={{ fontSize:11, fontFamily:body, color:_C.muted }}>Nothing parked for later.</div>}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Wait for */}
+                          {diag.waitFor?.criteria && (
+                            <div style={{ padding:"8px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`, fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.5, marginBottom:12 }}>
+                              <strong style={{ color:_C.text }}>Re-evaluate{diag.waitFor.date ? ` on ${diag.waitFor.date}` : ""}:</strong> {diag.waitFor.criteria}
+                            </div>
+                          )}
+
+                          {/* Client framing */}
+                          {(diag.clientFraming?.thisWeek || diag.clientFraming?.draftUpdateEmail) && (
+                            <div style={{ padding:"10px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:4 }}>
+                              <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.textSoft, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:6 }}>Client Framing</div>
+                              {diag.clientFraming.thisWeek && (
+                                <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.55, marginBottom:6 }}>
+                                  <strong style={{ color:_C.text }}>This week:</strong> {diag.clientFraming.thisWeek}
+                                </div>
+                              )}
+                              {diag.clientFraming.weeks3to6Expectation && (
+                                <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.55, marginBottom:6 }}>
+                                  <strong style={{ color:_C.text }}>Weeks 3–6:</strong> {diag.clientFraming.weeks3to6Expectation}
+                                </div>
+                              )}
+                              {diag.clientFraming.draftUpdateEmail && (
+                                <details style={{ marginTop:8 }}>
+                                  <summary style={{ fontSize:11, fontFamily:head, fontWeight:600, color:_C.accent, cursor:"pointer" }}>Draft client update email</summary>
+                                  <div style={{ marginTop:6, padding:"10px 12px", borderRadius:6, background:_C.faint, border:`1px solid ${_C.border}`, fontSize:11, fontFamily:mono, color:_C.textSoft, lineHeight:1.55, whiteSpace:"pre-wrap" as const }}>
+                                    {diag.clientFraming.draftUpdateEmail}
+                                  </div>
+                                  <button onClick={copyClientEmail}
+                                    style={{ marginTop:6, padding:"4px 12px", borderRadius:5, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                                    Copy to clipboard
+                                  </button>
+                                </details>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Campaign Health Card */}
                 {(() => {
                   const m = (selected.performance?.metrics) || EMPTY_CAMPAIGN_METRICS();
@@ -10128,8 +11974,8 @@ Raw JSON only, no markdown.`;
               </div>
             )}
 
-            {/* PREVIEW TAB */}
-            {tab === "preview" && selected && (() => {
+            {/* SEQUENCE TAB — Preview subtab */}
+            {tab === "sequence" && seqSubtab === "preview" && selected && (() => {
               const seq = selected.sequence || [];
               const persona = personas.find((p:any) => (selected.personaIds||[])[0] === p.id);
               const product = products.find((p:any) => p.id === selected.productId);
@@ -10208,6 +12054,12 @@ Raw JSON only, no markdown.`;
                   {bulkGenSeq ? "◌ Generating..." : "◎ Generate All Sequences"}
                 </button>
               )}
+              <button onClick={()=>setImportOpen(true)}
+                style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
+                  color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}
+                title="Import a campaign already running in another tool (Instantly, Smartlead, HubSpot, B2BR, etc.) — paste screenshots of analytics + sequence and we'll create a tracked campaign">
+                ⤵ Import Existing
+              </button>
               <button onClick={addCampaign}
                 style={{ padding:"9px 20px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
                   fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
@@ -10308,6 +12160,242 @@ Raw JSON only, no markdown.`;
           )}
         </div>
       )}
+
+      {/* ── Import Existing Campaign modal ── */}
+      {importOpen && createPortal(
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483644,
+          display:"flex", alignItems:"center", justifyContent:"center", padding:24, backdropFilter:"blur(8px)", overflowY:"auto" }}>
+          <div style={{ width:"100%", maxWidth:720, background:_C.canvas, borderRadius:14,
+            border:`1px solid ${_C.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.25)",
+            maxHeight:"90vh", display:"flex", flexDirection:"column" }}>
+            {/* Header */}
+            <div style={{ padding:"18px 22px", borderBottom:`1px solid ${_C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div>
+                <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:_C.text }}>Import Existing Campaign</div>
+                <div style={{ fontSize:11, fontFamily:body, color:_C.muted, marginTop:2 }}>
+                  Paste screenshots of analytics + sequence from your existing tool. We'll parse them and create a tracked campaign.
+                </div>
+              </div>
+              <button onClick={()=>{ setImportOpen(false); resetImport(); }}
+                style={{ width:28, height:28, borderRadius:8, border:"none", background:"transparent", color:_C.muted, fontSize:18, cursor:"pointer" }}>×</button>
+            </div>
+            {/* Body */}
+            <div style={{ padding:"18px 22px", overflowY:"auto", flex:1, display:"flex", flexDirection:"column", gap:14 }}>
+              {!importParsed ? (
+                <>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Campaign Name <span style={{ fontWeight:400, color:_C.muted }}>(optional — we'll infer if blank)</span></label>
+                    <input value={importName} onChange={e=>setImportName(e.target.value)} placeholder="e.g. Q2 Manufacturing CEO Cold Email" style={inputSt} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Time Period <span style={{ fontWeight:400, color:_C.muted }}>(optional — we'll read it from the screenshot if visible)</span></label>
+                    <input value={importTimePeriod} onChange={e=>setImportTimePeriod(e.target.value)} placeholder="e.g. Last 30 days / Jan 1 – Jan 31 2026" style={inputSt} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                      Analytics Screenshots <span style={{ fontWeight:400, color:_C.muted }}>(dashboard from Instantly / Smartlead / HubSpot / B2BR / Apollo / etc.)</span>
+                    </label>
+                    <label style={{ display:"block", padding:"14px 16px", borderRadius:8, border:`1.5px dashed ${importAnalyticsImages.length>0 ? _C.accent+"66" : _C.border}`, background: importAnalyticsImages.length>0 ? _C.accentLo : _C.faint, cursor:"pointer", textAlign:"center" }}>
+                      <input type="file" multiple accept="image/*" style={{ display:"none" }}
+                        onChange={e => setImportAnalyticsImages(Array.from((e.target as HTMLInputElement).files ?? []))} />
+                      {importAnalyticsImages.length > 0 ? (
+                        <div>
+                          {importAnalyticsImages.map(f => (
+                            <div key={f.name} style={{ fontSize:11, color:_C.accent, fontFamily:mono, marginBottom:2 }}>🖼 {f.name} <span style={{ color:_C.muted }}>({Math.round(f.size/1024)}KB)</span></div>
+                          ))}
+                          <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:4 }}>Click to replace</div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body }}>
+                          📸 Drop one or more analytics dashboard screenshots
+                          <div style={{ fontSize:10, color:_C.muted, marginTop:3 }}>PNG / JPG / WebP · Claude Vision parses metrics directly</div>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                      Sequence <span style={{ fontWeight:400, color:_C.muted }}>(paste as text, or upload a screenshot)</span>
+                    </label>
+                    <textarea value={importSequenceText} onChange={e=>setImportSequenceText(e.target.value)} rows={4}
+                      placeholder={"Step 1 (Day 0)\nSubject: ...\nBody: ...\n\nStep 2 (Day 3)\nSubject: ...\nBody: ..."}
+                      style={{...inputSt, fontFamily:mono, fontSize:11, marginBottom:8}} />
+                    <label style={{ display:"block", padding:"10px 14px", borderRadius:8, border:`1.5px dashed ${importSequenceImages.length>0 ? _C.accent+"66" : _C.border}`, background: importSequenceImages.length>0 ? _C.accentLo : "transparent", cursor:"pointer", textAlign:"center" }}>
+                      <input type="file" multiple accept="image/*" style={{ display:"none" }}
+                        onChange={e => setImportSequenceImages(Array.from((e.target as HTMLInputElement).files ?? []))} />
+                      {importSequenceImages.length > 0 ? (
+                        <div>
+                          {importSequenceImages.map(f => (
+                            <div key={f.name} style={{ fontSize:11, color:_C.accent, fontFamily:mono, marginBottom:2 }}>🖼 {f.name}</div>
+                          ))}
+                          <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:3 }}>Click to replace</div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize:11, color:_C.textSoft, fontFamily:body }}>Or drop sequence builder screenshot(s)</div>
+                      )}
+                    </label>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                      Contacts CSV <span style={{ fontWeight:400, color:_C.muted }}>(optional — we'll infer audience)</span>
+                    </label>
+                    <label style={{ display:"block", padding:"10px 14px", borderRadius:8, border:`1.5px dashed ${importContactsCsv ? _C.accent+"66" : _C.border}`, background: importContactsCsv ? _C.accentLo : "transparent", cursor:"pointer", textAlign:"center" }}>
+                      <input type="file" accept=".csv,text/csv" style={{ display:"none" }}
+                        onChange={e => setImportContactsCsv(((e.target as HTMLInputElement).files ?? [])[0] || null)} />
+                      <div style={{ fontSize:11, color: importContactsCsv ? _C.accent : _C.textSoft, fontFamily: importContactsCsv ? mono : body }}>
+                        {importContactsCsv ? `📊 ${importContactsCsv.name} (${Math.round(importContactsCsv.size/1024)}KB)` : "Drop a contacts CSV — we'll infer titles, industries, company sizes"}
+                      </div>
+                    </label>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Review parsed data */}
+                  <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text, letterSpacing:.3, textTransform:"uppercase" as const }}>Review parsed data</div>
+                  <div style={{ padding:"12px 14px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}`, fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.6 }}>
+                    <div><strong style={{ color:_C.text }}>Name:</strong> {importName || importParsed.campaignName || "(blank — will default to 'Imported Campaign')"}</div>
+                    <div><strong style={{ color:_C.text }}>Time period:</strong> {importTimePeriod || importParsed.timePeriod?.label || "(not set)"}</div>
+                    <div><strong style={{ color:_C.text }}>Sequence steps:</strong> {importParsed.sequence?.length || 0}</div>
+                    <div><strong style={{ color:_C.text }}>Audience contacts:</strong> {importParsed.audienceSummary?.contactCount || 0}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.textSoft, marginBottom:6, letterSpacing:.3, textTransform:"uppercase" as const }}>Parsed Metrics</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+                      {Object.entries(importParsed.metrics || {}).map(([k, v]:[string,any]) => (
+                        <div key={k} style={{ padding:"6px 10px", borderRadius:6, background:_C.faint, border:`1px solid ${_C.border}`, fontSize:10, fontFamily:mono, color:_C.textSoft }}>
+                          <div style={{ color:_C.muted, fontSize:9, textTransform:"uppercase" as const, letterSpacing:.2 }}>{k}</div>
+                          <div style={{ color: Number(v)>0 ? _C.text : _C.muted, fontWeight:700, fontSize:12 }}>{String(v ?? 0)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {importParsed.sequence?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.textSoft, marginBottom:6, letterSpacing:.3, textTransform:"uppercase" as const }}>Parsed Sequence</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {importParsed.sequence.map((s:any, i:number) => (
+                          <div key={i} style={{ padding:"8px 10px", borderRadius:6, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                            <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:2 }}>Step {s.stepNumber || i+1} · Day +{s.dayOffset ?? "?"} · {s.role || "?"}</div>
+                            <div style={{ fontSize:11, fontFamily:body, color:_C.text, fontWeight:600 }}>{s.subject || "(no subject)"}</div>
+                            <div style={{ fontSize:10, fontFamily:body, color:_C.muted, marginTop:2, whiteSpace:"pre-wrap", maxHeight:80, overflow:"hidden" }}>{s.body || "(no body)"}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Persona Match — only shown when CSV was provided */}
+                  {importParsed.personaAnalysis && (importParsed.personaAnalysis.inferredTitles || importParsed.personaAnalysis.inferredIndustries) && (
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.textSoft, marginBottom:6, letterSpacing:.3, textTransform:"uppercase" as const }}>Persona Match</div>
+                      <div style={{ padding:"10px 12px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                        {(() => {
+                          const pa = importParsed.personaAnalysis;
+                          const score = Number(pa.matchScore) || 0;
+                          const scoreColor = score >= 80 ? (_C.green || "#00D68F") : score >= 50 ? (_C.amber || "#FFC048") : (_C.red || "#FF6B6B");
+                          const aiBest = pa.bestExistingMatchId ? personas.find((p:any) => p.id === pa.bestExistingMatchId) : null;
+                          return (
+                            <>
+                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                                <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, padding:"2px 8px", borderRadius:4, background:`${scoreColor}14`, color: scoreColor }}>
+                                  {score}% match
+                                </span>
+                                {aiBest ? (
+                                  <span style={{ fontSize:11, fontFamily:body, color:_C.textSoft }}>
+                                    Closest existing: <strong style={{ color:_C.text }}>{aiBest.name}</strong>
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize:11, fontFamily:body, color:_C.muted }}>No close match in workspace</span>
+                                )}
+                              </div>
+                              <div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.55, marginBottom:8 }}>
+                                <div><strong style={{ color:_C.text }}>Inferred:</strong> {pa.inferredName || "(unnamed)"}</div>
+                                {pa.inferredTitles && <div><strong style={{ color:_C.text }}>Titles:</strong> {pa.inferredTitles}</div>}
+                                {pa.inferredIndustries && <div><strong style={{ color:_C.text }}>Industries:</strong> {pa.inferredIndustries}</div>}
+                                {pa.inferredPain && <div><strong style={{ color:_C.text }}>Primary pain (guess):</strong> {pa.inferredPain}</div>}
+                              </div>
+                              {pa.matchReasoning && (
+                                <div style={{ fontSize:10, fontFamily:body, color:_C.muted, marginBottom:10, lineHeight:1.5, fontStyle:"italic" }}>
+                                  {pa.matchReasoning}
+                                </div>
+                              )}
+                              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                                {personas.length > 0 && (
+                                  <button onClick={()=>setImportPersonaAction("link_existing")}
+                                    style={{ padding:"6px 10px", borderRadius:6, border:`1px solid ${importPersonaAction==="link_existing" ? _C.accent : _C.border}`, background: importPersonaAction==="link_existing" ? `${_C.accent}14` : _C.canvas, color: importPersonaAction==="link_existing" ? _C.accent : _C.textSoft, fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                    Link to existing
+                                  </button>
+                                )}
+                                <button onClick={()=>setImportPersonaAction("create_new")}
+                                  style={{ padding:"6px 10px", borderRadius:6, border:`1px solid ${importPersonaAction==="create_new" ? _C.accent : _C.border}`, background: importPersonaAction==="create_new" ? `${_C.accent}14` : _C.canvas, color: importPersonaAction==="create_new" ? _C.accent : _C.textSoft, fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                  Create new persona
+                                </button>
+                                <button onClick={()=>setImportPersonaAction("skip")}
+                                  style={{ padding:"6px 10px", borderRadius:6, border:`1px solid ${importPersonaAction==="skip" ? _C.accent : _C.border}`, background: importPersonaAction==="skip" ? `${_C.accent}14` : _C.canvas, color: importPersonaAction==="skip" ? _C.accent : _C.textSoft, fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                  Skip (no link)
+                                </button>
+                              </div>
+                              {importPersonaAction === "link_existing" && (
+                                <div style={{ marginTop:8 }}>
+                                  <select value={importPersonaLinkId} onChange={e=>setImportPersonaLinkId(e.target.value)}
+                                    style={{...inputSt, cursor:"pointer"}}>
+                                    <option value="">Choose persona to link…</option>
+                                    {personas.map((p:any) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.name || "Unnamed"}{p.id === pa.bestExistingMatchId ? " (AI match)" : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                              {importPersonaAction === "create_new" && !onPersonasChange && (
+                                <div style={{ marginTop:8, fontSize:10, color:_C.red || "#FF6B6B", fontFamily:body }}>
+                                  (Can't create personas from this view. Use "Link to existing" or "Skip" instead.)
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                  {importParsed.notes && (
+                    <div style={{ padding:"8px 12px", borderRadius:6, background:_C.amberLo || _C.faint, border:`1px solid ${_C.amberBorder || _C.border}`, fontSize:10, fontFamily:body, color:_C.textSoft, lineHeight:1.5 }}>
+                      <strong style={{ color:_C.amber || _C.text }}>AI notes:</strong> {importParsed.notes}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {/* Footer */}
+            <div style={{ padding:"14px 22px", borderTop:`1px solid ${_C.border}`, display:"flex", justifyContent:"space-between", gap:10 }}>
+              <button onClick={()=>{ setImportOpen(false); resetImport(); }}
+                style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${_C.border}`, background:"transparent", color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                Cancel
+              </button>
+              {!importParsed ? (
+                <button onClick={parseImport} disabled={importParsing}
+                  style={{ padding:"8px 20px", borderRadius:8, border:"none", background:_C.accent, color:"#fff",
+                    fontSize:12, fontFamily:head, fontWeight:700, cursor: importParsing ? "wait" : "pointer", opacity: importParsing ? 0.6 : 1 }}>
+                  {importParsing ? "◌ Parsing…" : "Analyze & Review →"}
+                </button>
+              ) : (
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={()=>setImportParsed(null)}
+                    style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${_C.border}`, background:"transparent", color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                    ← Re-parse
+                  </button>
+                  <button onClick={commitImport}
+                    style={{ padding:"8px 20px", borderRadius:8, border:"none", background:_C.green, color:"#fff",
+                      fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                    ✓ Create Campaign
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -10334,7 +12422,7 @@ function CompanyPanelV2({ data, confidence, confLocked, onChange, onConfChange, 
       const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
       if (Array.isArray(parsed) && parsed.length > 0) setAiOptions(p => ({ ...p, [f.id]: parsed.slice(0,3) }));
     } catch {
-      const v = await callAI(`Fill this company field.\nContext: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}${fileContext ? `\n${fileContext}` : ""}\nReturn ONLY the answer.`,"",180);
+      const v = await callAI(`Fill this company field.\nContext: ${JSON.stringify(data)}\nField: "${f.label}"\nHint: ${f.ph||""}${extra}${fileContext ? `\n${fileContext}` : ""}\nReturn ONLY the answer.`,"",180, { model: "claude-haiku-4-5-20251001" });
       upd(f.id, v.trim()); onConfLock?.(f.id, true); scoreWithAI(f, v.trim()).then(score => onConfChange?.(f.id, score));
     }
     setAiOn(null);
@@ -10610,7 +12698,7 @@ function PerformancePanel({ perfLogs, onLogsChange, icps }) {
         headers: { "Content-Type":"application/json", "x-api-key":key,
           "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 600,
+          model: "claude-haiku-4-5-20251001", max_tokens: 600,
           system: `You extract B2B outreach campaign performance metrics from screenshots (e.g. B2B Rocket, Instantly, Smartlead, Apollo). Return ONLY valid JSON, no markdown or explanation.`,
           messages: [{ role:"user", content: [
             { type:"image", source:{ type:"base64", media_type:mime as any, data:b64 } },
@@ -11999,7 +14087,7 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   );
 }
 
-function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[], slackComms = [] as any[], activeWorkspace = null as any, offers = [] as any[], roiConfig = null as any, wsFiles = [] as any[], wsLinks = [] as any[], onRerunAnalysis = (_k:string)=>{} }) {
+function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[], slackComms = [] as any[], activeWorkspace = null as any, offers = [] as any[], roiConfig = null as any, wsFiles = [] as any[], wsLinks = [] as any[], rtsLists = [] as any[], onRerunAnalysis = (_k:string)=>{} }) {
   const [activeChatId, setActiveChatId] = useState<string|null>(() => chats[0]?.id ?? null);
   const [input,          setInput]          = useState("");
   const [isStreaming,    setIsStreaming]    = useState(false);
@@ -12142,12 +14230,42 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         return `Created product "${fields.name || "Untitled"}"`;
       }
       if (name === "update_campaign") {
-        const fields = input.fields || {};
+        const fields = { ...(input.fields || {}) };
+        // Resolve RTS list by name if the copilot passed rtsListName instead of rtsListId.
+        if (!fields.rtsListId && fields.rtsListName) {
+          const match = (rtsLists || []).find((l:any) => l.name?.toLowerCase() === String(fields.rtsListName).toLowerCase())
+                     || (rtsLists || []).find((l:any) => l.name?.toLowerCase().includes(String(fields.rtsListName).toLowerCase()));
+          if (match) fields.rtsListId = match.id;
+          delete fields.rtsListName;
+        }
+        // When an RTS list is being attached, auto-set audienceSource + intent tier if not explicitly set.
+        if (fields.rtsListId) {
+          if (!fields.audienceSource) fields.audienceSource = "rts_list";
+          if (!fields.intentTier) fields.intentTier = "high";
+        }
         let found = false;
+        const applyPatch = (c:any) => {
+          // Mirror persona targeting when personaIds is being changed and targeting isn't explicitly set.
+          let patch = { ...fields };
+          const newPersonaId = patch.personaIds?.[0] || patch.personaId;
+          if (newPersonaId && !patch.targeting) {
+            const pers = icps.find((p:any) => p.id === newPersonaId);
+            if (pers?.data) {
+              patch.targeting = {
+                ...c.targeting,
+                titles: pers.data.buyer || c.targeting?.titles || "",
+                industries: pers.data.industries || c.targeting?.industries || "",
+                companySizes: Array.isArray(pers.data.co_sizes) ? pers.data.co_sizes.join(", ") : (pers.data.co_sizes || c.targeting?.companySizes || ""),
+                keywords: pers.data.keywords || c.targeting?.keywords || "",
+              };
+            }
+          }
+          return { ...c, ...patch };
+        };
         onUpdateCampaigns((prev: any[]) => prev.map((c: any) => {
           if (c.id === input.campaign_id || (input.campaign_name && c.name?.toLowerCase() === input.campaign_name.toLowerCase())) {
             found = true;
-            return { ...c, ...fields };
+            return applyPatch(c);
           }
           return c;
         }));
@@ -12155,7 +14273,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
           onUpdateCampaigns((prev: any[]) => prev.map((c: any) => {
             if (c.name?.toLowerCase().includes(input.campaign_name.toLowerCase())) {
               found = true;
-              return { ...c, ...fields };
+              return applyPatch(c);
             }
             return c;
           }));
@@ -12170,6 +14288,15 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         // Accept legacy `personaId` (singular) from older tool calls.
         const personaId = fields.personaId || fields.personaIds?.[0] || "";
         const channel = fields.channel || (fields.type === "linkedin_message" || fields.type === "linkedin_connection" ? "linkedin" : fields.type === "rts_calling" ? "rts_ai_call" : "email");
+        // Resolve RTS list — accept an id, a name lookup, OR an rts_list_id field.
+        let rtsListId = fields.rtsListId || fields.rts_list_id || "";
+        if (!rtsListId && fields.rtsListName) {
+          const match = (rtsLists || []).find((l:any) => l.name?.toLowerCase() === String(fields.rtsListName).toLowerCase())
+                     || (rtsLists || []).find((l:any) => l.name?.toLowerCase().includes(String(fields.rtsListName).toLowerCase()));
+          if (match) rtsListId = match.id;
+        }
+        // Auto-set audienceSource when an RTS list is provided, so the campaign's Audience tab wires up correctly.
+        let audienceSource = fields.audienceSource || (rtsListId ? "rts_list" : (fields.customListName ? "custom_list" : undefined));
         const newC: any = {
           ...EMPTY_CAMPAIGN(),
           name: fields.name || "",
@@ -12179,10 +14306,42 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
           productId: fields.productId || "",
           offerId: fields.offerId || "",
           status: fields.status || "planning",
+          goal: fields.goal || "",
+          handoffCriteria: fields.handoffCriteria || "",
+          playbook: fields.playbook || "auto",
         };
+        if (audienceSource) newC.audienceSource = audienceSource;
+        if (rtsListId) {
+          newC.rtsListId = rtsListId;
+          newC.intentTier = "high"; // RTS lists are signal-qualified — mark high-intent
+          // Adjust benchmarks + test plan for signal-decay (match createCampaign at line ~17574)
+          newC.testPlan = { ...newC.testPlan, initialTestDays: 2, firstIterationVariable: "cta", iterationSchedule: "D1-2 initial, D3-4 CTA tier, D5-6 opening hook — signals decay, move fast" };
+          newC.safetyLimits = { ...newC.safetyLimits, bouncePauseThreshold: 5, lowReplyThreshold: { sentCount: 150, repliesAtMost: 0 } };
+          newC.handoffCriteria = newC.handoffCriteria || "HIGH-INTENT: reference the buying signal in touch 1. Direct meeting ask — not a soft content offer. 2-3 touches max over 5-7 days.";
+        }
+        if (fields.customListName) newC.customListName = fields.customListName;
+        // Mirror persona targeting into campaign.targeting so the Audience tab shows the right filters.
+        if (newC.personaIds?.[0]) {
+          const pers = icps.find((p:any) => p.id === newC.personaIds[0]);
+          if (pers?.data) {
+            newC.targeting = {
+              ...newC.targeting,
+              titles: pers.data.buyer || newC.targeting.titles,
+              industries: pers.data.industries || newC.targeting.industries,
+              companySizes: Array.isArray(pers.data.co_sizes) ? pers.data.co_sizes.join(", ") : (pers.data.co_sizes || newC.targeting.companySizes),
+              keywords: pers.data.keywords || newC.targeting.keywords,
+            };
+          }
+        }
+        if (fields.targeting && typeof fields.targeting === "object") {
+          newC.targeting = { ...newC.targeting, ...fields.targeting };
+        }
         onUpdateCampaigns((prev: any[]) => [...prev, newC]);
-        onToast({ title: "Campaign created", status: "success", message: newC.name || "New campaign" });
-        return `Created ${channel} campaign "${newC.name || "Untitled"}"`;
+        const extras: string[] = [];
+        if (rtsListId) extras.push("linked to RTS list");
+        if (newC.personaIds?.[0]) extras.push("persona wired");
+        onToast({ title: "Campaign created", status: "success", message: `${newC.name || "New campaign"}${extras.length ? " · "+extras.join(", ") : ""}` });
+        return `Created ${channel} campaign "${newC.name || "Untitled"}"${rtsListId ? ` (audienceSource=rts_list, rtsListId=${rtsListId})` : ""}${newC.personaIds?.[0] ? `, linked to personaId=${newC.personaIds[0]}` : ""}`;
       }
       if (name === "update_strategy") {
         const strat = input.strategy || {};
@@ -12416,7 +14575,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
       apiMessages.push({
         role: "user",
         content: [
-          { type: "text", text: `WORKSPACE CONTEXT (read-only snapshot of everything we know about this client):\n${fullCtx}${fileContextAppended}`, cache_control: { type: "ephemeral" } },
+          { type: "text", text: `WORKSPACE CONTEXT (read-only snapshot of everything we know about this client):\n${fullCtx}${fileContextAppended}`, cache_control: { type: "ephemeral", ttl: "1h" } },
           { type: "text", text: userText },
         ],
       });
@@ -12426,7 +14585,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
       apiMessages.push({
         role: first.role,
         content: [
-          { type: "text", text: `WORKSPACE CONTEXT (read-only snapshot of everything we know about this client):\n${fullCtx}${fileContextAppended}`, cache_control: { type: "ephemeral" } },
+          { type: "text", text: `WORKSPACE CONTEXT (read-only snapshot of everything we know about this client):\n${fullCtx}${fileContextAppended}`, cache_control: { type: "ephemeral", ttl: "1h" } },
           { type: "text", text: typeof first.content === "string" ? first.content : JSON.stringify(first.content) },
         ],
       });
@@ -12452,6 +14611,9 @@ WHEN TO USE TOOLS:
 - User says "add a persona for CFOs" → call create_persona
 - User says "change the value prop to..." → call the appropriate update tool
 - User says "create a new campaign targeting..." → call create_campaign
+- User says "create an audience from this RTS list" / "set up campaigns for my RTS lists" → for EACH RTS list, do TWO things in sequence:
+  1. Call create_persona with fields derived from the RTS list's customerProfile / sellingDescription / campaignGoal. Name it "[Segment] — [Buyer Role]" derived from the signal. Include industries, buyer, pain1, triggers, current_solutions, etc.
+  2. Call create_campaign with { name: "<list name> — <channel>", rtsListId: <the RTS list id>, personaIds: [<the new persona id>], productId (if obvious), channel: "email" | "linkedin" | "rts_ai_call", playbook: "auto" }. The handler auto-sets audienceSource="rts_list", intentTier="high", adjusts test plan, and mirrors persona targeting into the campaign. DO NOT omit rtsListId — it's what makes the Audience tab show the RTS list instead of empty filters.
 - User provides new info like "our main pain point is..." → update the relevant fields
 - User pastes or describes content for a SINGLE field → update that field directly
 - User pastes a FORM or BULK DATA with many fields → ALWAYS use propose_form_changes (never update directly)
@@ -13746,7 +15908,7 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model: "claude-haiku-4-5-20251001",
           max_tokens: 800,
           system: "You extract company or client names from screenshots. Return ONLY a JSON array of strings — one name per entry. No explanation, no markdown, just the raw JSON array.",
           messages: [{
@@ -15180,13 +17342,47 @@ function AppMain() {
   // Persisted AI analyses: { sentiment, pitch, coaching, intel } — each is { result, generatedAt } or null
   const [aiAnalyses, setAiAnalyses] = useState<{ sentiment: any; pitch: any; coaching: any; intel: any }>({ sentiment: null, pitch: null, coaching: null, intel: null });
 
+  // Toast policy: ruthlessly trim. Only *true emergencies* surface as a popup:
+  //   - status === "error" (hard failures users must act on)
+  //   - titles that match the emergency allow-list (API key missing, credit balance, rate-limit fatal)
+  // Everything else (success, info, loading, warning) returns an id for API compatibility with
+  // call sites that may later patch/remove the toast, but is never added to the visible stack.
+  // Hard cap of 3 visible toasts — older ones are dropped FIFO when a new emergency arrives.
+  const TOAST_EMERGENCY_TITLES = /^(API|Anthropic|Rate limit|Credit balance|Auth|Login|Sign[- ]?in|Unauthorized)/i;
+  const TOAST_MAX_VISIBLE = 3;
+  const isEmergencyToast = (t: Partial<Toast>): boolean => {
+    if (t.status === "error") return true;
+    if (t.title && TOAST_EMERGENCY_TITLES.test(t.title)) return true;
+    return false;
+  };
   const addToast  = useCallback((t: Omit<Toast,"id">) => {
     const id = uid();
-    setToasts(p => [...p, { ...t, id }]);
+    if (!isEmergencyToast(t)) return id; // silently drop non-emergencies; caller still gets an id
+    setToasts(p => {
+      const next = [...p, { ...t, id }];
+      // Keep only the most recent TOAST_MAX_VISIBLE — drop oldest first if over cap.
+      return next.length > TOAST_MAX_VISIBLE ? next.slice(next.length - TOAST_MAX_VISIBLE) : next;
+    });
     return id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const updateToast = useCallback((id: string, patch: Partial<Toast>) => {
-    setToasts(p => p.map(t => t.id===id ? { ...t, ...patch } : t));
+    setToasts(p => {
+      // If the existing toast was dropped at add time (not-emergency) it won't be in state. That's fine.
+      // If the patch upgrades a hidden toast to an emergency (e.g. loading → error), the caller can addToast
+      // again — updateToast is a best-effort mutator on already-visible toasts.
+      const exists = p.some(t => t.id === id);
+      if (!exists) {
+        // Allow a late-arriving error patch to surface as a fresh toast.
+        if (isEmergencyToast(patch)) {
+          const next = [...p, { id, title: patch.title || "Error", status: "error", message: patch.message || "", ...patch } as Toast];
+          return next.length > TOAST_MAX_VISIBLE ? next.slice(next.length - TOAST_MAX_VISIBLE) : next;
+        }
+        return p;
+      }
+      return p.map(t => t.id===id ? { ...t, ...patch } : t);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const removeToast = useCallback((id: string) => {
     setToasts(p => p.filter(t => t.id!==id));
@@ -15461,25 +17657,34 @@ function AppMain() {
         ? `User's target segment description: "${userContext.trim()}"\n${count > 1 ? `This is ICP ${i+1} of ${count} — each must be a DISTINCT segment. Already created: ${allExisting}\n` : ""}`
         : `Pick the most logical DISTINCT segment not yet covered.\n`;
       try {
+        const productCatalogDraft = products.length
+          ? products.map((p:any) => `  - id="${p.id}" name="${p.name||"Unnamed"}" description="${(p.description||"").slice(0,140)}"`).join("\n")
+          : "(no products defined yet)";
         const raw = await callAI(`
-Draft a new ICP. Company: ${JSON.stringify(companyData)}
+Draft a new ICP/persona — match the completeness of a Quick Start run. Company: ${JSON.stringify(companyData)}
 Existing ICPs: ${allExisting}
 ${contextLine}
+
+PRODUCTS IN WORKSPACE (for linkedProductIds analysis):
+${productCatalogDraft}
+
 ${NAMING_RULES.persona}
-CRITICAL: Every field MUST be filled — never leave blank. Use best guesses where needed.
-Return ONLY JSON:
-{"name":"[Industry] — [Role]","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":""},
-"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"intent_topics":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0,"seq_strategy":0}}
+CRITICAL: Every single field MUST be filled — never leave blank. Use best guesses where needed. linkedProductIds: product ids this persona is a buyer for (return all ids if insufficient signal; never empty when products exist).
+Return ONLY JSON with ALL fields filled:
+{"name":"[Industry] — [Role]","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{},"linkedProductIds":[]}
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
-tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
-cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
-Raw JSON only.`, "", 1400);
+tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
+cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
+Raw JSON only.`, "", 2500);
         try {
           const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
-          drafts.push({ name: p.name || `ICP ${icps.length+i+1}`, fields: p.fields??{}, confidence: p.confidence??{},
+          const productIds = new Set(products.map((pp:any) => pp.id));
+          let linked: string[] = Array.isArray(p.linkedProductIds) ? p.linkedProductIds.filter((id:any) => productIds.has(id)) : [];
+          if (linked.length === 0 && products.length > 0) linked = products.map((pp:any) => pp.id);
+          drafts.push({ name: p.name || `ICP ${icps.length+i+1}`, fields: p.fields??{}, confidence: p.confidence??{}, linkedProductIds: linked,
             industries: p.fields?.industries||"", buyer: p.fields?.buyer||"", pain1: p.fields?.pain1||"", _include: true });
-        } catch { drafts.push({ name:`ICP ${icps.length+i+1}`, fields:{}, confidence:{}, industries:"", buyer:"", pain1:"", _include:true }); }
-      } catch { drafts.push({ name:`ICP ${icps.length+i+1}`, fields:{}, confidence:{}, industries:"", buyer:"", pain1:"", _include:true }); }
+        } catch { drafts.push({ name:`ICP ${icps.length+i+1}`, fields:{}, confidence:{}, linkedProductIds: products.map((pp:any)=>pp.id), industries:"", buyer:"", pain1:"", _include:true }); }
+      } catch { drafts.push({ name:`ICP ${icps.length+i+1}`, fields:{}, confidence:{}, linkedProductIds: products.map((pp:any)=>pp.id), industries:"", buyer:"", pain1:"", _include:true }); }
       if (i < count - 1) await new Promise(ok => setTimeout(ok, 500));
     }
 
@@ -15489,6 +17694,7 @@ Raw JSON only.`, "", 1400);
     if (count === 1 && drafts.length === 1) {
       const d = drafts[0];
       const fresh = newICP(icps.length, d.fields, d.name, d.confidence);
+      if (Array.isArray(d.linkedProductIds) && d.linkedProductIds.length) fresh.linkedProductIds = d.linkedProductIds;
       setIcps(p => [...p, fresh]);
       setEditingId(fresh.id);
       return;
@@ -15496,17 +17702,23 @@ Raw JSON only.`, "", 1400);
 
     // Multiple — show preview for user to review
     setIcpPreviews(drafts);
-  }, [icps, companyData, addToast, updateToast]);
+  }, [icps, companyData, products, addToast, updateToast]);
 
   const fillICP = useCallback(async (icp: any, userContext: string) => {
     setIcpFill(null);
     setIcpFilling(icp.id);
     const toastId = addToast({ title:`Filling fields: ${icp.name}`, status:"loading", message:"AI is populating all ICP fields" });
     const existing = icps.filter(x=>x.id!==icp.id).map(x=>x.name).filter(Boolean).join(", ") || "none";
+    const productCatalog = products.length
+      ? products.map((p:any) => `  - id="${p.id}" name="${p.name||"Unnamed"}" description="${(p.description||"").slice(0,140)}" idealCustomer="${(p.idealCustomer||"").slice(0,140)}"`).join("\n")
+      : "(no products defined yet)";
     const prompt = `
-Fill ALL fields for this ICP. Company: ${JSON.stringify(companyData)}
+Fill ALL fields for this ICP/persona — match the completeness of a Quick Start run. Company: ${JSON.stringify(companyData)}
 Other ICPs already defined: ${existing}
 User's target segment description: "${userContext || "Not specified — choose the most logical distinct segment based on company context."}"
+
+PRODUCTS IN WORKSPACE (for linkedProductIds analysis):
+${productCatalog}
 
 ${NAMING_RULES.persona}
 
@@ -15516,13 +17728,17 @@ CRITICAL RULES:
 - Use confident best guesses for anything not explicitly known — realistic, specific, and actionable.
 - Set confidence 85–100 for facts clearly inferred, 55–79 for reasonable assumptions, 30–54 for educated guesses.
 - Write fields as a real GTM would — specific, not generic.
+- linkedProductIds: array of product ids from the catalog above that this persona is a buyer for. If the persona clearly fits a subset, return that subset. If they could plausibly buy everything or there's insufficient signal, return ALL product ids. Never return an empty array when products exist.
 
-Return ONLY JSON:
-{"name":"[Industry] — [Role]","fields":{"industries":"","co_sizes":[],"geo":"","revenue":"","tech":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","sub_personas":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":""},
-"confidence":{"industries":0,"co_sizes":0,"geo":0,"revenue":0,"tech":0,"neg":0,"intent_topics":0,"buyer":0,"champ":0,"goals":0,"fears":0,"metrics":0,"objections":0,"sub_personas":0,"pain1":0,"pain2":0,"gains":0,"triggers":0,"buying_signals_direct":0,"buying_signals_indirect":0,"sq_cost":0,"friction_points":0,"tone":0,"hook":0,"cta":0,"why_client_wins":0,"icp_proof":0,"seq_strategy":0}}
+Return ONLY JSON with ALL fields filled:
+{"name":"[Industry] — [Role]","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{},"linkedProductIds":[]}
+
 co_sizes: non-empty array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
-tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"
-cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"
+tone: exactly one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
+cta: exactly one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
+best_channel: preferred outreach channel for this persona (e.g. "Email + LinkedIn", "Phone-first", "LinkedIn only")
+current_solutions / incumbent_strengths / switching_triggers / displacement_messaging: competitor displacement frame — what they use today and what would make them switch
+interested_criteria / warm_criteria / meeting_ready_criteria / not_now_criteria / dead_criteria: reply-classification criteria for lead scoring
 Raw JSON only.`;
 
     let success = false;
@@ -15534,8 +17750,13 @@ Raw JSON only.`;
         if (!lastRaw || lastRaw.startsWith("Error:")) throw new Error(lastRaw || "Empty response");
         const p = JSON.parse(lastRaw.replace(/```json|```/g,"").trim());
         filledName = p.name || icp.name;
+        // Resolve linkedProductIds: honor the AI's selection if non-empty; otherwise fall back to linking all products
+        // so the persona is usable by downstream campaign flows without manual setup.
+        const productIds = new Set(products.map((pp:any) => pp.id));
+        let linked: string[] = Array.isArray(p.linkedProductIds) ? p.linkedProductIds.filter((id:any) => productIds.has(id)) : [];
+        if (linked.length === 0 && products.length > 0) linked = products.map((pp:any) => pp.id);
         setIcps(prev => prev.map(i => i.id===icp.id
-          ? { ...i, data: p.fields??{}, name: filledName, confidence: p.confidence??{} }
+          ? { ...i, data: p.fields??{}, name: filledName, confidence: p.confidence??{}, linkedProductIds: linked }
           : i));
         success = true;
         break;
@@ -15550,7 +17771,7 @@ Raw JSON only.`;
       updateToast(toastId, { status:"error", title:"Fill failed", message:"JSON parse error — check console for details" });
     }
     setIcpFilling(null);
-  }, [icps, companyData, addToast, updateToast]);
+  }, [icps, companyData, products, addToast, updateToast]);
 
   // ─── UNIFIED CAMPAIGN CREATION ────────────────────────────────────────────
   // Single entry point for creating a campaign. Every entry point (manual, matrix, copilot, strategy phase)
@@ -15901,20 +18122,30 @@ RULES:
   // Blank fields are auto-filled. Fields with existing content that differ are queued for
   // per-field review (approve / reject / edit) via the existing write-back modal.
   const [hubspotSyncing, setHubspotSyncing] = useState(false);
-  const syncHubspotForCompanyPage = async () => {
-    if (!getHubspotToken()) { addToast({ title:"Add HubSpot token first", status:"error", message:"Profile menu → API Keys → HubSpot Private App Token" }); return; }
+  // Mapping modal state — used by the Integrations page HubSpot card.
+  // Closed until the user triggers a sync that needs confirmation.
+  const [hsMapOpen, setHsMapOpen] = useState(false);
+  const [hsMapAutoMatch, setHsMapAutoMatch] = useState<any>(null);
+  const [hsMapCandidates, setHsMapCandidates] = useState<any[]>([]);
+  const [hsMapQuery, setHsMapQuery] = useState("");
+  const [hsMapIdInput, setHsMapIdInput] = useState("");
+  const [hsMapSearching, setHsMapSearching] = useState(false);
+  const [hsMapError, setHsMapError] = useState("");
+
+  // Does the actual sync work once a HubSpot company id has been confirmed.
+  const runHubspotActivityPull = async (companyId: string, companyName: string) => {
     const cd = companyData as Record<string,string>;
-    const domain = (cd.co_website || "").trim();
-    if (!domain) { addToast({ title:"Set company website first", status:"error", message:"Need a website to match a HubSpot company" }); return; }
     setHubspotSyncing(true);
-    const toastId = addToast({ title:"Syncing HubSpot…", status:"loading", message:`Looking up ${domain}` });
+    const toastId = addToast({ title:"Syncing HubSpot…", status:"loading", message:`Pulling activity for ${companyName || companyId}` });
     try {
-      const company = await hubspotFindCompanyByDomain(domain);
-      if (!company?.id) throw new Error(`No HubSpot company matches domain "${domain}"`);
-      updateToast(toastId, { message:"Fetching all company properties…" });
-      const full = await hubspotGetCompanyFull(company.id);
-      updateToast(toastId, { message:"Fetching email history…" });
-      const emails = await hubspotGetCompanyEmails(company.id);
+      const full = await hubspotGetCompanyFull(companyId);
+      updateToast(toastId, { message:"Fetching activity (emails, meetings, calls, notes)…" });
+      const [emails, meetings, calls, notes] = await Promise.all([
+        hubspotGetCompanyEmails(companyId),
+        hubspotGetCompanyMeetings(companyId),
+        hubspotGetCompanyCalls(companyId),
+        hubspotGetCompanyNotes(companyId),
+      ]);
       const hsProps = full?.properties || {};
 
       // Transforms for values that need reshaping before they fit our field format
@@ -15984,16 +18215,19 @@ RULES:
         }
       }
 
-      // Apply auto-fills + HubSpot snapshot in one pass
+      // Apply auto-fills + HubSpot snapshot + mark mapping as confirmed
       setCompanyData((prev:any) => ({
         ...prev,
         ...autoFill,
         _hubspotProps: hsProps,
-        _hubspotCompanyId: company.id,
+        _hubspotCompanyId: companyId,
+        _hubspotCompanyName: companyName || hsProps.name || prev._hubspotCompanyName || "",
+        _hubspotCompanyConfirmed: true,
       }));
 
-      // Import new emails into slackComms (deduped by HubSpot id)
+      // Dedupe across ALL four activity types by HubSpot id
       const existingHsIds = new Set((slackComms||[]).filter((c:any) => c.source === "hubspot").map((c:any) => c.hsId));
+      const dateOf = (p:any) => (p?.hs_timestamp || p?.hs_createdate || p?.hs_meeting_start_time || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
       const newEmails = emails
         .filter((e:any) => e.id && !existingHsIds.has(e.id))
         .map((e:any) => {
@@ -16002,21 +18236,77 @@ RULES:
           const body = p.hs_email_text || (p.hs_email_html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
           return {
             id: `hs_${e.id}`, hsId: e.id, type: "email", source: "hubspot",
-            date: (p.hs_timestamp || p.hs_createdate || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+            date: dateOf(p),
             subject: p.hs_email_subject || "",
             participants: [p.hs_email_from_email, p.hs_email_to_email].filter(Boolean).join(" → "),
             direction: dir,
             content: `[${dir}] From: ${p.hs_email_from_email||"?"} | To: ${p.hs_email_to_email||"?"} | Subject: ${p.hs_email_subject||""}\n\n${body}`.trim(),
           };
         });
-      if (newEmails.length) setSlackComms((prev:any) => [...newEmails, ...(prev||[])]);
+      const newMeetings = meetings
+        .filter((m:any) => m.id && !existingHsIds.has(m.id))
+        .map((m:any) => {
+          const p = m.properties || {};
+          const start = p.hs_meeting_start_time ? new Date(p.hs_meeting_start_time).toLocaleString() : "";
+          const body = (p.hs_meeting_body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          return {
+            id: `hs_${m.id}`, hsId: m.id, type: "meeting", source: "hubspot",
+            date: dateOf(p),
+            subject: p.hs_meeting_title || "Meeting",
+            participants: "",
+            outcome: p.hs_meeting_outcome || "",
+            content: [
+              p.hs_meeting_title ? `Meeting: ${p.hs_meeting_title}` : "Meeting",
+              start ? `When: ${start}` : "",
+              p.hs_meeting_location ? `Where: ${p.hs_meeting_location}` : "",
+              p.hs_meeting_outcome ? `Outcome: ${p.hs_meeting_outcome}` : "",
+              body ? `\n${body}` : "",
+            ].filter(Boolean).join("\n"),
+          };
+        });
+      const newCalls = calls
+        .filter((c:any) => c.id && !existingHsIds.has(c.id))
+        .map((c:any) => {
+          const p = c.properties || {};
+          const body = (p.hs_call_body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          const dir = p.hs_call_direction || "UNKNOWN";
+          return {
+            id: `hs_${c.id}`, hsId: c.id, type: "hs_call", source: "hubspot",
+            date: dateOf(p),
+            subject: p.hs_call_title || `Call (${dir})`,
+            participants: [p.hs_call_from_number, p.hs_call_to_number].filter(Boolean).join(" → "),
+            direction: dir,
+            outcome: p.hs_call_disposition || "",
+            content: [
+              p.hs_call_title ? `Call: ${p.hs_call_title}` : `Call (${dir})`,
+              p.hs_call_duration ? `Duration: ${Math.round(Number(p.hs_call_duration)/1000)}s` : "",
+              p.hs_call_disposition ? `Outcome: ${p.hs_call_disposition}` : "",
+              p.hs_call_status ? `Status: ${p.hs_call_status}` : "",
+              body ? `\n${body}` : "",
+            ].filter(Boolean).join("\n"),
+          };
+        });
+      const newNotes = notes
+        .filter((n:any) => n.id && !existingHsIds.has(n.id))
+        .map((n:any) => {
+          const p = n.properties || {};
+          const body = (p.hs_note_body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          return {
+            id: `hs_${n.id}`, hsId: n.id, type: "note", source: "hubspot",
+            date: dateOf(p),
+            subject: body.slice(0, 80) || "Note",
+            content: body,
+          };
+        });
+      const newItems = [...newEmails, ...newMeetings, ...newCalls, ...newNotes];
+      if (newItems.length) setSlackComms((prev:any) => [...newItems, ...(prev||[])]);
 
-      // If there are conflicts, open the review modal (reuses the write-back UI)
+      // If there are property conflicts, open the review modal (reuses the write-back UI)
       if (proposals.length > 0) {
         setWbProposals({
           sourceType: "document",
           sourceId: `hubspot_${Date.now()}`,
-          sourceLabel: `HubSpot sync · ${company.properties?.name || domain}`,
+          sourceLabel: `HubSpot sync · ${companyName || hsProps.name || companyId}`,
           proposals,
           loading: false,
         });
@@ -16026,7 +18316,10 @@ RULES:
       const msgParts: string[] = [];
       if (filledCount > 0) msgParts.push(`${filledCount} blank field${filledCount!==1?"s":""} filled`);
       if (proposals.length > 0) msgParts.push(`${proposals.length} update${proposals.length!==1?"s":""} to review`);
-      if (newEmails.length > 0) msgParts.push(`${newEmails.length} new email${newEmails.length!==1?"s":""}`);
+      if (newEmails.length) msgParts.push(`${newEmails.length} email${newEmails.length!==1?"s":""}`);
+      if (newMeetings.length) msgParts.push(`${newMeetings.length} meeting${newMeetings.length!==1?"s":""}`);
+      if (newCalls.length) msgParts.push(`${newCalls.length} call${newCalls.length!==1?"s":""}`);
+      if (newNotes.length) msgParts.push(`${newNotes.length} note${newNotes.length!==1?"s":""}`);
       if (msgParts.length === 0) msgParts.push("Already in sync — no changes");
 
       updateToast(toastId, {
@@ -16039,6 +18332,79 @@ RULES:
       updateToast(toastId, { status:"error", title:"HubSpot sync failed", message:(err?.message || "Check console").slice(0, 120) });
     }
     setHubspotSyncing(false);
+  };
+
+  // Entry point for the Integrations page "Sync Now" button. Gates behind the mapping modal
+  // so the user explicitly confirms which HubSpot company maps to this workspace.
+  const syncHubspotForCompanyPage = async () => {
+    if (!getHubspotToken()) { addToast({ title:"Add HubSpot token first", status:"error", message:"Integrations → HubSpot → Private App Token" }); return; }
+    const cd = companyData as Record<string,string>;
+    if (cd._hubspotCompanyConfirmed && cd._hubspotCompanyId) {
+      // Already mapped — fast path.
+      await runHubspotActivityPull(cd._hubspotCompanyId, cd._hubspotCompanyName || cd.co_name || "company");
+      return;
+    }
+    // First-time mapping — open the modal with the auto-match suggestion if possible.
+    setHsMapOpen(true);
+    setHsMapAutoMatch(null);
+    setHsMapCandidates([]);
+    setHsMapQuery(cd.co_name || "");
+    setHsMapIdInput("");
+    setHsMapError("");
+    const domain = (cd.co_website || "").trim();
+    if (domain) {
+      setHsMapSearching(true);
+      try {
+        const match = await hubspotFindCompanyByDomain(domain);
+        setHsMapAutoMatch(match || null);
+      } catch (e:any) {
+        setHsMapError(e?.message || "Domain lookup failed");
+      }
+      setHsMapSearching(false);
+    }
+  };
+
+  const confirmHsMapping = async (companyId: string, companyName: string) => {
+    if (!companyId) { setHsMapError("Pick a company or enter a HubSpot company ID."); return; }
+    setCompanyData((prev:any) => ({ ...prev, _hubspotCompanyId: companyId, _hubspotCompanyName: companyName || prev._hubspotCompanyName || "", _hubspotCompanyConfirmed: true }));
+    setHsMapOpen(false);
+    setHsMapAutoMatch(null);
+    setHsMapCandidates([]);
+    setHsMapQuery("");
+    setHsMapIdInput("");
+    setHsMapError("");
+    await runHubspotActivityPull(companyId, companyName || "");
+  };
+  const searchHsCandidates = async () => {
+    const q = hsMapQuery.trim();
+    if (!q) return;
+    setHsMapSearching(true);
+    setHsMapError("");
+    try {
+      const results = await hubspotSearchCompaniesByName(q);
+      setHsMapCandidates(results);
+    } catch (e:any) {
+      setHsMapError(e?.message || "Search failed");
+      setHsMapCandidates([]);
+    }
+    setHsMapSearching(false);
+  };
+  const confirmHsById = async () => {
+    const id = hsMapIdInput.trim();
+    if (!id) { setHsMapError("Enter a HubSpot company ID."); return; }
+    setHsMapSearching(true);
+    setHsMapError("");
+    try {
+      const c = await hubspotGetCompanyById(id);
+      if (!c?.id) throw new Error(`No HubSpot company found with id "${id}"`);
+      await confirmHsMapping(c.id, c.properties?.name || c.id);
+    } catch (e:any) {
+      setHsMapError(e?.message || "Lookup failed");
+    }
+    setHsMapSearching(false);
+  };
+  const unmapHubspot = () => {
+    setCompanyData((prev:any) => ({ ...prev, _hubspotCompanyId: "", _hubspotCompanyName: "", _hubspotCompanyConfirmed: false }));
   };
 
   // ─── Slack Sync (Integrations page) ────────────────────────────────────────
@@ -17288,7 +19654,13 @@ RULES:
                       onClose={()=>setShowQSAnimated(false)}
                       addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
                       onProgress={(step: number, results: Record<string,string>) => setQsProgressAnimated(step, results)}
-                      onBriefReady={(coFields: any, coConf: any, ctx: string, brief: any, phaseAResults?: Record<string,string>) => { setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: phaseAResults || {} }); setQsProgress(null); }}
+                      onBriefReady={(coFields: any, coConf: any, ctx: string, brief: any, phaseAResults?: Record<string,string>) => {
+                        setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: phaseAResults || {} });
+                        // Keep progress panel visible at "Review & Select" step so Phase B resumes in place instead of re-mounting.
+                        const pa = phaseAResults || {};
+                        const reviewCount = `${(brief?.products?.length||0) + (brief?.personas?.length||0)}`;
+                        setQsProgress({ step: 3, results: { ...pa, review: reviewCount } });
+                      }}
                       inline={true} />
                   </div>
                   <div style={{ textAlign:"center", marginTop:16 }}>
@@ -17882,6 +20254,162 @@ RULES:
                               {handoffGenerating ? "◌ Analyzing…" : hb ? "Regenerate" : "Generate Brief"}
                             </button>
                           </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Lifecycle stage + Next Action card — single most important thing on Home */}
+                  {(() => {
+                    const { stage, source, hsRaw } = getWorkspaceStage(companyData, { campaigns: allCamps, strategy, dfySetup });
+                    const meta = STAGE_META[stage];
+                    // Compute the single most important next action for this stage
+                    const dfyPurchased = (dfySetup as any)?.purchasedAt;
+                    const daysWarming = dfyPurchased ? Math.floor((Date.now() - new Date(dfyPurchased).getTime()) / 86400000) : 0;
+                    const daysUntilReady = Math.max(0, 17 - daysWarming);
+                    const hasHandoff = !!(companyData as any)._handoffBrief;
+                    const hasCall = (callRecords||[]).length > 0;
+                    const hasStrategyPhases = (strategy?.phases?.length || 0) > 0;
+                    const highUrgencyReplies = allCamps.reduce((acc:number, c:any) => acc + (c.analyzedReplies||[]).filter((r:any) => r.urgency === "high" && r.status === "new").length, 0);
+
+                    let nextAction: { title: string; desc: string; cta: string; onClick: () => void; urgent?: boolean };
+                    if (stage === "new") {
+                      nextAction = {
+                        title: hasHandoff ? "Review the handoff brief" : "Sync HubSpot and generate a handoff brief",
+                        desc: hasHandoff ? "The handoff brief is ready — review the key topics + expectations before the onboarding call." : "Pull HubSpot data and any sales-era emails into a pre-onboarding brief so you know what sales promised.",
+                        cta: hasHandoff ? "View Brief" : "Go to Integrations",
+                        onClick: () => hasHandoff ? (setHandoffBriefOpen && setHandoffBriefOpen(true)) : setView("integrations"),
+                      };
+                    } else if (stage === "pre_onboarding") {
+                      nextAction = {
+                        title: "Prep for the onboarding call",
+                        desc: "Review the handoff brief + skim Business Profile. After the call, upload the transcript and implementation doc to sync fields across the platform.",
+                        cta: "Open Client Intel",
+                        onClick: () => setView("calls"),
+                      };
+                    } else if (stage === "onboarding") {
+                      nextAction = hasStrategyPhases ? {
+                        title: "Review and kick off DFY Setup",
+                        desc: "Strategy is drafted — next, configure domains and mailboxes in DFY Setup, get client approval, then mark as purchased.",
+                        cta: "Go to DFY Setup",
+                        onClick: () => setView("dfySetup"),
+                      } : {
+                        title: "Generate the strategy roadmap",
+                        desc: "Personas and products are in place — generate a 12-month roadmap so the client has a clear plan before DFY purchase.",
+                        cta: "Go to Strategy",
+                        onClick: () => setView("strategy"),
+                      };
+                    } else if (stage === "warming_up") {
+                      nextAction = {
+                        title: daysUntilReady > 0 ? `${daysUntilReady} day${daysUntilReady!==1?"s":""} until mailboxes are ready` : "Warmup complete — launch first campaigns",
+                        desc: daysUntilReady > 0 ? "Domains and mailboxes are being set up and warmed. Use this time to build LinkedIn campaigns (ready now) and prep cold email sequences." : "Mailbox warmup is complete — create your first cold email campaigns from the strategy phases.",
+                        cta: daysUntilReady > 0 ? "Build LinkedIn Campaign" : "Launch First Campaign",
+                        onClick: () => setView("campaigns"),
+                      };
+                    } else if (stage === "launching") {
+                      nextAction = {
+                        title: "Launch campaigns and start collecting data",
+                        desc: "Everything is ready. Push campaigns to B2B Rocket, start sending, then upload B2BR analytics as data comes in.",
+                        cta: "Review Campaigns",
+                        onClick: () => setView("campaigns"),
+                      };
+                    } else if (stage === "live" || stage === "optimizing") {
+                      if (highUrgencyReplies > 0) {
+                        nextAction = {
+                          title: `${highUrgencyReplies} high-urgency ${highUrgencyReplies === 1 ? "reply" : "replies"} waiting`,
+                          desc: "Interested prospects and active objections need responses today. Head to Campaigns → Replies to triage.",
+                          cta: "Triage Replies",
+                          onClick: () => setView("campaigns"),
+                          urgent: true,
+                        };
+                      } else if (attention.length > 0) {
+                        nextAction = {
+                          title: `${attention.length} item${attention.length!==1?"s":""} need attention`,
+                          desc: attention[0].reason,
+                          cta: attention[0].action,
+                          onClick: () => setView(attention[0].actionView),
+                        };
+                      } else {
+                        nextAction = {
+                          title: "All campaigns healthy",
+                          desc: "No urgent items. Good time to run a strategic check — analyze recent calls, refresh a persona, or draft a new campaign.",
+                          cta: "Open Analytics",
+                          onClick: () => setView("analytics"),
+                        };
+                      }
+                    } else if (stage === "at_risk") {
+                      nextAction = {
+                        title: "Triage churn risk",
+                        desc: "HubSpot flagged this client as at-risk. Review recent sentiment, pitch analysis, and unresolved objections.",
+                        cta: "Client Intel",
+                        onClick: () => setView("calls"),
+                        urgent: true,
+                      };
+                    } else {
+                      nextAction = {
+                        title: "Client has churned",
+                        desc: "Archive this workspace or reference it for learnings on other accounts.",
+                        cta: "View Analytics",
+                        onClick: () => setView("analytics"),
+                      };
+                    }
+
+                    // Lifecycle breadcrumb — compact horizontal timeline showing stage progression
+                    const progressionStages: WorkspaceStage[] = ["new", "pre_onboarding", "onboarding", "warming_up", "launching", "live", "optimizing"];
+                    const currentIdx = progressionStages.indexOf(stage);
+
+                    return (
+                      <div style={{ marginBottom:20 }}>
+                        {/* Stage breadcrumb */}
+                        {currentIdx >= 0 && (
+                          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:12, flexWrap:"wrap" as const }}>
+                            {progressionStages.map((s, i) => {
+                              const active = i === currentIdx;
+                              const done = i < currentIdx;
+                              const m = STAGE_META[s];
+                              return (
+                                <Fragment key={s}>
+                                  {i > 0 && <span style={{ fontSize:8, color:done ? C2.green : C2.muted, opacity:0.6 }}>→</span>}
+                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight: active ? 700 : 500,
+                                    padding:"3px 8px", borderRadius:5, letterSpacing:.3,
+                                    background: active ? m.color + "18" : done ? C2.green + "10" : C2.faint,
+                                    color: active ? m.color : done ? C2.green : C2.muted,
+                                    border: active ? `1px solid ${m.color}33` : "none" }}>
+                                    {m.short.toUpperCase()}
+                                  </span>
+                                </Fragment>
+                              );
+                            })}
+                            <span style={{ fontSize:9, fontFamily:mono, color:C2.muted, marginLeft:8, opacity:0.7 }}>
+                              {source === "hubspot" ? `from HubSpot${hsRaw ? ` · "${hsRaw}"` : ""}` : source === "manual" ? "manual override" : "inferred from workspace state"}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Next Action hero card */}
+                        <div style={{ padding:"22px 24px", borderRadius:16,
+                          background: nextAction.urgent ? `${C2.red}08` : `${meta.color}08`,
+                          border: `1px solid ${nextAction.urgent ? C2.red + "33" : meta.color + "33"}`,
+                          display:"flex", alignItems:"center", gap:18, flexWrap:"wrap" as const }}>
+                          <div style={{ flex:1, minWidth:280 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                              <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5,
+                                background: meta.color + "18", color: meta.color, letterSpacing:.4 }}>
+                                {meta.label.toUpperCase()}
+                              </span>
+                              <span style={{ fontSize:10, fontFamily:mono, color:C2.muted }}>Next action for this client</span>
+                            </div>
+                            <div style={{ fontSize:17, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:5, lineHeight:1.35 }}>{nextAction.title}</div>
+                            <div style={{ fontSize:12.5, fontFamily:body, color:C2.textSoft, lineHeight:1.55 }}>{nextAction.desc}</div>
+                          </div>
+                          <button onClick={nextAction.onClick}
+                            style={{ padding:"11px 22px", borderRadius:10, border:"none",
+                              background: nextAction.urgent ? C2.red : meta.color, color:"#fff",
+                              fontSize:12.5, fontFamily:head, fontWeight:700, cursor:"pointer",
+                              boxShadow: `0 3px 10px ${nextAction.urgent ? C2.red : meta.color}44`,
+                              whiteSpace:"nowrap" as const, flexShrink:0 }}>
+                            {nextAction.cta} →
+                          </button>
                         </div>
                       </div>
                     );
@@ -18916,6 +21444,8 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
                   <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
                     personas={icps} products={products} offers={offers} onOffersChange={setOffers}
+                    onPersonasChange={setIcps}
+                    onFillPersona={fillICP}
                     companyData={companyData} strategy={strategy} v2={true} addToast={addToast}
                     activeWorkspace={activeWorkspace}
                     onCreateCampaign={createCampaign}
@@ -20522,21 +23052,41 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       onChange={e=>{setHubspotKey(e.target.value); setHubspotToken(e.target.value);}}
                       placeholder="pat-na1-…"
                       style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", marginBottom:10 }} />
-                    {hsConnected && (
-                      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
-                        <button onClick={syncHubspotForCompanyPage} disabled={hubspotSyncing}
-                          style={{ padding:"7px 14px", borderRadius:7, border:"none",
-                            background: hubspotSyncing ? _C.muted : "#ff7a59", color:"#fff",
-                            fontSize:11, fontFamily:head, fontWeight:700, cursor: hubspotSyncing ? "wait" : "pointer" }}>
-                          {hubspotSyncing ? "◌ Syncing…" : "Sync Now"}
-                        </button>
-                        <div style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
-                          {hsPropCount > 0
-                            ? `Last sync: ${hsPropCount} propert${hsPropCount!==1?"ies":"y"} · ${hsEmailCount} email${hsEmailCount!==1?"s":""} imported`
-                            : "Never synced for this workspace"}
-                        </div>
-                      </div>
-                    )}
+                    {hsConnected && (() => {
+                      const mapped = !!(cd._hubspotCompanyConfirmed && cd._hubspotCompanyId);
+                      const hsActivityCount = (slackComms || []).filter((c:any) => c.source === "hubspot").length;
+                      const byType = (t:string) => (slackComms || []).filter((c:any) => c.source === "hubspot" && c.type === t).length;
+                      return (
+                        <>
+                          {mapped && (
+                            <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" as const, marginBottom:10,
+                              padding:"6px 10px", borderRadius:6, background:_C.faint, border:`1px solid ${_C.border}`, fontSize:10, fontFamily:mono }}>
+                              <span style={{ color:_C.muted }}>Mapped to:</span>
+                              <span style={{ color:_C.text, fontWeight:700 }}>{(cd as any)._hubspotCompanyName || (cd as any)._hubspotCompanyId}</span>
+                              <button onClick={unmapHubspot}
+                                style={{ padding:"0 6px", border:"none", background:"transparent", color:"#ff7a59", fontSize:10, fontFamily:mono, cursor:"pointer", textDecoration:"underline" }}>
+                                change
+                              </button>
+                            </div>
+                          )}
+                          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                            <button onClick={syncHubspotForCompanyPage} disabled={hubspotSyncing}
+                              style={{ padding:"7px 14px", borderRadius:7, border:"none",
+                                background: hubspotSyncing ? _C.muted : "#ff7a59", color:"#fff",
+                                fontSize:11, fontFamily:head, fontWeight:700, cursor: hubspotSyncing ? "wait" : "pointer" }}>
+                              {hubspotSyncing ? "◌ Syncing…" : (mapped ? "Sync Now" : "Map & Sync")}
+                            </button>
+                            <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, lineHeight:1.6 }}>
+                              {hsActivityCount > 0 ? (
+                                <>
+                                  {hsPropCount} propert{hsPropCount!==1?"ies":"y"} · {byType("email")} email{byType("email")!==1?"s":""} · {byType("meeting")} meeting{byType("meeting")!==1?"s":""} · {byType("hs_call")} call{byType("hs_call")!==1?"s":""} · {byType("note")} note{byType("note")!==1?"s":""}
+                                </>
+                              ) : mapped ? "Click Sync Now to pull activity" : "Click Map & Sync to choose the HubSpot company"}
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                     {!hsConnected && (
                       <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const }}>
                         Create a Private App in HubSpot → Settings → Integrations → Private Apps. Grant scopes: <code>crm.objects.companies.read</code>, <code>crm.objects.emails.read</code>.
@@ -20566,23 +23116,76 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", marginBottom:10 }} />
                     {slackConnected && (() => {
                       const channelConfigured = !!cd.co_slack_channel;
+                      const slackChannels: any[] = (window as any).__slackChannelsIntegrations || [];
+                      const channelLoading = (window as any).__slackChLoadingIntegrations || false;
+                      const channelError = (window as any).__slackChErrorIntegrations || "";
+                      const loadSlackChannels = async () => {
+                        (window as any).__slackChLoadingIntegrations = true;
+                        (window as any).__slackChErrorIntegrations = "";
+                        setCompanyData(p=>({...p})); // force re-render
+                        try {
+                          const chs = await fetchSlackChannels();
+                          if (chs.length === 1 && (chs[0] as any).id === "__error__") {
+                            (window as any).__slackChErrorIntegrations = (chs[0] as any).error || "Channel fetch failed";
+                            (window as any).__slackChannelsIntegrations = [];
+                          } else {
+                            (window as any).__slackChannelsIntegrations = chs;
+                          }
+                        } catch (e:any) {
+                          (window as any).__slackChErrorIntegrations = e?.message || "Channel fetch failed";
+                        }
+                        (window as any).__slackChLoadingIntegrations = false;
+                        setCompanyData(p=>({...p}));
+                      };
                       return (
-                        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
-                          <button onClick={syncSlackForIntegrations} disabled={slackSyncing || !channelConfigured}
-                            title={channelConfigured ? "Fetch new Slack messages since last sync" : "Configure a channel in Client Intel → Slack Integration first"}
-                            style={{ padding:"7px 14px", borderRadius:7, border:"none",
-                              background: (slackSyncing || !channelConfigured) ? _C.muted : "#4a154b", color:"#fff",
-                              fontSize:11, fontFamily:head, fontWeight:700,
-                              cursor: slackSyncing ? "wait" : (channelConfigured ? "pointer" : "not-allowed"),
-                              opacity: (!channelConfigured && !slackSyncing) ? 0.6 : 1 }}>
-                            {slackSyncing ? "◌ Syncing…" : "Sync Now"}
-                          </button>
-                          <div style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
-                            {!channelConfigured
-                              ? "Channel not configured — set one in Client Intel"
-                              : cd.co_slack_last_sync
-                                ? `Last sync: ${new Date(cd.co_slack_last_sync).toLocaleString()} · ${slackMsgCount} message${slackMsgCount!==1?"s":""} imported`
-                                : `Never synced for this workspace${slackMsgCount > 0 ? ` · ${slackMsgCount} existing messages` : ""}`}
+                        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                          {/* Channel picker — only needs to be set once per workspace */}
+                          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const, padding:"8px 10px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                            <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:700, letterSpacing:.3, textTransform:"uppercase" as const }}>Channel</div>
+                            {slackChannels.length === 0 ? (
+                              <>
+                                {channelConfigured && <div style={{ fontSize:11, fontFamily:mono, color:_C.textSoft }}>#{cd.co_slack_channel_name || cd.co_slack_channel}</div>}
+                                <button onClick={loadSlackChannels} disabled={channelLoading}
+                                  style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor:channelLoading?"wait":"pointer" }}>
+                                  {channelLoading ? "Loading…" : channelConfigured ? "Change channel" : "Load channels"}
+                                </button>
+                              </>
+                            ) : (
+                              <select value={cd.co_slack_channel || ""} onChange={e=>{
+                                const id = e.target.value;
+                                const ch = slackChannels.find((c:any) => c.id === id);
+                                setCompanyData((prev:any) => ({ ...prev, co_slack_channel: id, co_slack_channel_name: ch?.name || "" }));
+                              }}
+                                style={{ flex:1, padding:"6px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:11, fontFamily:mono, outline:"none" }}>
+                                <option value="">Select channel…</option>
+                                {slackChannels.map((c:any) => (
+                                  <option key={c.id} value={c.id}>#{c.name}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                          {channelError && (
+                            <div style={{ fontSize:10, color:_C.red || "#FF6B6B", fontFamily:body, lineHeight:1.4 }}>
+                              {channelError}{channelError.includes("not_in_channel") ? " — invite the bot with /invite @CX-Tool-Sync in Slack." : ""}
+                            </div>
+                          )}
+                          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                            <button onClick={syncSlackForIntegrations} disabled={slackSyncing || !channelConfigured}
+                              title={channelConfigured ? "Fetch new Slack messages since last sync" : "Pick a channel above first"}
+                              style={{ padding:"7px 14px", borderRadius:7, border:"none",
+                                background: (slackSyncing || !channelConfigured) ? _C.muted : "#4a154b", color:"#fff",
+                                fontSize:11, fontFamily:head, fontWeight:700,
+                                cursor: slackSyncing ? "wait" : (channelConfigured ? "pointer" : "not-allowed"),
+                                opacity: (!channelConfigured && !slackSyncing) ? 0.6 : 1 }}>
+                              {slackSyncing ? "◌ Syncing…" : "Sync Now"}
+                            </button>
+                            <div style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
+                              {!channelConfigured
+                                ? "Pick a channel to enable sync"
+                                : cd.co_slack_last_sync
+                                  ? `Last sync: ${new Date(cd.co_slack_last_sync).toLocaleString()} · ${slackMsgCount} message${slackMsgCount!==1?"s":""} imported`
+                                  : `Never synced for this workspace${slackMsgCount > 0 ? ` · ${slackMsgCount} existing messages` : ""}`}
+                            </div>
                           </div>
                         </div>
                       );
@@ -20998,11 +23601,22 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
               const _C = C2;
               const cd = companyData as any;
               const [callTab, setCallTab] = [(window as any).__callTab || "records", (v:string)=>{(window as any).__callTab=v; setCallRecords(p=>p?[...p]:[]);}];
-              const [scoring, setScoring] = [(window as any).__callScoring || false, (v:boolean)=>{(window as any).__callScoring=v; setCallRecords(p=>p?[...p]:[]);}];
+              // Queue of in-flight scoring jobs — supports running multiple in parallel so the user can submit
+              // calls back-to-back without waiting for the previous one to finish.
+              const callScoringJobs: Array<{id:string; clientName:string; callType:string; startedAt:number}> =
+                (window as any).__callScoringJobs || [];
+              const pushJob = (job: any) => {
+                (window as any).__callScoringJobs = [...callScoringJobs, job];
+                setCallRecords(p => p ? [...p] : []);
+              };
+              const popJob = (jobId: string) => {
+                (window as any).__callScoringJobs = ((window as any).__callScoringJobs || []).filter((j:any) => j.id !== jobId);
+                setCallRecords(p => p ? [...p] : []);
+              };
 
               const scoreCall = async (transcript: string, callType: string, clientName: string, csmName: string, callDate: string) => {
-                setScoring(true);
-                addToast({ title:"Scoring call...", status:"loading", message:"AI analyzing transcript" });
+                const jobId = uid();
+                pushJob({ id: jobId, clientName: clientName || (cd.co_name||"") || "Untitled call", callType, startedAt: Date.now() });
                 let scoreRaw = "";
                 try {
                   scoreRaw = await callAI(
@@ -21141,15 +23755,12 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                     transcript, result, syncRecs, scoredAt: new Date().toISOString(),
                   };
                   setCallRecords(p => [record, ...(p||[])]);
-                  setScoring(false);
-                  const flagCount = (syncRecs?.riskFlags?.length||0) + (syncRecs?.conflicts?.length||0);
-                  addToast({ title:`Score: ${result.overallScore}/100 — ${result.grade}`, status:"success",
-                    message: flagCount > 0 ? `${flagCount} items need attention — expand the call to review` : result.summary?.slice(0,80) });
+                  popJob(jobId);
                   return record;
                 } catch (e:any) {
                   console.error("[ScoreCall] failed:", e, "\nRaw response:", scoreRaw);
-                  setScoring(false);
-                  addToast({ title:"Scoring failed", status:"error", message: (e?.message || "Check console for details").slice(0, 120) });
+                  popJob(jobId);
+                  addToast({ title:"Scoring failed", status:"error", message: `${clientName || "Call"}: ${(e?.message || "Check console").slice(0, 120)}` });
                   return null;
                 }
               };
@@ -21372,10 +23983,19 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                     }
                     const _cleanSlack = (s:string) => s.replace(/\[(?:CX|CLIENT):.*?\]\s*/g,"").replace(/\[.*?\]\s*/g,"").replace(/<@[A-Z0-9]+>/g,"@mention").replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/g,"$2").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/:\w+:/g,"").replace(/\*([^*]+)\*/g,"$1").trim();
                     for (const c of comms) {
-                      // Extract unique names from messages
-                      const nameMatches = (c.content||"").match(/\[(?:(?:CX|CLIENT):)?([^\]]+)\]/g) || [];
-                      const names = [...new Set(nameMatches.map((n:string) => n.replace(/\[(?:(?:CX|CLIENT):)?/, "").replace("]","")).filter((n:string) => !/^U[A-Z0-9]{8,}$/.test(n)))];
                       const channelName = c.channel && !c.channel.startsWith("#C") ? c.channel : c.type === "email" ? (c.subject || "Email") : "Slack";
+                      // Build subtitle per type — don't use Slack-bracket-name parsing on emails (the regex eats URLs).
+                      let subtitle = "";
+                      if (c.type === "email") {
+                        // Emails: subject is already the title and From/To show in the expanded view — no subtitle needed.
+                        subtitle = "";
+                      } else if (c.type === "slack") {
+                        // Slack: parse [name] bracket tags for unique speakers
+                        const nameMatches = (c.content||"").match(/\[(?:(?:CX|CLIENT):)?([^\]]+)\]/g) || [];
+                        const names = [...new Set(nameMatches.map((n:string) => n.replace(/\[(?:(?:CX|CLIENT):)?/, "").replace("]","")).filter((n:string) => !/^U[A-Z0-9]{8,}$/.test(n)))];
+                        const msgCount = c.messageCount || 0;
+                        subtitle = `${msgCount} message${msgCount!==1?"s":""}${names.length ? ` · ${names.slice(0,3).join(", ")}` : ""}`;
+                      }
                       const firstLine = _cleanSlack((c.content||"").split("\n").find((l:string)=>l.trim())||"");
                       items.push({
                         id: c.id, date: c.date || "",
@@ -21383,7 +24003,7 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                         type: c.type, icon: c.type === "slack" ? "💬" : "✉",
                         color: c.type === "slack" ? "#6C5CE7" : _C.blue,
                         title: channelName,
-                        subtitle: `${c.messageCount || 0} messages${names.length ? ` · ${names.slice(0,3).join(", ")}` : ""}`,
+                        subtitle,
                         preview: firstLine.slice(0, 150),
                       });
                     }
@@ -21436,10 +24056,10 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                       return groups.map((g, gi) => (
                         <div key={gi} style={{ marginBottom:6 }}>
                           {g.user && <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:uc[g.user]||_C.muted, marginBottom:2 }}>{g.user}</div>}
-                          {g.msgs.map((msg, mi) => (
-                            <div key={mi} style={{ padding:"4px 10px", borderRadius:6, borderLeft:`2px solid ${(uc[g.user]||_C.muted)}20`, background:_C.faint, marginBottom:1,
-                              fontSize:12, fontFamily:body, color:_C.text, lineHeight:1.6 }}>{msg}</div>
-                          ))}
+                          <div style={{ padding:"6px 10px", borderRadius:6, borderLeft:`2px solid ${(uc[g.user]||_C.muted)}20`, background:_C.faint,
+                            fontSize:12, fontFamily:body, color:_C.text, lineHeight:1.6, whiteSpace:"pre-wrap" as const, wordBreak:"break-word" as const }}>
+                            {g.msgs.join("\n")}
+                          </div>
                         </div>
                       ));
                     };
@@ -21510,7 +24130,7 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                                         {item.score}/100
                                       </span>
                                     )}
-                                    <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{item.date}</span>
+                                    <span style={{ fontSize:10, fontFamily:body, color:_C.muted, whiteSpace:"nowrap" as const }}>{(()=>{ try { const d = new Date(item.date); if (isNaN(d.getTime())) return item.date; return d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}); } catch { return item.date; } })()}</span>
                                     <span style={{ fontSize:10, color:_C.muted, transition:"transform .2s", transform:open?"rotate(180deg)":"rotate(0)" }}>▾</span>
                                   </div>
                                 </div>
@@ -21518,9 +24138,48 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                                 {open && (
                                   <div style={{ padding:"0 14px 12px", borderTop:`1px solid ${_C.border}`, borderLeft:`3px solid ${item.color}` }}>
                                     {/* Slack/Email messages */}
-                                    {rawComm && (
-                                      <div style={{ paddingTop:10 }}>{renderMessages(rawComm.content)}</div>
-                                    )}
+                                    {rawComm && (() => {
+                                      // Emails: render metadata header + single preformatted body (preserve line breaks as ONE message).
+                                      // Slack: each line is its own [user] text message → keep grouped per-speaker layout.
+                                      if (rawComm.type === "email") {
+                                        const raw = rawComm.content || "";
+                                        const firstBreak = raw.indexOf("\n");
+                                        const headerLine = firstBreak > 0 ? raw.slice(0, firstBreak) : raw;
+                                        const bodyText = firstBreak > 0 ? raw.slice(firstBreak + 1).trim() : "";
+                                        // Parse pipe-delimited header into labeled fields. Strip any [DIRECTION] prefix first.
+                                        const cleanHeader = headerLine.replace(/^\[[^\]]+\]\s*/, "");
+                                        const parts = cleanHeader.split("|").map((p:string) => p.trim()).filter(Boolean);
+                                        const parsedFields: { label: string; value: string }[] = [];
+                                        for (const p of parts) {
+                                          const m = p.match(/^([A-Za-z][A-Za-z\s]*?):\s*(.+)$/);
+                                          if (m) parsedFields.push({ label: m[1].trim(), value: m[2].trim() });
+                                        }
+                                        return (
+                                          <div style={{ paddingTop:10 }}>
+                                            {parsedFields.length > 0 && (
+                                              <div style={{ padding:"10px 14px", borderRadius:8, background:`${item.color}08`, border:`1px solid ${item.color}20`, marginBottom:8, display:"flex", flexDirection:"column" as const, gap:4 }}>
+                                                {parsedFields.map((f, fi) => (
+                                                  <div key={fi} style={{ display:"flex", alignItems:"baseline", gap:10 }}>
+                                                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.3, textTransform:"uppercase" as const, minWidth:62, flexShrink:0 }}>{f.label}</div>
+                                                    <div style={{ fontSize:12, fontFamily:body, color:_C.text, wordBreak:"break-word" as const, lineHeight:1.5, flex:1, minWidth:0 }}>{f.value}</div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                            {bodyText && (
+                                              <div style={{ padding:"10px 14px", borderRadius:8, background:_C.faint,
+                                                fontSize:12, fontFamily:body, color:_C.text, lineHeight:1.65,
+                                                whiteSpace:"pre-wrap" as const, wordBreak:"break-word" as const,
+                                                maxHeight:500, overflowY:"auto" as const }}>
+                                                {bodyText}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      }
+                                      // Slack — keep the per-speaker grouped layout
+                                      return <div style={{ paddingTop:10 }}>{renderMessages(rawComm.content)}</div>;
+                                    })()}
                                     {/* Call transcript + summary */}
                                     {rawCall && (
                                       <div style={{ paddingTop:10 }}>
@@ -21735,19 +24394,26 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
 
                         const hubspotConnected = !!getHubspotToken();
                         const hubspotSyncing = (window as any).__hubspotSyncing || false;
-                        const syncHubspot = async () => {
-                          if (!hubspotConnected) { addToast({ title:"Add HubSpot token first", status:"error", message:"Profile menu → API Keys → HubSpot Private App Token" }); return; }
-                          const domain = (cd.co_website || "").trim();
-                          if (!domain) { addToast({ title:"Set company website first", status:"error", message:"Need co_website to match a HubSpot company" }); return; }
+                        const hubspotMapping = (window as any).__hubspotMapping || { open: false, autoMatch: null, candidates: [], query: "", idInput: "", searching: false, confirmError: "" };
+                        const setHubspotMapping = (patch: any) => {
+                          (window as any).__hubspotMapping = { ...hubspotMapping, ...patch };
+                          setCallRecords(p=>p?[...p]:[]);
+                        };
+                        // Extract the actual sync work (fetch + merge) so it can be invoked after the user confirms mapping.
+                        const runHubspotActivitySync = async (companyId: string, companyName: string) => {
                           (window as any).__hubspotSyncing = true; setCallRecords(p=>p?[...p]:[]);
-                          const toastId = addToast({ title:"Syncing HubSpot...", status:"loading", message:`Looking up ${domain}` });
+                          const toastId = addToast({ title:"Syncing HubSpot...", status:"loading", message:`Fetching activity for ${companyName}` });
                           try {
-                            const company = await hubspotFindCompanyByDomain(domain);
-                            if (!company?.id) throw new Error(`No HubSpot company matches domain "${domain}"`);
-                            updateToast(toastId, { message:"Fetching all company properties..." });
-                            const full = await hubspotGetCompanyFull(company.id);
-                            updateToast(toastId, { message:"Fetching email history..." });
-                            const emails = await hubspotGetCompanyEmails(company.id);
+                            const full = await hubspotGetCompanyFull(companyId);
+                            updateToast(toastId, { message:"Fetching activity (emails, meetings, calls, notes)..." });
+                            const company = { id: companyId, properties: { name: companyName } } as any;
+                            // Fetch all four activity types in parallel to keep sync fast.
+                            const [emails, meetings, calls, notes] = await Promise.all([
+                              hubspotGetCompanyEmails(company.id),
+                              hubspotGetCompanyMeetings(company.id),
+                              hubspotGetCompanyCalls(company.id),
+                              hubspotGetCompanyNotes(company.id),
+                            ]);
                             // Merge select HubSpot properties into companyData (don't overwrite filled fields)
                             const hsProps = full?.properties || {};
                             const fieldMap: Record<string,string> = {
@@ -21763,8 +24429,10 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                               merged._hubspotCompanyId = company.id;
                               return merged;
                             });
-                            // Import emails into slackComms
+                            // Existing HubSpot-sourced comm ids — used to dedupe across all engagement types.
                             const existingHsIds = new Set((slackComms||[]).filter((c:any) => c.source === "hubspot").map((c:any) => c.hsId));
+                            const dateOf = (p:any) => (p?.hs_timestamp || p?.hs_createdate || p?.hs_meeting_start_time || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+                            // Emails
                             const newEmails = emails
                               .filter((e:any) => e.id && !existingHsIds.has(e.id))
                               .map((e:any) => {
@@ -21772,29 +24440,241 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                                 const dir = p.hs_email_direction || "UNKNOWN";
                                 const body = p.hs_email_text || (p.hs_email_html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
                                 return {
-                                  id: `hs_${e.id}`,
-                                  hsId: e.id,
-                                  type: "email",
-                                  source: "hubspot",
-                                  date: (p.hs_timestamp || p.hs_createdate || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+                                  id: `hs_${e.id}`, hsId: e.id, type: "email", source: "hubspot",
+                                  date: dateOf(p),
                                   subject: p.hs_email_subject || "",
                                   participants: [p.hs_email_from_email, p.hs_email_to_email].filter(Boolean).join(" → "),
                                   direction: dir,
                                   content: `[${dir}] From: ${p.hs_email_from_email||"?"} | To: ${p.hs_email_to_email||"?"} | Subject: ${p.hs_email_subject||""}\n\n${body}`.trim(),
                                 };
                               });
-                            if (newEmails.length) setSlackComms((prev:any) => [...newEmails, ...(prev||[])]);
+                            // Meetings
+                            const newMeetings = meetings
+                              .filter((m:any) => m.id && !existingHsIds.has(m.id))
+                              .map((m:any) => {
+                                const p = m.properties || {};
+                                const start = p.hs_meeting_start_time ? new Date(p.hs_meeting_start_time).toLocaleString() : "";
+                                const body = (p.hs_meeting_body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+                                return {
+                                  id: `hs_${m.id}`, hsId: m.id, type: "meeting", source: "hubspot",
+                                  date: dateOf(p),
+                                  subject: p.hs_meeting_title || "Meeting",
+                                  participants: "",
+                                  outcome: p.hs_meeting_outcome || "",
+                                  content: [
+                                    p.hs_meeting_title ? `Meeting: ${p.hs_meeting_title}` : "Meeting",
+                                    start ? `When: ${start}` : "",
+                                    p.hs_meeting_location ? `Where: ${p.hs_meeting_location}` : "",
+                                    p.hs_meeting_outcome ? `Outcome: ${p.hs_meeting_outcome}` : "",
+                                    body ? `\n${body}` : "",
+                                  ].filter(Boolean).join("\n"),
+                                };
+                              });
+                            // Calls (HubSpot's logged engagement type, separate from our scored calls)
+                            const newCalls = calls
+                              .filter((c:any) => c.id && !existingHsIds.has(c.id))
+                              .map((c:any) => {
+                                const p = c.properties || {};
+                                const body = (p.hs_call_body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+                                const dir = p.hs_call_direction || "UNKNOWN";
+                                return {
+                                  id: `hs_${c.id}`, hsId: c.id, type: "hs_call", source: "hubspot",
+                                  date: dateOf(p),
+                                  subject: p.hs_call_title || `Call (${dir})`,
+                                  participants: [p.hs_call_from_number, p.hs_call_to_number].filter(Boolean).join(" → "),
+                                  direction: dir,
+                                  outcome: p.hs_call_disposition || "",
+                                  content: [
+                                    p.hs_call_title ? `Call: ${p.hs_call_title}` : `Call (${dir})`,
+                                    p.hs_call_duration ? `Duration: ${Math.round(Number(p.hs_call_duration)/1000)}s` : "",
+                                    p.hs_call_disposition ? `Outcome: ${p.hs_call_disposition}` : "",
+                                    p.hs_call_status ? `Status: ${p.hs_call_status}` : "",
+                                    body ? `\n${body}` : "",
+                                  ].filter(Boolean).join("\n"),
+                                };
+                              });
+                            // Notes
+                            const newNotes = notes
+                              .filter((n:any) => n.id && !existingHsIds.has(n.id))
+                              .map((n:any) => {
+                                const p = n.properties || {};
+                                const body = (p.hs_note_body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+                                return {
+                                  id: `hs_${n.id}`, hsId: n.id, type: "note", source: "hubspot",
+                                  date: dateOf(p),
+                                  subject: body.slice(0, 80) || "Note",
+                                  content: body,
+                                };
+                              });
+                            const newItems = [...newEmails, ...newMeetings, ...newCalls, ...newNotes];
+                            if (newItems.length) setSlackComms((prev:any) => [...newItems, ...(prev||[])]);
                             (window as any).__hubspotSyncing = false; setCallRecords(p=>p?[...p]:[]);
-                            updateToast(toastId, { status:"success", title:`HubSpot synced`, message:`${Object.keys(hsProps).length} properties, ${newEmails.length} new emails` });
+                            const parts: string[] = [];
+                            if (newEmails.length) parts.push(`${newEmails.length} email${newEmails.length!==1?"s":""}`);
+                            if (newMeetings.length) parts.push(`${newMeetings.length} meeting${newMeetings.length!==1?"s":""}`);
+                            if (newCalls.length) parts.push(`${newCalls.length} call${newCalls.length!==1?"s":""}`);
+                            if (newNotes.length) parts.push(`${newNotes.length} note${newNotes.length!==1?"s":""}`);
+                            updateToast(toastId, { status:"success", title:"HubSpot synced", message: parts.length ? parts.join(" · ") : "Already in sync — no new activity" });
                           } catch (err:any) {
                             console.error("[HubSpot] sync failed:", err);
                             (window as any).__hubspotSyncing = false; setCallRecords(p=>p?[...p]:[]);
                             updateToast(toastId, { status:"error", title:"HubSpot sync failed", message:(err?.message || "Check console").slice(0, 120) });
                           }
                         };
+                        // syncHubspot = entry point for the button. If the workspace has a confirmed HubSpot mapping
+                        // (_hubspotCompanyConfirmed flag set after user approved once), skip straight to activity sync.
+                        // Otherwise open the mapping modal so the user can verify the auto-match or pick a different
+                        // company by name / explicit id. Auto-match is only a suggestion — nothing runs without consent.
+                        const syncHubspot = async () => {
+                          if (!hubspotConnected) { addToast({ title:"Add HubSpot token first", status:"error", message:"Profile menu → API Keys → HubSpot Private App Token" }); return; }
+                          if (cd._hubspotCompanyConfirmed && cd._hubspotCompanyId) {
+                            // Fast path — already mapped and confirmed. Just pull latest activity.
+                            await runHubspotActivitySync(cd._hubspotCompanyId, cd._hubspotCompanyName || cd.co_name || "company");
+                            return;
+                          }
+                          // First-time (or re-confirmation) flow — open the mapping modal.
+                          const domain = (cd.co_website || "").trim();
+                          setHubspotMapping({ open: true, autoMatch: null, candidates: [], query: cd.co_name || "", idInput: "", searching: !!domain, confirmError: "" });
+                          if (domain) {
+                            try {
+                              const match = await hubspotFindCompanyByDomain(domain);
+                              setHubspotMapping({ autoMatch: match, searching: false });
+                            } catch (e:any) {
+                              setHubspotMapping({ autoMatch: null, searching: false, confirmError: e?.message || "Domain lookup failed" });
+                            }
+                          }
+                        };
+                        const searchHubspotCompanies = async () => {
+                          const q = ((window as any).__hubspotMapping?.query || "").trim();
+                          if (!q) return;
+                          setHubspotMapping({ searching: true });
+                          try {
+                            const results = await hubspotSearchCompaniesByName(q);
+                            setHubspotMapping({ candidates: results, searching: false });
+                          } catch (e:any) {
+                            setHubspotMapping({ candidates: [], searching: false, confirmError: e?.message || "Search failed" });
+                          }
+                        };
+                        const confirmHubspotMapping = async (companyId: string, companyName: string) => {
+                          if (!companyId) { setHubspotMapping({ confirmError: "Pick a company or enter a HubSpot company ID." }); return; }
+                          // Persist the confirmed mapping so subsequent syncs skip the modal.
+                          setCompanyData((prev:any) => ({ ...prev, _hubspotCompanyId: companyId, _hubspotCompanyName: companyName || prev._hubspotCompanyName || "", _hubspotCompanyConfirmed: true }));
+                          setHubspotMapping({ open: false, autoMatch: null, candidates: [], query: "", idInput: "", searching: false, confirmError: "" });
+                          await runHubspotActivitySync(companyId, companyName || cd.co_name || "company");
+                        };
+                        const confirmHubspotByIdInput = async () => {
+                          const id = ((window as any).__hubspotMapping?.idInput || "").trim();
+                          if (!id) { setHubspotMapping({ confirmError: "Enter a HubSpot company ID." }); return; }
+                          setHubspotMapping({ searching: true, confirmError: "" });
+                          try {
+                            const c = await hubspotGetCompanyById(id);
+                            if (!c?.id) throw new Error(`No HubSpot company found with id "${id}"`);
+                            await confirmHubspotMapping(c.id, c.properties?.name || c.id);
+                          } catch (e:any) {
+                            setHubspotMapping({ searching: false, confirmError: e?.message || "Lookup failed" });
+                          }
+                        };
+                        const unmapHubspot = () => {
+                          setCompanyData((prev:any) => ({ ...prev, _hubspotCompanyId: "", _hubspotCompanyName: "", _hubspotCompanyConfirmed: false }));
+                          addToast({ title:"HubSpot mapping cleared", status:"info", message:"Next sync will prompt for a new mapping" });
+                        };
 
                         return (
                           <div style={{ position:"relative" }}>
+                            {/* HubSpot mapping confirmation modal */}
+                            {hubspotMapping.open && createPortal(
+                              <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483644,
+                                display:"flex", alignItems:"center", justifyContent:"center", padding:24, backdropFilter:"blur(8px)" }}>
+                                <div style={{ width:"100%", maxWidth:560, background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.25)", maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
+                                  <div style={{ padding:"16px 20px", borderBottom:`1px solid ${_C.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                                    <div>
+                                      <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Map to a HubSpot Company</div>
+                                      <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Confirm the company before we pull its emails, meetings, calls, and notes.</div>
+                                    </div>
+                                    <button onClick={()=>setHubspotMapping({ open: false })} style={{ width:26, height:26, border:"none", background:"transparent", color:_C.muted, fontSize:18, cursor:"pointer" }}>×</button>
+                                  </div>
+                                  <div style={{ padding:"16px 20px", overflowY:"auto", flex:1, display:"flex", flexDirection:"column", gap:14 }}>
+                                    {/* Auto-match panel */}
+                                    {hubspotMapping.autoMatch && (
+                                      <div style={{ padding:"12px 14px", borderRadius:10, background:`${_C.accent}0A`, border:`1px solid ${_C.accent}33` }}>
+                                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:6 }}>Domain Match Found</div>
+                                        <div style={{ fontSize:13, fontWeight:700, color:_C.text }}>{hubspotMapping.autoMatch.properties?.name || "(unnamed)"}</div>
+                                        <div style={{ fontSize:11, fontFamily:mono, color:_C.muted, marginTop:3 }}>
+                                          id {hubspotMapping.autoMatch.id}{hubspotMapping.autoMatch.properties?.domain ? ` · ${hubspotMapping.autoMatch.properties.domain}` : ""}
+                                        </div>
+                                        <button onClick={()=>confirmHubspotMapping(hubspotMapping.autoMatch.id, hubspotMapping.autoMatch.properties?.name || "")}
+                                          style={{ marginTop:10, padding:"6px 14px", borderRadius:7, border:"none", background:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                          ✓ Confirm and sync
+                                        </button>
+                                      </div>
+                                    )}
+                                    {hubspotMapping.searching && !hubspotMapping.autoMatch && (
+                                      <div style={{ fontSize:11, color:_C.muted, fontFamily:body }}>Looking up domain…</div>
+                                    )}
+                                    {/* Search by name */}
+                                    <div>
+                                      <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Search by company name</label>
+                                      <div style={{ display:"flex", gap:6 }}>
+                                        <input value={hubspotMapping.query} onChange={e=>setHubspotMapping({ query: e.target.value })}
+                                          onKeyDown={e=>{ if (e.key === "Enter") { e.preventDefault(); searchHubspotCompanies(); } }}
+                                          placeholder="e.g. Acme Corp"
+                                          style={{ flex:1, padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:body, outline:"none" }} />
+                                        <button onClick={searchHubspotCompanies} disabled={hubspotMapping.searching}
+                                          style={{ padding:"8px 14px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:hubspotMapping.searching?"wait":"pointer" }}>
+                                          {hubspotMapping.searching ? "…" : "Search"}
+                                        </button>
+                                      </div>
+                                      {hubspotMapping.candidates.length > 0 && (
+                                        <div style={{ marginTop:8, maxHeight:200, overflowY:"auto", border:`1px solid ${_C.border}`, borderRadius:7, background:_C.faint }}>
+                                          {hubspotMapping.candidates.map((c:any) => (
+                                            <button key={c.id} onClick={()=>confirmHubspotMapping(c.id, c.properties?.name || "")}
+                                              style={{ display:"block", width:"100%", textAlign:"left" as const, padding:"8px 12px", border:"none", borderBottom:`1px solid ${_C.border}`, background:"transparent", cursor:"pointer" }}
+                                              onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=`${_C.accent}0A`}
+                                              onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                                              <div style={{ fontSize:12, fontWeight:700, color:_C.text, fontFamily:body }}>{c.properties?.name || "(unnamed)"}</div>
+                                              <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginTop:2 }}>
+                                                id {c.id}{c.properties?.domain ? ` · ${c.properties.domain}` : ""}{c.properties?.industry ? ` · ${c.properties.industry}` : ""}{c.properties?.numberofemployees ? ` · ${c.properties.numberofemployees} emp` : ""}
+                                              </div>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    {/* Enter id directly */}
+                                    <div>
+                                      <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Or paste a HubSpot company ID</label>
+                                      <div style={{ display:"flex", gap:6 }}>
+                                        <input value={hubspotMapping.idInput} onChange={e=>setHubspotMapping({ idInput: e.target.value })}
+                                          onKeyDown={e=>{ if (e.key === "Enter") { e.preventDefault(); confirmHubspotByIdInput(); } }}
+                                          placeholder="e.g. 12345678901"
+                                          style={{ flex:1, padding:"8px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, fontSize:12, fontFamily:mono, outline:"none" }} />
+                                        <button onClick={confirmHubspotByIdInput} disabled={hubspotMapping.searching}
+                                          style={{ padding:"8px 14px", borderRadius:7, border:"none", background:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:hubspotMapping.searching?"wait":"pointer" }}>
+                                          Map &amp; sync
+                                        </button>
+                                      </div>
+                                      <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginTop:4 }}>Find the id in HubSpot URL: /companies/RECORD/<strong>12345678901</strong></div>
+                                    </div>
+                                    {hubspotMapping.confirmError && (
+                                      <div style={{ padding:"8px 12px", borderRadius:7, background:`${_C.red || "#FF6B6B"}10`, border:`1px solid ${(_C.red || "#FF6B6B")}33`, fontSize:11, color:(_C.red || "#FF6B6B"), fontFamily:body }}>
+                                        {hubspotMapping.confirmError}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>,
+                              document.body
+                            )}
+                            {/* Mapped indicator — shown when a confirmed mapping exists */}
+                            {cd._hubspotCompanyConfirmed && cd._hubspotCompanyId && (
+                              <div style={{ fontSize:9, fontFamily:mono, color:_C.muted, marginBottom:4 }}>
+                                HubSpot: <span style={{ color:_C.textSoft }}>{cd._hubspotCompanyName || cd._hubspotCompanyId}</span>
+                                <button onClick={unmapHubspot}
+                                  style={{ marginLeft:6, padding:"0 4px", border:"none", background:"transparent", color:_C.accent, fontSize:9, fontFamily:mono, cursor:"pointer", textDecoration:"underline" }}>
+                                  change
+                                </button>
+                              </div>
+                            )}
                             <div style={{ display:"flex", gap:6 }}>
                               {isConnected && (
                                 <button disabled={syncing} onClick={syncSlack}
@@ -21803,18 +24683,22 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                                   💬 {syncing ? "Syncing..." : "Sync Slack"}
                                 </button>
                               )}
-                              <button onClick={()=>{setWizardOpen(!wizardOpen); setOpenStep(0);}}
+                              {/* Slack config moved to Integrations page. Keep a compact status indicator that navigates there. */}
+                              <button onClick={()=>guardedNav(()=>setView("integrations"))}
+                                title="Slack config + sync is now managed on the Integrations page"
                                 style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${isConnected ? _C.green+"40" : _C.border}`,
                                   background:"transparent", color:isConnected ? _C.green : _C.muted,
                                   fontSize:10, fontFamily:mono, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
-                                {isConnected ? "●" : "○"} Slack
+                                {isConnected ? "●" : "○"} Slack ↗
                               </button>
-                              <button disabled={hubspotSyncing} onClick={syncHubspot}
+                              {/* HubSpot sync moved to Integrations page. Keep a small status-only indicator here. */}
+                              <button onClick={()=>guardedNav(()=>setView("integrations"))}
+                                title="HubSpot sync is now managed on the Integrations page"
                                 style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${hubspotConnected ? "#ff7a59"+"40" : _C.border}`,
-                                  background: hubspotSyncing ? _C.muted : (hubspotConnected ? "#ff7a5910" : "transparent"),
+                                  background: hubspotConnected ? "#ff7a5910" : "transparent",
                                   color: hubspotConnected ? "#ff7a59" : _C.muted,
-                                  fontSize:10, fontFamily:mono, cursor:hubspotSyncing?"default":"pointer", display:"flex", alignItems:"center", gap:4 }}>
-                                {hubspotConnected ? "●" : "○"} {hubspotSyncing ? "Syncing..." : "HubSpot"}
+                                  fontSize:10, fontFamily:mono, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
+                                {hubspotConnected ? "●" : "○"} HubSpot ↗
                               </button>
                               {cd._hubspotProps && Object.keys(cd._hubspotProps).length > 0 && (
                                 <button onClick={()=>{ (window as any).__showHsProps = !(window as any).__showHsProps; setCallRecords(p=>p?[...p]:[]); }}
@@ -22058,19 +24942,36 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                       </div>
                       <textarea id="ca-transcript" placeholder="Paste the call transcript here..." rows={6}
                         style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:13, fontFamily:body, resize:"vertical", outline:"none", lineHeight:1.6, marginBottom:12 }} />
-                      <button disabled={scoring} onClick={async ()=>{
-                        const transcript = (document.getElementById("ca-transcript") as HTMLTextAreaElement)?.value || "";
-                        if (!transcript.trim()) { addToast({ title:"Paste a transcript first", status:"error", message:"" }); return; }
-                        const callType = (document.getElementById("ca-type") as HTMLSelectElement)?.value || "onboarding";
-                        const clientName = (document.getElementById("ca-client") as HTMLInputElement)?.value || "";
-                        const csmName = (document.getElementById("ca-csm") as HTMLInputElement)?.value || "";
-                        const callDate = (document.getElementById("ca-date") as HTMLInputElement)?.value || "";
-                        await scoreCall(transcript, callType, clientName, csmName, callDate);
-                        (document.getElementById("ca-transcript") as HTMLTextAreaElement).value = "";
-                      }}
-                        style={{ padding:"10px 24px", borderRadius:8, border:"none", background: scoring ? _C.muted : _C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor: scoring ? "default" : "pointer" }}>
-                        {scoring ? "Scoring..." : "Score Call"}
-                      </button>
+                      <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+                        <button onClick={()=>{
+                          const transcript = (document.getElementById("ca-transcript") as HTMLTextAreaElement)?.value || "";
+                          if (!transcript.trim()) { addToast({ title:"Paste a transcript first", status:"error", message:"" }); return; }
+                          const callType = (document.getElementById("ca-type") as HTMLSelectElement)?.value || "onboarding";
+                          const clientName = (document.getElementById("ca-client") as HTMLInputElement)?.value || "";
+                          const csmName = (document.getElementById("ca-csm") as HTMLInputElement)?.value || "";
+                          const callDate = (document.getElementById("ca-date") as HTMLInputElement)?.value || "";
+                          // Fire-and-forget: do NOT await. The job pushes itself onto the scoring queue and
+                          // the form clears immediately so the user can paste and submit the next one.
+                          scoreCall(transcript, callType, clientName, csmName, callDate);
+                          (document.getElementById("ca-transcript") as HTMLTextAreaElement).value = "";
+                          (document.getElementById("ca-transcript") as HTMLTextAreaElement)?.focus();
+                        }}
+                          style={{ padding:"10px 24px", borderRadius:8, border:"none", background: _C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                          Score Call →
+                        </button>
+                        {callScoringJobs.length > 0 && (
+                          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", borderRadius:20, background:`${_C.accent}10`, border:`1px solid ${_C.accent}33` }}>
+                            <span style={{ width:8, height:8, borderRadius:"50%", background:_C.accent, animation:"qsPulse 1.2s ease-in-out infinite" }} />
+                            <span style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.3 }}>
+                              {callScoringJobs.length} SCORING
+                            </span>
+                            <span style={{ fontSize:10, fontFamily:body, color:_C.textSoft }}>
+                              {callScoringJobs.slice(-3).map((j:any) => j.clientName).join(", ")}
+                              {callScoringJobs.length > 3 ? ` +${callScoringJobs.length - 3} more` : ""}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </>)}
 
                     {addOpen && ((window as any).__commInputType) === "slack" && (<>
@@ -22218,7 +25119,7 @@ FORMAT:
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                                 <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{displayName}</span>
-                                <span style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{c.date}</span>
+                                <span style={{ fontSize:10, fontFamily:body, color:_C.muted }}>{(()=>{ try { const d = new Date(c.date); if (isNaN(d.getTime())) return c.date; return d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}); } catch { return c.date; } })()}</span>
                                 <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"2px 7px", borderRadius:4, background:`${_C.accent}10`, color:_C.accent }}>{msgCount} msg{msgCount!==1?"s":""}</span>
                               </div>
                               {!isExpanded && <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{firstMsg.replace(/^\[(CX|CLIENT):.*?\]\s*/, "").replace(/^\[.*?\]\s*/, "").replace(/<@[A-Z0-9]+>/g, "@mention").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/:([a-z_]+):/g, "")}</div>}
@@ -22635,7 +25536,7 @@ IMPORTANT:
                         );
                         if (!rawResponse) throw new Error("Empty response from AI");
                         if (rawResponse.startsWith("Error:")) throw new Error(rawResponse);
-                        const result = JSON.parse(rawResponse.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        const result = safeJsonParse(rawResponse);
                         const entry = { result, generatedAt: new Date().toISOString() };
                         (window as any)[saKey] = entry;
                         setAiAnalyses(prev => ({ ...prev, sentiment: entry }));
@@ -23115,7 +26016,7 @@ Analyze and return ONLY JSON:
                         );
                         if (!rawResponse) throw new Error("Empty response from AI");
                         if (rawResponse.startsWith("Error:")) throw new Error(rawResponse);
-                        const result = JSON.parse(rawResponse.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        const result = safeJsonParse(rawResponse);
                         const entry = { result, generatedAt: new Date().toISOString() };
                         (window as any)[paKey] = entry;
                         setAiAnalyses(prev => ({ ...prev, pitch: entry }));
@@ -23310,7 +26211,7 @@ Be brutally honest but constructive. Use specific quotes as evidence.` }
                         );
                         if (!rawResponse) throw new Error("Empty response from AI");
                         if (rawResponse.startsWith("Error:")) throw new Error(rawResponse);
-                        const result = JSON.parse(rawResponse.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        const result = safeJsonParse(rawResponse);
                         const entry = { result, generatedAt: new Date().toISOString() };
                         (window as any)[coKey] = entry;
                         setAiAnalyses(prev => ({ ...prev, coaching: entry }));
@@ -23554,7 +26455,7 @@ Be specific and evidence-based. Reference actual conversation moments.` }
                         );
                         if (!rawResponse) throw new Error("Empty response from AI");
                         if (rawResponse.startsWith("Error:")) throw new Error(rawResponse);
-                        const result = JSON.parse(rawResponse.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+                        const result = safeJsonParse(rawResponse);
                         const entry = { result, generatedAt: new Date().toISOString() };
                         (window as any)[ciKey] = entry;
                         setAiAnalyses(prev => ({ ...prev, intel: entry }));
@@ -23805,7 +26706,13 @@ Be specific and evidence-based. Reference actual conversation moments.` }
       {/* QuickStartModal rendered inline on welcome page — portal only when triggered from elsewhere */}
       {showQS && view !== "welcome" && <QuickStartModal onComplete={handleQSComplete} onClose={()=>{ setShowQS(false); }} addToast={addToast} updateToast={updateToast} existingFiles={wsFiles}
         onProgress={(step, results) => setQsProgress({ step, results })}
-        onBriefReady={(coFields, coConf, ctx, brief, phaseAResults) => { setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: phaseAResults || {} }); setQsProgress(null); }} />}
+        onBriefReady={(coFields, coConf, ctx, brief, phaseAResults) => {
+          setQsBrief({ coFields, coConf, context:ctx, brief, phaseAResults: phaseAResults || {} });
+          // Keep progress panel visible at "Review & Select" step so Phase B resumes in place instead of re-mounting.
+          const pa = phaseAResults || {};
+          const reviewCount = `${(brief?.products?.length||0) + (brief?.personas?.length||0)}`;
+          setQsProgress({ step: 3, results: { ...pa, review: reviewCount } });
+        }} />}
 
       {/* Research Brief Review */}
       {qsBrief && createPortal(
@@ -23865,13 +26772,13 @@ Be specific and evidence-based. Reference actual conversation moments.` }
                   try {
                     prodRaw = await callAI(productPrompt, "", attempt === 1 ? 6000 : 8000, { useFullContext: true });
                     const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
-                    return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())) };
+                    return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
                   } catch (err) {
                     console.error(`[QS] Product "${p.name}" parse failed (attempt ${attempt}/2):`, err, "\nRaw:", prodRaw);
-                    if (attempt === 2) return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
+                    if (attempt === 2) return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"", sourceUrl: p.sourceUrl || "" };
                   }
                 }
-                return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"" };
+                return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", problemsSolved:p.reasoning||"", sourceUrl: p.sourceUrl || "" };
               })),
               // Personas — all in parallel (brief provides dedup context)
               Promise.allSettled(allBriefPersonas.map(async (pe: any, idx: number) => {
@@ -24349,6 +27256,89 @@ Be specific and evidence-based. Reference actual conversation moments.` }
         document.body
       )}
 
+      {/* HubSpot Mapping modal — opens when user clicks "Sync Now" in Integrations but hasn't confirmed
+          which HubSpot company maps to this workspace. Rendered at AppMain root so it overlays the full app. */}
+      {hsMapOpen && createPortal(
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483644,
+          display:"flex", alignItems:"center", justifyContent:"center", padding:24, backdropFilter:"blur(8px)" }}>
+          <div style={{ width:"100%", maxWidth:560, background:C2.canvas, borderRadius:14, border:`1px solid ${C2.border}`, boxShadow:"0 32px 80px rgba(13,15,26,0.25)", maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
+            <div style={{ padding:"16px 20px", borderBottom:`1px solid ${C2.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text }}>Map to a HubSpot Company</div>
+                <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:2 }}>Confirm the company before we pull its emails, meetings, calls, and notes.</div>
+              </div>
+              <button onClick={()=>setHsMapOpen(false)} style={{ width:26, height:26, border:"none", background:"transparent", color:C2.muted, fontSize:18, cursor:"pointer" }}>×</button>
+            </div>
+            <div style={{ padding:"16px 20px", overflowY:"auto", flex:1, display:"flex", flexDirection:"column", gap:14 }}>
+              {hsMapAutoMatch && (
+                <div style={{ padding:"12px 14px", borderRadius:10, background:`${C2.accent}0A`, border:`1px solid ${C2.accent}33` }}>
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:6 }}>Domain Match Found</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:C2.text }}>{hsMapAutoMatch.properties?.name || "(unnamed)"}</div>
+                  <div style={{ fontSize:11, fontFamily:mono, color:C2.muted, marginTop:3 }}>
+                    id {hsMapAutoMatch.id}{hsMapAutoMatch.properties?.domain ? ` · ${hsMapAutoMatch.properties.domain}` : ""}
+                  </div>
+                  <button onClick={()=>confirmHsMapping(hsMapAutoMatch.id, hsMapAutoMatch.properties?.name || "")}
+                    style={{ marginTop:10, padding:"6px 14px", borderRadius:7, border:"none", background:C2.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                    ✓ Confirm and sync
+                  </button>
+                </div>
+              )}
+              {hsMapSearching && !hsMapAutoMatch && hsMapCandidates.length === 0 && (
+                <div style={{ fontSize:11, color:C2.muted, fontFamily:body }}>Looking up…</div>
+              )}
+              <div>
+                <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:C2.text, display:"block", marginBottom:4 }}>Search by company name</label>
+                <div style={{ display:"flex", gap:6 }}>
+                  <input value={hsMapQuery} onChange={e=>setHsMapQuery(e.target.value)}
+                    onKeyDown={e=>{ if (e.key === "Enter") { e.preventDefault(); searchHsCandidates(); } }}
+                    placeholder="e.g. Acme Corp"
+                    style={{ flex:1, padding:"8px 10px", borderRadius:7, border:`1px solid ${C2.border}`, background:C2.faint, fontSize:12, fontFamily:body, outline:"none" }} />
+                  <button onClick={searchHsCandidates} disabled={hsMapSearching}
+                    style={{ padding:"8px 14px", borderRadius:7, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:hsMapSearching?"wait":"pointer" }}>
+                    {hsMapSearching ? "…" : "Search"}
+                  </button>
+                </div>
+                {hsMapCandidates.length > 0 && (
+                  <div style={{ marginTop:8, maxHeight:200, overflowY:"auto", border:`1px solid ${C2.border}`, borderRadius:7, background:C2.faint }}>
+                    {hsMapCandidates.map((c:any) => (
+                      <button key={c.id} onClick={()=>confirmHsMapping(c.id, c.properties?.name || "")}
+                        style={{ display:"block", width:"100%", textAlign:"left" as const, padding:"8px 12px", border:"none", borderBottom:`1px solid ${C2.border}`, background:"transparent", cursor:"pointer" }}
+                        onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}0A`}
+                        onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C2.text, fontFamily:body }}>{c.properties?.name || "(unnamed)"}</div>
+                        <div style={{ fontSize:10, fontFamily:mono, color:C2.muted, marginTop:2 }}>
+                          id {c.id}{c.properties?.domain ? ` · ${c.properties.domain}` : ""}{c.properties?.industry ? ` · ${c.properties.industry}` : ""}{c.properties?.numberofemployees ? ` · ${c.properties.numberofemployees} emp` : ""}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:C2.text, display:"block", marginBottom:4 }}>Or paste a HubSpot company ID</label>
+                <div style={{ display:"flex", gap:6 }}>
+                  <input value={hsMapIdInput} onChange={e=>setHsMapIdInput(e.target.value)}
+                    onKeyDown={e=>{ if (e.key === "Enter") { e.preventDefault(); confirmHsById(); } }}
+                    placeholder="e.g. 12345678901"
+                    style={{ flex:1, padding:"8px 10px", borderRadius:7, border:`1px solid ${C2.border}`, background:C2.faint, fontSize:12, fontFamily:mono, outline:"none" }} />
+                  <button onClick={confirmHsById} disabled={hsMapSearching}
+                    style={{ padding:"8px 14px", borderRadius:7, border:"none", background:C2.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:hsMapSearching?"wait":"pointer" }}>
+                    Map &amp; sync
+                  </button>
+                </div>
+                <div style={{ fontSize:10, color:C2.muted, fontFamily:body, marginTop:4 }}>Find the id in HubSpot URL: /companies/RECORD/<strong>12345678901</strong></div>
+              </div>
+              {hsMapError && (
+                <div style={{ padding:"8px 12px", borderRadius:7, background:`${C2.red || "#FF6B6B"}10`, border:`1px solid ${(C2.red || "#FF6B6B")}33`, fontSize:11, color:(C2.red || "#FF6B6B"), fontFamily:body }}>
+                  {hsMapError}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Transcript → Cross-Platform Updates: Loading Overlay */}
       {wbProposals && wbProposals.loading && createPortal(
         <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,0.55)", zIndex:2147483647,
@@ -24533,6 +27523,7 @@ Be specific and evidence-based. Reference actual conversation moments.` }
                 for (let i = 0; i < selected.length; i++) {
                   const d = selected[i];
                   const fresh = newICP(icps.length + i, d.fields, d.name, d.confidence);
+                  if (Array.isArray(d.linkedProductIds) && d.linkedProductIds.length) fresh.linkedProductIds = d.linkedProductIds;
                   setIcps(p => [...p, fresh]);
                   if (i === 0) firstId = fresh.id;
                 }
@@ -24804,6 +27795,7 @@ Be specific and evidence-based. Reference actual conversation moments.` }
           roiConfig={roiConfig}
           wsFiles={wsFiles}
           wsLinks={wsLinks}
+          rtsLists={rtsLists}
           onRerunAnalysis={(k:string)=>{
             // Navigate user to Client Intel, set the right sub-tab, and signal that the analysis should auto-run
             const tabMap: Record<string,string> = { sentiment: "sentiment", pitch: "pitch", coaching: "coaching", intel: "intel" };
