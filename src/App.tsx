@@ -1759,8 +1759,16 @@ function buildFullContext(d: any): string {
     const entries = Object.entries(bebopContent).filter(([, v]) => typeof v === "string" && v.length > 100);
     if (entries.length > 0) {
       // Cap each playbook at 6000 chars so 3 playbooks = ~18000 chars total; enough signal without bloating.
-      const block = entries.map(([url, text]: [string, any]) => `── BEBOP PLAYBOOK (${url}) ──\n${String(text).slice(0, 6000)}`).join("\n\n");
-      push("BEBOP SALES PLAYBOOKS (what sales showed the prospect pre-onboarding)", block);
+      const playbookText = entries.map(([url, text]: [string, any]) => `── BEBOP PLAYBOOK (${url}) ──\n${String(text).slice(0, 6000)}`).join("\n\n");
+      const instructions = `These are the Bebop sales playbooks the sales team USED TO SELL this client. Treat them as authoritative context for what positioning, value props, pain points, objection handling, and CTAs the prospect was exposed to before becoming a CX client.
+
+HOW TO USE BEBOP PLAYBOOKS:
+- When filling or updating company/persona/product/offer fields → mirror the playbook's language and positioning so our data matches what sales promised.
+- When generating strategy, sequences, or campaign copy → reference the pains / proof points / angles the playbook used (the client's expectations were set there).
+- When analyzing sentiment or replies → interpret client reactions against what sales promised (gap between pitched and delivered is often the root cause of friction).
+- When recommending next steps → don't contradict what sales committed to without flagging the contradiction explicitly.
+- Never invent content that the playbooks don't support; if a playbook field conflicts with other workspace data, surface the conflict rather than silently reconciling.`;
+      push("BEBOP SALES PLAYBOOKS (authoritative — what sales pitched this client pre-onboarding)", `${instructions}\n\n${playbookText}`);
     }
   }
   return parts.join("\n");
@@ -6248,7 +6256,19 @@ Raw JSON only.`;
       const customers = companyData?.co_customers || "";
       const outcomes = Array.isArray(companyData?.co_outcomes) ? companyData.co_outcomes.join(", ") : (companyData?.co_outcomes || "");
       const channels = Array.isArray(companyData?.co_channels) ? companyData.co_channels.join(", ") : (companyData?.co_channels || "");
-      const enrichment = `\nKey Selling Points: ${ksp}\nValue Proposition: ${valProp}\nCurrent Customers: ${customers}\nDream Accounts: ${dreamAccts}\nOutreach Channels: ${channels}\nExpected Outcomes: ${outcomes}\nKeywords: ${data.keywords||""}\nGains: ${data.gains||""}\nDirect Buying Signals: ${data.buying_signals_direct||""}\nIndirect Buying Signals: ${data.buying_signals_indirect||""}\nFriction Points: ${data.friction_points||""}\nWhy Client Wins: ${data.why_client_wins||""}\nPersona Variants: ${data.sub_personas||""}\nProduct Decomposition: ${companyData?.co_prod_breakdown||""}\nCompetitors: ${companyData?.co_competitors||""}\nTrust Risks: ${companyData?.co_trust_risks||""}\n${refEmails ? `Reference Emails (match this style):\n${refEmails}` : ""}${fileContext ? `\n${fileContext}` : ""}`;
+      // Inline the Bebop sales playbook excerpts directly into enrichment so every step of generateAll
+      // (ICP summary, pain map, strategy brief, email/LinkedIn/voice sequences, reply handlers,
+      // execution recs) mirrors what the sales team originally pitched the client.
+      const bebopSnap = (companyData as any)?._bebopPlaybookContent || null;
+      const bebopBlock = bebopSnap && typeof bebopSnap === "object"
+        ? (() => {
+            const entries = Object.entries(bebopSnap).filter(([, v]) => typeof v === "string" && (v as string).length > 100);
+            if (!entries.length) return "";
+            const body = entries.map(([url, text]: [string, any]) => `-- Bebop playbook (${url}) --\n${String(text).slice(0, 3500)}`).join("\n\n");
+            return `\n\nBEBOP SALES PLAYBOOKS (authoritative — mirror this positioning, pain language, and CTAs since this is what the client was sold):\n${body}`;
+          })()
+        : "";
+      const enrichment = `\nKey Selling Points: ${ksp}\nValue Proposition: ${valProp}\nCurrent Customers: ${customers}\nDream Accounts: ${dreamAccts}\nOutreach Channels: ${channels}\nExpected Outcomes: ${outcomes}\nKeywords: ${data.keywords||""}\nGains: ${data.gains||""}\nDirect Buying Signals: ${data.buying_signals_direct||""}\nIndirect Buying Signals: ${data.buying_signals_indirect||""}\nFriction Points: ${data.friction_points||""}\nWhy Client Wins: ${data.why_client_wins||""}\nPersona Variants: ${data.sub_personas||""}\nProduct Decomposition: ${companyData?.co_prod_breakdown||""}\nCompetitors: ${companyData?.co_competitors||""}\nTrust Risks: ${companyData?.co_trust_risks||""}\n${refEmails ? `Reference Emails (match this style):\n${refEmails}` : ""}${fileContext ? `\n${fileContext}` : ""}${bebopBlock}`;
 
       // Step 1: ICP Summary — foundational targeting profile
       const s1 = await callAI(`Write an ICP Targeting Summary for a cold outreach team.\nData:${JSON.stringify(ctx)}${enrichment}\n\n**TARGET PROFILE**\nIndustries/Size/Revenue/Geo/Tech signals/Keywords...\n\n**PRIMARY BUYER**\nTitle + 1 sharp sentence about their world.\n\n**QUALIFY IN** (5 criteria — use keywords and tech signals)\n\n**DISQUALIFY IF** (4 signals)\n\n**DREAM ACCOUNTS** (if provided, list them and explain why they fit)\n\nSpecific and scannable.`,"",500);
