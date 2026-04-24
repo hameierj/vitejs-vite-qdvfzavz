@@ -1752,6 +1752,17 @@ function buildFullContext(d: any): string {
     const meaningful = Object.entries(hsProps).filter(([k, v]) => v != null && v !== "" && !k.startsWith("hs_") && !k.startsWith("notes_")).slice(0, 120);
     if (meaningful.length) push("HUBSPOT COMPANY DATA (READ-ONLY)", meaningful.map(([k, v]) => `${k}: ${String(v).slice(0, 200)}`).join("\n"));
   }
+  // Bebop sales playbooks — what the sales team pitched pre-onboarding. Helps AI understand
+  // what promises / positioning the client saw before they became a CX client.
+  const bebopContent = cd._bebopPlaybookContent;
+  if (bebopContent && typeof bebopContent === "object") {
+    const entries = Object.entries(bebopContent).filter(([, v]) => typeof v === "string" && v.length > 100);
+    if (entries.length > 0) {
+      // Cap each playbook at 6000 chars so 3 playbooks = ~18000 chars total; enough signal without bloating.
+      const block = entries.map(([url, text]: [string, any]) => `── BEBOP PLAYBOOK (${url}) ──\n${String(text).slice(0, 6000)}`).join("\n\n");
+      push("BEBOP SALES PLAYBOOKS (what sales showed the prospect pre-onboarding)", block);
+    }
+  }
   return parts.join("\n");
 }
 
@@ -23295,6 +23306,100 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                       </div>
                     )}
                   </div>
+
+                  {/* ═══════ SALES ENABLEMENT ═══════ */}
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginTop:24, marginBottom:8, textTransform:"uppercase" as const }}>
+                    Sales Enablement
+                  </div>
+
+                  {/* Bebop Playbooks — sales playbook URLs used with the client pre-onboarding.
+                      Fetched content feeds the AI so Copilot + analyses know what the sales team had. */}
+                  {(() => {
+                    const bebopUrls = (cd.co_bebop_playbook_urls || "").trim();
+                    const urlCount = bebopUrls ? bebopUrls.split(/[\n,]+/).map(u=>u.trim()).filter(Boolean).length : 0;
+                    const bebopSnapshot: any = (cd as any)._bebopPlaybookContent || null;
+                    const bebopChars = bebopSnapshot ? Object.values(bebopSnapshot).reduce((acc:number, v:any) => acc + (typeof v === "string" ? v.length : 0), 0) : 0;
+                    const bebopSyncing = (window as any).__bebopSyncing || false;
+                    const syncBebop = async () => {
+                      const urls = bebopUrls.split(/[\n,]+/).map(u => u.trim()).filter(Boolean).map(u => /^https?:\/\//i.test(u) ? u : `https://${u}`);
+                      if (urls.length === 0) { addToast({ title:"Paste at least one Bebop URL first", status:"error", message:"" }); return; }
+                      (window as any).__bebopSyncing = true; setCompanyData(p=>({...p}));
+                      const toastId = addToast({ title:"Fetching Bebop playbooks…", status:"loading", message:`${urls.length} URL${urls.length!==1?"s":""}` });
+                      try {
+                        const results = await Promise.allSettled(urls.slice(0, 10).map(async u => {
+                          const html = await fetchPageHTML(u);
+                          return { url: u, text: html ? htmlToText(html, 15000) : "", structure: html ? extractOfferingStructure(html) : "" };
+                        }));
+                        const snapshot: Record<string,string> = {};
+                        let fetched = 0;
+                        for (const r of results) {
+                          if (r.status === "fulfilled" && r.value.text.length > 200) {
+                            snapshot[r.value.url] = r.value.structure
+                              ? `${r.value.structure}\n\n${r.value.text}`
+                              : r.value.text;
+                            fetched++;
+                          }
+                        }
+                        if (fetched === 0) throw new Error("No Bebop URL returned usable content — check the URLs and try again");
+                        setCompanyData((prev:any) => ({
+                          ...prev,
+                          _bebopPlaybookContent: snapshot,
+                          _bebopPlaybookLastSync: new Date().toISOString(),
+                        }));
+                        (window as any).__bebopSyncing = false; setCompanyData(p=>({...p}));
+                        const totalChars = Object.values(snapshot).reduce((a,s) => a + s.length, 0);
+                        updateToast(toastId, { status:"success", title:"Bebop playbooks synced", message:`${fetched}/${urls.length} URL${urls.length!==1?"s":""} · ${Math.round(totalChars/1000)}k chars of sales context` });
+                      } catch (err:any) {
+                        console.error("[Bebop] sync failed:", err);
+                        (window as any).__bebopSyncing = false; setCompanyData(p=>({...p}));
+                        updateToast(toastId, { status:"error", title:"Bebop sync failed", message:(err?.message || "Check console").slice(0, 120) });
+                      }
+                    };
+                    return (
+                      <div style={{ background:_C.canvas, border:`1px solid ${urlCount > 0 ? "#FF8C4222" : _C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                            <div style={{ width:8, height:8, borderRadius:4, background: urlCount > 0 ? "#FF8C42" : _C.muted }} />
+                            <div>
+                              <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Bebop Sales Playbooks</div>
+                              <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
+                                Paste the Bebop playbook URLs the sales team used with this client. We'll pull the content so Copilot + analyses know what was pitched pre-onboarding.
+                              </div>
+                            </div>
+                          </div>
+                          <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5,
+                            background: urlCount > 0 ? "#FF8C4218" : _C.faint, color: urlCount > 0 ? "#FF8C42" : _C.muted }}>
+                            {urlCount > 0 ? `${urlCount} URL${urlCount!==1?"s":""}` : "NONE ADDED"}
+                          </span>
+                        </div>
+                        <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Playbook URLs (one per line)</div>
+                        <textarea
+                          value={cd.co_bebop_playbook_urls || ""}
+                          onChange={e=>setCompanyData((prev:any)=>({ ...prev, co_bebop_playbook_urls: e.target.value }))}
+                          placeholder={"https://bebop.ai/sales/06b87a56-watermitigation\nhttps://bebop.ai/sales/another-playbook"}
+                          rows={3}
+                          style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", resize:"vertical" as const, marginBottom:10 }} />
+                        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                          <button onClick={syncBebop} disabled={bebopSyncing || urlCount === 0}
+                            style={{ padding:"7px 14px", borderRadius:7, border:"none",
+                              background: (bebopSyncing || urlCount === 0) ? _C.muted : "#FF8C42", color:"#fff",
+                              fontSize:11, fontFamily:head, fontWeight:700,
+                              cursor: bebopSyncing ? "wait" : (urlCount === 0 ? "not-allowed" : "pointer"),
+                              opacity: (urlCount === 0 && !bebopSyncing) ? 0.6 : 1 }}>
+                            {bebopSyncing ? "◌ Fetching…" : "Fetch Playbooks"}
+                          </button>
+                          <div style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
+                            {bebopSnapshot && (cd as any)._bebopPlaybookLastSync
+                              ? `Last sync: ${new Date((cd as any)._bebopPlaybookLastSync).toLocaleString()} · ${Object.keys(bebopSnapshot).length} playbook${Object.keys(bebopSnapshot).length!==1?"s":""} · ${Math.round(bebopChars/1000)}k chars cached`
+                              : urlCount === 0 ? "Paste URLs above, then fetch" : "Never fetched — click Fetch Playbooks"}
+                          </div>
+                        </div>
+                        <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const, marginTop:8 }}>
+                          Fetched content flows into every AI call (Copilot, sentiment, pitch, coaching, campaign diagnostic) so the assistant knows what the sales team pitched.
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:16, padding:"12px 16px", background:_C.faint, borderRadius:10, lineHeight:1.5 }}>
                     🔒 All credentials are stored in your browser's local storage only — they never leave your device except when making direct API calls to the respective services.
