@@ -1709,21 +1709,68 @@ function buildFullContext(d: any): string {
     const m = p.metrics || {};
     return `[${p.date || "?"}] sent=${m.sent || 0} opens=${m.opens || 0} replies=${m.replies || 0} meetings=${m.meetings || 0} revenue=${m.revenue || 0}`;
   }).join("\n"));
-  // Call records (summaries + recent transcripts)
-  if (d.callRecords?.length) {
-    push("CALL RECORDS (summaries)", d.callRecords.slice(0, 20).map((r: any) => `[${r.callDate || "?"}] ${r.callType || "?"} — Score: ${r.result?.overallScore || "?"}/100, Sentiment: ${r.result?.sentiment?.score || "?"}/10, Grade: ${r.result?.grade || "?"}`).join("\n"));
-    const recent = [...d.callRecords].sort((a: any, b: any) => new Date(b.callDate || b.scoredAt).getTime() - new Date(a.callDate || a.scoredAt).getTime()).slice(0, 3);
-    push("RECENT CALL TRANSCRIPTS (top 3, truncated)", recent.map((r: any) => `\n[${r.callDate || "?"}] ${r.callType || "?"}\n${(r.transcript || "").slice(0, 3500)}${r.transcript?.length > 3500 ? "\n...(truncated)" : ""}`).join("\n"));
+  // ─── SALES vs CX SPLIT ─────────────────────────────────────────────────
+  // Every call, comm, and playbook gets routed into one of two labeled sections so the AI can
+  // reason against both lanes separately — "sales promised X, CX is delivering Y, gap = risk."
+  const handoffDate = (cd as Record<string,string>)?.co_handoff_date || "";
+  const handoffLabel = handoffDate ? new Date(handoffDate).toLocaleDateString() : "(not set)";
+  const phaseUseFor = (rec: any): LifecyclePhase => getCommPhase(rec, handoffDate);
+
+  const salesCalls = (d.callRecords || []).filter((r: any) => phaseUseFor(r) === "sales");
+  const cxCalls    = (d.callRecords || []).filter((r: any) => phaseUseFor(r) === "cx");
+  const salesComms = (d.slackComms   || []).filter((c: any) => phaseUseFor(c) === "sales");
+  const cxComms    = (d.slackComms   || []).filter((c: any) => phaseUseFor(c) === "cx");
+
+  const renderCallRow = (r: any) => `[${r.callDate || "?"}] ${r.callType || "?"} — Score: ${r.result?.overallScore || "?"}/100, Sentiment: ${r.result?.sentiment?.score || "?"}/10, Grade: ${r.result?.grade || "?"}`;
+  const renderCommRow = (c: any) => {
+    const clean = (c.content || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").slice(0, 400);
+    return `[${c.type}${c.source ? "/" + c.source : ""} ${c.date || "?"}] ${c.subject ? c.subject + " — " : ""}${clean}`;
+  };
+
+  // SALES-ERA SIGNALS — what the prospect saw pre-handoff. Authoritative for expectation-setting.
+  if (salesCalls.length || salesComms.length) {
+    const lines: string[] = [];
+    lines.push(`Handoff date: ${handoffLabel}. Everything below happened BEFORE the sales→CX handoff.`);
+    lines.push("Use this to understand what was pitched, what was promised, and what expectations were set before CX owned the relationship. If the CX-era data shows a gap, call it out.");
+    if (salesCalls.length) {
+      lines.push(`\nSales calls (${salesCalls.length}):`);
+      lines.push(salesCalls.slice(0, 20).map(renderCallRow).join("\n"));
+    }
+    if (salesComms.length) {
+      const slackDays = salesComms.filter((c: any) => c.type === "slack");
+      const slackMsgs = slackDays.reduce((s: number, c: any) => s + (c.messageCount || 0), 0);
+      const emailCount = salesComms.filter((c: any) => c.type === "email").length;
+      const meetingCount = salesComms.filter((c: any) => c.type === "meeting").length;
+      const callCount = salesComms.filter((c: any) => c.type === "hs_call").length;
+      const noteCount = salesComms.filter((c: any) => c.type === "note").length;
+      lines.push(`\nSales communications (${emailCount} emails · ${meetingCount} meetings · ${callCount} logged calls · ${noteCount} notes · ${slackMsgs} Slack msgs across ${slackDays.length} days):`);
+      lines.push(salesComms.slice(0, 30).map(renderCommRow).join("\n"));
+    }
+    push("SALES-ERA SIGNALS (pre-handoff — what the prospect was sold)", lines.join("\n"));
   }
-  // Communications (Slack / Email / HubSpot)
-  if (d.slackComms?.length) {
-    const slackDays = d.slackComms.filter((c: any) => c.type === "slack");
-    const slackMsgs = slackDays.reduce((s: number, c: any) => s + (c.messageCount || 0), 0);
-    const emailCount = d.slackComms.filter((c: any) => c.type === "email").length;
-    push("CLIENT COMMUNICATIONS", `${slackMsgs} Slack messages (${slackDays.length} days) · ${emailCount} emails\n` + d.slackComms.slice(0, 30).map((c: any) => {
-      const clean = (c.content || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").slice(0, 400);
-      return `[${c.type}${c.source ? "/" + c.source : ""} ${c.date || "?"}] ${c.subject ? c.subject + " — " : ""}${clean}`;
-    }).join("\n"));
+
+  // CX-ERA SIGNALS — everything we've done since the handoff.
+  if (cxCalls.length || cxComms.length) {
+    const lines: string[] = [];
+    lines.push(`Handoff date: ${handoffLabel}. Everything below happened AFTER the sales→CX handoff — it represents what we've actually done since owning the relationship.`);
+    if (cxCalls.length) {
+      lines.push(`\nCX calls (${cxCalls.length}):`);
+      lines.push(cxCalls.slice(0, 20).map(renderCallRow).join("\n"));
+      const recent = [...cxCalls].sort((a: any, b: any) => new Date(b.callDate || b.scoredAt).getTime() - new Date(a.callDate || a.scoredAt).getTime()).slice(0, 3);
+      lines.push(`\nRecent CX call transcripts (top 3, truncated):`);
+      lines.push(recent.map((r: any) => `\n[${r.callDate || "?"}] ${r.callType || "?"}\n${(r.transcript || "").slice(0, 3500)}${r.transcript?.length > 3500 ? "\n...(truncated)" : ""}`).join("\n"));
+    }
+    if (cxComms.length) {
+      const slackDays = cxComms.filter((c: any) => c.type === "slack");
+      const slackMsgs = slackDays.reduce((s: number, c: any) => s + (c.messageCount || 0), 0);
+      const emailCount = cxComms.filter((c: any) => c.type === "email").length;
+      const meetingCount = cxComms.filter((c: any) => c.type === "meeting").length;
+      const callCount = cxComms.filter((c: any) => c.type === "hs_call").length;
+      const noteCount = cxComms.filter((c: any) => c.type === "note").length;
+      lines.push(`\nCX communications (${emailCount} emails · ${meetingCount} meetings · ${callCount} logged calls · ${noteCount} notes · ${slackMsgs} Slack msgs across ${slackDays.length} days):`);
+      lines.push(cxComms.slice(0, 30).map(renderCommRow).join("\n"));
+    }
+    push("CX-ERA SIGNALS (post-handoff — what we've delivered)", lines.join("\n"));
   }
   // AI analyses
   if (d.sentiment) {
@@ -2585,6 +2632,30 @@ async function callGemini(prompt: string, tokens = 1000): Promise<string> {
   if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
   if (!j.candidates?.length) throw new Error(`Gemini returned no candidates. Full response: ${JSON.stringify(j).slice(0,300)}`);
   return j.candidates[0]?.content?.parts?.[0]?.text ?? "";
+}
+
+// ─── SALES / CX PHASE SPLIT ─────────────────────────────────────────────────
+// Every workspace has a handoff date — the day the client transitioned from sales to CX.
+// Activity before that date = "sales" (what the prospect saw pre-handoff).
+// Activity after that date = "cx" (everything we've done since we own the relationship).
+// Used everywhere: Client Intel filter, AI context splits, Handoff Brief scope, Gap Analysis.
+type LifecyclePhase = "sales" | "cx";
+function phaseForDate(dateStr: string | undefined | null, handoffDate: string | undefined | null): LifecyclePhase {
+  // Default: everything is "cx" if no handoff date set (i.e. workspace was created post-handoff).
+  if (!handoffDate) return "cx";
+  if (!dateStr) return "cx";
+  try {
+    // Compare just the calendar date portion so timezone doesn't flip a same-day event.
+    const itemDay = String(dateStr).slice(0, 10);
+    const handoffDay = String(handoffDate).slice(0, 10);
+    return itemDay < handoffDay ? "sales" : "cx";
+  } catch { return "cx"; }
+}
+// Resolve a phase from a comm/call record — respects explicit manual overrides when set.
+function getCommPhase(comm: any, handoffDate: string | undefined | null): LifecyclePhase {
+  if (comm?.phase === "sales" || comm?.phase === "cx") return comm.phase;
+  const ts = comm?.date || comm?.callDate || comm?.scoredAt || comm?.importedAt;
+  return phaseForDate(ts, handoffDate);
 }
 
 // Lenient JSON parser for AI responses. Handles the common failure modes:
@@ -18281,15 +18352,20 @@ RULES:
       // Dedupe across ALL four activity types by HubSpot id
       const existingHsIds = new Set((slackComms||[]).filter((c:any) => c.source === "hubspot").map((c:any) => c.hsId));
       const dateOf = (p:any) => (p?.hs_timestamp || p?.hs_createdate || p?.hs_meeting_start_time || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+      // Auto-tag each imported engagement as SALES or CX based on its timestamp vs the workspace's
+      // co_handoff_date. Records can be manually re-phased later via per-row override.
+      const handoffDate = (companyData as Record<string,string>).co_handoff_date || "";
       const newEmails = emails
         .filter((e:any) => e.id && !existingHsIds.has(e.id))
         .map((e:any) => {
           const p = e.properties || {};
           const dir = p.hs_email_direction || "UNKNOWN";
           const body = p.hs_email_text || (p.hs_email_html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+          const date = dateOf(p);
           return {
             id: `hs_${e.id}`, hsId: e.id, type: "email", source: "hubspot",
-            date: dateOf(p),
+            date,
+            phase: phaseForDate(date, handoffDate),
             subject: p.hs_email_subject || "",
             participants: [p.hs_email_from_email, p.hs_email_to_email].filter(Boolean).join(" → "),
             direction: dir,
@@ -18302,9 +18378,11 @@ RULES:
           const p = m.properties || {};
           const start = p.hs_meeting_start_time ? new Date(p.hs_meeting_start_time).toLocaleString() : "";
           const body = (p.hs_meeting_body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          const date = dateOf(p);
           return {
             id: `hs_${m.id}`, hsId: m.id, type: "meeting", source: "hubspot",
-            date: dateOf(p),
+            date,
+            phase: phaseForDate(date, handoffDate),
             subject: p.hs_meeting_title || "Meeting",
             participants: "",
             outcome: p.hs_meeting_outcome || "",
@@ -18323,9 +18401,11 @@ RULES:
           const p = c.properties || {};
           const body = (p.hs_call_body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
           const dir = p.hs_call_direction || "UNKNOWN";
+          const date = dateOf(p);
           return {
             id: `hs_${c.id}`, hsId: c.id, type: "hs_call", source: "hubspot",
-            date: dateOf(p),
+            date,
+            phase: phaseForDate(date, handoffDate),
             subject: p.hs_call_title || `Call (${dir})`,
             participants: [p.hs_call_from_number, p.hs_call_to_number].filter(Boolean).join(" → "),
             direction: dir,
@@ -18344,9 +18424,11 @@ RULES:
         .map((n:any) => {
           const p = n.properties || {};
           const body = (p.hs_note_body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          const date = dateOf(p);
           return {
             id: `hs_${n.id}`, hsId: n.id, type: "note", source: "hubspot",
-            date: dateOf(p),
+            date,
+            phase: phaseForDate(date, handoffDate),
             subject: body.slice(0, 80) || "Note",
             content: body,
           };
@@ -18530,14 +18612,26 @@ RULES:
   const [handoffBriefOpen, setHandoffBriefOpen] = useState(false);
   const generateHandoffBrief = async () => {
     const cd = companyData as Record<string,any>;
+    const handoffDate = cd.co_handoff_date || "";
     const hsProps = cd._hubspotProps || {};
     const hsPropCount = Object.keys(hsProps).filter(k => hsProps[k] != null && hsProps[k] !== "").length;
-    const emailComms = (slackComms || []).filter((c:any) => c.type === "email");
-    const slackMsgs = (slackComms || []).filter((c:any) => c.type === "slack");
-    const calls = callRecords || [];
-    const totalSignals = hsPropCount + emailComms.length + slackMsgs.length + calls.length;
+    // Scope the brief to SALES-ERA signals ONLY (pre-handoff). Anything post-handoff is CX work
+    // and shouldn't color the "what sales did" narrative.
+    const isSales = (c: any) => getCommPhase(c, handoffDate) === "sales";
+    const emailComms = (slackComms || []).filter((c:any) => c.type === "email" && isSales(c));
+    const meetingComms = (slackComms || []).filter((c:any) => c.type === "meeting" && isSales(c));
+    const hsCallComms = (slackComms || []).filter((c:any) => c.type === "hs_call" && isSales(c));
+    const noteComms = (slackComms || []).filter((c:any) => c.type === "note" && isSales(c));
+    const slackMsgs = (slackComms || []).filter((c:any) => c.type === "slack" && isSales(c));
+    const salesCalls = (callRecords || []).filter((r:any) => getCommPhase(r, handoffDate) === "sales");
+    // Bebop playbooks are always sales-era — the material sales used to pitch.
+    const bebopContent = cd._bebopPlaybookContent || {};
+    const bebopEntries = Object.entries(bebopContent).filter(([, v]) => typeof v === "string" && (v as string).length > 100);
+    // Quickstart research brief — what our AI inferred about this client independently.
+    const quickstartBrief = cd._researchBrief || null;
+    const totalSignals = hsPropCount + emailComms.length + meetingComms.length + hsCallComms.length + noteComms.length + slackMsgs.length + salesCalls.length + bebopEntries.length;
     if (totalSignals < 3) {
-      addToast({ title:"Not enough source data", status:"error", message:"Connect HubSpot or upload emails / call transcripts first — need at least a few data points for a meaningful brief." });
+      addToast({ title:"Not enough sales-era source data", status:"error", message:"Need sales-era HubSpot data, emails, meetings, playbooks, or calls. Set handoff date and sync sales activity first." });
       return;
     }
     setHandoffGenerating(true);
@@ -18546,33 +18640,64 @@ RULES:
         ? Object.entries(hsProps).filter(([k,v]) => v != null && v !== "" && !k.startsWith("hs_")).slice(0, 60)
             .map(([k,v]) => `  ${k}: ${String(v).slice(0, 300)}`).join("\n")
         : "(no HubSpot data connected)";
-      const emailBlock = emailComms.slice(0, 20).map((c:any) => {
-        const clean = (c.content || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").slice(0, 800);
+      const fmtComm = (c: any, maxBody: number) => {
+        const clean = (c.content || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").slice(0, maxBody);
         return `[${c.date || "?"}] ${c.source ? `(${c.source}) ` : ""}${c.subject ? c.subject + " — " : ""}${clean}`;
-      }).join("\n\n") || "(no email communications)";
-      const slackBlock = slackMsgs.slice(0, 20).map((c:any) => {
-        const clean = (c.content || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").slice(0, 500);
-        return `[slack ${c.date || "?"}] ${clean}`;
-      }).join("\n") || "(no Slack communications)";
-      const callsBlock = calls.slice(0, 5).map((r:any) => `[${callTypeLabel(r.callType)} · ${r.callDate || "?"}]\n${(r.transcript || "").slice(0, 2500)}`).join("\n\n---\n\n") || "(no call transcripts)";
+      };
+      const emailBlock = emailComms.slice(0, 20).map((c:any) => fmtComm(c, 800)).join("\n\n") || "(no sales-era emails)";
+      const meetingBlock = meetingComms.slice(0, 10).map((c:any) => fmtComm(c, 700)).join("\n\n") || "(no sales-era meetings)";
+      const hsCallBlock = hsCallComms.slice(0, 10).map((c:any) => fmtComm(c, 500)).join("\n") || "(no sales-era HubSpot calls)";
+      const noteBlock = noteComms.slice(0, 15).map((c:any) => fmtComm(c, 400)).join("\n") || "(no sales-era notes)";
+      const slackBlock = slackMsgs.slice(0, 10).map((c:any) => `[slack ${c.date || "?"}] ${(c.content || "").replace(/\s+/g, " ").slice(0, 500)}`).join("\n") || "(no sales-era Slack messages)";
+      const callsBlock = salesCalls.slice(0, 5).map((r:any) => `[${callTypeLabel(r.callType)} · ${r.callDate || "?"}]\n${(r.transcript || "").slice(0, 2500)}`).join("\n\n---\n\n") || "(no sales-era scored calls)";
+      const bebopBlock = bebopEntries.length
+        ? bebopEntries.map(([url, text]: [string, any]) => `-- ${url} --\n${String(text).slice(0, 5000)}`).join("\n\n")
+        : "(no Bebop sales playbooks synced)";
+      const quickstartBlock = quickstartBrief
+        ? `${JSON.stringify(quickstartBrief).slice(0, 3000)}`
+        : "(no Quickstart research brief — run Quickstart to generate one)";
 
       const prompt = `You are producing a SALES → CX HANDOFF BRIEF for a new client workspace. The CX rep has just been assigned this account and needs to quickly understand what sales discussed, promised, and learned — before the first onboarding call.
 
+SCOPE: Everything below is SALES-ERA data (pre-handoff${handoffDate ? `, before ${handoffDate}` : ""}). CX-era activity is intentionally excluded — this brief describes the starting state CX inherits, not what CX has done since.
+
 SOURCES:
+
+## BEBOP SALES PLAYBOOKS (${bebopEntries.length} playbooks — authoritative: what sales pitched this client)
+${bebopBlock}
+
+## QUICKSTART RESEARCH BRIEF (AI-derived independent take on this company)
+${quickstartBlock}
 
 ## HUBSPOT DATA (${hsPropCount} fields populated)
 ${hsBlock}
 
-## EMAIL COMMUNICATIONS (${emailComms.length} emails, showing up to 20)
+## SALES-ERA EMAILS (${emailComms.length}, showing up to 20)
 ${emailBlock}
 
-## SLACK MESSAGES (${slackMsgs.length} messages, showing up to 20)
+## SALES-ERA MEETINGS (${meetingComms.length}, showing up to 10)
+${meetingBlock}
+
+## SALES-ERA HUBSPOT CALLS (${hsCallComms.length} logged calls, showing up to 10)
+${hsCallBlock}
+
+## SALES-ERA NOTES (${noteComms.length} HubSpot notes, showing up to 15)
+${noteBlock}
+
+## SALES-ERA SLACK MESSAGES (${slackMsgs.length}, showing up to 10)
 ${slackBlock}
 
-## CALL TRANSCRIPTS (${calls.length} calls, showing up to 5)
+## SALES-ERA CALL TRANSCRIPTS (${salesCalls.length}, showing up to 5)
 ${callsBlock}
 
-Produce a structured handoff brief in Markdown. Each section must be grounded in the sources above — cite specific evidence (date, quote, or HubSpot field) inline. If a section has no evidence, say so explicitly ("No evidence in sources") — do NOT hallucinate.
+Produce a structured handoff brief in Markdown. Each section must be grounded in the sources above — cite specific evidence (date, quote, HubSpot field, or Bebop playbook section) inline. If a section has no evidence, say so explicitly ("No evidence in sources") — do NOT hallucinate.
+
+HOW TO USE THE THREE AUTHORITATIVE SOURCES TOGETHER:
+- Bebop Playbooks = what was PITCHED (positioning, value props, proof points, CTAs)
+- HubSpot/emails/meetings/calls/notes = what was DISCUSSED (dates, participants, commitments, objections)
+- Quickstart Research Brief = independent AI read on what this company IS (company profile inferred from their site/linkedin — useful to sanity-check sales claims)
+
+When the pitched positioning (Bebop) diverges from discussed reality (HubSpot comms), SURFACE THE GAP in the "watchouts" or "openQuestions" section — that's exactly what CX needs to know.
 
 Return ONLY JSON:
 {
@@ -19078,6 +19203,42 @@ RULES:
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text,
                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeWorkspace.name}</div>
+                    {/* Handoff-date pill — the cut line between SALES and CX activity for this client.
+                        Click to edit inline. Drives phase tagging on comms, calls, AI context split, and handoff brief scope. */}
+                    {(() => {
+                      const cd = companyData as Record<string,string>;
+                      const editing = (window as any).__handoffEditing || false;
+                      const setEditing = (v: boolean) => { (window as any).__handoffEditing = v; setCompanyData((p:any)=>({...p})); };
+                      const handoff = cd.co_handoff_date || "";
+                      const label = handoff
+                        ? `Handoff: ${new Date(handoff).toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" })}`
+                        : "Set handoff date";
+                      if (editing) {
+                        return (
+                          <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:3 }}>
+                            <input type="date" value={handoff} autoFocus
+                              onChange={e=>setCompanyData((p:any)=>({ ...p, co_handoff_date: e.target.value }))}
+                              onBlur={()=>setEditing(false)}
+                              onKeyDown={e=>{ if (e.key === "Enter" || e.key === "Escape") setEditing(false); }}
+                              style={{ padding:"2px 6px", borderRadius:5, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:10, fontFamily:mono, color:C2.text, outline:"none" }} />
+                            {handoff && (
+                              <button onClick={()=>{ setCompanyData((p:any)=>({ ...p, co_handoff_date: "" })); setEditing(false); }}
+                                style={{ padding:"2px 6px", border:"none", background:"transparent", color:C2.muted, fontSize:10, cursor:"pointer" }} title="Clear handoff date">×</button>
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
+                        <button onClick={()=>setEditing(true)}
+                          title={handoff ? "Click to change the sales→CX handoff date" : "Set the date this client was handed from sales to CX"}
+                          style={{ marginTop:3, padding:"1px 7px", borderRadius:5, border:`1px dashed ${handoff ? C2.accent+"55" : C2.border}`,
+                            background: handoff ? `${C2.accent}0A` : "transparent",
+                            color: handoff ? C2.accent : C2.muted,
+                            fontSize:9, fontFamily:mono, fontWeight:600, cursor:"pointer", letterSpacing:.2 }}>
+                          {label}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               ) : (
@@ -24025,7 +24186,7 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                   </div>
                   {/* Tabs */}
                   <div style={{ display:"flex", gap:4, padding:3, background:_C.faint, borderRadius:8, marginBottom:0, width:"fit-content" }}>
-                    {[["records","Conversations"],["sentiment","Sentiment"],["pitch","Pitch Analysis"],["coaching","CSM Coaching"],["intel","Client Intel"]].map(([id,label])=>(
+                    {[["records","Conversations"],["sentiment","Sentiment"],["pitch","Pitch Analysis"],["coaching","CSM Coaching"],["intel","Client Intel"],["gaps","Expectation Gaps"]].map(([id,label])=>(
                       <button key={id} onClick={()=>setCallTab(id)}
                         style={{ padding:"6px 16px", borderRadius:6, border:"none", background:callTab===id?_C.canvas:"transparent",
                           color:callTab===id?_C.text:_C.muted, fontSize:11, fontFamily:head, fontWeight:callTab===id?700:500,
@@ -25316,11 +25477,47 @@ FORMAT:
                   {/* Records per sub-tab (hidden on All Activity) */}
                   {((window as any).__commInputType || "all") !== "all" && (<>
 
+                  {/* Sales / CX / All phase filter — splits activity by pre/post handoff date. */}
+                  {(() => {
+                    const handoffDate = (companyData as Record<string,string>).co_handoff_date || "";
+                    const phaseFilter: "all"|"sales"|"cx" = (window as any).__clientIntelPhase || "all";
+                    const setPhaseFilter = (v: "all"|"sales"|"cx") => { (window as any).__clientIntelPhase = v; setCallRecords(p=>p?[...p]:[]); };
+                    const counts = { all: comms.length, sales: 0, cx: 0 };
+                    for (const c of comms) counts[getCommPhase(c, handoffDate)]++;
+                    return (
+                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, padding:"6px 10px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}`, width:"fit-content" }}>
+                        <span style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:700, letterSpacing:.3, textTransform:"uppercase" as const, marginRight:4 }}>Phase:</span>
+                        {(["all","sales","cx"] as const).map(opt => {
+                          const on = phaseFilter === opt;
+                          const color = opt === "sales" ? "#FF8C42" : opt === "cx" ? "#00D68F" : _C.accent;
+                          const count = opt === "all" ? counts.all : opt === "sales" ? counts.sales : counts.cx;
+                          return (
+                            <button key={opt} onClick={()=>setPhaseFilter(opt)}
+                              style={{ padding:"4px 12px", borderRadius:6, border:"none",
+                                background: on ? `${color}16` : "transparent", color: on ? color : _C.textSoft,
+                                fontSize:11, fontFamily:head, fontWeight: on ? 700 : 500, cursor:"pointer", textTransform:"uppercase" as const, letterSpacing:.3 }}>
+                              {opt} ({count})
+                            </button>
+                          );
+                        })}
+                        {!handoffDate && (
+                          <span style={{ fontSize:10, fontFamily:body, color:_C.muted, marginLeft:4, fontStyle:"italic" as const }}>
+                            Set a handoff date in the sidebar header to split sales vs CX
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* Slack/Email Records — filtered by active sub-tab */}
                   {(() => {
                     const activeType = (window as any).__commInputType || "all";
-                    const filtered = comms.filter((c:any) => activeType === "slack" ? c.type === "slack" : activeType === "email" ? c.type === "email" : false);
-                    if (!filtered.length) return activeType !== "call" ? <div style={{ textAlign:"center", padding:"40px 0", color:_C.muted, fontSize:13 }}>No {activeType === "slack" ? "Slack messages" : "email threads"} yet.</div> : null;
+                    const handoffDate = (companyData as Record<string,string>).co_handoff_date || "";
+                    const phaseFilter: "all"|"sales"|"cx" = (window as any).__clientIntelPhase || "all";
+                    const filtered = comms
+                      .filter((c:any) => activeType === "slack" ? c.type === "slack" : activeType === "email" ? c.type === "email" : false)
+                      .filter((c:any) => phaseFilter === "all" ? true : getCommPhase(c, handoffDate) === phaseFilter);
+                    if (!filtered.length) return activeType !== "call" ? <div style={{ textAlign:"center", padding:"40px 0", color:_C.muted, fontSize:13 }}>No {activeType === "slack" ? "Slack messages" : "email threads"} yet{phaseFilter !== "all" ? ` in the ${phaseFilter.toUpperCase()} phase` : ""}.</div> : null;
                     return (
                     <div style={{ marginBottom:16 }}>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
@@ -25336,8 +25533,11 @@ FORMAT:
                         // Extract first message as preview
                         const firstMsg = lines[0] || "";
                         const displayName = c.channel && !c.channel.startsWith("#C") ? c.channel : c.type === "email" ? (c.subject || "Email") : "Slack";
+                        const handoffDate = (companyData as Record<string,string>).co_handoff_date || "";
+                        const rowPhase = getCommPhase(c, handoffDate);
+                        const phaseColor = rowPhase === "sales" ? "#FF8C42" : "#00D68F";
                         return (
-                        <div key={c.id} style={{ background:_C.canvas, border:`1px solid ${isExpanded ? _C.accent+"30" : _C.border}`, borderRadius:12, marginBottom:8, overflow:"hidden" }}>
+                        <div key={c.id} style={{ background:_C.canvas, border:`1px solid ${isExpanded ? _C.accent+"30" : _C.border}`, borderLeft:`3px solid ${phaseColor}`, borderRadius:12, marginBottom:8, overflow:"hidden" }}>
                           <div onClick={toggleComm} style={{ padding:"12px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
                             <span style={{ fontSize:14 }}>{c.type==="slack"?"💬":"✉"}</span>
                             <div style={{ flex:1, minWidth:0 }}>
@@ -26894,6 +27094,189 @@ Be specific and evidence-based. Reference actual conversation moments.` }
                         </>);
                         })()}
                         {!r && !ciRunning && <div style={{ textAlign:"center", padding:"48px 0", color:_C.muted, fontSize:13 }}>Click "Build Client Profile" to create an intelligence profile from all conversations.</div>}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ═══ EXPECTATION GAP ANALYSIS TAB ═══ */}
+                  {callTab === "gaps" && (() => {
+                    const gaKey = `__gapAnalysis_${activeWorkspace?.id||""}`;
+                    const ga: any = (window as any)[gaKey] || null;
+                    const gaRunning = (window as any).__gapRunning || false;
+                    const handoffDate = (companyData as Record<string,string>).co_handoff_date || "";
+                    const salesComms = (slackComms || []).filter((c:any) => getCommPhase(c, handoffDate) === "sales");
+                    const cxComms = (slackComms || []).filter((c:any) => getCommPhase(c, handoffDate) === "cx");
+                    const salesCalls = (callRecords || []).filter((r:any) => getCommPhase(r, handoffDate) === "sales");
+                    const cxCalls = (callRecords || []).filter((r:any) => getCommPhase(r, handoffDate) === "cx");
+                    const bebopEntries = Object.entries((companyData as any)._bebopPlaybookContent || {}).filter(([,v])=>typeof v === "string" && (v as string).length > 100);
+                    const hasSales = salesComms.length + salesCalls.length + bebopEntries.length > 0;
+                    const hasCx = cxComms.length + cxCalls.length + campaigns.length > 0;
+
+                    const runGapAnalysis = async () => {
+                      if (!hasSales) { addToast({ title:"No sales-era data", status:"error", message:"Set handoff date + sync HubSpot / add Bebop playbooks first" }); return; }
+                      if (!hasCx) { addToast({ title:"No CX-era data yet", status:"error", message:"Need some CX activity to compare against — campaigns, calls, or comms" }); return; }
+                      (window as any).__gapRunning = true; setCallRecords(p=>p?[...p]:[]);
+                      const toastId = addToast({ title:"Analyzing gaps…", status:"loading", message:"Comparing sales promises vs CX reality" });
+                      try {
+                        const fmt = (c:any,m:number=300) => `[${c.date||"?"}] ${c.type||"?"} ${c.subject?`· ${c.subject}`:""} ${(c.content||"").replace(/\s+/g," ").slice(0,m)}`;
+                        const fmtCall = (r:any) => `[${r.callDate||"?"} · ${r.callType||"?"}] ${(r.result?.summary||"").slice(0,200)} | sentiment: ${r.result?.sentiment?.score||"?"}/10`;
+                        const bebopBlock = bebopEntries.length
+                          ? bebopEntries.map(([url,text]:[string,any]) => `-- ${url} --\n${String(text).slice(0,3000)}`).join("\n\n")
+                          : "(none)";
+                        const campaignsBlock = (campaigns||[]).slice(0,10).map((c:any) => {
+                          const m = c.performance?.metrics || {};
+                          return `"${c.name}" · ${c.status} · sent=${m.sent||0} replies=${m.allReplies||0} meetings=${m.meetings||0}`;
+                        }).join("\n") || "(no campaigns)";
+
+                        const prompt = `You are producing an EXPECTATION GAP ANALYSIS. Compare what the sales team promised this client (SALES-ERA) against what CX has actually delivered since handoff (CX-ERA). Surface specific gaps, mismatches, and risk signals.
+
+Handoff date: ${handoffDate || "(not set — treating all pre-handoff evidence as sales)"}
+
+══ SALES-ERA (pre-handoff — what was pitched/promised) ══
+
+Bebop playbooks (authoritative pitch material):
+${bebopBlock}
+
+Sales calls (${salesCalls.length}):
+${salesCalls.slice(0,8).map(fmtCall).join("\n") || "(none)"}
+
+Sales comms (${salesComms.length}, showing 20):
+${salesComms.slice(0,20).map((c:any)=>fmt(c,400)).join("\n") || "(none)"}
+
+══ CX-ERA (post-handoff — what's actually been delivered) ══
+
+Campaigns running (${campaigns?.length||0}):
+${campaignsBlock}
+
+CX calls (${cxCalls.length}):
+${cxCalls.slice(0,8).map(fmtCall).join("\n") || "(none)"}
+
+CX comms (${cxComms.length}, showing 20):
+${cxComms.slice(0,20).map((c:any)=>fmt(c,400)).join("\n") || "(none)"}
+
+Return ONLY JSON:
+{
+  "summary": "2-3 sentence overview of the overall sales→CX alignment state",
+  "alignmentScore": 0,
+  "gaps": [
+    {
+      "severity": "critical" | "high" | "medium" | "low",
+      "promised": "what sales committed to (quote or paraphrase with source)",
+      "delivered": "what CX has actually done (quote or paraphrase with source)",
+      "gap": "1 sentence on why this is a mismatch",
+      "recommendedAction": "1 sentence concrete next step"
+    }
+  ],
+  "alignedPoints": ["where promise and delivery DO align — short bullets"],
+  "unverifiable": ["sales claims we don't have CX-era evidence for yet — need to check"]
+}
+
+RULES:
+- alignmentScore: 0-100. 100 = fully aligned, 0 = catastrophic mismatch.
+- Only include gaps with concrete evidence from BOTH sides.
+- Do NOT invent promises or deliveries. If a claim has no source, put it in unverifiable.
+- Be specific — name the metric, the commitment, the gap. No vague observations.`;
+
+                        const raw = await callAI(prompt, "Return only valid JSON. No prose, no fences.", 4000, { useFullContext: true });
+                        const parsed = safeJsonParse(raw);
+                        const entry = { result: parsed, generatedAt: new Date().toISOString() };
+                        (window as any)[gaKey] = entry;
+                        (window as any).__gapRunning = false;
+                        setCallRecords(p=>p?[...p]:[]);
+                      } catch (e:any) {
+                        console.error("[GapAnalysis] failed:", e);
+                        (window as any).__gapRunning = false;
+                        setCallRecords(p=>p?[...p]:[]);
+                        updateToast(toastId, { status:"error", title:"Gap analysis failed", message:(e?.message || "Check console").slice(0, 120) });
+                      }
+                    };
+
+                    const r = ga?.result;
+                    const severityColor = (s:string) => s === "critical" ? "#FF6B6B" : s === "high" ? "#FF8C42" : s === "medium" ? "#FFC048" : _C.muted;
+                    return (
+                      <div>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                          <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>
+                            Compares what sales pitched pre-handoff against what CX has actually delivered since.
+                          </div>
+                          <button onClick={runGapAnalysis} disabled={gaRunning}
+                            style={{ padding:"8px 20px", borderRadius:8, border:"none",
+                              background: gaRunning ? _C.muted : _C.accent, color:"#fff",
+                              fontSize:12, fontFamily:head, fontWeight:700,
+                              cursor: gaRunning ? "default" : "pointer" }}>
+                            {gaRunning ? "◌ Analyzing…" : r ? "↻ Re-run Gap Analysis" : "Run Gap Analysis"}
+                          </button>
+                        </div>
+                        {!r && !gaRunning && (
+                          <div style={{ padding:"24px", textAlign:"center", background:_C.faint, borderRadius:10, color:_C.muted, fontSize:13, fontFamily:body }}>
+                            {!hasSales
+                              ? "Add sales-era data first (set handoff date, sync HubSpot, add Bebop playbooks, or paste sales emails)."
+                              : !hasCx
+                                ? "Need some CX activity to compare against — campaigns, calls, or comms."
+                                : "Click \"Run Gap Analysis\" to compare sales promises vs CX reality."}
+                          </div>
+                        )}
+                        {r && (
+                          <>
+                            {r.summary && (
+                              <div style={{ padding:"14px 18px", borderRadius:10, background:_C.canvas, border:`1px solid ${_C.border}`, marginBottom:14 }}>
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                                  <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.textSoft, letterSpacing:.3, textTransform:"uppercase" as const }}>Summary</span>
+                                  {typeof r.alignmentScore === "number" && (
+                                    <span style={{ fontSize:14, fontFamily:head, fontWeight:700,
+                                      color: r.alignmentScore >= 80 ? "#00D68F" : r.alignmentScore >= 50 ? "#FFC048" : "#FF6B6B" }}>
+                                      {r.alignmentScore}/100 aligned
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.55 }}>{r.summary}</div>
+                              </div>
+                            )}
+                            {Array.isArray(r.gaps) && r.gaps.length > 0 && (
+                              <div style={{ marginBottom:14 }}>
+                                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.textSoft, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:8 }}>Gaps ({r.gaps.length})</div>
+                                {r.gaps.map((g:any, i:number) => (
+                                  <div key={i} style={{ padding:"10px 14px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}`, borderLeft:`3px solid ${severityColor(g.severity)}`, marginBottom:8 }}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:`${severityColor(g.severity)}18`, color:severityColor(g.severity), textTransform:"uppercase" as const }}>{g.severity}</span>
+                                      <span style={{ fontSize:12, fontFamily:body, color:_C.text, fontWeight:600 }}>{g.gap}</span>
+                                    </div>
+                                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.5 }}>
+                                      <div><strong style={{ color:"#FF8C42" }}>Sales promised:</strong> {g.promised}</div>
+                                      <div><strong style={{ color:"#00D68F" }}>CX delivered:</strong> {g.delivered}</div>
+                                    </div>
+                                    {g.recommendedAction && (
+                                      <div style={{ marginTop:6, fontSize:11, fontFamily:body, color:_C.text, padding:"6px 10px", borderRadius:6, background:`${_C.accent}10`, border:`1px solid ${_C.accent}22` }}>
+                                        → {g.recommendedAction}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {Array.isArray(r.alignedPoints) && r.alignedPoints.length > 0 && (
+                              <div style={{ padding:"10px 14px", borderRadius:8, background:"#00D68F0A", border:`1px solid #00D68F22`, marginBottom:10 }}>
+                                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:"#00D68F", letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:6 }}>Aligned ({r.alignedPoints.length})</div>
+                                <ul style={{ margin:0, padding:"0 0 0 16px", fontSize:11, fontFamily:body, color:_C.textSoft, lineHeight:1.6 }}>
+                                  {r.alignedPoints.map((pt:string, i:number) => <li key={i}>{pt}</li>)}
+                                </ul>
+                              </div>
+                            )}
+                            {Array.isArray(r.unverifiable) && r.unverifiable.length > 0 && (
+                              <div style={{ padding:"10px 14px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                                <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:6 }}>Need to verify</div>
+                                <ul style={{ margin:0, padding:"0 0 0 16px", fontSize:11, fontFamily:body, color:_C.muted, lineHeight:1.6 }}>
+                                  {r.unverifiable.map((pt:string, i:number) => <li key={i}>{pt}</li>)}
+                                </ul>
+                              </div>
+                            )}
+                            {ga.generatedAt && (
+                              <div style={{ marginTop:10, fontSize:10, fontFamily:mono, color:_C.muted }}>
+                                Generated {new Date(ga.generatedAt).toLocaleString()}
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     );
                   })()}
