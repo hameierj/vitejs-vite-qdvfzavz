@@ -6,6 +6,7 @@ import {
   Upload, Sparkles, Mail, Search, ShieldCheck, Users,
   FileText, BarChart3, Target, MessageCircle, Zap, Globe,
   Database, Building2, Rocket, TrendingUp, CalendarCheck,
+  Plus, PenTool, Trophy, Pause, User, GitBranch, Calendar,
 } from "lucide-react";
 
 // ─── WELCOME SCREEN ──────────────────────────────────────────────────────────
@@ -568,6 +569,8 @@ const CAMPAIGN_PURPOSES = [
 ];
 const EMPTY_OFFER = (productId: string, tier: string, personaId = "", purpose = "") => ({
   id:uid(), productId, tier, personaId, purpose, name:"", ctaText:"", whatTheyGet:"", frictionReduction:"",
+  acv: null as number|null, avgSalesCycleDays: null as number|null,
+  demoToCloseRate: null as number|null, coldToDemoRate: null as number|null,
   usedInCampaigns:[] as string[], replyRate:null as number|null, createdAt:new Date().toISOString(),
 });
 
@@ -581,7 +584,6 @@ const CAMPAIGN_TYPES = [
 ];
 const CAMPAIGN_STATUSES = [
   { id:"planned",   label:"Planning",              color:"#8E94A7", where:"CX Tool" },
-  { id:"ready",     label:"Ready to Launch",       color:"#54A0FF", where:"CX Tool → B2B Rocket" },
   { id:"active",    label:"Live in B2B Rocket",    color:"#00D68F", where:"B2B Rocket" },
   { id:"reviewing", label:"Reviewing Performance", color:"#FFC048", where:"CX Tool ← B2B Rocket" },
   { id:"completed", label:"Completed",             color:"#6C5CE7", where:"CX Tool" },
@@ -1317,6 +1319,55 @@ function setSlackToken(token: string) {
   localStorage.setItem("b2br_slack_token", token);
 }
 
+// ─── FIREFLIES INTEGRATION ──────────────────────────────────────────────────
+const FIREFLIES_PROXY_URL = `${SUPABASE_URL}/functions/v1/fireflies-proxy`;
+
+function getFirefliesToken() {
+  return localStorage.getItem("b2br_fireflies_token") || "";
+}
+function setFirefliesToken(token: string) {
+  localStorage.setItem("b2br_fireflies_token", token);
+}
+
+async function firefliesApiFetch(query: string, variables?: any): Promise<any> {
+  const token = getFirefliesToken();
+  if (!token) return { errors: [{ message: "No Fireflies token configured" }] };
+  const resp = await fetch(FIREFLIES_PROXY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-fireflies-token": token,
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  return resp.json();
+}
+
+const FF_LIST_QUERY = `
+  query GetTranscripts($limit: Int) {
+    transcripts(limit: $limit) {
+      id
+      title
+      date
+      duration
+      organizer_email
+      participants
+    }
+  }
+`;
+
+const FF_DETAIL_QUERY = `
+  query GetTranscript($transcriptId: String!) {
+    transcript(id: $transcriptId) {
+      id title date duration organizer_email participants
+      sentences { speaker_name text start_time }
+      summary { action_items short_summary overview keywords outline }
+    }
+  }
+`;
+
 // ─── HUBSPOT INTEGRATION ────────────────────────────────────────────────────
 const HUBSPOT_PROXY_URL = `${SUPABASE_URL}/functions/v1/hubspot-proxy`;
 
@@ -1340,6 +1391,11 @@ async function hubspotApiFetch(path: string, method: "GET" | "POST" = "GET", bod
     },
     body: JSON.stringify({ path, method, body }),
   });
+  if (!resp.ok) {
+    const text = await resp.text();
+    console.error(`[hubspot-proxy] ${resp.status} ${path}:`, text);
+    try { return JSON.parse(text); } catch { return { error: text, status: resp.status }; }
+  }
   return resp.json();
 }
 
@@ -1433,6 +1489,51 @@ async function hubspotGetCompanyCalls(companyId: string): Promise<any[]> {
     properties: ["hs_call_title", "hs_call_body", "hs_call_direction", "hs_call_disposition", "hs_call_duration", "hs_call_from_number", "hs_call_to_number", "hs_call_recording_url", "hs_call_status", "hs_timestamp", "hs_createdate"],
   });
   return batch?.results || [];
+}
+
+// Get all deals associated with a HubSpot company. Includes the calculated `hs_is_closed_won`
+// flag so we can pick the closed-won deal regardless of which pipeline / custom stage IDs are used.
+async function hubspotGetCompanyDeals(companyId: string): Promise<any[]> {
+  const assoc = await hubspotApiFetch(`/crm/v3/objects/companies/${companyId}/associations/deals`, "GET");
+  const ids: string[] = (assoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean);
+  if (!ids.length) return [];
+  const batch = await hubspotApiFetch("/crm/v3/objects/deals/batch/read", "POST", {
+    inputs: ids.map(id => ({ id })),
+    properties: ["dealname","amount","closedate","createdate","dealstage","hubspot_owner_id","pipeline","hs_is_closed","hs_is_closed_won","hs_lastmodifieddate"],
+  });
+  return batch?.results || [];
+}
+
+async function hubspotGetCompanyContacts(companyId: string): Promise<any[]> {
+  const assoc = await hubspotApiFetch(`/crm/v3/objects/companies/${companyId}/associations/contacts`, "GET");
+  const ids: string[] = (assoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean);
+  if (!ids.length) return [];
+  const batch = await hubspotApiFetch("/crm/v3/objects/contacts/batch/read", "POST", {
+    inputs: ids.map(id => ({ id })),
+    properties: ["firstname","lastname","email","jobtitle","phone","hubspot_owner_id"],
+  });
+  return batch?.results || [];
+}
+
+// Resolve a HubSpot owner id to a friendly name. Returns "" if not found.
+async function hubspotGetDealPipelines(): Promise<Record<string,string>> {
+  try {
+    const resp = await hubspotApiFetch("/crm/v3/pipelines/deals", "GET");
+    const map: Record<string,string> = {};
+    for (const p of resp?.results || []) {
+      if (p.id && p.label) map[p.id] = p.label;
+    }
+    return map;
+  } catch { return {}; }
+}
+
+async function hubspotGetOwnerName(ownerId: string | number): Promise<string> {
+  if (!ownerId) return "";
+  try {
+    const o = await hubspotApiFetch(`/crm/v3/owners/${ownerId}`, "GET");
+    const name = [o?.firstName, o?.lastName].filter(Boolean).join(" ").trim();
+    return name || o?.email || "";
+  } catch { return ""; }
 }
 
 // Get all notes associated with a HubSpot company
@@ -7747,6 +7848,32 @@ function OffersPage({ offers, onOffersChange, products, personas = [], companyDa
                           </select>
                         </div>
                       </div>
+                      {/* Offer profile — feeds the strategy rule engine */}
+                      <div style={{ paddingTop:8, borderTop:`1px solid ${_C.border}` }}>
+                        <div style={{ fontSize:9, fontFamily:mono, color:_C.accent, fontWeight:700, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>Strategy Profile <span style={{ fontWeight:400, color:_C.muted, textTransform:"none" as const }}>· feeds goal × offer × persona rule engine</span></div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                          <div>
+                            <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>ACV ($)</label>
+                            <input type="number" value={offer.acv??""} onChange={e=>updOffer(offer.id,{acv:e.target.value?parseFloat(e.target.value):null})}
+                              placeholder="e.g. 5000" style={inputSt} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>AVG SALES CYCLE (days)</label>
+                            <input type="number" value={offer.avgSalesCycleDays??""} onChange={e=>updOffer(offer.id,{avgSalesCycleDays:e.target.value?parseFloat(e.target.value):null})}
+                              placeholder="e.g. 30" style={inputSt} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>DEMO → CLOSE (%)</label>
+                            <input type="number" step="0.1" value={offer.demoToCloseRate!=null?(offer.demoToCloseRate*100).toFixed(1):""} onChange={e=>updOffer(offer.id,{demoToCloseRate:e.target.value?parseFloat(e.target.value)/100:null})}
+                              placeholder="e.g. 15" style={inputSt} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:9, fontFamily:mono, color:_C.muted, fontWeight:600, display:"block", marginBottom:3 }}>COLD → DEMO (%)</label>
+                            <input type="number" step="0.1" value={offer.coldToDemoRate!=null?(offer.coldToDemoRate*100).toFixed(1):""} onChange={e=>updOffer(offer.id,{coldToDemoRate:e.target.value?parseFloat(e.target.value)/100:null})}
+                              placeholder="e.g. 2" style={inputSt} />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -8149,6 +8276,7 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
   onGenerateFit?: () => Promise<void> | void;
 }) {
   const [fitRunning, setFitRunning] = useState(false);
+  const [hover, setHover] = useState<{ r: number; c: number } | null>(null);
   const _C = v2 ? C2 : C;
   if (products.length === 0 || personas.length === 0) {
     return (
@@ -8175,6 +8303,16 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
     low:    { color:"#8E94A7", bg:"#8E94A722", label:"Low fit" },
     skip:   { color:"#FF6B6B", bg:"#FF6B6B22", label:"Skip" },
   };
+
+  // Rocket-themed icon per campaign status, rendered as lucide SVGs in a single accent color
+  // so the matrix stays visually cohesive — emoji felt toy-ish at this size.
+  const STATUS_ICONS: Record<string,{Icon: any; label:string; tintDot?:string}> = {
+    planned:   { Icon: PenTool, label:"Drafting" },
+    active:    { Icon: Rocket,  label:"Live · launched" },
+    reviewing: { Icon: Search,  label:"Reviewing performance", tintDot:"#FFC048" },
+    completed: { Icon: Trophy,  label:"Mission complete" },
+    paused:    { Icon: Pause,   label:"Paused · aborted",      tintDot:"#FF6B6B" },
+  };
   const getFitFor = (pers: any, prodId: string): string => {
     const raw = String(pers?.linkedProductFit?.[prodId] || "").toLowerCase();
     return raw === "high" || raw === "medium" || raw === "low" || raw === "skip" ? raw : "";
@@ -8189,7 +8327,6 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
     return { campaign, fit, fitReason };
   }));
 
-  const coveragePct = totalCombos > 0 ? Math.round(covered / totalCombos * 100) : 0;
   const gaps = totalCombos - covered;
 
   // Fit summary across all product × persona combos
@@ -8200,145 +8337,196 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
   }
 
   return (
-    <div style={{ padding:"28px 32px", overflowY:"auto", height:"100%" }}>
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-        <div>
-          <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Coverage</h2>
-          <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
-            {covered}/{totalCombos} combinations have campaigns{gaps > 0 ? ` · ${gaps} gap${gaps!==1?"s":""}` : ""}
-          </p>
+    <div style={{ padding:"4px 32px 28px", height:"100%", display:"flex", flexDirection:"column", minHeight:0 }}>
+      {/* Combined card: summary header + matrix grid live in one bordered surface */}
+      <div style={{ flex:1, minHeight:0, background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:10,
+        display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        {/* Fit summary header — sits inside the card */}
+        <div style={{ padding:"14px 18px", borderBottom:`1px solid ${_C.border}`, background:_C.canvas,
+          display:"flex", gap:14, flexWrap:"wrap" as const, alignItems:"center", flexShrink:0 }}>
+          {(["high","medium","low","skip"] as const).map(k => (
+            <span key={k} style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:11, fontFamily:body, color:_C.textSoft }}>
+              <span style={{ width:7, height:7, borderRadius:"50%", background:FIT_COLORS[k].color, flexShrink:0 }} />
+              <span style={{ fontWeight:600, color:_C.text }}>{fitCounts[k]}</span>
+              <span style={{ color:_C.muted }}>{FIT_COLORS[k].label.toLowerCase()}</span>
+            </span>
+          ))}
+          {fitCounts.unknown > 0 && (
+            <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:11, fontFamily:body, color:_C.textSoft }}>
+              <span style={{ width:7, height:7, borderRadius:"50%", border:`1px solid ${_C.borderHi}`, flexShrink:0 }} />
+              <span style={{ fontWeight:600, color:_C.text }}>{fitCounts.unknown}</span>
+              <span style={{ color:_C.muted }}>unrated</span>
+            </span>
+          )}
+          <span style={{ marginLeft:"auto", display:"inline-flex", alignItems:"center", gap:14 }}>
+            <span style={{ fontSize:11, fontFamily:body, color:_C.muted }}>
+              <span style={{ fontWeight:600, color:_C.text }}>{covered}</span>
+              {" / "}{totalCombos} built
+            </span>
+            {onGenerateFit && (
+              <button onClick={async ()=>{ if (fitRunning) return; setFitRunning(true); try { await onGenerateFit(); } finally { setFitRunning(false); } }}
+                disabled={fitRunning}
+                style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${_C.border}`,
+                  background: fitRunning ? _C.faint : _C.canvas, color: fitRunning ? _C.muted : _C.textSoft,
+                  fontSize:11, fontFamily:head, fontWeight:600, cursor: fitRunning ? "wait" : "pointer",
+                  display:"flex", alignItems:"center", gap:6 }}
+                title="Run AI fit analysis across every product × persona combo using the same criteria as Quickstart.">
+                {fitRunning ? "Analyzing…" : (fitCounts.unknown > 0 ? `Analyze fit (${fitCounts.unknown} unrated)` : "Re-run fit analysis")}
+              </button>
+            )}
+          </span>
         </div>
-        <div style={{ fontSize:28, fontWeight:800, fontFamily:head,
-          color:coveragePct===100?_C.green:coveragePct>=50?_C.accent:_C.muted }}>{coveragePct}%</div>
-      </div>
 
-      {/* Fit summary — same counts Quickstart shows on the review screen */}
-      <div style={{ marginBottom:20, display:"flex", gap:8, flexWrap:"wrap" as const, alignItems:"center" }}>
-        <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, textTransform:"uppercase" as const }}>Fit:</span>
-        {(["high","medium","low","skip"] as const).map(k => (
-          <span key={k} style={{ padding:"4px 10px", borderRadius:6, background:FIT_COLORS[k].bg, color:FIT_COLORS[k].color, fontSize:11, fontFamily:mono, fontWeight:700 }}>
-            {fitCounts[k]} {FIT_COLORS[k].label.toLowerCase()}
-          </span>
-        ))}
-        {fitCounts.unknown > 0 && (
-          <span style={{ padding:"4px 10px", borderRadius:6, background:_C.faint, color:_C.muted, fontSize:11, fontFamily:mono, fontWeight:600, border:`1px dashed ${_C.border}` }}>
-            {fitCounts.unknown} unrated
-          </span>
-        )}
-        {onGenerateFit && (
-          <button onClick={async ()=>{ if (fitRunning) return; setFitRunning(true); try { await onGenerateFit(); } finally { setFitRunning(false); } }}
-            disabled={fitRunning}
-            style={{ marginLeft:"auto", padding:"5px 12px", borderRadius:6, border:`1px solid ${_C.border}`,
-              background: fitRunning ? _C.faint : _C.canvas, color: fitRunning ? _C.muted : _C.textSoft,
-              fontSize:11, fontFamily:head, fontWeight:600, cursor: fitRunning ? "wait" : "pointer",
-              display:"flex", alignItems:"center", gap:6 }}
-            title="Run AI fit analysis across every product × persona combo using the same criteria as Quickstart. Temporary button — planning to auto-run after persona/product creation.">
-            {fitRunning ? "◌ Analyzing…" : (fitCounts.unknown > 0 ? `⚡ Analyze fit (${fitCounts.unknown} unrated)` : "↻ Re-run fit analysis")}
-          </button>
-        )}
-      </div>
-
-      {/* Grid */}
-      <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, overflow:"auto", boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse", minWidth: products.length * 150 + 180 }}>
+        {/* Grid — flex:1 so it fills remaining card height; columns auto-distribute to fill width */}
+        <div style={{ flex:1, minHeight:0, overflow:"auto" }} onMouseLeave={()=>setHover(null)}>
+        <table style={{ borderCollapse:"separate" as const, borderSpacing:0, tableLayout:"fixed" as const,
+          width:"100%", minWidth: 200 + products.length * 110 }}>
+          <colgroup>
+            <col style={{ width:200 }} />
+            {products.map((p:any) => <col key={p.id} />)}
+          </colgroup>
           <thead>
             <tr>
-              <th style={{ padding:"12px 16px", textAlign:"left", fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted,
-                borderBottom:`1px solid ${_C.border}`, position:"sticky" as const, left:0, background:_C.canvas, zIndex:1, minWidth:160 }}>
+              <th style={{ padding:"14px 16px", textAlign:"left", fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted,
+                borderBottom:`1px solid ${_C.border}`, position:"sticky" as const, left:0, background:_C.canvas, zIndex:1,
+                verticalAlign:"bottom" as const, height:52 }}>
                 &nbsp;
               </th>
-              {products.map((prod: any) => (
-                <th key={prod.id} style={{ padding:"12px 14px", textAlign:"center", fontSize:12, fontFamily:head, fontWeight:600,
-                  color:_C.text, borderBottom:`1px solid ${_C.border}`, minWidth:140 }}>
-                  {prod.name || "Unnamed"}
-                </th>
-              ))}
+              {products.map((prod: any, idx: number) => {
+                const colHi = hover?.c === idx;
+                return (
+                  <th key={prod.id}
+                    onMouseEnter={()=>setHover({ r:-1, c:idx })}
+                    style={{ padding:"10px 10px", textAlign:"center", fontSize:11, fontFamily:head, fontWeight:colHi?700:600,
+                      color: colHi ? _C.accent : _C.text,
+                      borderBottom:`1px solid ${_C.border}`, borderLeft:`1px solid ${_C.faint}`,
+                      background: colHi ? `${_C.accent}08` : _C.canvas,
+                      verticalAlign:"bottom" as const, height:52,
+                      lineHeight:1.25,
+                      display:"table-cell",
+                      overflow:"hidden",
+                      whiteSpace:"normal" as const,
+                      wordBreak:"normal" as const,
+                      overflowWrap:"break-word" as const,
+                      transition:"background .12s, color .12s" }}
+                    title={prod.name || "Unnamed"}>
+                    <span style={{ display:"-webkit-box" as any, WebkitLineClamp: 2, WebkitBoxOrient:"vertical" as any,
+                      overflow:"hidden", textOverflow:"ellipsis" }}>
+                      {prod.name || "Unnamed"}
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {personas.map((pers: any, pi: number) => (
+            {personas.map((pers: any, pi: number) => {
+              const rowHi = hover?.r === pi;
+              return (
               <tr key={pers.id}>
-                <td style={{ padding:"10px 16px", fontSize:12, fontFamily:head, fontWeight:600, color:_C.text,
-                  borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none",
-                  position:"sticky" as const, left:0, background:_C.canvas, zIndex:1 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <div style={{ width:6, height:6, borderRadius:3, background:pers.color || _C.accent, flexShrink:0 }} />
-                    {pers.name || `Persona ${pi+1}`}
-                  </div>
+                <td onMouseEnter={()=>setHover({ r:pi, c:-1 })}
+                  style={{ padding:"10px 16px", fontSize:12, fontFamily:head, fontWeight:rowHi?700:600,
+                    color: rowHi ? _C.accent : _C.text,
+                    borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none",
+                    position:"sticky" as const, left:0, zIndex:1,
+                    background: rowHi ? `${_C.accent}08` : _C.canvas,
+                    whiteSpace:"normal", lineHeight:1.3,
+                    transition:"background .12s, color .12s" }}>
+                  {pers.name || `Persona ${pi+1}`}
                 </td>
                 {products.map((prod: any, pri: number) => {
                   const { campaign, fit, fitReason } = cellData[pri][pi];
                   const fitMeta = fit ? FIT_COLORS[fit] : null;
-                  const fitTitle = fitReason || (fitMeta ? `${fitMeta.label} (Quickstart priority matrix)` : "");
+                  // L-shaped highlight: only cells between the headers and the hovered cell light up.
+                  const sameRow = hover?.r === pi && pri <= (hover?.c ?? -2);
+                  const sameCol = hover?.c === pri && pi <= (hover?.r ?? -2);
+                  const cellHi = sameRow || sameCol;
+                  const isExact = hover?.r === pi && hover?.c === pri;
+                  const cellTd = {
+                    padding:"6px", textAlign:"center" as const, verticalAlign:"middle" as const,
+                    borderBottom: pi < personas.length-1 ? `1px solid ${_C.faint}` : "none",
+                    borderLeft: `1px solid ${_C.faint}`,
+                    background: isExact ? `${_C.accent}10` : (cellHi ? `${_C.accent}06` : "transparent"),
+                    transition: "background .12s",
+                  };
+
                   if (campaign) {
                     const statusObj = CAMPAIGN_STATUSES.find(s => s.id === campaign.status) || CAMPAIGN_STATUSES[0];
+                    const iconMeta = STATUS_ICONS[campaign.status] || STATUS_ICONS.planned;
                     const seqLen = campaign.sequence?.length || 0;
                     const isHigh = campaign.intentTier === "high" || !!campaign.rtsListId;
+                    const tip = `${campaign.name || "Untitled"} · ${iconMeta.label} · ${seqLen} step${seqLen!==1?"s":""}${fitReason ? `\n${fitReason}` : ""}`;
+                    const StatusIcon = iconMeta.Icon;
                     return (
-                      <td key={prod.id} style={{ padding:"8px 10px", textAlign:"center",
-                        borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none" }}>
-                        <div onClick={()=>onViewCampaign?.(campaign.id)}
-                          title={fitTitle}
-                          style={{ padding:"8px 12px", borderRadius:10, background:`${statusObj.color}0C`,
-                            border:`1px solid ${statusObj.color}22`, cursor:"pointer", transition:"all .15s", position:"relative" as const,
-                            borderLeft: fitMeta ? `3px solid ${fitMeta.color}` : `1px solid ${statusObj.color}22` }}
-                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=statusObj.color;(e.currentTarget as HTMLElement).style.background=`${statusObj.color}18`;}}
-                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=statusObj.color+"22";(e.currentTarget as HTMLElement).style.background=`${statusObj.color}0C`;}}>
-                          {isHigh && (
-                            <div style={{ position:"absolute" as const, top:-5, right:-5, padding:"1px 6px", borderRadius:8,
-                              background:"#B946F2", color:"#fff", fontSize:8, fontFamily:mono, fontWeight:700, letterSpacing:.4, boxShadow:"0 1px 4px rgba(185,70,242,0.35)" }}>⚡ RTS</div>
-                          )}
-                          <div style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, marginBottom:3,
-                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                            {campaign.name || "Untitled"}
-                          </div>
-                          <div style={{ display:"flex", gap:4, justifyContent:"center", alignItems:"center", flexWrap:"wrap" as const }}>
-                            <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"1px 6px", borderRadius:4,
-                              background:`${statusObj.color}18`, color:statusObj.color }}>{statusObj.label}</span>
-                            <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{seqLen} steps</span>
-                            {fitMeta && (
-                              <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"1px 6px", borderRadius:4,
-                                background:fitMeta.bg, color:fitMeta.color }}>{fitMeta.label}</span>
+                      <td key={prod.id} style={cellTd} onMouseEnter={()=>setHover({ r:pi, c:pri })}>
+                        <button onClick={()=>onViewCampaign?.(campaign.id)} title={tip}
+                          style={{ width:"100%", height:40, borderRadius:6,
+                            background:"transparent", border:"none",
+                            cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center",
+                            transition:"background .15s",
+                            position:"relative" as const, padding:0 }}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=_C.surface;}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background="transparent";}}>
+                          <span style={{ width:"calc(100% - 12px)", maxWidth:96, height:32, borderRadius:8, background:_C.accent,
+                            display:"inline-flex", alignItems:"center", justifyContent:"center", position:"relative" as const }}>
+                            <StatusIcon size={15} color="#fff" strokeWidth={2.25} />
+                            {iconMeta.tintDot && (
+                              <span style={{ position:"absolute" as const, top:-3, right:-3, width:9, height:9, borderRadius:"50%",
+                                background: iconMeta.tintDot, border:`2px solid ${_C.canvas}` }} title={statusObj.label} />
                             )}
-                          </div>
-                        </div>
+                            {isHigh && (
+                              <span style={{ position:"absolute" as const, bottom:-3, right:-3, width:9, height:9, borderRadius:"50%",
+                                background:"#B946F2", border:`2px solid ${_C.canvas}` }} title="RTS / high-intent" />
+                            )}
+                          </span>
+                        </button>
                       </td>
                     );
                   }
-                  // Empty cell — click to create. Fit-aware styling so unrated/skip cells look different from plausible ones.
-                  const emptyBorder = fitMeta ? `${fitMeta.color}55` : _C.border;
-                  const emptyBg = fitMeta ? `${fitMeta.color}08` : "transparent";
-                  const emptyColor = fitMeta ? fitMeta.color : _C.muted;
-                  const emptyLabel = fit === "skip" ? "Skip · wrong fit" : fit === "low" ? "+ Campaign (low)" : fit === "medium" ? "+ Campaign · med fit" : fit === "high" ? "+ Campaign · HIGH fit" : "+ Campaign";
+                  const isSkip = fit === "skip";
+                  // Empty cell — transparent. The "+" sits in a thin outline circle in its fit color.
+                  const plusColor = fitMeta ? fitMeta.color : _C.muted;
+                  const tip = fitReason || (fitMeta ? fitMeta.label : "");
                   return (
-                    <td key={prod.id} style={{ padding:"8px 10px", textAlign:"center",
-                      borderBottom:pi < personas.length-1 ? `1px solid ${_C.faint}` : "none" }}>
-                      <div onClick={()=>{ if (fit === "skip") return; onCreateCampaign?.(prod.id, pers.id); }}
-                        title={fitTitle}
-                        style={{ padding:"10px 12px", borderRadius:10, border:`2px dashed ${emptyBorder}`,
-                          background:emptyBg,
-                          cursor: fit === "skip" ? "not-allowed" : "pointer", transition:"all .15s", color:emptyColor, fontSize:11, fontFamily:head, fontWeight:500,
-                          opacity: fit === "skip" ? 0.5 : 1 }}
-                        onMouseEnter={e=>{ if (fit === "skip") return; const el=e.currentTarget as HTMLElement; el.style.borderColor=fitMeta?fitMeta.color:_C.accent; el.style.color=fitMeta?fitMeta.color:_C.accent; el.style.background=fitMeta?`${fitMeta.color}15`:`${_C.accent}06`; }}
-                        onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.borderColor=emptyBorder; el.style.color=emptyColor; el.style.background=emptyBg;}}>
-                        {emptyLabel}
-                      </div>
+                    <td key={prod.id} style={cellTd} onMouseEnter={()=>setHover({ r:pi, c:pri })}>
+                      <button
+                        disabled={isSkip}
+                        onClick={()=>{ if (isSkip) return; onCreateCampaign?.(prod.id, pers.id); }}
+                        title={tip}
+                        style={{ width:"100%", height:40, borderRadius:6,
+                          background:"transparent", border:"none",
+                          cursor: isSkip ? "not-allowed" : "pointer",
+                          display:"inline-flex", alignItems:"center", justifyContent:"center",
+                          transition:"background .15s",
+                          opacity: isSkip ? 0.35 : 1, padding:0 }}
+                        onMouseEnter={e=>{ if (isSkip) return; (e.currentTarget as HTMLElement).style.background=_C.surface; }}
+                        onMouseLeave={e=>{ if (isSkip) return; (e.currentTarget as HTMLElement).style.background="transparent"; }}>
+                        {isSkip ? (
+                          <span style={{ width:22, height:22, borderRadius:"50%", border:`2.25px dashed ${_C.border}`,
+                            display:"inline-flex", alignItems:"center", justifyContent:"center" }}>
+                            <span style={{ width:9, height:2, background:_C.border, display:"inline-block" }} />
+                          </span>
+                        ) : (
+                          <span style={{ width:22, height:22, borderRadius:"50%", border:`2.25px solid ${plusColor}99`,
+                            display:"inline-flex", alignItems:"center", justifyContent:"center", color: plusColor }}>
+                            <Plus size={13} strokeWidth={4} />
+                          </span>
+                        )}
+                      </button>
                     </td>
                   );
                 })}
               </tr>
-            ))}
+            );})}
           </tbody>
         </table>
-      </div>
-
-      {/* Full coverage banner */}
-      {gaps === 0 && (
-        <div style={{ marginTop:20, padding:"12px 16px", borderRadius:10, background:_C.greenLo, border:`1px solid ${_C.greenBorder}`, textAlign:"center" }}>
-          <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:_C.green }}>All combinations covered</span>
         </div>
-      )}
+        {gaps === 0 && (
+          <div style={{ padding:"10px 16px", borderTop:`1px solid ${_C.border}`, background:_C.greenLo, textAlign:"center", flexShrink:0 }}>
+            <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:_C.green }}>All combinations covered</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -9169,6 +9357,146 @@ const DEFAULT_SEQUENCE_TIMING = [0, 3, 7, 14, 21]; // day offsets for 5-step
 const CAMPAIGN_CHANNELS = ["email", "linkedin", "rts_ai_call"] as const;
 type CampaignChannel = typeof CAMPAIGN_CHANNELS[number];
 
+// ─── CAMPAIGN GOAL TYPES ──────────────────────────────────────────────────────
+const GOAL_TYPES = [
+  { id: "book_meetings",       label: "Book Meetings / Demos",          icon: "📅", description: "Primary CTA is a booked call, demo, or intro meeting", offerPurpose: "cold_outreach" },
+  { id: "start_conversation",  label: "Start a Conversation",           icon: "💬", description: "Softer goal — just get a reply and qualify interest before pitching", offerPurpose: "cold_outreach" },
+  { id: "promote_event",       label: "Promote Event / Webinar",        icon: "🎟", description: "Drive registrations for a specific event, webinar, or workshop", offerPurpose: "event" },
+  { id: "re_engage",           label: "Re-Engage Lapsed Contacts",      icon: "↺", description: "Contacts who went cold, didn't convert, or haven't heard from you in 90+ days", offerPurpose: "retargeting" },
+  { id: "upsell",              label: "Upsell / Expand",                icon: "↑", description: "Existing customers — grow usage, upgrade tier, or cross-sell another product", offerPurpose: "upsell" },
+  { id: "close_pipeline",      label: "Accelerate Pipeline to Close",   icon: "⚡", description: "Warm prospects already in your pipeline — push to a decision", offerPurpose: "nurture" },
+] as const;
+type GoalType = typeof GOAL_TYPES[number]["id"];
+
+// ─── STRATEGY RULE ENGINE ─────────────────────────────────────────────────────
+interface StrategyMetric {
+  key: string; label: string; type: "rate"|"count"|"duration"|"currency";
+  good: number; warning: number; action: number; unit: string;
+  rationale: string; weight: number;
+}
+interface DerivedStrategy {
+  offerTier: "transactional"|"mid_market"|"enterprise";
+  touchCount: number; cadenceDays: number[];
+  channelMix: { email: number; linkedin: number; phone: number };
+  messagingAngle: string; ctaType: string;
+  metrics: StrategyMetric[]; rationale: string[];
+}
+
+function deriveStrategy(
+  goalType: GoalType | string,
+  offer: { acv?: number|null; avgSalesCycleDays?: number|null; demoToCloseRate?: number|null; coldToDemoRate?: number|null } | null,
+  persona: { data?: { seniority?: string } } | null
+): DerivedStrategy {
+  const acv = offer?.acv || 0;
+  const cycleDays = offer?.avgSalesCycleDays || 30;
+  const demoToClose = offer?.demoToCloseRate || 0.15;
+  const coldToDemo = offer?.coldToDemoRate || 0.02;
+  const seniority = persona?.data?.seniority || "";
+  const rationale: string[] = [];
+
+  const offerTier: DerivedStrategy["offerTier"] =
+    acv >= 15000 || cycleDays >= 60 ? "enterprise" :
+    acv > 0 && acv <= 2000 || cycleDays <= 14 ? "transactional" : "mid_market";
+
+  let touchCount = offerTier === "enterprise" ? 12 : offerTier === "mid_market" ? 8 : 5;
+  let cadenceDays: number[] =
+    offerTier === "enterprise" ? [0,3,7,14,21,30,45,60,75,90,105,120] :
+    offerTier === "mid_market" ? [0,3,7,14,21,30,45,60] : [0,2,5,10,20];
+
+  if (acv > 0) rationale.push(`$${acv.toLocaleString()} ACV + ${cycleDays}d cycle → ${offerTier.replace("_"," ")} tier`);
+  else rationale.push(`${cycleDays}d avg sales cycle → ${offerTier.replace("_"," ")} tier`);
+
+  if (goalType === "re_engage") {
+    touchCount = Math.min(touchCount + 2, 14);
+    cadenceDays = cadenceDays.map((d, i) => i === 0 ? 0 : Math.round(d * 1.25)).slice(0, touchCount);
+    rationale.push("Re-engage: +2 touches, slower cadence (lapsed contacts need more warming)");
+  } else if (goalType === "promote_event") {
+    touchCount = Math.max(touchCount - 2, 3);
+    cadenceDays = cadenceDays.slice(0, touchCount);
+    rationale.push("Event promo: compressed sequence (date-driven urgency shortens the window)");
+  } else if (goalType === "close_pipeline") {
+    rationale.push("Pipeline close: urgency + risk-of-inaction framing, shorter follow-up gaps");
+  } else if (goalType === "upsell") {
+    rationale.push("Upsell: ROI-led + expansion framing; reference existing relationship in every touch");
+  } else if (goalType === "start_conversation") {
+    rationale.push("Start a conversation: lead with curiosity, no hard ask — qualify before pitching");
+  }
+  cadenceDays = cadenceDays.slice(0, touchCount);
+
+  let channelMix = { email: 70, linkedin: 20, phone: 10 };
+  if (seniority === "C-Level" || seniority === "VP") {
+    channelMix = { email: 40, linkedin: 45, phone: 15 };
+    rationale.push(`${seniority} seniority → LinkedIn-heavy (lower email engagement at this level)`);
+  } else if (seniority === "IC") {
+    channelMix = { email: 80, linkedin: 15, phone: 5 };
+  }
+  if (offerTier === "transactional") {
+    channelMix = { email: 90, linkedin: 10, phone: 0 };
+    rationale.push("Low ACV → email-only (phone too high-touch for this deal size)");
+  }
+
+  const messagingMap: Record<string, string> = {
+    book_meetings:      "pain-led → direct meeting ask",
+    start_conversation: "curiosity-led → qualify before pitching",
+    promote_event:      "scarcity + relevance → event angle",
+    re_engage:          "reference prior interaction → why now",
+    upsell:             "roi-expansion → reference existing relationship",
+    close_pipeline:     "urgency + risk-of-inaction",
+  };
+  const ctaMap: Record<string, string> = {
+    book_meetings:      "Book a 15-min intro call",
+    start_conversation: "Would it make sense to connect?",
+    promote_event:      "Reserve your seat",
+    re_engage:          "Worth a quick catch-up?",
+    upsell:             "Chat about expanding the program",
+    close_pipeline:     "Can we get 20 min on the calendar this week?",
+  };
+
+  if (coldToDemo < 0.03 && goalType === "book_meetings" && offerTier !== "transactional") {
+    rationale.push(`${(coldToDemo*100).toFixed(1)}% cold-to-demo rate → add mid-funnel value step before direct meeting ask`);
+  }
+  if (demoToClose < 0.05 && goalType === "book_meetings") {
+    rationale.push(`${(demoToClose*100).toFixed(0)}% demo-to-close rate → prioritize demo quality, not just volume`);
+  }
+
+  const replyGood = offerTier === "transactional" ? 5 : offerTier === "enterprise" ? 2 : 3;
+  const goalLabel = (GOAL_TYPES.find(g => g.id === goalType)?.label || (goalType as string)).toLowerCase();
+  const metrics: StrategyMetric[] = [
+    { key:"reply_rate", label:"Reply Rate", type:"rate", good:replyGood, warning:replyGood*0.5, action:0.5, unit:"%", rationale:`Baseline for ${offerTier.replace("_"," ")} "${goalLabel}" campaign`, weight:0.25 },
+    { key:"interested_rate", label:"Interested Reply Rate", type:"rate", good:replyGood*0.4, warning:replyGood*0.18, action:0.1, unit:"%", rationale:"Quality signal within all replies", weight:0.35 },
+    { key:"bounce_rate", label:"Bounce Rate", type:"rate", good:3, warning:6, action:9, unit:"%", rationale:"Deliverability health", weight:0.15 },
+  ];
+
+  if (goalType === "book_meetings" || goalType === "close_pipeline") {
+    const mGood = coldToDemo > 0 ? parseFloat((coldToDemo*100).toFixed(2)) : 0.5;
+    metrics.push({ key:"meeting_rate", label:"Meeting Book Rate", type:"rate", good:mGood, warning:parseFloat((mGood*0.4).toFixed(2)), action:0, unit:"%", rationale:coldToDemo>0?`Calibrated from your ${(coldToDemo*100).toFixed(1)}% cold-to-demo rate`:"Industry baseline", weight:0.4 });
+  }
+  if (goalType === "start_conversation") {
+    metrics.push({ key:"qualified_reply_rate", label:"Qualified Reply Rate", type:"rate", good:replyGood*0.5, warning:replyGood*0.2, action:0.1, unit:"%", rationale:"Replies that open a real dialogue (not just OOO/unsubscribes)", weight:0.5 });
+  }
+  if (offerTier !== "transactional" && (goalType === "book_meetings" || goalType === "close_pipeline")) {
+    const tgt = offerTier === "enterprise" ? 500 : 150;
+    metrics.push({ key:"cost_per_meeting", label:"Cost per Qualified Meeting", type:"currency", good:tgt, warning:tgt*2, action:tgt*4, unit:"$", rationale:`$${acv.toLocaleString()} ACV justifies up to $${tgt}/meeting to stay ROI-positive`, weight:0.2 });
+  }
+  if (demoToClose < 0.08 && goalType === "book_meetings") {
+    metrics.push({ key:"demo_to_close", label:"Demo-to-Close Rate", type:"rate", good:parseFloat((demoToClose*150).toFixed(1)), warning:parseFloat((demoToClose*100).toFixed(1)), action:parseFloat((demoToClose*50).toFixed(1)), unit:"%", rationale:`Current ${(demoToClose*100).toFixed(0)}% — track to catch if bottleneck is in sequence or demo quality`, weight:0.3 });
+  }
+  if (goalType === "re_engage") {
+    metrics.push({ key:"reactivation_rate", label:"Reactivation Rate", type:"rate", good:8, warning:4, action:2, unit:"%", rationale:"% of lapsed contacts who reengage with a positive reply", weight:0.45 });
+  }
+  if (goalType === "upsell") {
+    metrics.push({ key:"upsell_conversion", label:"Upsell Conversion Rate", type:"rate", good:15, warning:8, action:3, unit:"%", rationale:"% of existing customers who expand or upgrade", weight:0.5 });
+  }
+  if (cycleDays > 30 && goalType !== "promote_event") {
+    metrics.push({ key:"days_to_first_response", label:"Days to First Meaningful Response", type:"duration", good:Math.round(cycleDays*0.1), warning:Math.round(cycleDays*0.2), action:Math.round(cycleDays*0.4), unit:"days", rationale:`${cycleDays}d cycle → aim for first signal within ${Math.round(cycleDays*0.1)} days`, weight:0.2 });
+  }
+  if (goalType === "promote_event") {
+    metrics.push({ key:"registration_rate", label:"Registration Rate", type:"rate", good:5, warning:2, action:0.5, unit:"%", rationale:"% of contacted prospects who register", weight:0.6 });
+  }
+
+  return { offerTier, touchCount, cadenceDays, channelMix, messagingAngle: messagingMap[goalType as string]||"pain-led", ctaType: ctaMap[goalType as string]||"Book a 15-min call", metrics, rationale };
+}
+
 const EMPTY_CAMPAIGN = () => ({
   id: uid(), name: "", status: "planning" as string,
   channel: "email" as CampaignChannel, // single-channel per campaign
@@ -9182,6 +9510,7 @@ const EMPTY_CAMPAIGN = () => ({
   // Campaign Goal — the business objective (e.g. "book 5 qualified demos/week with construction CFOs").
   // Distinct from handoffCriteria, which is the "when does a lead pass to sales" rule.
   goal: "" as string,
+  goalType: "book_meetings" as GoalType,
   // Diagnostic — AI-generated health report that runs on the Analytics tab. Cached via contentHash
   // + generatedAt so we don't re-run on every tab open. Shape: see DiagnosticReport in runCampaignDiagnostic.
   diagnostic: null as any,
@@ -9443,7 +9772,7 @@ const EMPTY_STEP = (stepNum: number) => ({
   variants: [] as any[],
 });
 
-function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, onOffersChange, onPersonasChange, onFillPersona, companyData, strategy, v2 = false, addToast = (_t:any)=>"", activeWorkspace = null as any, onCreateCampaign = null as any, rtsLists = [] as any[] }: {
+function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offers, onOffersChange, onPersonasChange, onFillPersona, companyData, strategy, v2 = false, addToast = (_t:any)=>"", activeWorkspace = null as any, onCreateCampaign = null as any, rtsLists = [] as any[], initialSelectedId = null, onSelectedIdConsumed }: {
   campaigns: any[]; onCampaignsChange: (c: any[]) => void; personas: any[]; products: any[]; offers: any[]; onOffersChange?: (o:any[])=>void;
   onPersonasChange?: ((updater: any) => void) | null;
   onFillPersona?: ((icp: any, userContext: string) => void) | null;
@@ -9451,10 +9780,22 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
   activeWorkspace?: any;
   onCreateCampaign?: ((input: any) => any) | null;
   rtsLists?: any[];
+  initialSelectedId?: string | null;
+  onSelectedIdConsumed?: (() => void) | null;
 }) {
   const _C = v2 ? C2 : C;
   const [selectedId, setSelectedId] = useState<string|null>(null);
-  const [tab, setTab] = useState<"settings"|"audience"|"sequence"|"analytics">("settings");
+  const [tab, setTab] = useState<"settings"|"strategy"|"audience"|"sequence"|"analytics">("settings");
+  // Honor an externally-requested selection (e.g., clicking a built campaign in the Coverage Matrix).
+  // Once consumed, notify the parent so the request isn't replayed on subsequent renders.
+  useEffect(() => {
+    if (initialSelectedId && initialSelectedId !== selectedId) {
+      setSelectedId(initialSelectedId);
+      setTab("settings");
+      onSelectedIdConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSelectedId]);
   // Subtabs inside Sequence (offers, steps, reply handlers, preview) and Analytics (benchmarks, reply analyzer).
   const [seqSubtab, setSeqSubtab] = useState<"steps"|"offers"|"replies"|"preview">("steps");
   // Settings: Operations section collapse (Start Date, Volume, Schedule, Safety, Sender Config)
@@ -9778,7 +10119,7 @@ RULES:
     // Prefer the unified helper from AppMain; fall back to inline creation if prop isn't wired.
     if (onCreateCampaign) {
       const c = onCreateCampaign({ channel: "email", source: "manual" });
-      if (c) { setSelectedId(c.id); setTab("config"); }
+      if (c) { setSelectedId(c.id); setTab("settings"); }
       return;
     }
     // Fallback (should only run if component is used standalone) — still benefits from per-campaign calibration.
@@ -9786,7 +10127,7 @@ RULES:
     c.benchmarks = calibrateCampaignBenchmarks(c);
     onCampaignsChange([...campaigns, c]);
     setSelectedId(c.id);
-    setTab("config");
+    setTab("settings");
   };
   const deleteCampaign = (id: string) => {
     if (!confirm("Delete this campaign?")) return;
@@ -10578,11 +10919,13 @@ Raw JSON only, no markdown.`;
           </div>
           {/* Tab bar */}
           <div style={{ display:"flex", alignItems:"center", gap:4, padding:"12px 24px", borderBottom:`1px solid ${_C.border}`, flexShrink:0 }}>
-            {(["settings","audience","sequence","analytics"] as const).map(t => {
+            {(["settings","strategy","audience","sequence","analytics"] as const).map(t => {
               const on = tab === t;
               const campaignOffers = selected ? offers.filter((o:any) => (selected.personaIds||[]).some((pid:string)=>o.personaId===pid) && o.productId===selected.productId) : [];
-              const labels = {
+              const strategyReady = selected && (selected.personaIds?.length > 0 || selected.productId || selected.goalType);
+              const labels: Record<string,string> = {
                 settings: "Settings",
+                strategy: "Strategy" + (strategyReady ? " ✦" : ""),
                 audience: "Audience",
                 sequence: `Sequence (${(selected.sequence?.length||0) + (campaignOffers.length ? ` · ${campaignOffers.length} offers` : "")})`.replace(" · ", " · "),
                 analytics: "Analytics",
@@ -10774,12 +11117,22 @@ Raw JSON only, no markdown.`;
                     <option value="rts_ai_call">RTS AI Call (opt-in only)</option>
                   </select>
                 </div>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
-                    Campaign Goal <span style={{ fontWeight:400, color:_C.muted }}>(the business outcome this campaign is trying to achieve)</span>
-                  </label>
-                  <textarea value={selected.goal||""} onChange={e=>updCampaign(selected.id, {goal:e.target.value})}
-                    rows={2} placeholder="e.g., 'Book 5 qualified demos/week with construction CFOs in the Midwest' — specific, measurable, and time-boxed." style={inputSt} />
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                      Goal Type <span style={{ fontWeight:400, color:_C.muted }}>(drives strategy + metrics)</span>
+                    </label>
+                    <select value={selected.goalType||"book_meetings"} onChange={e=>updCampaign(selected.id,{goalType:e.target.value as GoalType})} style={{...inputSt, cursor:"pointer"}}>
+                      {GOAL_TYPES.map(g => <option key={g.id} value={g.id}>{g.icon} {g.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>
+                      Campaign Goal <span style={{ fontWeight:400, color:_C.muted }}>(specific outcome)</span>
+                    </label>
+                    <input value={selected.goal||""} onChange={e=>updCampaign(selected.id, {goal:e.target.value})}
+                      placeholder="e.g., 5 qualified demos/week with CFOs" style={inputSt} />
+                  </div>
                 </div>
                 <div>
                   <label style={{ fontSize:11, fontWeight:600, fontFamily:head, color:_C.text, display:"block", marginBottom:4 }}>Product / Service</label>
@@ -10981,6 +11334,184 @@ Raw JSON only, no markdown.`;
                 </div>
               </div>
             )}
+
+            {/* STRATEGY TAB */}
+            {tab === "strategy" && (() => {
+              const persona = personas.find((p:any) => (selected.personaIds||[])[0] === p.id);
+              const product = products.find((p:any) => p.id === selected.productId);
+              const offer = offers.find((o:any) => o.id === selected.offerId) || offers.find((o:any) => o.productId === selected.productId && (selected.personaIds||[]).some((pid:string)=>o.personaId===pid));
+              const strat = deriveStrategy(selected.goalType || "cold_outreach", offer || null, persona || null);
+              const tierColors: Record<string,string> = { transactional: _C.green||"#00D68F", mid_market: _C.amber||"#FFC048", enterprise: _C.accent };
+              const tierColor = tierColors[strat.offerTier] || _C.accent;
+              const goalObj = GOAL_TYPES.find(g => g.id === (selected.goalType || "cold_outreach"));
+              const metricTypeIcon: Record<string,string> = { rate:"%", count:"#", duration:"d", currency:"$" };
+
+              return (
+                <div style={{ maxWidth:700, animation:"contentFade .3s ease", display:"flex", flexDirection:"column", gap:20 }}>
+                  {/* ── Inputs row ── */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+                    {/* Goal type */}
+                    <div style={{ padding:"14px 16px", borderRadius:12, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                      <div style={{ fontSize:9, fontFamily:"monospace", fontWeight:700, color:_C.muted, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>Goal Type</div>
+                      <select value={selected.goalType||"book_meetings"} onChange={e=>updCampaign(selected.id,{goalType:e.target.value as GoalType})}
+                        style={{ width:"100%", padding:"7px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:12, fontFamily:head, outline:"none", cursor:"pointer" }}>
+                        {GOAL_TYPES.map(g => <option key={g.id} value={g.id}>{g.icon} {g.label}</option>)}
+                      </select>
+                      {goalObj && <div style={{ fontSize:10, fontFamily:"sans-serif", color:_C.muted, marginTop:6, lineHeight:1.4 }}>{goalObj.description}</div>}
+                    </div>
+                    {/* Offer profile */}
+                    <div style={{ padding:"14px 16px", borderRadius:12, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                      <div style={{ fontSize:9, fontFamily:"monospace", fontWeight:700, color:_C.muted, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>Offer Profile</div>
+                      {offer ? (
+                        <>
+                          <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, marginBottom:6 }}>{offer.name||"Linked offer"}</div>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                            {[
+                              ["ACV", offer.acv != null ? `$${Number(offer.acv).toLocaleString()}` : "—"],
+                              ["Cycle", offer.avgSalesCycleDays != null ? `${offer.avgSalesCycleDays}d` : "—"],
+                              ["Demo→Close", offer.demoToCloseRate != null ? `${(offer.demoToCloseRate*100).toFixed(0)}%` : "—"],
+                              ["Cold→Demo", offer.coldToDemoRate != null ? `${(offer.coldToDemoRate*100).toFixed(1)}%` : "—"],
+                            ].map(([lbl,val]) => (
+                              <div key={lbl as string}>
+                                <div style={{ fontSize:9, fontFamily:"monospace", color:_C.muted, fontWeight:600 }}>{lbl as string}</div>
+                                <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color: val === "—" ? _C.muted : _C.text }}>{val as string}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <button onClick={()=>{setTab("sequence");setSeqSubtab("offers");}} style={{ marginTop:8, fontSize:9, fontFamily:"monospace", color:_C.accent, background:"transparent", border:"none", cursor:"pointer", padding:0, textDecoration:"underline" }}>Edit offer profile →</button>
+                        </>
+                      ) : (
+                        <div style={{ fontSize:11, fontFamily:"sans-serif", color:_C.muted, lineHeight:1.5 }}>
+                          No offer linked.{" "}
+                          <button onClick={()=>{setTab("sequence");setSeqSubtab("offers");}} style={{ fontSize:11, color:_C.accent, background:"transparent", border:"none", cursor:"pointer", padding:0, textDecoration:"underline" }}>Add one →</button>
+                          <div style={{ marginTop:6, fontSize:10, color:_C.muted }}>ACV + sales cycle drive touch count, cadence, and benchmark targets.</div>
+                        </div>
+                      )}
+                    </div>
+                    {/* Persona snapshot */}
+                    <div style={{ padding:"14px 16px", borderRadius:12, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                      <div style={{ fontSize:9, fontFamily:"monospace", fontWeight:700, color:_C.muted, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>Persona</div>
+                      {persona ? (
+                        <>
+                          <div style={{ fontSize:12, fontWeight:600, fontFamily:head, color:_C.text, marginBottom:6 }}>{persona.name}</div>
+                          {persona.data?.seniority && <div style={{ fontSize:10, fontFamily:"monospace", color:_C.accent, marginBottom:4 }}>{persona.data.seniority}</div>}
+                          {persona.data?.buyer && <div style={{ fontSize:11, fontFamily:"sans-serif", color:_C.textSoft, lineHeight:1.4, marginBottom:4 }}>{String(persona.data.buyer).slice(0,80)}</div>}
+                          {persona.data?.industries && <div style={{ fontSize:10, fontFamily:"sans-serif", color:_C.muted }}>{String(persona.data.industries).slice(0,60)}</div>}
+                        </>
+                      ) : (
+                        <div style={{ fontSize:11, fontFamily:"sans-serif", color:_C.muted, lineHeight:1.5 }}>
+                          No persona linked.{" "}
+                          <button onClick={()=>setTab("audience")} style={{ fontSize:11, color:_C.accent, background:"transparent", border:"none", cursor:"pointer", padding:0, textDecoration:"underline" }}>Link one →</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Derived strategy output ── */}
+                  <div style={{ padding:"18px 20px", borderRadius:14, background:`${tierColor}08`, border:`2px solid ${tierColor}33` }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+                      <span style={{ fontSize:10, fontFamily:"monospace", fontWeight:700, padding:"3px 10px", borderRadius:6, background:`${tierColor}18`, color:tierColor, letterSpacing:.4, textTransform:"uppercase" as const }}>
+                        {strat.offerTier.replace("_"," ")}
+                      </span>
+                      <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>Derived Strategy</span>
+                    </div>
+
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
+                      {[
+                        ["Touch Count", String(strat.touchCount)+" steps"],
+                        ["Sequence Span", `${strat.cadenceDays[strat.cadenceDays.length-1]||0} days`],
+                        ["Messaging Angle", strat.messagingAngle.replace(/-/g," ")],
+                        ["Suggested CTA", strat.ctaType],
+                        ["Email Weight", strat.channelMix.email+"%"],
+                        ["LinkedIn Weight", strat.channelMix.linkedin+"%"],
+                      ].map(([lbl,val]) => (
+                        <div key={lbl as string} style={{ padding:"10px 12px", borderRadius:9, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                          <div style={{ fontSize:9, fontFamily:"monospace", color:_C.muted, fontWeight:700, marginBottom:4, letterSpacing:.3, textTransform:"uppercase" as const }}>{lbl as string}</div>
+                          <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{val as string}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Cadence visualization */}
+                    <div style={{ marginBottom:16 }}>
+                      <div style={{ fontSize:9, fontFamily:"monospace", color:_C.muted, fontWeight:700, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>Cadence (day offsets)</div>
+                      <div style={{ display:"flex", alignItems:"center", gap:4, flexWrap:"wrap" as const }}>
+                        {strat.cadenceDays.map((d,i) => (
+                          <Fragment key={i}>
+                            <div style={{ textAlign:"center" as const }}>
+                              <div style={{ fontSize:10, fontWeight:700, fontFamily:"monospace", color:tierColor }}>T{i+1}</div>
+                              <div style={{ fontSize:9, fontFamily:"monospace", color:_C.muted }}>D{d}</div>
+                            </div>
+                            {i < strat.cadenceDays.length-1 && (
+                              <div style={{ fontSize:9, color:_C.border, flexShrink:0 }}>──</div>
+                            )}
+                          </Fragment>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Rationale */}
+                    {strat.rationale.length > 0 && (
+                      <div style={{ padding:"10px 12px", borderRadius:8, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                        <div style={{ fontSize:9, fontFamily:"monospace", fontWeight:700, color:_C.muted, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:6 }}>Why these settings</div>
+                        {strat.rationale.map((r,i) => (
+                          <div key={i} style={{ fontSize:11, fontFamily:"sans-serif", color:_C.textSoft, lineHeight:1.5, marginBottom:i<strat.rationale.length-1?3:0 }}>→ {r}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Apply button */}
+                    <button onClick={()=>{
+                      const existingSeq = selected.sequence || [];
+                      if (existingSeq.length > 0 && !window.confirm(`This will replace your existing ${existingSeq.length}-step sequence cadence. Continue?`)) return;
+                      const newSeq = strat.cadenceDays.map((d,i) => {
+                        const existing = existingSeq[i] || {};
+                        return { role:"hook", subject:"", body:"", ...existing, stepNumber:i+1, dayOffset:d };
+                      });
+                      updCampaign(selected.id, { sequence: newSeq });
+                      setTab("sequence"); setSeqSubtab("steps");
+                      addToast({ title:"Strategy applied", status:"success", message:`${strat.touchCount} steps scaffolded in the Sequence tab` });
+                    }} style={{ marginTop:14, padding:"9px 20px", borderRadius:8, border:"none", background:tierColor, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${tierColor}44` }}>
+                      Apply to Sequence →
+                    </button>
+                  </div>
+
+                  {/* ── Metrics scorecard ── */}
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>Metrics Scorecard</div>
+                    <div style={{ fontSize:11, fontFamily:"sans-serif", color:_C.muted, marginBottom:14 }}>
+                      Tailored to this campaign's profile — only the metrics that matter here. Thresholds auto-update when you change goal, offer profile, or persona.
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                      {strat.metrics.map(m => (
+                        <div key={m.key} style={{ padding:"14px 16px", borderRadius:12, background:_C.canvas, border:`1px solid ${_C.border}` }}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                            <div>
+                              <span style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{m.label}</span>
+                              <span style={{ marginLeft:6, fontSize:9, fontFamily:"monospace", color:_C.muted, background:_C.faint, padding:"2px 6px", borderRadius:4 }}>{m.type} · {metricTypeIcon[m.type]}</span>
+                            </div>
+                            <span style={{ fontSize:10, fontFamily:"monospace", color:_C.muted }}>weight {Math.round(m.weight*100)}%</span>
+                          </div>
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:8 }}>
+                            {[
+                              ["Good", m.good, _C.green||"#00D68F"],
+                              ["Warning", m.warning, _C.amber||"#FFC048"],
+                              ["Action", m.action, _C.red||"#FF6B6B"],
+                            ].map(([lbl,val,clr]) => (
+                              <div key={lbl as string} style={{ textAlign:"center" as const, padding:"6px 0", borderRadius:7, background:`${clr as string}0e` }}>
+                                <div style={{ fontSize:8, fontFamily:"monospace", fontWeight:700, color:clr as string, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:2 }}>{lbl as string}</div>
+                                <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:clr as string }}>{m.type==="currency"?"$":""}{val as number}{m.type==="currency"?"":m.unit}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ fontSize:10, fontFamily:"sans-serif", color:_C.muted, lineHeight:1.4, fontStyle:"italic" as const }}>{m.rationale}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* AUDIENCE TAB */}
             {tab === "audience" && (
@@ -12159,34 +12690,31 @@ Raw JSON only, no markdown.`;
           </div>
         </div>
       ) : (
-        /* ── Card grid view (no campaign selected) ── */
-        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"auto", padding:"0 clamp(20px, 3vw, 48px)" }}>
-          {/* Header */}
-          <div style={{ padding:"20px 0 16px", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div>
-              <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Campaigns</h2>
-              <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
-                {campaigns.length} campaign{campaigns.length!==1?"s":""} · Click to edit
-              </p>
-            </div>
+        /* ── List view (no campaign selected) ── */
+        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", padding:"4px clamp(20px, 3vw, 48px) 28px", minHeight:0 }}>
+          {/* Toolbar — counts on the left, actions on the right (no second "Campaigns" heading; the page header already shows it) */}
+          <div style={{ paddingBottom:12, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+            <p style={{ fontSize:12, color:_C.muted, fontFamily:body, margin:0 }}>
+              {campaigns.length} campaign{campaigns.length!==1?"s":""} · click a row to edit
+            </p>
             <div style={{ display:"flex", gap:8 }}>
               {campaigns.some(c => (!c.sequence || c.sequence.length === 0) && (c.personaIds||[])[0] && c.productId) && (
                 <button onClick={bulkGenerateSequences} disabled={bulkGenSeq}
-                  style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
-                    color:_C.green, fontSize:12, fontFamily:head, fontWeight:600,
+                  style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.greenBorder}`, background:_C.greenLo,
+                    color:_C.green, fontSize:11, fontFamily:head, fontWeight:600,
                     cursor:bulkGenSeq?"wait":"pointer", opacity:bulkGenSeq?0.6:1 }}>
-                  {bulkGenSeq ? "◌ Generating..." : "◎ Generate All Sequences"}
+                  {bulkGenSeq ? "Generating…" : "Generate All Sequences"}
                 </button>
               )}
               <button onClick={()=>setImportOpen(true)}
-                style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas,
-                  color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}
-                title="Import a campaign already running in another tool (Instantly, Smartlead, HubSpot, B2BR, etc.) — paste screenshots of analytics + sequence and we'll create a tracked campaign">
-                ⤵ Import Existing
+                style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas,
+                  color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}
+                title="Import a campaign already running in another tool (Instantly, Smartlead, HubSpot, B2BR, etc.)">
+                Import Existing
               </button>
               <button onClick={addCampaign}
-                style={{ padding:"9px 20px", borderRadius:10, border:"none", background:_C.accent, color:"#fff",
-                  fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", boxShadow:`0 2px 8px ${_C.accent}44` }}>
+                style={{ padding:"7px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff",
+                  fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
                 + New Campaign
               </button>
             </div>
@@ -12208,77 +12736,101 @@ Raw JSON only, no markdown.`;
               </div>
             </div>
           ) : (
-            /* Campaign cards grid */
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12, paddingBottom:24 }}>
-              {campaigns.map((c: any) => {
-                const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
-                const statusObj = CAMPAIGN_STATUSES.find(s => s.id === c.status) || CAMPAIGN_STATUSES[0];
-                const persona = personas.find((p:any) => (c.personaIds||[])[0] === p.id);
-                const product = products.find((p:any) => p.id === c.productId);
-                const seqLen = c.sequence?.length || 0;
-                const hasEmptySteps = (c.sequence||[]).some((s:any) => !s.subject && !s.body && !s.message);
-                return (
-                  <div key={c.id} onClick={()=>{ setSelectedId(c.id); setTab("config"); }}
-                    style={{ background:_C.canvas, borderRadius:12, borderLeft:`3px solid ${statusObj.color}`,
-                      borderTop:`1px solid ${_C.border}`, borderRight:`1px solid ${_C.border}`, borderBottom:`1px solid ${_C.border}`,
-                      cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.03)",
-                      transition:"all .2s", padding:"14px 16px" }}
-                    onMouseEnter={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow=`0 4px 16px ${statusObj.color}18`; el.style.borderColor=statusObj.color; const d=el.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="1";}}
-                    onMouseLeave={e=>{const el=e.currentTarget as HTMLElement; el.style.boxShadow="0 1px 3px rgba(0,0,0,.03)"; el.style.borderTopColor=_C.border; el.style.borderRightColor=_C.border; el.style.borderBottomColor=_C.border; const d=el.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="0";}}>
-                    {/* Row 1: Name + status + delete */}
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                      <div style={{ flex:1, fontSize:14, fontWeight:700, fontFamily:head, color:_C.text, lineHeight:1.3,
-                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                        {c.name || "Untitled Campaign"}
-                      </div>
-                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, padding:"2px 7px", borderRadius:4, flexShrink:0,
-                        background:`${statusObj.color}15`, color:statusObj.color }}>{statusObj.label}</span>
-                      <button className="camp-del" onClick={e=>{
-                        e.stopPropagation();
-                        if (confirm(`Delete "${c.name || "Untitled Campaign"}"?`)) {
-                          onCampaignsChange(campaigns.filter((x:any) => x.id !== c.id));
-                          addToast({ title:"Campaign deleted", status:"success", message:c.name || "Campaign" });
-                        }
-                      }}
-                        style={{ width:20, height:20, borderRadius:5, border:"none", background:"transparent",
-                          color:_C.muted, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                          opacity:0, transition:"opacity .15s", flexShrink:0 }}
-                        onMouseEnter={e=>{(e.target as HTMLElement).style.color=_C.red;}}
-                        onMouseLeave={e=>{(e.target as HTMLElement).style.color=_C.muted;}}>×</button>
-                    </div>
-                    {/* Row 2: Persona + product */}
-                    <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, lineHeight:1.4, marginBottom:10,
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                      {persona ? persona.name : "No persona"}{product ? ` · ${product.name}` : ""}
-                    </div>
-                    {/* Row 3: Info chips */}
-                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:_C.textSoft, background:_C.faint,
-                        padding:"2px 7px", borderRadius:4 }}>{typeObj.label}</span>
-                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:seqLen?_C.textSoft:_C.red,
-                        background:seqLen?_C.faint:`${_C.red}11`, padding:"2px 7px", borderRadius:4 }}>
-                        {seqLen ? `${seqLen} steps` : "No sequence"}
-                      </span>
-                      {hasEmptySteps && seqLen > 0 && (
-                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:600, color:_C.amber,
-                          background:`${_C.amber}11`, padding:"2px 7px", borderRadius:4 }}>Empty steps</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Add campaign card */}
-              <div onClick={addCampaign}
-                style={{ background:"transparent", borderRadius:12, border:`2px dashed ${_C.border}`,
-                  cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                  minHeight:80, transition:"all .2s" }}
-                onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=_C.accent;(e.currentTarget as HTMLElement).style.background=`${_C.accent}06`;}}
-                onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=_C.border;(e.currentTarget as HTMLElement).style.background="transparent";}}>
-                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <span style={{ fontSize:18, color:_C.muted }}>+</span>
-                  <span style={{ fontSize:13, fontFamily:head, fontWeight:600, color:_C.muted }}>New Campaign</span>
-                </div>
+            /* Campaign list — single bordered table card that fills remaining vertical space */
+            <div style={{ flex:1, minHeight:0, background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:10,
+              display:"flex", flexDirection:"column", overflow:"hidden" }}>
+              <div style={{ flex:1, minHeight:0, overflow:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", tableLayout:"fixed" as const }}>
+                <colgroup>
+                  <col />
+                  <col style={{ width:"22%" }} />
+                  <col style={{ width:"18%" }} />
+                  <col style={{ width:140 }} />
+                  <col style={{ width:160 }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    {["Campaign", "Persona", "Product / Service", "Sequence", "Status"].map((label, i) => (
+                      <th key={i} style={{ padding:"12px 18px", textAlign:"left", fontSize:10, fontFamily:mono,
+                        fontWeight:700, color:_C.muted, letterSpacing:.4, textTransform:"uppercase" as const,
+                        borderBottom:`1px solid ${_C.border}`, background:_C.canvas,
+                        position:"sticky" as const, top:0, zIndex:1 }}>
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns.map((c: any, idx: number) => {
+                    const statusObj = CAMPAIGN_STATUSES.find(s => s.id === c.status) || CAMPAIGN_STATUSES[0];
+                    const persona = personas.find((p:any) => (c.personaIds||[])[0] === p.id);
+                    const product = products.find((p:any) => p.id === c.productId);
+                    const seqLen = c.sequence?.length || 0;
+                    const hasEmptySteps = (c.sequence||[]).some((s:any) => !s.subject && !s.body && !s.message);
+                    const isLast = idx === campaigns.length - 1;
+                    const cellSt: any = {
+                      padding:"12px 18px", fontSize:12, fontFamily:body, color:_C.textSoft,
+                      borderBottom: isLast ? "none" : `1px solid ${_C.faint}`,
+                      verticalAlign:"middle" as const,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const,
+                    };
+                    return (
+                      <tr key={c.id} className="camp-row"
+                        onClick={()=>{ setSelectedId(c.id); setTab("settings"); }}
+                        style={{ cursor:"pointer", transition:"background .12s" }}
+                        onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.background=_C.surface; const d=e.currentTarget.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="1"; }}
+                        onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.background="transparent"; const d=e.currentTarget.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="0"; }}>
+                        {/* Campaign name + type subtitle, with status accent dot leading the name */}
+                        <td style={{ ...cellSt, whiteSpace:"normal" as const }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                            <span style={{ width:8, height:8, borderRadius:"50%", background:statusObj.color, flexShrink:0 }} />
+                            <div style={{ minWidth:0, flex:1, fontSize:13, fontWeight:600, fontFamily:head, color:_C.text,
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              {c.name || "Untitled Campaign"}
+                            </div>
+                          </div>
+                        </td>
+                        {/* Persona */}
+                        <td style={cellSt}>
+                          {persona ? <span style={{ color:_C.text }}>{persona.name}</span> : <span style={{ color:_C.muted, fontStyle:"italic" }}>—</span>}
+                        </td>
+                        {/* Product / Service */}
+                        <td style={cellSt}>
+                          {product ? <span style={{ color:_C.text }}>{product.name}</span> : <span style={{ color:_C.muted, fontStyle:"italic" }}>—</span>}
+                        </td>
+                        {/* Sequence */}
+                        <td style={cellSt}>
+                          <span style={{ fontSize:11, fontFamily:mono, fontWeight:600,
+                            color: seqLen ? (hasEmptySteps ? _C.amber : _C.textSoft) : _C.muted }}>
+                            {seqLen ? `${seqLen} step${seqLen!==1?"s":""}${hasEmptySteps?" · empty":""}` : "—"}
+                          </span>
+                        </td>
+                        {/* Status + inline delete on hover */}
+                        <td style={cellSt}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                            <span style={{ fontSize:11, fontFamily:body, fontWeight:600, color:statusObj.color,
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              {statusObj.label}
+                            </span>
+                            <button className="camp-del" onClick={e=>{
+                              e.stopPropagation();
+                              if (confirm(`Delete "${c.name || "Untitled Campaign"}"?`)) {
+                                onCampaignsChange(campaigns.filter((x:any) => x.id !== c.id));
+                                addToast({ title:"Campaign deleted", status:"success", message:c.name || "Campaign" });
+                              }
+                            }}
+                              style={{ width:22, height:22, borderRadius:6, border:"none", background:"transparent",
+                                color:_C.muted, fontSize:13, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center",
+                                opacity:0, transition:"opacity .15s, color .15s, background .15s", flexShrink:0 }}
+                              onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.color=_C.red;(e.currentTarget as HTMLElement).style.background=`${_C.red}11`;}}
+                              onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.color=_C.muted;(e.currentTarget as HTMLElement).style.background="transparent";}}>×</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
               </div>
             </div>
           )}
@@ -17409,6 +17961,7 @@ function AppMain() {
   const [geminiKey,      setGeminiKey]      = useState(() => { try { return localStorage.getItem("b2br_gemini_key") || ""; } catch { return ""; } });
   const [slackKey,       setSlackKey]       = useState(() => { try { return localStorage.getItem("b2br_slack_token") || ""; } catch { return ""; } });
   const [hubspotKey,     setHubspotKey]     = useState(() => { try { return localStorage.getItem("b2br_hubspot_token") || ""; } catch { return ""; } });
+  const [firefliesKey,   setFirefliesKeyState] = useState(() => { try { return localStorage.getItem("b2br_fireflies_token") || ""; } catch { return ""; } });
   const [showKeyInput,   setShowKeyInput]   = useState(false);
   const [keyDraft,       setKeyDraft]       = useState("");
   const [confirmSignOut,   setConfirmSignOut]  = useState(false);
@@ -17430,6 +17983,9 @@ function AppMain() {
   const [strategy,       setStrategy]       = useState<any>(null);
   // When true, StrategyPage auto-fires generateRoadmap on mount (used after DFY purchase).
   const [strategyAutoRun, setStrategyAutoRun] = useState(false);
+  // When the matrix wants to open a specific campaign in the List sub-tab, it parks the id here
+  // and the CampaignsPage picks it up via initialSelectedId. Cleared once consumed.
+  const [pendingCampaignId, setPendingCampaignId] = useState<string|null>(null);
   const [strategyGen,    setStrategyGen]    = useState<{running:boolean;step:number}>({running:false,step:0});
   const [campaigns,      setCampaigns]      = useState<any[]>([]);
   const [rtsLists,       setRtsLists]       = useState<any[]>([]);
@@ -17697,6 +18253,7 @@ function AppMain() {
   }, [apiKey]);
   useEffect(() => { try { localStorage.setItem("b2br_openai_key", openaiKey); } catch {} }, [openaiKey]);
   useEffect(() => { try { localStorage.setItem("b2br_gemini_key", geminiKey); } catch {} }, [geminiKey]);
+  useEffect(() => { try { localStorage.setItem("b2br_fireflies_token", firefliesKey); } catch {} }, [firefliesKey]);
 
   // Keyboard shortcuts: Cmd+K = search, Cmd+J = copilot
   useEffect(() => {
@@ -18255,6 +18812,19 @@ RULES:
   const [hsMapIdInput, setHsMapIdInput] = useState("");
   const [hsMapSearching, setHsMapSearching] = useState(false);
   const [hsMapError, setHsMapError] = useState("");
+  const [hsDeals, setHsDeals] = useState<any[]>([]);
+  const [hsContacts, setHsContacts] = useState<any[]>([]);
+  const [hsLoadingDeals, setHsLoadingDeals] = useState(false);
+  const [hsLoadingContacts, setHsLoadingContacts] = useState(false);
+  const [hsSelectedDealId, setHsSelectedDealId] = useState<string>("");
+  const [hsApplyingDeal, setHsApplyingDeal] = useState(false);
+  const [hsOwnerMap, setHsOwnerMap] = useState<Record<string,string>>({});
+  const [hsPipelineMap, setHsPipelineMap] = useState<Record<string,string>>({});
+  const [ffTranscripts, setFfTranscripts] = useState<any[]>([]);
+  const [ffLoadingTranscripts, setFfLoadingTranscripts] = useState(false);
+  const [ffExpandedId, setFfExpandedId] = useState<string>("");
+  const [ffDetail, setFfDetail] = useState<Record<string,any>>({});
+  const [ffLoadingDetail, setFfLoadingDetail] = useState<string>("");
 
   // Does the actual sync work once a HubSpot company id has been confirmed.
   const runHubspotActivityPull = async (companyId: string, companyName: string) => {
@@ -18336,6 +18906,113 @@ RULES:
             _selected: false, // default unchecked — replacements require explicit approval
           });
           seenFields.add(localField);
+        }
+      }
+
+      // ── Auto-fill Sales Inputs from HubSpot custom properties + closed-won deal ──
+      // Strategy:
+      //   1. Pull associated deals first. The most recent closed-won deal (across any pipeline)
+      //      is the source of truth for handoff date, sales rep, and deal value.
+      //   2. Fall back to fuzzy-scanning company properties only when deal data is missing.
+      // Only fills empty local fields; never overwrites existing user input.
+      let wonDeal: any = null;
+      try {
+        const deals = await hubspotGetCompanyDeals(companyId);
+        const won = deals
+          .filter(d => String(d.properties?.hs_is_closed_won).toLowerCase() === "true")
+          .sort((a:any,b:any) => String(b.properties?.closedate || "").localeCompare(String(a.properties?.closedate || "")));
+        wonDeal = won[0] || null;
+      } catch (e) {
+        console.warn("[HubSpot] Deal fetch failed:", e);
+      }
+      const cdNow = companyData as any;
+      const repNameLooksLikeDate = (s: string) => /^\d{4}-\d{2}-\d{2}[T ]/.test(s);
+      const needsRepName = !cdNow.co_sales_rep || repNameLooksLikeDate(String(cdNow.co_sales_rep));
+      // Sales rep — owner of the most recent closed-won deal.
+      if (needsRepName && wonDeal?.properties?.hubspot_owner_id) {
+        const repName = await hubspotGetOwnerName(wonDeal.properties.hubspot_owner_id);
+        if (repName) autoFill.co_sales_rep = repName;
+      }
+      // Handoff date — close date of the most recent closed-won deal.
+      if (!cdNow.co_handoff_date && wonDeal?.properties?.closedate) {
+        const d = new Date(String(wonDeal.properties.closedate));
+        if (!isNaN(d.getTime())) autoFill.co_handoff_date = d.toISOString().slice(0, 10);
+      }
+      // Deal value — amount on the most recent closed-won deal.
+      if (!cdNow.co_deal_value && wonDeal?.properties?.amount) {
+        const num = Number(String(wonDeal.properties.amount).replace(/[^0-9.-]/g, ""));
+        if (isFinite(num) && num > 0) autoFill.co_deal_value = `$${num.toLocaleString()}`;
+      }
+      // Always snapshot the source deal name/pipeline for display in Sales Inputs.
+      if (wonDeal) {
+        autoFill._hubspotWonDealName = wonDeal.properties.dealname || "";
+        autoFill._hubspotWonDealPipeline = wonDeal.properties.pipeline || "";
+      }
+
+      // ── Fuzzy-scan company properties as a fallback ──
+      const propEntries = Object.entries(hsProps).filter(([_, v]) => v != null && String(v).trim() !== "");
+      const looksLikeDate = (s: string) => /^\d{4}-\d{2}-\d{2}([Tt ]\d{2}:\d{2})?/.test(s) || /^\d{10,13}$/.test(s);
+      const findProp = (matchers: RegExp[], opts?: { excludeNumericId?: boolean; excludeDateValue?: boolean }): string | null => {
+        for (const re of matchers) {
+          for (const [k, v] of propEntries) {
+            if (!re.test(k)) continue;
+            const s = String(v).trim();
+            if (!s) continue;
+            if (opts?.excludeNumericId && /^\d+$/.test(s)) continue;
+            if (opts?.excludeDateValue && looksLikeDate(s)) continue;
+            return s;
+          }
+        }
+        return null;
+      };
+      // Sales rep — fallback to company-level properties if no closed-won deal owner found.
+      // Excludes anything that looks like a date or numeric ID, so HubSpot's `hubspot_owner_assigneddate`
+      // (timestamp) and `hubspot_owner_id` (numeric) don't get scraped as a rep name.
+      if (needsRepName && !autoFill.co_sales_rep) {
+        const repOpts = { excludeNumericId: true, excludeDateValue: true };
+        const rep = findProp([/sales_?rep_?name|salesperson|account_owner|account_manager|deal_owner/i], repOpts)
+          || findProp([/^owner$|^owner_name$|sales_owner/i], repOpts);
+        if (rep) autoFill.co_sales_rep = String(rep);
+        else if (hsProps.hubspot_owner_id) {
+          const repName = await hubspotGetOwnerName(hsProps.hubspot_owner_id);
+          if (repName) autoFill.co_sales_rep = repName;
+        }
+      }
+      // Deal value — fallback to company-level revenue / contract-value properties only if
+      // no closed-won deal had an amount.
+      if (!cdNow.co_deal_value && !autoFill.co_deal_value) {
+        const val = findProp([/^total_revenue$/i])
+          || findProp([/^annualrevenue$/i])
+          || findProp([/\b(arr|acv|mrr)\b|contract_value|deal_value|deal_amount|annual_value/i]);
+        if (val) {
+          const num = Number(String(val).replace(/[^0-9.-]/g, ""));
+          autoFill.co_deal_value = isFinite(num) && num > 0 ? `$${num.toLocaleString()}` : String(val);
+        }
+      }
+      // Bebop URLs — any HubSpot field whose name mentions bebop or playbook is fair game.
+      // Extract every URL we find; merge with whatever's already in co_bebop_playbook_urls.
+      if (true) {
+        const urlSet = new Set<string>(
+          ((cdNow.co_bebop_playbook_urls || "") as string).split(/[\n,]+/).map((u:string) => u.trim()).filter(Boolean)
+        );
+        const before = urlSet.size;
+        for (const [k, v] of propEntries) {
+          if (!/bebop|playbook/i.test(k)) continue;
+          const s = String(v);
+          const matches = s.match(/https?:\/\/[^\s,;<>"']+/g);
+          if (matches) matches.forEach(u => urlSet.add(u.replace(/[)\].,;]+$/, "")));
+          // If the field looks like a single bare URL or domain
+          else if (/^[\w./-]+$/.test(s.trim()) && /\./.test(s.trim())) urlSet.add(s.trim());
+        }
+        if (urlSet.size > before) autoFill.co_bebop_playbook_urls = Array.from(urlSet).join("\n");
+      }
+      // Handoff date — fallback to a company-level "handoff" custom property only if
+      // no closed-won deal close date was found.
+      if (!cdNow.co_handoff_date && !autoFill.co_handoff_date) {
+        const ho = findProp([/handoff/i]);
+        if (ho) {
+          const d = new Date(String(ho));
+          if (!isNaN(d.getTime())) autoFill.co_handoff_date = d.toISOString().slice(0, 10);
         }
       }
 
@@ -18470,6 +19147,141 @@ RULES:
   };
 
   // Entry point for the Integrations page "Sync Now" button. Gates behind the mapping modal
+  const loadHsDeals = async () => {
+    const cd = companyData as Record<string,any>;
+    if (!cd._hubspotCompanyId) return;
+    setHsLoadingDeals(true);
+    try {
+      const deals = await hubspotGetCompanyDeals(cd._hubspotCompanyId);
+      deals.sort((a:any, b:any) => {
+        const aw = String(a.properties?.hs_is_closed_won).toLowerCase() === "true";
+        const bw = String(b.properties?.hs_is_closed_won).toLowerCase() === "true";
+        if (aw !== bw) return aw ? -1 : 1;
+        return String(b.properties?.closedate || b.properties?.createdate || "")
+          .localeCompare(String(a.properties?.closedate || a.properties?.createdate || ""));
+      });
+      setHsDeals(deals);
+      const prevSel = cd._hubspotSelectedDealId || "";
+      if (prevSel && deals.some((d:any) => d.id === prevSel)) {
+        setHsSelectedDealId(prevSel);
+      } else {
+        const firstWon = deals.find((d:any) => String(d.properties?.hs_is_closed_won).toLowerCase() === "true");
+        setHsSelectedDealId(firstWon?.id || deals[0]?.id || "");
+      }
+      // Resolve owner names and pipeline names in parallel
+      const ownerIds = [...new Set(deals.map((d:any) => d.properties?.hubspot_owner_id).filter(Boolean))] as string[];
+      const [ownerResults, pipelineMap] = await Promise.all([
+        Promise.all(ownerIds.map(async (oid) => {
+          const name = await hubspotGetOwnerName(oid);
+          return [oid, name] as [string, string];
+        })),
+        hubspotGetDealPipelines(),
+      ]);
+      const ownerMap: Record<string,string> = {};
+      for (const [oid, name] of ownerResults) if (name) ownerMap[oid] = name;
+      setHsOwnerMap(ownerMap);
+      setHsPipelineMap(pipelineMap);
+    } catch (e) { console.warn("[HubSpot] loadHsDeals failed:", e); }
+    setHsLoadingDeals(false);
+  };
+
+  const loadHsContacts = async () => {
+    const cd = companyData as Record<string,any>;
+    if (!cd._hubspotCompanyId) return;
+    setHsLoadingContacts(true);
+    try {
+      const contacts = await hubspotGetCompanyContacts(cd._hubspotCompanyId);
+      contacts.sort((a:any, b:any) => {
+        const an = [a.properties?.firstname, a.properties?.lastname].filter(Boolean).join(" ");
+        const bn = [b.properties?.firstname, b.properties?.lastname].filter(Boolean).join(" ");
+        return an.localeCompare(bn);
+      });
+      setHsContacts(contacts);
+    } catch (e) { console.warn("[HubSpot] loadHsContacts failed:", e); }
+    setHsLoadingContacts(false);
+  };
+
+  const applyHsDealMapping = async (dealId: string) => {
+    const deal = hsDeals.find((d:any) => d.id === dealId);
+    if (!deal) return;
+    setHsApplyingDeal(true);
+    try {
+      const props = deal.properties || {};
+      const updates: any = { _hubspotSelectedDealId: dealId };
+      if (props.hubspot_owner_id) {
+        const repName = await hubspotGetOwnerName(props.hubspot_owner_id);
+        if (repName) updates.co_sales_rep = repName;
+      }
+      if (props.closedate) {
+        const d = new Date(String(props.closedate));
+        if (!isNaN(d.getTime())) updates.co_handoff_date = d.toISOString().slice(0, 10);
+      }
+      if (props.amount) {
+        const num = Number(String(props.amount).replace(/[^0-9.-]/g, ""));
+        if (isFinite(num) && num > 0) updates.co_deal_value = `$${num.toLocaleString()}`;
+      }
+      updates._hubspotWonDealName = props.dealname || "";
+      updates._hubspotWonDealPipeline = props.pipeline || "";
+      setCompanyData((prev:any) => ({ ...prev, ...updates }));
+      addToast({ title:"Deal mapping applied", status:"success", message:`Fields mapped from "${props.dealname || dealId}"` });
+    } catch (e) { console.warn("[HubSpot] applyHsDealMapping failed:", e); }
+    setHsApplyingDeal(false);
+  };
+
+  const loadFirefliesTranscripts = async () => {
+    const cd = companyData as Record<string,any>;
+    console.log("[Fireflies] starting load, companyId:", cd._hubspotCompanyId, "hsContacts:", hsContacts.length);
+    setFfLoadingTranscripts(true);
+    try {
+      // Ensure we have contacts to filter by
+      let contacts = hsContacts;
+      if (contacts.length === 0 && cd._hubspotCompanyId) {
+        console.log("[Fireflies] fetching contacts for company", cd._hubspotCompanyId);
+        contacts = await hubspotGetCompanyContacts(cd._hubspotCompanyId);
+        console.log("[Fireflies] got contacts:", contacts.length);
+        setHsContacts(contacts);
+      }
+      const contactEmails = new Set(
+        contacts.map((c:any) => c.properties?.email).filter(Boolean).map((e:string) => e.toLowerCase())
+      );
+      console.log("[Fireflies] filtering by emails:", [...contactEmails]);
+      if (contactEmails.size === 0) {
+        console.warn("[Fireflies] no contact emails found — cannot filter");
+        addToast({ title:"No contacts found", status:"warning", message:"No contact emails found on this account to match recordings against." });
+        setFfLoadingTranscripts(false);
+        return;
+      }
+      console.log("[Fireflies] fetching transcripts from proxy...");
+      const result = await firefliesApiFetch(FF_LIST_QUERY, { limit: 200 });
+      console.log("[Fireflies] proxy result:", result);
+      if (result?.errors?.length) console.error("[Fireflies] GraphQL errors:", JSON.stringify(result.errors));
+      const all: any[] = result?.data?.transcripts || [];
+      console.log("[Fireflies] total transcripts from API:", all.length);
+      const filtered = all.filter((t:any) =>
+        (t.participants || []).some((p:string) => contactEmails.has(String(p).toLowerCase()))
+      );
+      console.log("[Fireflies] matched to account:", filtered.length);
+      filtered.sort((a:any, b:any) => (b.date || 0) - (a.date || 0));
+      setFfTranscripts(filtered);
+      if (filtered.length === 0) {
+        addToast({ title:"No recordings found", status:"info", message:"No Fireflies transcripts matched the contacts on this account." });
+      }
+    } catch (e) { console.error("[Fireflies] loadTranscripts failed:", e); }
+    setFfLoadingTranscripts(false);
+  };
+
+  const loadFfDetail = async (id: string) => {
+    if (ffDetail[id]) { setFfExpandedId(ffExpandedId === id ? "" : id); return; }
+    setFfLoadingDetail(id);
+    try {
+      const result = await firefliesApiFetch(FF_DETAIL_QUERY, { transcriptId: id });
+      const t = result?.data?.transcript;
+      if (t) setFfDetail((p:any) => ({ ...p, [id]: t }));
+      setFfExpandedId(id);
+    } catch (e) { console.warn("[Fireflies] loadDetail failed:", e); }
+    setFfLoadingDetail("");
+  };
+
   // so the user explicitly confirms which HubSpot company maps to this workspace.
   const syncHubspotForCompanyPage = async () => {
     if (!getHubspotToken()) { addToast({ title:"Add HubSpot token first", status:"error", message:"Integrations → HubSpot → Private App Token" }); return; }
@@ -18752,7 +19564,7 @@ RULES:
         generatedAt: new Date().toISOString(),
       };
       setCompanyData((prev:any) => ({ ...prev, _handoffBrief: result }));
-      setHandoffBriefOpen(true);
+      setView("profile");
       addToast({ title:"Handoff brief ready", status:"success", message: brief.oneLiner || `Synthesized from ${totalSignals} signals` });
 
       // If AI proposed field updates, offer them via the existing write-back engine
@@ -18779,6 +19591,87 @@ RULES:
       proposals,
       loading: false,
     });
+  };
+
+  // Shared Bebop playbook sync — fetches the URLs in co_bebop_playbook_urls and caches the
+  // extracted text on _bebopPlaybookContent so the AI has access to authoritative sales material.
+  const syncBebopPlaybooks = async () => {
+    const cd = companyData as Record<string,string>;
+    const bebopUrls = (cd.co_bebop_playbook_urls || "").trim();
+    const urls = bebopUrls.split(/[\n,]+/).map(u => u.trim()).filter(Boolean).map(u => /^https?:\/\//i.test(u) ? u : `https://${u}`);
+    if (urls.length === 0) { addToast({ title:"Paste at least one Bebop URL first", status:"error", message:"" }); return; }
+    (window as any).__bebopSyncing = true; setCompanyData(p=>({...p}));
+    const toastId = addToast({ title:"Fetching Bebop playbooks…", status:"loading", message:`${urls.length} URL${urls.length!==1?"s":""}` });
+    try {
+      const results = await Promise.allSettled(urls.slice(0, 10).map(async u => {
+        const html = await fetchPageHTML(u);
+        return { url: u, text: html ? htmlToText(html, 15000) : "", structure: html ? extractOfferingStructure(html) : "" };
+      }));
+      const snapshot: Record<string,string> = {};
+      let fetched = 0;
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value.text.length > 200) {
+          snapshot[r.value.url] = r.value.structure ? `${r.value.structure}\n\n${r.value.text}` : r.value.text;
+          fetched++;
+        }
+      }
+      if (fetched === 0) throw new Error("No Bebop URL returned usable content — check the URLs and try again");
+      setCompanyData((prev:any) => ({
+        ...prev,
+        _bebopPlaybookContent: snapshot,
+        _bebopPlaybookLastSync: new Date().toISOString(),
+      }));
+      (window as any).__bebopSyncing = false; setCompanyData(p=>({...p}));
+      const totalChars = Object.values(snapshot).reduce((a,s) => a + s.length, 0);
+      updateToast(toastId, { status:"success", title:"Bebop playbooks synced", message:`${fetched}/${urls.length} URL${urls.length!==1?"s":""} · ${Math.round(totalChars/1000)}k chars of sales context` });
+    } catch (err:any) {
+      console.error("[Bebop] sync failed:", err);
+      (window as any).__bebopSyncing = false; setCompanyData(p=>({...p}));
+      updateToast(toastId, { status:"error", title:"Bebop sync failed", message:(err?.message || "Check console").slice(0, 120) });
+    }
+  };
+
+  // Shared expectation-gap runner — called from Profile (and previously from the Activity gaps tab).
+  // Compares sales-era promises (Bebop playbooks, sales calls/comms) against CX-era delivery
+  // (campaigns + CX calls/comms) and stores the result on window[__gapAnalysis_<wsid>].
+  const runGapAnalysis = async () => {
+    const gaKey = `__gapAnalysis_${activeWorkspace?.id||""}`;
+    const handoffDate = (companyData as Record<string,string>).co_handoff_date || "";
+    const salesComms = (slackComms || []).filter((c:any) => getCommPhase(c, handoffDate) === "sales");
+    const cxComms = (slackComms || []).filter((c:any) => getCommPhase(c, handoffDate) === "cx");
+    const salesCalls = (callRecords || []).filter((r:any) => getCommPhase(r, handoffDate) === "sales");
+    const cxCalls = (callRecords || []).filter((r:any) => getCommPhase(r, handoffDate) === "cx");
+    const bebopEntries = Object.entries((companyData as any)._bebopPlaybookContent || {}).filter(([,v])=>typeof v === "string" && (v as string).length > 100);
+    const hasSales = salesComms.length + salesCalls.length + bebopEntries.length > 0;
+    const hasCx = cxComms.length + cxCalls.length + campaigns.length > 0;
+    if (!hasSales) { addToast({ title:"No sales-era data", status:"error", message:"Set handoff date + sync HubSpot / add Bebop playbooks first" }); return; }
+    if (!hasCx) { addToast({ title:"No CX-era data yet", status:"error", message:"Need some CX activity to compare against — campaigns, calls, or comms" }); return; }
+    (window as any).__gapRunning = true; setCallRecords(p=>p?[...p]:[]);
+    const toastId = addToast({ title:"Analyzing gaps…", status:"loading", message:"Comparing sales promises vs CX reality" });
+    try {
+      const fmt = (c:any,m:number=300) => `[${c.date||"?"}] ${c.type||"?"} ${c.subject?`· ${c.subject}`:""} ${(c.content||"").replace(/\s+/g," ").slice(0,m)}`;
+      const fmtCall = (r:any) => `[${r.callDate||"?"} · ${r.callType||"?"}] ${(r.result?.summary||"").slice(0,200)} | sentiment: ${r.result?.sentiment?.score||"?"}/10`;
+      const bebopBlock = bebopEntries.length
+        ? bebopEntries.map(([url,text]:[string,any]) => `-- ${url} --\n${String(text).slice(0,3000)}`).join("\n\n")
+        : "(none)";
+      const campaignsBlock = (campaigns||[]).slice(0,10).map((c:any) => {
+        const m = c.performance?.metrics || {};
+        return `"${c.name}" · ${c.status} · sent=${m.sent||0} replies=${m.allReplies||0} meetings=${m.meetings||0}`;
+      }).join("\n") || "(no campaigns)";
+      const prompt = `You are producing an EXPECTATION GAP ANALYSIS. Compare what the sales team promised this client (SALES-ERA) against what CX has actually delivered since handoff (CX-ERA). Surface specific gaps, mismatches, and risk signals.\n\nHandoff date: ${handoffDate || "(not set — treating all pre-handoff evidence as sales)"}\n\n══ SALES-ERA (pre-handoff — what was pitched/promised) ══\n\nBebop playbooks (authoritative pitch material):\n${bebopBlock}\n\nSales calls (${salesCalls.length}):\n${salesCalls.slice(0,8).map(fmtCall).join("\n") || "(none)"}\n\nSales comms (${salesComms.length}, showing 20):\n${salesComms.slice(0,20).map((c:any)=>fmt(c,400)).join("\n") || "(none)"}\n\n══ CX-ERA (post-handoff — what's actually been delivered) ══\n\nCampaigns running (${campaigns?.length||0}):\n${campaignsBlock}\n\nCX calls (${cxCalls.length}):\n${cxCalls.slice(0,8).map(fmtCall).join("\n") || "(none)"}\n\nCX comms (${cxComms.length}, showing 20):\n${cxComms.slice(0,20).map((c:any)=>fmt(c,400)).join("\n") || "(none)"}\n\nReturn ONLY JSON:\n{\n  "summary": "2-3 sentence overview of the overall sales→CX alignment state",\n  "alignmentScore": 0,\n  "gaps": [\n    {\n      "severity": "critical" | "high" | "medium" | "low",\n      "promised": "what sales committed to (quote or paraphrase with source)",\n      "delivered": "what CX has actually done (quote or paraphrase with source)",\n      "gap": "1 sentence on why this is a mismatch",\n      "recommendedAction": "1 sentence concrete next step"\n    }\n  ],\n  "alignedPoints": ["where promise and delivery DO align — short bullets"],\n  "unverifiable": ["sales claims we don't have CX-era evidence for yet — need to check"]\n}\n\nRULES:\n- alignmentScore: 0-100. 100 = fully aligned, 0 = catastrophic mismatch.\n- Only include gaps with concrete evidence from BOTH sides.\n- Do NOT invent promises or deliveries. If a claim has no source, put it in unverifiable.\n- Be specific — name the metric, the commitment, the gap. No vague observations.`;
+      const raw = await callAI(prompt, "Return only valid JSON. No prose, no fences.", 4000, { useFullContext: true });
+      const parsed = safeJsonParse(raw);
+      const entry = { result: parsed, generatedAt: new Date().toISOString() };
+      (window as any)[gaKey] = entry;
+      (window as any).__gapRunning = false;
+      setCallRecords(p=>p?[...p]:[]);
+      updateToast(toastId, { status:"success", title:"Gap analysis complete", message:`Score: ${parsed?.alignmentScore ?? "?"}/100` });
+    } catch (e:any) {
+      console.error("[GapAnalysis] failed:", e);
+      (window as any).__gapRunning = false;
+      setCallRecords(p=>p?[...p]:[]);
+      updateToast(toastId, { status:"error", title:"Gap analysis failed", message:(e?.message || "Check console").slice(0, 120) });
+    }
   };
 
   // Implementation doc → cross-platform update proposals. Uses the same write-back engine as transcripts.
@@ -19267,7 +20160,7 @@ RULES:
               {/* Nav items — grouped */}
               {activeWorkspace && (
                 <>
-                  {/* ── HOME ── */}
+                  {/* ── TODAY (was Home) ── */}
                   <button onClick={()=>guardedNav(()=>setView("home"))}
                     style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
                       borderRadius:12, border:"none",
@@ -19276,13 +20169,54 @@ RULES:
                     onMouseEnter={e=>{ if(view!=="home")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                     onMouseLeave={e=>{ if(view!=="home")(e.currentTarget as HTMLButtonElement).style.background=view==="home"?`${C2.accent}14`:"transparent"; }}>
                     <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="home"?C2.accent:C2.muted }}>⌂</span>
-                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="home"?700:500, color:view==="home"?C2.text:C2.textSoft }}>Home</span>
+                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="home"?700:500, color:view==="home"?C2.text:C2.textSoft }}>Dashboard</span>
                   </button>
 
-                  {/* ── RESEARCH ── */}
+                  {/* ── CLIENT ── */}
                   <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
-                    padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>RESEARCH</div>
+                    padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>CLIENT</div>
+
+                  {/* Sales Inputs — write surface: handoff date, HubSpot sync, Bebop URLs, sales notes */}
+                  <button onClick={()=>guardedNav(()=>setView("salesInputs"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="salesInputs" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
+                    onMouseEnter={e=>{ if(view!=="salesInputs")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="salesInputs")(e.currentTarget as HTMLButtonElement).style.background=view==="salesInputs"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="salesInputs"?C2.accent:C2.muted }}>📥</span>
+                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="salesInputs"?700:500, color:view==="salesInputs"?C2.text:C2.textSoft }}>Sales Inputs</span>
+                  </button>
+
+                  {/* Profile — read surface: synthesized brief, sentiment, pitch, gaps, stakeholders */}
+                  <button onClick={()=>guardedNav(()=>setView("profile"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="profile" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
+                    onMouseEnter={e=>{ if(view!=="profile")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="profile")(e.currentTarget as HTMLButtonElement).style.background=view==="profile"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="profile"?C2.accent:C2.muted }}>◉</span>
+                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="profile"?700:500, color:view==="profile"?C2.text:C2.textSoft }}>Profile</span>
+                  </button>
+
+                  {/* Activity (was "Client Intel") — communications timeline */}
+                  <button onClick={()=>guardedNav(()=>setView("calls"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="calls" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
+                    onMouseEnter={e=>{ if(view!=="calls")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="calls")(e.currentTarget as HTMLButtonElement).style.background=view==="calls"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="calls"?C2.accent:C2.muted }}>🎙</span>
+                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="calls"?700:500, color:view==="calls"?C2.text:C2.textSoft }}>Activity</span>
+                  </button>
+
+                  {/* ── PLANNING ── */}
+                  <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
+                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
+                    padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>PLANNING</div>
 
                   {(
                     <button onClick={()=>guardedNav(()=>setView("company"))}
@@ -19308,8 +20242,6 @@ RULES:
                       <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="products"?700:500, color:view==="products"?C2.text:C2.textSoft }}>Products / Services</span>
                     </button>
                   )}
-
-                  {/* Personas — expandable with sub-items */}
                   <button onClick={()=>guardedNav(()=>{ setEditingId(null); setView("icps"); })}
                     style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                       borderRadius:12, border:"none",
@@ -19320,58 +20252,36 @@ RULES:
                     <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="icps"?C2.accent:C2.muted }}>◑</span>
                     <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="icps"?700:500, color:view==="icps"?C2.text:C2.textSoft }}>Personas</span>
                   </button>
-
-                  {/* ── PLANNING ── */}
-                  <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
-                  <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
-                    padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>PLANNING</div>
-
-                  {/* Strategy */}
                   {(
                     <button onClick={()=>guardedNav(()=>setView("strategy"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
-                        background: (view==="strategy"||view==="matrix") ? `${C2.accent}14` : "transparent",
+                        background: view==="strategy" ? `${C2.accent}14` : "transparent",
                         cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(view!=="strategy"&&view!=="matrix")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(view!=="strategy"&&view!=="matrix")(e.currentTarget as HTMLButtonElement).style.background=(view==="strategy"||view==="matrix")?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:(view==="strategy"||view==="matrix")?C2.accent:C2.muted }}>◎</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:(view==="strategy"||view==="matrix")?700:500, color:(view==="strategy"||view==="matrix")?C2.text:C2.textSoft }}>Strategy</span>
+                      onMouseEnter={e=>{ if(view!=="strategy")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="strategy")(e.currentTarget as HTMLButtonElement).style.background=view==="strategy"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="strategy"?C2.accent:C2.muted }}>◎</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="strategy"?700:500, color:view==="strategy"?C2.text:C2.textSoft }}>Strategy</span>
                     </button>
                   )}
-
-                  {/* DFY Setup */}
-                  {(
-                    <button onClick={()=>guardedNav(()=>setView("dfySetup"))}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
-                        borderRadius:12, border:"none",
-                        background: view==="dfySetup" ? `${C2.accent}14` : "transparent",
-                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(view!=="dfySetup")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(view!=="dfySetup")(e.currentTarget as HTMLButtonElement).style.background=view==="dfySetup"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="dfySetup"?C2.accent:C2.muted }}>⊕</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="dfySetup"?700:500, color:view==="dfySetup"?C2.text:C2.textSoft }}>DFY Setup</span>
-                    </button>
-                  )}
-
                   {/* ── EXECUTION ── */}
                   <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
                     padding:"0 14px", marginBottom:6, textTransform:"uppercase" as const }}>EXECUTION</div>
 
-                  {/* Campaigns */}
-                  {(
+                  {/* Campaigns (includes coverage matrix as a sub-tab) */}
+                  {(() => { const isCamp = view==="campaigns" || view==="matrix"; return (
                     <button onClick={()=>guardedNav(()=>setView("campaigns"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
-                        background: view==="campaigns" ? `${C2.accent}14` : "transparent",
+                        background: isCamp ? `${C2.accent}14` : "transparent",
                         cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(view!=="campaigns")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(view!=="campaigns")(e.currentTarget as HTMLButtonElement).style.background=view==="campaigns"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="campaigns"?C2.accent:C2.muted }}>⊕</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="campaigns"?700:500, color:view==="campaigns"?C2.text:C2.textSoft }}>Campaigns</span>
+                      onMouseEnter={e=>{ if(!isCamp)(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(!isCamp)(e.currentTarget as HTMLButtonElement).style.background=isCamp?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:isCamp?C2.accent:C2.muted }}>⊕</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:isCamp?700:500, color:isCamp?C2.text:C2.textSoft }}>Campaigns</span>
                     </button>
-                  )}
+                  );})()}
 
                   {/* RTS Leads */}
                   {(
@@ -19423,19 +20333,17 @@ RULES:
                     </button>
                   )}
 
-                  {/* Call Analyzer */}
-                  {(
-                    <button onClick={()=>guardedNav(()=>setView("calls"))}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
-                        borderRadius:12, border:"none",
-                        background: view==="calls" ? `${C2.accent}14` : "transparent",
-                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
-                      onMouseEnter={e=>{ if(view!=="calls")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(view!=="calls")(e.currentTarget as HTMLButtonElement).style.background=view==="calls"?`${C2.accent}14`:"transparent"; }}>
-                      <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="calls"?C2.accent:C2.muted }}>🎙</span>
-                      <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="calls"?700:500, color:view==="calls"?C2.text:C2.textSoft }}>Client Intel</span>
-                    </button>
-                  )}
+                  {/* DFY Setup — moved from STRATEGY since it's a one-time provisioning step */}
+                  <button onClick={()=>guardedNav(()=>setView("dfySetup"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="dfySetup" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:1 }}
+                    onMouseEnter={e=>{ if(view!=="dfySetup")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="dfySetup")(e.currentTarget as HTMLButtonElement).style.background=view==="dfySetup"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="dfySetup"?C2.accent:C2.muted }}>⊕</span>
+                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="dfySetup"?700:500, color:view==="dfySetup"?C2.text:C2.textSoft }}>DFY Setup</span>
+                  </button>
 
                   {/* Integrations */}
                   <button onClick={()=>guardedNav(()=>setView("integrations"))}
@@ -19540,33 +20448,50 @@ RULES:
                     </button>
                   ) : (
                     <div style={{ padding:"8px 10px", display:"flex", flexDirection:"column", gap:8 }}>
+                      {(() => { const canReveal = loggedInUser?.email === "joshua.hameier@b2brocket.ai"; return (
+                      <>
                       <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
                         <button onClick={()=>setMenuApiOpen(false)}
                           style={{ fontSize:10, color:C.muted, background:"none", border:"none", cursor:"pointer", padding:0, fontFamily:mono }}>‹ Back</button>
                         <span style={{ fontSize:10, color:C.muted, fontFamily:mono, fontWeight:700, flex:1, textAlign:"right" }}>API KEYS</span>
+                        {canReveal && (
+                          <button onClick={()=>{ (window as any).__intKeysVisible = !((window as any).__intKeysVisible); setCompanyData(p=>({...p})); }}
+                            style={{ background:"none", border:"none", cursor:"pointer", color:C.muted, fontSize:13, lineHeight:1, padding:"0 0 0 4px" }}
+                            title={(window as any).__intKeysVisible ? "Hide keys" : "Show keys"}>
+                            {(window as any).__intKeysVisible ? "🙈" : "👁"}
+                          </button>
+                        )}
                       </div>
                       {[
                         { label:"Anthropic (Claude)", ph:"sk-ant-api03-…", val:apiKey, set:setApiKey, hint:"Required for core AI" },
                         { label:"OpenAI (GPT-4o)", ph:"sk-…", val:openaiKey, set:setOpenaiKey, hint:"AI Council" },
                         { label:"Google (Gemini)", ph:"AIza…", val:geminiKey, set:setGeminiKey, hint:"AI Council" },
                         { label:"Slack Bot Token", ph:"xoxb-…", val:slackKey, set:(v:string)=>{setSlackKey(v);setSlackToken(v);}, hint:"Client Intel — auto-sync Slack messages" },
-                        { label:"HubSpot Private App Token", ph:"pat-na1-…", val:hubspotKey, set:(v:string)=>{setHubspotKey(v);setHubspotToken(v);}, hint:"Client Intel — pull company properties + email history" },
+                        { label:"HubSpot Private App Token", ph:"pat-na1-…", val:hubspotKey, set:(v:string)=>{setHubspotKey(v);setHubspotToken(v);}, hint:"" },
+                        { label:"Fireflies API Token", ph:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", val:firefliesKey, set:(v:string)=>{setFirefliesKeyState(v);setFirefliesToken(v);}, hint:"" },
                       ].map(k => (
                         <div key={k.label}>
                           <div style={{ fontSize:9, color:C.muted, fontFamily:mono, marginBottom:3 }}>{k.label}</div>
-                          <input type="password" value={k.val}
-                            onChange={e=>k.set(e.target.value)}
-                            onKeyDown={e=>{ if(e.key==="Enter") setMenuApiOpen(false); }}
-                            placeholder={k.ph}
-                            style={{ width:"100%", padding:"5px 7px", borderRadius:5, border:`1px solid ${C.border}`,
-                              background:C.canvas, color:C.text, fontFamily:mono, fontSize:10, boxSizing:"border-box" as const, outline:"none" }} />
-                          <div style={{ fontSize:8.5, color:C.muted, fontFamily:mono, marginTop:2 }}>{k.hint}</div>
+                          <div style={{ position:"relative" }}>
+                            <input type={canReveal && (window as any).__intKeysVisible ? "text" : "password"} value={k.val}
+                              onChange={e=>k.set(e.target.value)}
+                              onKeyDown={e=>{ if(e.key==="Enter") setMenuApiOpen(false); }}
+                              placeholder={k.ph}
+                              style={{ width:"100%", padding:`5px ${canReveal ? "26px" : "7px"} 5px 7px`, borderRadius:5, border:`1px solid ${C.border}`,
+                                background:C.canvas, color:C.text, fontFamily:mono, fontSize:10, boxSizing:"border-box" as const, outline:"none" }} />
+                            {canReveal && (
+                              <button onClick={()=>{ (window as any).__intKeysVisible = !((window as any).__intKeysVisible); setCompanyData(p=>({...p})); }}
+                                style={{ position:"absolute", right:5, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", color:C.muted, fontSize:11, lineHeight:1, padding:1 }}>
+                                {(window as any).__intKeysVisible ? "🙈" : "👁"}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
+                      </> ); })()}
                       <button onClick={()=>setMenuApiOpen(false)}
                         style={{ padding:"5px 0", borderRadius:6, border:"none",
                           background:C.accent, color:"#fff", fontFamily:head, fontWeight:700, fontSize:11, cursor:"pointer" }}>Done</button>
-                      <div style={{ fontSize:8, color:C.muted, fontFamily:mono }}>Stored in your browser only.</div>
                     </div>
                   )}
 
@@ -19605,7 +20530,7 @@ RULES:
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -20424,7 +21349,7 @@ RULES:
 
                   {((window as any).__homeTab || "overview") === "overview" && (<>
 
-                  {/* Sales → CX Handoff Brief */}
+                  {/* Sales → CX Handoff Brief — slim CTA banner. Full brief lives on Profile now. */}
                   {(() => {
                     const hb = (companyData as any)._handoffBrief;
                     const hsProps = (companyData as any)._hubspotProps || {};
@@ -20434,39 +21359,22 @@ RULES:
                     const callCount = (callRecords || []).length;
                     const totalSignals = hsPropCount + emailCount + slackCount + callCount;
                     const canGenerate = totalSignals >= 3;
-                    if (!hb && !canGenerate) return null; // hide card entirely if no signals + no brief
+                    if (!hb && !canGenerate) return null;
                     return (
-                      <div style={{ background: hb ? `${C2.accent}05` : C2.card, border:`1px solid ${hb ? C2.accent + "30" : C2.border}`, borderRadius:14, padding:"18px 22px", marginBottom:20 }}>
-                        <div style={{ display:"flex", alignItems:"flex-start", gap:12, marginBottom: hb ? 12 : 10 }}>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, marginBottom:4, textTransform:"uppercase" as const }}>
-                              📥 Sales → CX Handoff
-                            </div>
-                            <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.35 }}>
-                              {hb ? (hb.content?.oneLiner || "Handoff brief generated") : "Generate the sales handoff brief"}
-                            </div>
-                            <div style={{ fontSize:11.5, color:C2.muted, fontFamily:body, marginTop:4, lineHeight:1.5 }}>
-                              {hb
-                                ? `Synthesized ${new Date(hb.generatedAt).toLocaleString()} · From ${[hb.sources?.hubspot && `${hb.sources.hubspot} HubSpot`, hb.sources?.email && `${hb.sources.email} emails`, hb.sources?.slack && `${hb.sources.slack} Slack`, hb.sources?.calls && `${hb.sources.calls} calls`].filter(Boolean).join(" · ")}`
-                                : canGenerate
-                                  ? `AI will synthesize a pre-onboarding brief from ${[hsPropCount && `${hsPropCount} HubSpot fields`, emailCount && `${emailCount} emails`, slackCount && `${slackCount} Slack msgs`, callCount && `${callCount} calls`].filter(Boolean).join(" · ")}. Covers: who they are, expectations, stakeholders, topics, watchouts.`
-                                  : "Connect HubSpot or upload emails / calls to enable this."}
-                            </div>
+                      <div onClick={()=>setView("profile")}
+                        style={{ background: hb ? `${C2.accent}05` : C2.card, border:`1px solid ${hb ? C2.accent + "30" : C2.border}`,
+                          borderRadius:12, padding:"12px 16px", marginBottom:20, cursor:"pointer",
+                          display:"flex", alignItems:"center", gap:10, transition:"background .15s, border-color .15s" }}
+                        onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background = hb ? `${C2.accent}10` : C2.faint;}}
+                        onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background = hb ? `${C2.accent}05` : C2.card;}}>
+                        <span style={{ fontSize:14 }}>📥</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:12.5, fontWeight:700, fontFamily:head, color:C2.text, lineHeight:1.3,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {hb ? (hb.content?.oneLiner || "Handoff brief ready") : "Generate the sales handoff brief"}
                           </div>
-                          <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                            {hb && (
-                              <button onClick={()=>setHandoffBriefOpen(true)}
-                                style={{ padding:"8px 14px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.text, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
-                                View Brief
-                              </button>
-                            )}
-                            <button onClick={generateHandoffBrief} disabled={!canGenerate || handoffGenerating}
-                              style={{ padding:"8px 14px", borderRadius:8, border:"none",
-                                background: (!canGenerate || handoffGenerating) ? C2.muted : C2.accent, color:"#fff",
-                                fontSize:11, fontFamily:head, fontWeight:700, cursor: handoffGenerating ? "wait" : !canGenerate ? "not-allowed" : "pointer",
-                                boxShadow: (!canGenerate || handoffGenerating) ? "none" : `0 2px 6px ${C2.accent}44` }}>
-                              {handoffGenerating ? "◌ Analyzing…" : hb ? "Regenerate" : "Generate Brief"}
-                            </button>
+                          <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:2 }}>
+                            {hb ? "View on Profile →" : "Open Profile to generate →"}
                           </div>
                         </div>
                       </div>
@@ -20491,8 +21399,8 @@ RULES:
                       nextAction = {
                         title: hasHandoff ? "Review the handoff brief" : "Sync HubSpot and generate a handoff brief",
                         desc: hasHandoff ? "The handoff brief is ready — review the key topics + expectations before the onboarding call." : "Pull HubSpot data and any sales-era emails into a pre-onboarding brief so you know what sales promised.",
-                        cta: hasHandoff ? "View Brief" : "Go to Integrations",
-                        onClick: () => hasHandoff ? (setHandoffBriefOpen && setHandoffBriefOpen(true)) : setView("integrations"),
+                        cta: hasHandoff ? "Open Profile" : "Go to Integrations",
+                        onClick: () => hasHandoff ? setView("profile") : setView("integrations"),
                       };
                     } else if (stage === "pre_onboarding") {
                       nextAction = {
@@ -21560,91 +22468,857 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
             )}
 
 
-            {(view==="strategy" || view==="matrix") && (() => {
-              const stratTab = (window as any).__stratTab || (view==="matrix"?"coverage":"roadmap");
-              const setStratTab = (v:string) => { (window as any).__stratTab = v; setStrategy((p:any) => p ? {...p} : p); };
-              // Sync tab when navigating directly to matrix
-              if (view==="matrix" && stratTab!=="coverage") { (window as any).__stratTab = "coverage"; }
+            {view==="salesInputs" && (() => {
+              const cd = companyData as Record<string, any>;
+              const handoffDate = cd.co_handoff_date || "";
+              const hsConnected = !!getHubspotToken();
+              const hsCompanyName = cd._hubspotCompanyName || "";
+              const hsConfirmed = !!cd._hubspotCompanyConfirmed;
+              const hsProps = cd._hubspotProps || {};
+              const hsPropCount = Object.keys(hsProps).filter(k => hsProps[k] != null && hsProps[k] !== "").length;
+              const hsLastSync = cd._hubspotLastActivityPull || cd._hubspotLastPull;
+              const wonDealName = cd._hubspotWonDealName || "";
+              const wonDealPipeline = cd._hubspotWonDealPipeline || "";
+              const bebopUrls = (cd.co_bebop_playbook_urls || "").trim();
+              const urlCount = bebopUrls ? bebopUrls.split(/[\n,]+/).map((u:string)=>u.trim()).filter(Boolean).length : 0;
+              const bebopSnapshot = cd._bebopPlaybookContent || null;
+              const bebopChars = bebopSnapshot ? Object.values(bebopSnapshot).reduce((acc:number, v:any) => acc + (typeof v === "string" ? v.length : 0), 0) : 0;
+              const bebopSyncing = !!(window as any).__bebopSyncing;
+              const sales_phase = (item:any) => getCommPhase(item, handoffDate) === "sales";
+              const salesEmails = (slackComms || []).filter((c:any) => c.type === "email" && sales_phase(c)).length;
+              const salesSlack = (slackComms || []).filter((c:any) => c.type === "slack" && sales_phase(c)).length;
+              const salesCalls = (callRecords || []).filter((r:any) => sales_phase(r)).length;
+              const totalSignals = hsPropCount + salesEmails + salesSlack + salesCalls;
+              const canGenerate = totalSignals >= 3;
+              const hb = cd._handoffBrief;
+              const repIsDateLike = (v: string) => /^\d{4}-\d{2}-\d{2}[T ]/.test(v);
+              const salesRepVal = cd.co_sales_rep || "";
+              const repWarning = !!salesRepVal && repIsDateLike(salesRepVal);
+              const fieldsMapped = [salesRepVal && !repWarning, !!cd.co_deal_value, !!handoffDate].filter(Boolean).length;
+              const mappingColor = fieldsMapped === 3 ? "#22c55e" : fieldsMapped > 0 ? "#f59e0b" : C2.muted;
               return (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ padding:"20px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Sales Inputs</h2>
+                  <p style={{ fontSize:12, color:C2.muted, fontFamily:body, margin:0 }}>
+                    Everything sales hands off to CX. Connect HubSpot, verify the deal mapping, paste playbooks, add notes.
+                  </p>
+                </div>
+                <div style={{ flex:1, minHeight:0, overflow:"auto", padding:"16px clamp(20px, 3vw, 48px) 28px",
+                  display:"flex", flexDirection:"column" as const, gap:14, maxWidth:880, width:"100%", boxSizing:"border-box" as const }}>
+
+                  {/* ── HubSpot (top) ── */}
+                  <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"18px 22px" }}>
+                    {/* Header row */}
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: (hsConnected && hsConfirmed) ? 14 : 8 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const }}>HubSpot</div>
+                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4,
+                          background: hsConnected ? "#FF7A5918" : C2.faint, color: hsConnected ? "#FF7A59" : C2.muted }}>
+                          {hsConnected ? "CONNECTED" : "NOT CONNECTED"}
+                        </span>
+                      </div>
+                      {hsConnected && (
+                        <button onClick={syncHubspotForCompanyPage} disabled={hubspotSyncing}
+                          style={{ padding:"6px 14px", borderRadius:7, border:"none",
+                            background: hubspotSyncing ? C2.muted : "#FF7A59", color:"#fff",
+                            fontSize:11, fontFamily:head, fontWeight:700, cursor: hubspotSyncing ? "wait" : "pointer" }}>
+                          {hubspotSyncing ? "Syncing…" : (hsConfirmed ? "Sync now" : "Map & sync")}
+                        </button>
+                      )}
+                    </div>
+
+                    {!hsConnected ? (
+                      <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.6 }}>
+                        Add the HubSpot Private App token in{" "}
+                        <span style={{ color:C2.accent, cursor:"pointer", textDecoration:"underline" }} onClick={()=>setView("integrations")}>Integrations</span>
+                        {" "}to enable per-client sync.
+                      </div>
+                    ) : !hsConfirmed ? (
+                      <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, lineHeight:1.6 }}>
+                        Not mapped to a HubSpot company yet — click <strong style={{ color:C2.text }}>Map & sync</strong> to find and confirm the right one.
+                      </div>
+                    ) : (
+                      <>
+                        {/* Company row */}
+                        <div style={{ display:"flex", alignItems:"center", gap:8, paddingBottom:12, marginBottom:14, borderBottom:`1px solid ${C2.border}` }}>
+                          <span style={{ fontSize:10, color:C2.muted, fontFamily:mono, flexShrink:0 }}>Company</span>
+                          <span style={{ fontSize:12, color:C2.text, fontFamily:body, fontWeight:600 }}>{hsCompanyName}</span>
+                          <span style={{ marginLeft:"auto", fontSize:10, color:C2.muted, fontFamily:mono, flexShrink:0 }}>{hsPropCount} fields</span>
+                          {hsLastSync && <span style={{ fontSize:10, color:C2.muted, fontFamily:body, flexShrink:0 }}>· {new Date(hsLastSync).toLocaleDateString()}</span>}
+                          <button onClick={()=>{ setCompanyData((p:any)=>({ ...p, _hubspotCompanyConfirmed:false })); setHsDeals([]); setHsContacts([]); setHsSelectedDealId(""); }}
+                            style={{ marginLeft:6, padding:"3px 8px", borderRadius:5, border:`1px solid ${C2.border}`, background:"transparent", color:C2.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
+                            re-map
+                          </button>
+                        </div>
+
+                        {/* Deals section */}
+                        <div style={{ marginBottom:14 }}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: hsDeals.length > 0 ? 8 : 0 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                              <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const }}>Deals</span>
+                              {hsDeals.length > 0 && <span style={{ fontSize:9, fontFamily:mono, color:C2.muted }}>{hsDeals.length}</span>}
+                            </div>
+                            <button onClick={loadHsDeals} disabled={hsLoadingDeals}
+                              style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:"transparent",
+                                color:C2.textSoft, fontSize:10, fontFamily:mono, cursor: hsLoadingDeals ? "wait" : "pointer" }}>
+                              {hsLoadingDeals ? "Loading…" : hsDeals.length > 0 ? "Refresh" : "Load deals"}
+                            </button>
+                          </div>
+                          {hsDeals.length > 0 && (
+                            <>
+                              <div style={{ maxHeight:240, overflowY:"auto" as const, borderRadius:8, border:`1px solid ${C2.border}`, marginBottom:8 }}>
+                                {hsDeals.map((deal:any, i:number) => {
+                                  const p = deal.properties || {};
+                                  const isWon = String(p.hs_is_closed_won).toLowerCase() === "true";
+                                  const isSel = hsSelectedDealId === deal.id;
+                                  const amt = p.amount ? `$${Number(String(p.amount).replace(/[^0-9.-]/g,"")).toLocaleString()}` : "";
+                                  const wonDate = p.closedate ? new Date(p.closedate).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }) : "";
+                                  const repName = p.hubspot_owner_id ? (hsOwnerMap[p.hubspot_owner_id] || "") : "";
+                                  const pipelineName = p.pipeline ? (hsPipelineMap[p.pipeline] || "") : "";
+                                  return (
+                                    <div key={deal.id} onClick={()=>setHsSelectedDealId(deal.id)}
+                                      style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", cursor:"pointer",
+                                        background: isSel ? `${C2.accent}12` : "transparent",
+                                        borderLeft: isSel ? `3px solid ${C2.accent}` : "3px solid transparent",
+                                        borderBottom: i < hsDeals.length-1 ? `1px solid ${C2.border}` : "none" }}>
+                                      <div style={{ width:14, height:14, borderRadius:"50%", border:`2px solid ${isSel ? C2.accent : C2.border}`, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                                        {isSel && <div style={{ width:6, height:6, borderRadius:"50%", background:C2.accent }} />}
+                                      </div>
+                                      <div style={{ flex:1, minWidth:0 }}>
+                                        <div style={{ fontSize:12, color: isSel ? C2.accent : C2.text, fontFamily:body, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, marginBottom: (repName||pipelineName||wonDate) ? 5 : 0 }}>{p.dealname || deal.id}</div>
+                                        {(repName || pipelineName || wonDate) && (
+                                          <div style={{ display:"flex", flexWrap:"wrap" as const, gap:3 }}>
+                                            {repName && (
+                                              <span style={{ display:"inline-flex", alignItems:"center", gap:3, padding:"2px 7px", borderRadius:20, background: isSel ? "#fff" : C2.faint, border:`1px solid ${C2.border}`, fontSize:9, fontFamily:mono, color:C2.text }}>
+                                                <User size={8} />{repName}
+                                              </span>
+                                            )}
+                                            {pipelineName && (
+                                              <span style={{ display:"inline-flex", alignItems:"center", gap:3, padding:"2px 7px", borderRadius:20, background: isSel ? "#fff" : C2.faint, border:`1px solid ${C2.border}`, fontSize:9, fontFamily:mono, color:C2.text }}>
+                                                <GitBranch size={8} />{pipelineName}
+                                              </span>
+                                            )}
+                                            {wonDate && (
+                                              <span style={{ display:"inline-flex", alignItems:"center", gap:3, padding:"2px 7px", borderRadius:20, background: isSel ? "#fff" : C2.faint, border:`1px solid ${C2.border}`, fontSize:9, fontFamily:mono, color:C2.text }}>
+                                                <Calendar size={8} />{wonDate}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                                        {amt && <span style={{ fontSize:12, fontWeight:600, color:C2.text, fontFamily:mono }}>{amt}</span>}
+                                        {isWon && <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 6px", borderRadius:20, background:"#22c55e18", color:"#22c55e" }}>WON</span>}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <button onClick={()=>applyHsDealMapping(hsSelectedDealId)} disabled={hsApplyingDeal || !hsSelectedDealId}
+                                style={{ padding:"6px 14px", borderRadius:7, border:"none",
+                                  background: (!hsSelectedDealId || hsApplyingDeal) ? C2.muted : C2.accent, color:"#fff",
+                                  fontSize:11, fontFamily:head, fontWeight:700,
+                                  cursor: (!hsSelectedDealId || hsApplyingDeal) ? "not-allowed" : "pointer" }}>
+                                {hsApplyingDeal ? "Applying…" : "Apply from selected deal"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Contacts section */}
+                        <div style={{ marginBottom:14 }}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: hsContacts.length > 0 ? 8 : 0 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                              <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const }}>Contacts</span>
+                              {hsContacts.length > 0 && <span style={{ fontSize:9, fontFamily:mono, color:C2.muted }}>{hsContacts.length}</span>}
+                            </div>
+                            <button onClick={loadHsContacts} disabled={hsLoadingContacts}
+                              style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:"transparent",
+                                color:C2.textSoft, fontSize:10, fontFamily:mono, cursor: hsLoadingContacts ? "wait" : "pointer" }}>
+                              {hsLoadingContacts ? "Loading…" : hsContacts.length > 0 ? "Refresh" : "Load contacts"}
+                            </button>
+                          </div>
+                          {hsContacts.length > 0 && (
+                            <div style={{ maxHeight:160, overflowY:"auto" as const, border:`1px solid ${C2.border}`, borderRadius:7 }}>
+                              {hsContacts.map((c:any, i:number) => {
+                                const p = c.properties || {};
+                                const name = [p.firstname, p.lastname].filter(Boolean).join(" ") || p.email || c.id;
+                                return (
+                                  <div key={c.id}
+                                    style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px",
+                                      background: i%2===0 ? C2.faint : "transparent",
+                                      borderBottom: i < hsContacts.length-1 ? `1px solid ${C2.border}` : "none" }}>
+                                    <div style={{ flex:1, minWidth:0 }}>
+                                      <div style={{ fontSize:12, color:C2.text, fontFamily:body, fontWeight:500 }}>{name}</div>
+                                      {p.jobtitle && <div style={{ fontSize:10, color:C2.muted, fontFamily:body }}>{p.jobtitle}</div>}
+                                    </div>
+                                    {p.email && <span style={{ fontSize:10, color:C2.muted, fontFamily:mono, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis", maxWidth:180 }}>{p.email}</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Call Recordings — Fireflies */}
+                        <div style={{ borderTop:`1px solid ${C2.border}`, paddingTop:14 }}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: ffTranscripts.length > 0 ? 8 : 0 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                              <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const }}>Call Recordings</span>
+                              {ffTranscripts.length > 0 && <span style={{ fontSize:9, fontFamily:mono, color:C2.muted }}>{ffTranscripts.length}</span>}
+                            </div>
+                            <button onClick={loadFirefliesTranscripts} disabled={ffLoadingTranscripts || !getFirefliesToken()}
+                              style={{ padding:"3px 10px", borderRadius:5, border:`1px solid ${C2.border}`, background:"transparent",
+                                color: !getFirefliesToken() ? C2.border : C2.textSoft, fontSize:10, fontFamily:mono,
+                                cursor: (ffLoadingTranscripts || !getFirefliesToken()) ? "not-allowed" : "pointer" }}>
+                              {!getFirefliesToken() ? "Add token →" : ffLoadingTranscripts ? "Loading…" : ffTranscripts.length > 0 ? "Refresh" : "Load recordings"}
+                            </button>
+                          </div>
+                          {ffTranscripts.length > 0 && (
+                            <div style={{ border:`1px solid ${C2.border}`, borderRadius:8, overflow:"hidden" }}>
+                              {ffTranscripts.map((t:any, i:number) => {
+                                const isExp = ffExpandedId === t.id;
+                                const isLoading = ffLoadingDetail === t.id;
+                                const detail = ffDetail[t.id];
+                                const dateStr = t.date ? new Date(t.date).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }) : "";
+                                const durMin = t.duration ? `${Math.round(t.duration)} min` : "";
+                                const pCount = (t.participants || []).length;
+                                return (
+                                  <div key={t.id} style={{ borderBottom: i < ffTranscripts.length-1 ? `1px solid ${C2.border}` : "none" }}>
+                                    <div onClick={()=>loadFfDetail(t.id)}
+                                      style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", cursor:"pointer",
+                                        background: isExp ? `${C2.accent}10` : "transparent",
+                                        borderLeft: isExp ? `3px solid ${C2.accent}` : "3px solid transparent" }}>
+                                      <div style={{ flex:1, minWidth:0 }}>
+                                        <div style={{ fontSize:12, fontWeight:600, color: isExp ? C2.accent : C2.text, fontFamily:body, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, marginBottom:4 }}>{t.title || "Untitled recording"}</div>
+                                        <div style={{ display:"flex", flexWrap:"wrap" as const, gap:3 }}>
+                                          {dateStr && <span style={{ display:"inline-flex", alignItems:"center", gap:3, padding:"2px 7px", borderRadius:20, background: isExp ? "#fff" : C2.faint, border:`1px solid ${C2.border}`, fontSize:9, fontFamily:mono, color:C2.text }}><Calendar size={8}/>{dateStr}</span>}
+                                          {durMin && <span style={{ display:"inline-flex", alignItems:"center", gap:3, padding:"2px 7px", borderRadius:20, background: isExp ? "#fff" : C2.faint, border:`1px solid ${C2.border}`, fontSize:9, fontFamily:mono, color:C2.text }}>⏱ {durMin}</span>}
+                                          {pCount > 0 && <span style={{ display:"inline-flex", alignItems:"center", gap:3, padding:"2px 7px", borderRadius:20, background: isExp ? "#fff" : C2.faint, border:`1px solid ${C2.border}`, fontSize:9, fontFamily:mono, color:C2.text }}><Users size={8}/>{pCount} participants</span>}
+                                        </div>
+                                      </div>
+                                      <span style={{ fontSize:10, color:C2.muted, fontFamily:mono, flexShrink:0 }}>{isLoading ? "…" : isExp ? "▲" : "▼"}</span>
+                                    </div>
+                                    {isExp && (detail || t.summary) && (() => {
+                                      const src = detail || t;
+                                      const sum = src.summary || {};
+                                      const sentences: any[] = src.sentences || [];
+                                      return (
+                                        <div style={{ padding:"0 14px 14px 14px", background: `${C2.accent}06` }}>
+                                          {sum.overview && (
+                                            <div style={{ marginBottom:10 }}>
+                                              <div style={{ fontSize:9, fontWeight:700, fontFamily:mono, color:C2.muted, textTransform:"uppercase" as const, letterSpacing:.4, marginBottom:4 }}>Overview</div>
+                                              <div style={{ fontSize:11, color:C2.text, fontFamily:body, lineHeight:1.6 }}>{sum.overview}</div>
+                                            </div>
+                                          )}
+                                          {sum.action_items && (
+                                            <div style={{ marginBottom:10 }}>
+                                              <div style={{ fontSize:9, fontWeight:700, fontFamily:mono, color:C2.muted, textTransform:"uppercase" as const, letterSpacing:.4, marginBottom:4 }}>Action Items</div>
+                                              <div style={{ fontSize:11, color:C2.text, fontFamily:body, lineHeight:1.6, whiteSpace:"pre-wrap" as const }}>{sum.action_items}</div>
+                                            </div>
+                                          )}
+                                          {sentences.length > 0 && (
+                                            <div>
+                                              <div style={{ fontSize:9, fontWeight:700, fontFamily:mono, color:C2.muted, textTransform:"uppercase" as const, letterSpacing:.4, marginBottom:6 }}>Transcript</div>
+                                              <div style={{ maxHeight:260, overflowY:"auto" as const, border:`1px solid ${C2.border}`, borderRadius:6, padding:"8px 10px", background:C2.canvas }}>
+                                                {(() => {
+                                                  let lastSpeaker = "";
+                                                  return sentences.map((s:any, si:number) => {
+                                                    const showSpeaker = s.speaker_name !== lastSpeaker;
+                                                    if (showSpeaker) lastSpeaker = s.speaker_name;
+                                                    return (
+                                                      <div key={si} style={{ marginBottom: showSpeaker && si > 0 ? 8 : 2 }}>
+                                                        {showSpeaker && <div style={{ fontSize:9, fontWeight:700, fontFamily:mono, color:C2.accent, marginTop: si > 0 ? 6 : 0 }}>{s.speaker_name || "Unknown"}</div>}
+                                                        <div style={{ fontSize:11, color:C2.text, fontFamily:body, lineHeight:1.5 }}>{s.text}</div>
+                                                      </div>
+                                                    );
+                                                  });
+                                                })()}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Mapped fields */}
+                        <div style={{ borderTop:`1px solid ${C2.border}`, paddingTop:14 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                            <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const }}>Mapped Fields</span>
+                            <span style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:mappingColor }}>{fieldsMapped}/3</span>
+                            {repWarning && <span style={{ fontSize:10, fontFamily:body, color:"#f59e0b" }}>⚠ Sales rep looks like a date — load deals and apply</span>}
+                          </div>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                            <div>
+                              <label style={{ fontSize:10, fontFamily:mono, fontWeight:600, color: repWarning ? "#f59e0b" : C2.muted, display:"flex", alignItems:"center", gap:5, marginBottom:4 }}>
+                                Sales Rep
+                                <span style={{ fontWeight:400, color: repWarning ? "#f59e0b" : salesRepVal ? "#22c55e" : C2.border }}>
+                                  {repWarning ? "⚠" : salesRepVal ? "✓" : "–"}
+                                </span>
+                              </label>
+                              <input value={salesRepVal} onChange={e=>setCompanyData((p:any)=>({ ...p, co_sales_rep: e.target.value }))}
+                                placeholder="Who closed this deal?"
+                                style={{ width:"100%", padding:"7px 10px", borderRadius:6,
+                                  border:`1px solid ${repWarning ? "#f59e0b60" : C2.border}`,
+                                  background: repWarning ? "#f59e0b08" : C2.faint,
+                                  color: repWarning ? "#f59e0b" : C2.text,
+                                  fontFamily:body, fontSize:12, boxSizing:"border-box" as const, outline:"none" }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, display:"flex", alignItems:"center", gap:5, marginBottom:4 }}>
+                                Deal Value
+                                <span style={{ fontWeight:400, color: cd.co_deal_value ? "#22c55e" : C2.border }}>{cd.co_deal_value ? "✓" : "–"}</span>
+                              </label>
+                              <input value={cd.co_deal_value || ""} onChange={e=>setCompanyData((p:any)=>({ ...p, co_deal_value: e.target.value }))}
+                                placeholder="$ ARR / contract"
+                                style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.faint, color:C2.text, fontFamily:body, fontSize:12, boxSizing:"border-box" as const, outline:"none" }} />
+                            </div>
+                            <div style={{ gridColumn:"1 / -1" }}>
+                              <label style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, display:"flex", alignItems:"center", gap:5, marginBottom:4 }}>
+                                Handoff Date
+                                <span style={{ fontWeight:400, color: handoffDate ? "#22c55e" : C2.border }}>{handoffDate ? "✓" : "–"}</span>
+                              </label>
+                              <input type="date" value={handoffDate} onChange={e=>setCompanyData((p:any)=>({ ...p, co_handoff_date: e.target.value }))}
+                                style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.faint, color:C2.text, fontFamily:body, fontSize:12, boxSizing:"border-box" as const, outline:"none" }} />
+                              <div style={{ fontSize:10, fontFamily:body, color:C2.muted, marginTop:4 }}>
+                                Splits conversations into pre-handoff (sales) vs post-handoff (CX) — drives the gap analysis.
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Identity & Timing — manual entry when HubSpot not yet mapped */}
+                  {(!hsConnected || !hsConfirmed) && (
+                    <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"18px 22px" }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:10 }}>Identity & Timing</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                        <div>
+                          <label style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, display:"block", marginBottom:4 }}>Sales Rep</label>
+                          <input value={cd.co_sales_rep || ""} onChange={e=>setCompanyData((p:any)=>({ ...p, co_sales_rep: e.target.value }))}
+                            placeholder="Who closed this deal?"
+                            style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.text, fontFamily:body, fontSize:12, boxSizing:"border-box" as const, outline:"none" }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, display:"block", marginBottom:4 }}>Deal Value</label>
+                          <input value={cd.co_deal_value || ""} onChange={e=>setCompanyData((p:any)=>({ ...p, co_deal_value: e.target.value }))}
+                            placeholder="$ ARR / contract"
+                            style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.text, fontFamily:body, fontSize:12, boxSizing:"border-box" as const, outline:"none" }} />
+                        </div>
+                        <div style={{ gridColumn:"1 / -1" }}>
+                          <label style={{ fontSize:10, fontFamily:mono, fontWeight:600, color:C2.muted, display:"block", marginBottom:4 }}>Handoff Date</label>
+                          <input type="date" value={handoffDate} onChange={e=>setCompanyData((p:any)=>({ ...p, co_handoff_date: e.target.value }))}
+                            style={{ width:"100%", padding:"7px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.text, fontFamily:body, fontSize:12, boxSizing:"border-box" as const, outline:"none" }} />
+                          <div style={{ fontSize:10, fontFamily:body, color:C2.muted, marginTop:4 }}>
+                            Splits all conversations into pre-handoff (sales) vs post-handoff (CX) — drives the gap analysis.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bebop Playbooks */}
+                  <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"18px 22px" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const }}>Bebop Playbooks</div>
+                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4,
+                        background: urlCount > 0 ? "#FF8C4218" : C2.faint, color: urlCount > 0 ? "#FF8C42" : C2.muted }}>
+                        {urlCount > 0 ? `${urlCount} URL${urlCount!==1?"s":""}` : "NONE"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize:11, color:C2.textSoft, fontFamily:body, lineHeight:1.55, marginBottom:8 }}>
+                      Paste the Bebop playbook URLs the sales team used. We'll fetch the content so the AI knows what was pitched.
+                    </div>
+                    <textarea value={cd.co_bebop_playbook_urls || ""}
+                      onChange={e=>setCompanyData((prev:any)=>({ ...prev, co_bebop_playbook_urls: e.target.value }))}
+                      placeholder={"https://bebop.ai/sales/...\nhttps://bebop.ai/sales/another"}
+                      rows={3}
+                      style={{ width:"100%", padding:"9px 12px", borderRadius:7, border:`1px solid ${C2.border}`, background:C2.faint, color:C2.text, fontFamily:mono, fontSize:11, boxSizing:"border-box" as const, outline:"none", resize:"vertical" as const, marginBottom:10 }} />
+                    <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                      <button onClick={syncBebopPlaybooks} disabled={bebopSyncing || urlCount === 0}
+                        style={{ padding:"7px 14px", borderRadius:7, border:"none",
+                          background: (bebopSyncing || urlCount === 0) ? C2.muted : "#FF8C42", color:"#fff",
+                          fontSize:11, fontFamily:head, fontWeight:700, cursor: (bebopSyncing || urlCount === 0) ? "default" : "pointer", opacity: (bebopSyncing || urlCount === 0) ? 0.6 : 1 }}>
+                        {bebopSyncing ? "Fetching…" : (bebopSnapshot ? "Re-fetch" : "Fetch playbooks")}
+                      </button>
+                      {bebopSnapshot && cd._bebopPlaybookLastSync && (
+                        <span style={{ fontSize:11, color:C2.muted, fontFamily:body }}>
+                          Last fetch {new Date(cd._bebopPlaybookLastSync).toLocaleString()} · {Math.round(bebopChars/1000)}k chars cached
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sales-era conversations status */}
+                  <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"18px 22px" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const }}>Sales-era Conversations</div>
+                      <button onClick={()=>setView("calls")}
+                        style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:"transparent",
+                          color:C2.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                        Open Activity →
+                      </button>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:8 }}>
+                      {[["Calls", salesCalls],["Emails", salesEmails],["Slack", salesSlack]].map(([label, count]:any) => (
+                        <div key={label} style={{ padding:"10px 12px", borderRadius:7, background:C2.faint, textAlign:"center" }}>
+                          <div style={{ fontSize:18, fontWeight:800, color: count > 0 ? C2.text : C2.muted, fontFamily:head }}>{count}</div>
+                          <div style={{ fontSize:10, color:C2.muted, fontFamily:mono, marginTop:2, letterSpacing:.3, textTransform:"uppercase" as const }}>{label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:8, lineHeight:1.5 }}>
+                      Counts are filtered to before the handoff date. Upload sales call transcripts and Slack/email exports from Activity.
+                    </div>
+                  </div>
+
+                  {/* Notes for CX */}
+                  <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"18px 22px" }}>
+                    <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>Notes for CX</div>
+                    <div style={{ fontSize:11, color:C2.textSoft, fontFamily:body, lineHeight:1.55, marginBottom:8 }}>
+                      Anything CX should know that isn't captured anywhere else — context, watch-outs, who not to contact, what was promised verbally.
+                    </div>
+                    <textarea value={cd.co_sales_notes || ""}
+                      onChange={e=>setCompanyData((prev:any)=>({ ...prev, co_sales_notes: e.target.value }))}
+                      placeholder={"e.g., CMO is the real decision-maker, CEO defers to her. They're nervous about deliverability after a bad experience with Outreach. Promised first 50 meetings/quarter."}
+                      rows={5}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:7, border:`1px solid ${C2.border}`, background:C2.faint, color:C2.text, fontFamily:body, fontSize:12, boxSizing:"border-box" as const, outline:"none", resize:"vertical" as const, lineHeight:1.5 }} />
+                  </div>
+
+                  {/* Generate brief CTA */}
+                  <div style={{ marginTop:8, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+                    padding:"16px 22px", borderRadius:10, background: canGenerate ? `${C2.accent}08` : C2.faint,
+                    border:`1px solid ${canGenerate ? C2.accent + "40" : C2.border}` }}>
+                    <div>
+                      <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text }}>
+                        {hb ? "Regenerate the handoff brief" : "Generate the handoff brief"}
+                      </div>
+                      <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:2 }}>
+                        {canGenerate
+                          ? `Synthesizes ${totalSignals} signal${totalSignals!==1?"s":""} into a CX-ready brief on the Profile page.`
+                          : `Need at least 3 signals to generate. Currently ${totalSignals}: connect HubSpot, paste Bebop URLs, or add conversations.`}
+                      </div>
+                    </div>
+                    <button onClick={generateHandoffBrief} disabled={!canGenerate || handoffGenerating}
+                      style={{ padding:"10px 20px", borderRadius:8, border:"none",
+                        background: (!canGenerate || handoffGenerating) ? C2.muted : C2.accent, color:"#fff",
+                        fontSize:12, fontFamily:head, fontWeight:700,
+                        cursor: handoffGenerating ? "wait" : !canGenerate ? "not-allowed" : "pointer",
+                        flexShrink:0 }}>
+                      {handoffGenerating ? "Generating…" : (hb ? "Regenerate brief →" : "Generate brief →")}
+                    </button>
+                  </div>
+                </div>
+              </div>);
+            })()}
+
+            {view==="profile" && (() => {
+              const cd = companyData as Record<string, any>;
+              const hb = cd._handoffBrief;
+              const b = hb?.content || {};
+              const handoffDate = cd.co_handoff_date;
+              const lifecycle = cd.co_lifecycle_stage || "";
+              const hasBrief = !!hb;
+              const hasProposals = !!(window as any).__handoffBriefProposals?.length;
+              const proposalCount = ((window as any).__handoffBriefProposals || []).length;
+              const _pi = (window as any)[`__pitchAnalysis_${activeWorkspace?.id||""}`]?.result;
+              const _ci = (window as any)[`__clientIntel_${activeWorkspace?.id||""}`]?.result;
+              const _se = (window as any)[`__sentAnalysis_${activeWorkspace?.id||""}`]?.result;
+              return (
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                {/* Page header */}
+                <div style={{ padding:"20px clamp(20px, 3vw, 48px) 0", flexShrink:0,
+                  display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16 }}>
+                  <div>
+                    <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Profile</h2>
+                    <div style={{ fontSize:12, fontFamily:body, color:C2.muted, display:"flex", gap:14, alignItems:"center", flexWrap:"wrap" as const }}>
+                      <span>{cd.co_name || activeWorkspace?.name || "Client"}</span>
+                      {handoffDate && <span>· Handoff {new Date(handoffDate).toLocaleDateString()}</span>}
+                      {lifecycle && <span>· Stage: {String(lifecycle).replace(/_/g, " ")}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+                    {hasBrief && (
+                      <button onClick={()=>{
+                        const sections = [
+                          `# ${b.oneLiner || "Sales → CX Handoff Brief"}`,
+                          b.clientOverview && `## Client Overview\n${b.clientOverview}`,
+                          b.salesJourney && `## Sales Journey\n${b.salesJourney}`,
+                          b.whatTheyCareAbout && `## What They Care About\n${b.whatTheyCareAbout}`,
+                          b.expectationsSet && `## Expectations Set\n${b.expectationsSet}`,
+                          b.stakeholders?.length && `## Stakeholders\n${b.stakeholders.map((s:any) => `- **${s.name}** (${s.role || "?"}) — ${s.signal || ""}`).join("\n")}`,
+                          b.topicsDiscussed?.length && `## Topics Discussed\n${b.topicsDiscussed.map((t:string) => `- ${t}`).join("\n")}`,
+                          b.alignment && `## Alignment\n${b.alignment}`,
+                          b.concerns && `## Concerns / Objections\n${b.concerns}`,
+                          b.watchouts?.length && `## Watch-outs\n${b.watchouts.map((w:string) => `- ⚠ ${w}`).join("\n")}`,
+                          b.openQuestions?.length && `## Open Questions\n${b.openQuestions.map((q:string) => `- ${q}`).join("\n")}`,
+                        ].filter(Boolean).join("\n\n");
+                        navigator.clipboard.writeText(sections);
+                        addToast({ title:"Brief copied", status:"success", message:"Markdown copied to clipboard" });
+                      }}
+                        style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas,
+                          color:C2.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                        Copy brief
+                      </button>
+                    )}
+                    {hasBrief && hasProposals && (
+                      <button onClick={openHandoffWritebacks}
+                        style={{ padding:"7px 14px", borderRadius:8, border:"none", background:C2.accent, color:"#fff",
+                          fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                        Apply {proposalCount} update{proposalCount !== 1 ? "s" : ""}
+                      </button>
+                    )}
+                    <button onClick={generateHandoffBrief} disabled={handoffGenerating}
+                      style={{ padding:"7px 14px", borderRadius:8, border:hasBrief ? `1px solid ${C2.border}` : "none",
+                        background: hasBrief ? C2.canvas : C2.accent, color: hasBrief ? C2.textSoft : "#fff",
+                        fontSize:11, fontFamily:head, fontWeight:700, cursor: handoffGenerating ? "wait" : "pointer",
+                        opacity: handoffGenerating ? 0.6 : 1 }}>
+                      {handoffGenerating ? "Generating…" : (hasBrief ? "Regenerate" : "Generate brief")}
+                    </button>
+                  </div>
+                </div>
+                {/* Body — scrollable */}
+                <div style={{ flex:1, minHeight:0, overflow:"auto", padding:"16px clamp(20px, 3vw, 48px) 28px" }}>
+                  {!hasBrief ? (
+                    <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10,
+                      padding:"40px 24px", textAlign:"center" }}>
+                      <div style={{ fontSize:13, fontFamily:head, fontWeight:700, color:C2.text, marginBottom:6 }}>No handoff brief yet</div>
+                      <div style={{ fontSize:12, fontFamily:body, color:C2.muted, lineHeight:1.6, maxWidth:520, margin:"0 auto" }}>
+                        Sync HubSpot, calls, Slack, or emails for this client and click Generate brief above.
+                        We'll synthesize who the client is, what they care about, and the watch-outs into a single profile.
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10,
+                      padding:"22px 26px", display:"flex", flexDirection:"column" as const, gap:18 }}>
+                      <div>
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, textTransform:"uppercase" as const }}>📥 Sales → CX Handoff Brief</div>
+                        <div style={{ fontSize:17, fontWeight:800, fontFamily:head, color:C2.text, marginTop:4, lineHeight:1.35 }}>{b.oneLiner || "Handoff Brief"}</div>
+                        <div style={{ fontSize:11, color:C2.muted, fontFamily:mono, marginTop:8 }}>
+                          Generated {new Date(hb.generatedAt).toLocaleString()} ·
+                          {` ${hb.sources?.hubspot || 0} HubSpot · ${hb.sources?.email || 0} emails · ${hb.sources?.slack || 0} Slack · ${hb.sources?.calls || 0} calls`}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily:body, fontSize:13, color:C2.text, lineHeight:1.6 }}>
+                        {b.clientOverview && (
+                          <div style={{ marginBottom:18 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Client Overview</div>
+                            <div style={{ whiteSpace:"pre-wrap" as const }}>{b.clientOverview}</div>
+                          </div>
+                        )}
+                        {b.salesJourney && (
+                          <div style={{ marginBottom:18 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Sales Journey</div>
+                            <div style={{ whiteSpace:"pre-wrap" as const }}>{b.salesJourney}</div>
+                          </div>
+                        )}
+                        {b.whatTheyCareAbout && (
+                          <div style={{ marginBottom:18 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.green, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>What They Care About</div>
+                            <div style={{ whiteSpace:"pre-wrap" as const }}>{b.whatTheyCareAbout}</div>
+                          </div>
+                        )}
+                        {b.expectationsSet && (
+                          <div style={{ marginBottom:18 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Expectations Set</div>
+                            <div style={{ whiteSpace:"pre-wrap" as const }}>{b.expectationsSet}</div>
+                          </div>
+                        )}
+                        {Array.isArray(b.stakeholders) && b.stakeholders.length > 0 && (
+                          <div style={{ marginBottom:18 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Stakeholders</div>
+                            {b.stakeholders.map((s:any, i:number) => (
+                              <div key={i} style={{ padding:"8px 12px", borderRadius:8, background:C2.faint, marginBottom:6 }}>
+                                <div style={{ fontSize:12, fontWeight:700, color:C2.text }}>{s.name}{s.role ? <span style={{ fontWeight:500, color:C2.muted }}> · {s.role}</span> : null}</div>
+                                {s.signal && <div style={{ fontSize:11, color:C2.textSoft, marginTop:2 }}>{s.signal}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {Array.isArray(b.topicsDiscussed) && b.topicsDiscussed.length > 0 && (
+                          <div style={{ marginBottom:18 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Topics Discussed</div>
+                            <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
+                              {b.topicsDiscussed.map((t:string, i:number) => (
+                                <span key={i} style={{ padding:"4px 10px", borderRadius:5, background:C2.faint, border:`1px solid ${C2.border}`, fontSize:11, fontFamily:body, color:C2.textSoft }}>{t}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {b.alignment && (
+                          <div style={{ marginBottom:18 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.green, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Alignment</div>
+                            <div style={{ whiteSpace:"pre-wrap" as const }}>{b.alignment}</div>
+                          </div>
+                        )}
+                        {b.concerns && (
+                          <div style={{ marginBottom:18 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.amber, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Concerns / Objections</div>
+                            <div style={{ whiteSpace:"pre-wrap" as const }}>{b.concerns}</div>
+                          </div>
+                        )}
+                        {Array.isArray(b.watchouts) && b.watchouts.length > 0 && (
+                          <div style={{ marginBottom:18 }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.red, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Watch-outs for CX</div>
+                            {b.watchouts.map((w:string, i:number) => (
+                              <div key={i} style={{ padding:"8px 12px", borderRadius:8, background:`${C2.red}08`, border:`1px solid ${C2.red}22`, marginBottom:6, fontSize:12, color:C2.text }}>⚠ {w}</div>
+                            ))}
+                          </div>
+                        )}
+                        {Array.isArray(b.openQuestions) && b.openQuestions.length > 0 && (
+                          <div>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Open Questions for Onboarding Call</div>
+                            {b.openQuestions.map((q:string, i:number) => (
+                              <div key={i} style={{ padding:"8px 12px", borderRadius:8, background:`${C2.accent}08`, border:`1px solid ${C2.accent}22`, marginBottom:6, fontSize:12, color:C2.text }}>→ {q}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pitch & Positioning — pulled from Client Intel pitch analysis */}
+                  {_pi?.rewrittenPitch && (
+                    <div style={{ marginTop:18, background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"22px 26px" }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:6 }}>Pitch & Positioning</div>
+                      <div style={{ fontSize:13, fontFamily:body, color:C2.text, lineHeight:1.6, marginBottom:14 }}>{_pi.rewrittenPitch}</div>
+                      {Array.isArray(_pi.talkingPoints) && _pi.talkingPoints.length > 0 && (
+                        <div style={{ marginBottom:12 }}>
+                          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.green, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Talking Points</div>
+                          <ul style={{ margin:0, paddingLeft:18, fontSize:12, color:C2.textSoft, lineHeight:1.6 }}>
+                            {_pi.talkingPoints.map((p:string, i:number) => <li key={i}>{p}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {Array.isArray(_pi.avoidList) && _pi.avoidList.length > 0 && (
+                        <div>
+                          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.red, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Avoid</div>
+                          <ul style={{ margin:0, paddingLeft:18, fontSize:12, color:C2.textSoft, lineHeight:1.6 }}>
+                            {_pi.avoidList.map((p:string, i:number) => <li key={i}>{p}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Sentiment trajectory */}
+                  {_se?.overallSentiment && (
+                    <div style={{ marginTop:18, background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"22px 26px" }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>Sentiment</div>
+                      <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:10 }}>
+                        <div style={{ fontSize:24, fontWeight:800, fontFamily:head, color:_se.overallSentiment.score >= 7 ? C2.green : _se.overallSentiment.score >= 4 ? C2.amber : C2.red }}>
+                          {_se.overallSentiment.score}/10
+                        </div>
+                        <div>
+                          <div style={{ fontSize:13, fontFamily:head, fontWeight:600, color:C2.text }}>{_se.overallSentiment.label}</div>
+                          {_se.overallSentiment.trend && (
+                            <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:2 }}>Trend: {_se.overallSentiment.trend}</div>
+                          )}
+                        </div>
+                      </div>
+                      {Array.isArray(_se.riskSignals) && _se.riskSignals.length > 0 && (
+                        <div style={{ marginTop:10 }}>
+                          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.red, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Risk Signals</div>
+                          {_se.riskSignals.map((r:any, i:number) => (
+                            <div key={i} style={{ padding:"8px 12px", borderRadius:8, background:`${C2.red}08`, border:`1px solid ${C2.red}22`, marginBottom:6, fontSize:12, color:C2.text }}>⚠ {r.signal || r}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Expectation Gap Analysis — surfaces sales promises vs CX delivery */}
+                  {(() => {
+                    const gaKey = `__gapAnalysis_${activeWorkspace?.id||""}`;
+                    const ga: any = (window as any)[gaKey] || null;
+                    const r = ga?.result;
+                    const gaRunning = !!(window as any).__gapRunning;
+                    const sevColor = (s:string) => s === "critical" ? "#FF6B6B" : s === "high" ? "#FF8C42" : s === "medium" ? "#FFC048" : C2.muted;
+                    return (
+                      <div style={{ marginTop:18, background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"22px 26px" }}>
+                        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:10, marginBottom:r?12:0 }}>
+                          <div>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, textTransform:"uppercase" as const }}>Expectation Gaps</div>
+                            <div style={{ fontSize:12, fontFamily:body, color:C2.muted, marginTop:4 }}>
+                              Compares what sales pitched pre-handoff against what CX has delivered since.
+                            </div>
+                          </div>
+                          <button onClick={runGapAnalysis} disabled={gaRunning}
+                            style={{ padding:"7px 14px", borderRadius:8, border:r?`1px solid ${C2.border}`:"none",
+                              background: gaRunning ? C2.faint : (r ? C2.canvas : C2.accent),
+                              color: gaRunning ? C2.muted : (r ? C2.textSoft : "#fff"),
+                              fontSize:11, fontFamily:head, fontWeight:700, cursor: gaRunning ? "wait" : "pointer", flexShrink:0 }}>
+                            {gaRunning ? "Analyzing…" : (r ? "Re-run" : "Run gap analysis")}
+                          </button>
+                        </div>
+                        {r && r.summary && (
+                          <div style={{ padding:"12px 14px", borderRadius:8, background:C2.faint, border:`1px solid ${C2.border}`, marginBottom:12 }}>
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                              <span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.textSoft, letterSpacing:.3, textTransform:"uppercase" as const }}>Summary</span>
+                              {typeof r.alignmentScore === "number" && (
+                                <span style={{ fontSize:13, fontFamily:head, fontWeight:700,
+                                  color: r.alignmentScore >= 80 ? C2.green : r.alignmentScore >= 50 ? C2.amber : C2.red }}>
+                                  {r.alignmentScore}/100 aligned
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize:12, fontFamily:body, color:C2.text, lineHeight:1.55 }}>{r.summary}</div>
+                          </div>
+                        )}
+                        {r && Array.isArray(r.gaps) && r.gaps.length > 0 && (
+                          <div>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.textSoft, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:6 }}>Gaps ({r.gaps.length})</div>
+                            {r.gaps.map((g:any, i:number) => (
+                              <div key={i} style={{ padding:"10px 14px", borderRadius:8, background:C2.canvas, border:`1px solid ${C2.border}`, borderLeft:`3px solid ${sevColor(g.severity)}`, marginBottom:8 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" as const }}>
+                                  <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:`${sevColor(g.severity)}18`, color:sevColor(g.severity), textTransform:"uppercase" as const }}>{g.severity}</span>
+                                  <span style={{ fontSize:12, fontFamily:body, color:C2.text, fontWeight:600 }}>{g.gap}</span>
+                                </div>
+                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11, fontFamily:body, color:C2.textSoft, lineHeight:1.5 }}>
+                                  <div><strong style={{ color:"#FF8C42" }}>Sales promised:</strong> {g.promised}</div>
+                                  <div><strong style={{ color:C2.green }}>CX delivered:</strong> {g.delivered}</div>
+                                </div>
+                                {g.recommendedAction && (
+                                  <div style={{ marginTop:6, fontSize:11, fontFamily:body, color:C2.text, padding:"6px 10px", borderRadius:6, background:`${C2.accent}10`, border:`1px solid ${C2.accent}22` }}>
+                                    → {g.recommendedAction}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Decision style + objections — pulled from Client Intel */}
+                  {(_ci?.decisionMaking || _ci?.objections?.length) && (
+                    <div style={{ marginTop:18, background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"22px 26px" }}>
+                      <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.accent, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>Decision Style & Objections</div>
+                      {_ci.decisionMaking && (
+                        <div style={{ marginBottom:12 }}>
+                          <div style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C2.text }}>{_ci.decisionMaking.style}</div>
+                          {_ci.decisionMaking.description && (
+                            <div style={{ fontSize:12, color:C2.textSoft, lineHeight:1.6, marginTop:3 }}>{_ci.decisionMaking.description}</div>
+                          )}
+                        </div>
+                      )}
+                      {Array.isArray(_ci.objections) && _ci.objections.length > 0 && (
+                        <div>
+                          <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, marginBottom:6, textTransform:"uppercase" as const }}>Known Objections</div>
+                          {_ci.objections.map((o:any, i:number) => (
+                            <div key={i} style={{ padding:"8px 12px", borderRadius:8, background:C2.faint, border:`1px solid ${C2.border}`, marginBottom:6, fontSize:12, color:C2.text }}>
+                              <div style={{ fontWeight:600 }}>{o.objection}</div>
+                              {o.status && <div style={{ fontSize:11, color:C2.muted, marginTop:2 }}>Status: {o.status}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>);
+            })()}
+
+            {view==="strategy" && (
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                <div style={{ padding:"20px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
                   <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 12px" }}>Strategy</h2>
+                </div>
+                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
+                  <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
+                    companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast}
+                    genState={strategyGen} onGenStateChange={setStrategyGen}
+                    activeWorkspace={activeWorkspace}
+                    workspaceCampaigns={campaigns}
+                    rtsLists={rtsLists}
+                    autoRun={strategyAutoRun}
+                    onAutoRunConsumed={() => setStrategyAutoRun(false)}
+                    onLaunchPhaseCampaign={(spec: any) => {
+                      const prod = products.find((p:any) => p.name === spec.productName);
+                      const pers = icps.find((p:any) => p.name === spec.personaName);
+                      if (!prod || !pers) {
+                        addToast({ title:"Couldn't resolve product/persona", status:"error", message:`"${spec.productName}" × "${spec.personaName}" — create them first or rename to match.` });
+                        return null;
+                      }
+                      const rtsListName = (spec.rtsListName || "").trim().toLowerCase();
+                      const resolvedRtsList = rtsListName ? rtsLists.find((l:any) => (l.name || "").toLowerCase() === rtsListName)
+                        || rtsLists.find((l:any) => (l.name || "").toLowerCase().includes(rtsListName)) : null;
+                      const isHighIntent = spec.intentTier === "high" || spec.type === "rts_high_intent" || !!resolvedRtsList;
+                      const channel = spec.type === "linkedin_message" || spec.type === "linkedin_connection" ? "linkedin"
+                        : spec.type === "rts_calling" ? "rts_ai_call"
+                        : spec.type === "rts_high_intent" ? "email"
+                        : "email";
+                      if (isHighIntent && spec.rtsListName && !resolvedRtsList) {
+                        addToast({ title:"RTS list not found", status:"warning", message:`Strategy referenced "${spec.rtsListName}" but no matching list exists. Campaign created without RTS link — attach one in the editor.` });
+                      }
+                      const matchingOffer = offers.find((o:any) => o.productId === prod.id && o.personaId === pers.id && o.tier === spec.offerTier);
+                      const c = createCampaign({
+                        channel,
+                        productId: prod.id,
+                        personaId: pers.id,
+                        offerId: matchingOffer?.id,
+                        strategyPhaseId: spec._phaseSpecId,
+                        name: `${spec._phaseLabel} — ${pers.name} × ${prod.name}${isHighIntent ? " (RTS)" : ""}`,
+                        source: "strategy",
+                        audienceSource: resolvedRtsList ? "rts_list" : "people_search",
+                        rtsListId: resolvedRtsList?.id || null,
+                        extra: {
+                          dailySendVolume: spec.dailyVolume || 100,
+                          ...(isHighIntent ? { intentTier: "high" } : {}),
+                        },
+                      });
+                      return c;
+                    }} />
+                </div>
+              </div>
+            )}
+
+            {(view==="campaigns" || view==="matrix") && (() => {
+              const campTab = (window as any).__campTab || (view==="matrix" ? "matrix" : "matrix");
+              const setCampTab = (v:string) => { (window as any).__campTab = v; setCampaigns(prev => [...prev]); };
+              if (view==="matrix" && campTab !== "matrix") { (window as any).__campTab = "matrix"; }
+              return (
+              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
+                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
+                <div style={{ padding:"20px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
+                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 12px" }}>Campaigns</h2>
                   <div style={{ display:"flex", gap:4, padding:4, background:C2.faint, borderRadius:8, marginBottom:12, width:"fit-content" }}>
-                    {[["roadmap","Roadmap"],["coverage","Coverage Matrix"]].map(([id,label])=>(
-                      <button key={id} onClick={()=>setStratTab(id)}
-                        style={{ padding:"6px 16px", borderRadius:6, border:"none", background:stratTab===id?C2.canvas:"transparent",
-                          color:stratTab===id?C2.text:C2.muted, fontSize:11, fontFamily:head, fontWeight:stratTab===id?700:500,
-                          cursor:"pointer", boxShadow:stratTab===id?"0 1px 3px rgba(0,0,0,0.06)":"none", transition:"all .25s" }}>
+                    {[["matrix","Matrix"],["list","List"]].map(([id,label])=>(
+                      <button key={id} onClick={()=>setCampTab(id)}
+                        style={{ padding:"6px 16px", borderRadius:6, border:"none", background:campTab===id?C2.canvas:"transparent",
+                          color:campTab===id?C2.text:C2.muted, fontSize:11, fontFamily:head, fontWeight:campTab===id?700:500,
+                          cursor:"pointer", boxShadow:campTab===id?"0 1px 3px rgba(0,0,0,0.06)":"none", transition:"all .25s" }}>
                         {label}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
-                  {stratTab==="roadmap" && (
-                    <StrategyPage strategy={strategy} onStrategyChange={setStrategy}
-                      companyData={companyData} products={products} offers={offers} personas={icps} v2={true} addToast={addToast}
-                      genState={strategyGen} onGenStateChange={setStrategyGen}
-                      activeWorkspace={activeWorkspace}
-                      workspaceCampaigns={campaigns}
-                      rtsLists={rtsLists}
-                      autoRun={strategyAutoRun}
-                      onAutoRunConsumed={() => setStrategyAutoRun(false)}
-                      onLaunchPhaseCampaign={(spec: any) => {
-                        // Resolve name refs to IDs
-                        const prod = products.find((p:any) => p.name === spec.productName);
-                        const pers = icps.find((p:any) => p.name === spec.personaName);
-                        if (!prod || !pers) {
-                          addToast({ title:"Couldn't resolve product/persona", status:"error", message:`"${spec.productName}" × "${spec.personaName}" — create them first or rename to match.` });
-                          return null;
-                        }
-                        // Resolve RTS list by name (fuzzy match, case-insensitive)
-                        const rtsListName = (spec.rtsListName || "").trim().toLowerCase();
-                        const resolvedRtsList = rtsListName ? rtsLists.find((l:any) => (l.name || "").toLowerCase() === rtsListName)
-                          || rtsLists.find((l:any) => (l.name || "").toLowerCase().includes(rtsListName)) : null;
-                        const isHighIntent = spec.intentTier === "high" || spec.type === "rts_high_intent" || !!resolvedRtsList;
-                        // Map type → channel. rts_high_intent falls back to email (safe default); CSM can switch to linkedin in editor.
-                        const channel = spec.type === "linkedin_message" || spec.type === "linkedin_connection" ? "linkedin"
-                          : spec.type === "rts_calling" ? "rts_ai_call"
-                          : spec.type === "rts_high_intent" ? "email"
-                          : "email";
-                        // Warn if high-intent but no matching RTS list found
-                        if (isHighIntent && spec.rtsListName && !resolvedRtsList) {
-                          addToast({ title:"RTS list not found", status:"warning", message:`Strategy referenced "${spec.rtsListName}" but no matching list exists. Campaign created without RTS link — attach one in the editor.` });
-                        }
-                        // Find matching offer by tier
-                        const matchingOffer = offers.find((o:any) => o.productId === prod.id && o.personaId === pers.id && o.tier === spec.offerTier);
-                        const c = createCampaign({
-                          channel,
-                          productId: prod.id,
-                          personaId: pers.id,
-                          offerId: matchingOffer?.id,
-                          strategyPhaseId: spec._phaseSpecId,
-                          name: `${spec._phaseLabel} — ${pers.name} × ${prod.name}${isHighIntent ? " (RTS)" : ""}`,
-                          source: "strategy",
-                          audienceSource: resolvedRtsList ? "rts_list" : "people_search",
-                          rtsListId: resolvedRtsList?.id || null,
-                          extra: {
-                            dailySendVolume: spec.dailyVolume || 100,
-                            // Explicit intent-tier override — createCampaign auto-flips to "high" on rtsListId, but this lets the strategy promote high-intent even without an RTS match.
-                            ...(isHighIntent ? { intentTier: "high" } : {}),
-                          },
-                        });
-                        // Note: phase status advances automatically when real sending activity is uploaded —
-                        // the "LIVE" badge is derived from performance.metrics.sent, not from campaign creation.
-                        return c;
-                      }} />
-                  )}
-                  {stratTab==="coverage" && (
+                  {campTab==="matrix" && (
                     <CoverageMatrix products={products} personas={icps} offers={offers} campaigns={campaigns} rtsLists={rtsLists} v2={true}
                       onCreateCampaign={(productId: string, personaId: string) => {
                         const c = createCampaign({ productId, personaId, channel: "email", source: "matrix" });
-                        if (c) setView("campaigns");
+                        if (c) {
+                          const prod = products.find((p:any)=>p.id===productId);
+                          const pers = icps.find((p:any)=>p.id===personaId);
+                          addToast({ title:"Campaign created", status:"success",
+                            message:`${prod?.name || "Product"} × ${pers?.name || "Persona"} — keep clicking to add more` });
+                        }
                       }}
-                      onViewCampaign={(_campaignId: string) => {
-                        setView("campaigns");
-                      }}
+                      onViewCampaign={(campaignId: string) => { setPendingCampaignId(campaignId); setCampTab("list"); }}
                       onGoToRts={() => setView("rtsleads")}
                       onGenerateFit={async () => {
                         // Mirror the Quickstart research-brief matrix criteria — rate every product × persona combo
@@ -21680,10 +23354,41 @@ Return ONLY a JSON array, one entry per combination:
 [{"productIdx":0,"personaIdx":0,"priority":"high","rationale":"1 sentence on why — reference the actual pain / buyer / fit signal"}, ...]
 
 Every combination MUST appear in the array. Rationale under 160 characters each. Raw JSON only.`;
-                          const raw = await callAI(prompt, "Return only a JSON array. No prose, no fences.", 4000, { useFullContext: true, model: "claude-haiku-4-5-20251001" });
+                          // Each row is ~80 output tokens (incl. 160-char rationale + structure).
+                          // Give ~100/row + 500 headroom, capped at 16k so very large grids don't get truncated.
+                          const cells = products.length * icps.length;
+                          const maxTokens = Math.min(16000, Math.max(2000, cells * 100 + 500));
+                          const raw = await callAI(prompt, "Return only a JSON array. No prose, no fences.", maxTokens, { useFullContext: true, model: "claude-haiku-4-5-20251001" });
+                          if (!raw) throw new Error("Empty AI response (check API key)");
+                          if (typeof raw === "string" && raw.startsWith("Error:")) throw new Error(raw);
                           const parsed = safeJsonParse(raw);
-                          const matrix: any[] = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.matrix) ? parsed.matrix : []);
-                          if (!matrix.length) throw new Error("AI returned no matrix entries");
+                          let matrix: any[] = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.matrix) ? parsed.matrix : []);
+                          // Truncation recovery: if the JSON was cut off mid-array, salvage the complete objects.
+                          if (!matrix.length) {
+                            const objs: any[] = [];
+                            const s = String(raw);
+                            let i = s.indexOf("{");
+                            while (i >= 0 && i < s.length) {
+                              let depth = 0, inStr = false, esc = false, end = -1;
+                              for (let j = i; j < s.length; j++) {
+                                const ch = s[j];
+                                if (esc) { esc = false; continue; }
+                                if (inStr && ch === "\\") { esc = true; continue; }
+                                if (ch === '"') { inStr = !inStr; continue; }
+                                if (inStr) continue;
+                                if (ch === "{") depth++;
+                                else if (ch === "}") { depth--; if (depth === 0) { end = j; break; } }
+                              }
+                              if (end < 0) break;
+                              try { objs.push(JSON.parse(s.slice(i, end + 1))); } catch {}
+                              i = s.indexOf("{", end + 1);
+                            }
+                            if (objs.length) matrix = objs;
+                          }
+                          if (!matrix.length) {
+                            console.error("[CoverageMatrix] raw response (no parseable matrix):", String(raw).slice(0, 800));
+                            throw new Error("AI returned no matrix entries (see console for raw response)");
+                          }
 
                           // Pre-build id lookups so we can apply the matrix by index → id
                           const productIdByIdx: Record<number,string> = {};
@@ -21716,25 +23421,21 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                       }}
                     />
                   )}
+                  {campTab==="list" && (
+                    <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
+                      personas={icps} products={products} offers={offers} onOffersChange={setOffers}
+                      onPersonasChange={setIcps}
+                      onFillPersona={fillICP}
+                      companyData={companyData} strategy={strategy} v2={true} addToast={addToast}
+                      activeWorkspace={activeWorkspace}
+                      onCreateCampaign={createCampaign}
+                      rtsLists={rtsLists}
+                      initialSelectedId={pendingCampaignId}
+                      onSelectedIdConsumed={() => setPendingCampaignId(null)} />
+                  )}
                 </div>
               </div>);
             })()}
-
-            {view==="campaigns" && (
-              <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
-                animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
-                <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
-                  <CampaignsPage campaigns={campaigns} onCampaignsChange={setCampaigns}
-                    personas={icps} products={products} offers={offers} onOffersChange={setOffers}
-                    onPersonasChange={setIcps}
-                    onFillPersona={fillICP}
-                    companyData={companyData} strategy={strategy} v2={true} addToast={addToast}
-                    activeWorkspace={activeWorkspace}
-                    onCreateCampaign={createCampaign}
-                    rtsLists={rtsLists} />
-                </div>
-              </div>
-            )}
 
             {view==="rtsleads" && (
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
@@ -23210,201 +24911,133 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
             {/* ── INTEGRATIONS ── */}
             {view==="integrations" && (() => {
               const _C = C2;
-              const cd = companyData as Record<string,string>;
+              const cd = companyData as Record<string,any>;
               const hsConnected = !!getHubspotToken();
               const slackConnected = !!getSlackToken();
-              const claudeConnected = !!apiKey;
-              const hsPropCount = Object.keys(((cd as any)._hubspotProps) || {}).filter(k => (cd as any)._hubspotProps[k] != null && (cd as any)._hubspotProps[k] !== "").length;
-              const hsEmailCount = (slackComms || []).filter((c:any) => c.source === "hubspot").length;
+              const hsPropCount = Object.keys(cd._hubspotProps || {}).filter(k => cd._hubspotProps[k] != null && cd._hubspotProps[k] !== "").length;
               const slackMsgCount = (slackComms || []).filter((c:any) => c.type === "slack").length;
+              const hsMapped = !!(cd._hubspotCompanyConfirmed && cd._hubspotCompanyId);
+              const byType = (t:string) => (slackComms || []).filter((c:any) => c.source === "hubspot" && c.type === t).length;
+              const hsActivityCount = (slackComms || []).filter((c:any) => c.source === "hubspot").length;
 
               return (
               <div style={{ position:"absolute" as const, inset:0, overflow:"auto", padding:"24px clamp(20px, 3vw, 48px)",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-                <div style={{ maxWidth:960, margin:"0 auto" }}>
-                  <div style={{ marginBottom:20, display:"flex", justifyContent:"space-between", alignItems:"flex-end", gap:12, flexWrap:"wrap" as const }}>
-                    <div>
-                      <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Integrations</h2>
-                      <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
-                        Connect external tools. Credentials are stored locally in your browser only.
-                      </p>
-                    </div>
-                    <button onClick={()=>{ (window as any).__intKeysVisible = !((window as any).__intKeysVisible); setCompanyData(p=>({...p})); }}
-                      title={(window as any).__intKeysVisible ? "Hide API keys" : "Show API keys"}
-                      style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas,
-                        color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer",
-                        display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap" as const }}>
-                      {(window as any).__intKeysVisible ? "👁‍🗨 Hide keys" : "👁 Show keys"}
-                    </button>
+                <div style={{ maxWidth:760, margin:"0 auto" }}>
+                  <div style={{ marginBottom:20 }}>
+                    <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Integrations</h2>
+                    <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
+                      Per-client data connections. Global API tokens are in{" "}
+                      <span style={{ color:_C.accent, cursor:"pointer", textDecoration:"underline" }} onClick={()=>setMenuApiOpen(true)}>API Keys</span>.
+                    </p>
                   </div>
 
-                  {/* ═══════ BULK IMPORTS ═══════ */}
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>
-                    Bulk Imports
-                  </div>
-
-                  {/* Implementation Doc */}
-                  <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10, gap:12 }}>
+                  {/* ── HubSpot ── */}
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>HubSpot</div>
+                  <div style={{ background:_C.canvas, border:`1px solid ${hsMapped ? "#ff7a5944" : _C.border}`, borderRadius:14, padding:"20px 22px", marginBottom:20 }}>
+                    {/* Header */}
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: hsConnected ? 16 : 0 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <span style={{ fontSize:16 }}>📄</span>
+                        <div style={{ width:8, height:8, borderRadius:4, background: hsMapped ? "#ff7a59" : hsConnected ? "#ff7a5966" : _C.muted }} />
                         <div>
-                          <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Implementation Document</div>
-                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
-                            Upload a client-filled implementation form (DOCX / TXT / MD). AI parses it and proposes cross-platform field updates for your review.
+                          <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>HubSpot CRM</div>
+                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:1 }}>
+                            {hsMapped ? `Linked to ${cd._hubspotCompanyName || cd._hubspotCompanyId}` : hsConnected ? "Token configured — link a company below" : "Token not configured — add it in API Keys"}
                           </div>
                         </div>
                       </div>
-                      <button onClick={()=>{
-                        const input = document.createElement("input");
-                        input.type = "file"; input.accept = ".docx,.txt,.md,text/plain";
-                        input.onchange = (e) => {
-                          const f = (e.target as HTMLInputElement).files?.[0];
-                          if (f) importImplementationDoc(f);
-                        };
-                        input.click();
-                      }}
-                        style={{ padding:"8px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff",
-                          fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const, flexShrink:0,
-                          boxShadow:`0 2px 6px ${_C.accent}44` }}>
-                        📤 Upload Doc
-                      </button>
-                    </div>
-                    <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const }}>
-                      Supports .docx, .txt, .md · PDF not yet supported — export to DOCX first
-                    </div>
-                  </div>
-
-                  {/* ═══════ AI PROVIDERS ═══════ */}
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginTop:24, marginBottom:8, textTransform:"uppercase" as const }}>
-                    AI Providers
-                  </div>
-
-                  {/* Anthropic (Claude) */}
-                  <div style={{ background:_C.canvas, border:`1px solid ${claudeConnected ? _C.greenBorder : _C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <div style={{ width:8, height:8, borderRadius:4, background: claudeConnected ? _C.green : _C.muted }} />
-                        <div>
-                          <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Anthropic (Claude)</div>
-                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Required — powers all AI features (research, sequences, analyses, write-backs).</div>
-                        </div>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        {hsMapped && (
+                          <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5, background:"#ff7a5918", color:"#ff7a59" }}>LINKED</span>
+                        )}
+                        {hsConnected && (
+                          <button onClick={syncHubspotForCompanyPage} disabled={hubspotSyncing}
+                            style={{ padding:"6px 14px", borderRadius:7, border:"none",
+                              background: hubspotSyncing ? _C.muted : "#ff7a59", color:"#fff",
+                              fontSize:11, fontFamily:head, fontWeight:700, cursor: hubspotSyncing ? "wait" : "pointer" }}>
+                            {hubspotSyncing ? "◌ Syncing…" : hsMapped ? "Sync now" : "Link company"}
+                          </button>
+                        )}
+                        {!hsConnected && (
+                          <button onClick={()=>setMenuApiOpen(true)}
+                            style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint,
+                              color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                            Add token →
+                          </button>
+                        )}
                       </div>
-                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5,
-                        background: claudeConnected ? `${_C.green}15` : `${_C.red}15`, color: claudeConnected ? _C.green : _C.red }}>
-                        {claudeConnected ? "CONNECTED" : "REQUIRED"}
-                      </span>
                     </div>
-                    <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>API Key</div>
-                    <input type={(window as any).__intKeysVisible ? "text" : "password"} value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-api03-…"
-                      style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none" }} />
-                  </div>
 
-                  {/* OpenAI + Gemini (AI Council) */}
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
-                    {[
-                      { label:"OpenAI (GPT-4o)", ph:"sk-…", val:openaiKey, set:setOpenaiKey, connected:!!openaiKey, hint:"AI Council — second opinion" },
-                      { label:"Google (Gemini)", ph:"AIza…", val:geminiKey, set:setGeminiKey, connected:!!geminiKey, hint:"AI Council — third opinion" },
-                    ].map(k => (
-                      <div key={k.label} style={{ background:_C.canvas, border:`1px solid ${k.connected ? _C.greenBorder : _C.border}`, borderRadius:14, padding:"14px 16px" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                          <div style={{ width:6, height:6, borderRadius:3, background: k.connected ? _C.green : _C.muted }} />
-                          <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{k.label}</div>
+                    {hsConnected && hsMapped && (
+                      <>
+                        {/* Company + re-map */}
+                        <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderRadius:8, background:_C.faint, marginBottom:14 }}>
+                          <span style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>Company</span>
+                          <span style={{ fontSize:12, fontWeight:600, color:_C.text, fontFamily:body }}>{cd._hubspotCompanyName || cd._hubspotCompanyId}</span>
+                          <span style={{ fontSize:10, color:_C.muted, fontFamily:mono, marginLeft:"auto" }}>{hsPropCount} fields</span>
+                          {cd._hubspotLastActivityPull && <span style={{ fontSize:10, color:_C.muted, fontFamily:body }}>· {new Date(cd._hubspotLastActivityPull).toLocaleDateString()}</span>}
+                          <button onClick={unmapHubspot}
+                            style={{ padding:"2px 8px", borderRadius:4, border:`1px solid ${_C.border}`, background:"transparent", color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>
+                            re-link
+                          </button>
                         </div>
-                        <div style={{ fontSize:10, color:_C.muted, fontFamily:body, marginBottom:6 }}>{k.hint}</div>
-                        <input type={(window as any).__intKeysVisible ? "text" : "password"} value={k.val} onChange={e=>k.set(e.target.value)} placeholder={k.ph}
-                          style={{ width:"100%", padding:"6px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:11, boxSizing:"border-box" as const, outline:"none" }} />
-                      </div>
-                    ))}
-                  </div>
 
-                  {/* ═══════ CRM & SALES TOOLS ═══════ */}
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginTop:24, marginBottom:8, textTransform:"uppercase" as const }}>
-                    CRM &amp; Sales Tools
-                  </div>
-
-                  {/* HubSpot */}
-                  <div style={{ background:_C.canvas, border:`1px solid ${hsConnected ? "#ff7a5944" : _C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <div style={{ width:8, height:8, borderRadius:4, background: hsConnected ? "#ff7a59" : _C.muted }} />
-                        <div>
-                          <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>HubSpot</div>
-                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Pull company properties + email history into the Company page and Client Intel.</div>
-                        </div>
-                      </div>
-                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5,
-                        background: hsConnected ? `#ff7a5918` : _C.faint, color: hsConnected ? "#ff7a59" : _C.muted }}>
-                        {hsConnected ? "CONNECTED" : "NOT CONNECTED"}
-                      </span>
-                    </div>
-                    <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Private App Token</div>
-                    <input type={(window as any).__intKeysVisible ? "text" : "password"} value={hubspotKey}
-                      onChange={e=>{setHubspotKey(e.target.value); setHubspotToken(e.target.value);}}
-                      placeholder="pat-na1-…"
-                      style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", marginBottom:10 }} />
-                    {hsConnected && (() => {
-                      const mapped = !!(cd._hubspotCompanyConfirmed && cd._hubspotCompanyId);
-                      const hsActivityCount = (slackComms || []).filter((c:any) => c.source === "hubspot").length;
-                      const byType = (t:string) => (slackComms || []).filter((c:any) => c.source === "hubspot" && c.type === t).length;
-                      return (
-                        <>
-                          {mapped && (
-                            <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" as const, marginBottom:10,
-                              padding:"6px 10px", borderRadius:6, background:_C.faint, border:`1px solid ${_C.border}`, fontSize:10, fontFamily:mono }}>
-                              <span style={{ color:_C.muted }}>Mapped to:</span>
-                              <span style={{ color:_C.text, fontWeight:700 }}>{(cd as any)._hubspotCompanyName || (cd as any)._hubspotCompanyId}</span>
-                              <button onClick={unmapHubspot}
-                                style={{ padding:"0 6px", border:"none", background:"transparent", color:"#ff7a59", fontSize:10, fontFamily:mono, cursor:"pointer", textDecoration:"underline" }}>
-                                change
-                              </button>
+                        {/* What's synced */}
+                        <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:8 }}>What's synced</div>
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:8, marginBottom:14 }}>
+                          {[
+                            { label:"Companies", count: hsPropCount > 0 ? `${hsPropCount} fields` : "0 fields", active: hsPropCount > 0 },
+                            { label:"Deals", count: cd._hubspotWonDealName ? cd._hubspotWonDealName.slice(0,24) : "None linked", active: !!cd._hubspotWonDealName },
+                            { label:"Contacts", count: hsContacts.length > 0 ? `${hsContacts.length} loaded` : "Not loaded", active: hsContacts.length > 0 },
+                            { label:"Emails", count: `${byType("email")}`, active: byType("email") > 0 },
+                            { label:"Meetings", count: `${byType("meeting")}`, active: byType("meeting") > 0 },
+                            { label:"Calls", count: `${byType("hs_call")}`, active: byType("hs_call") > 0 },
+                          ].map(item => (
+                            <div key={item.label} style={{ padding:"10px 12px", borderRadius:8, background: item.active ? `${_C.accent}08` : _C.faint,
+                              border:`1px solid ${item.active ? _C.accent + "30" : _C.border}` }}>
+                              <div style={{ fontSize:11, fontWeight:600, fontFamily:head, color: item.active ? _C.text : _C.muted }}>{item.label}</div>
+                              <div style={{ fontSize:10, fontFamily:mono, color: item.active ? _C.accent : _C.muted, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{item.count}</div>
                             </div>
-                          )}
-                          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
-                            <button onClick={syncHubspotForCompanyPage} disabled={hubspotSyncing}
-                              style={{ padding:"7px 14px", borderRadius:7, border:"none",
-                                background: hubspotSyncing ? _C.muted : "#ff7a59", color:"#fff",
-                                fontSize:11, fontFamily:head, fontWeight:700, cursor: hubspotSyncing ? "wait" : "pointer" }}>
-                              {hubspotSyncing ? "◌ Syncing…" : (mapped ? "Sync Now" : "Map & Sync")}
-                            </button>
-                            <div style={{ fontSize:10, color:_C.muted, fontFamily:mono, lineHeight:1.6 }}>
-                              {hsActivityCount > 0 ? (
-                                <>
-                                  {hsPropCount} propert{hsPropCount!==1?"ies":"y"} · {byType("email")} email{byType("email")!==1?"s":""} · {byType("meeting")} meeting{byType("meeting")!==1?"s":""} · {byType("hs_call")} call{byType("hs_call")!==1?"s":""} · {byType("note")} note{byType("note")!==1?"s":""}
-                                </>
-                              ) : mapped ? "Click Sync Now to pull activity" : "Click Map & Sync to choose the HubSpot company"}
-                            </div>
-                          </div>
-                        </>
-                      );
-                    })()}
-                    {!hsConnected && (
-                      <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const }}>
-                        Create a Private App in HubSpot → Settings → Integrations → Private Apps. Grant scopes: <code>crm.objects.companies.read</code>, <code>crm.objects.emails.read</code>.
+                          ))}
+                        </div>
+
+                        {hsActivityCount === 0 && (
+                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body }}>No activity synced yet — click Sync now to pull emails, meetings, and calls.</div>
+                        )}
+                      </>
+                    )}
+
+                    {hsConnected && !hsMapped && (
+                      <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, lineHeight:1.6 }}>
+                        Click <strong style={{ color:_C.text }}>Link company</strong> to search HubSpot for this client's company record. Once linked, you can pull deals, contacts, emails, meetings, and calls.
                       </div>
                     )}
                   </div>
 
-                  {/* Slack */}
-                  <div style={{ background:_C.canvas, border:`1px solid ${slackConnected ? "#4a154b44" : _C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                  {/* ── Slack ── */}
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>Slack</div>
+                  <div style={{ background:_C.canvas, border:`1px solid ${cd.co_slack_channel ? "#4a154b44" : _C.border}`, borderRadius:14, padding:"20px 22px", marginBottom:20 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: slackConnected ? 16 : 0 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <div style={{ width:8, height:8, borderRadius:4, background: slackConnected ? "#4a154b" : _C.muted }} />
+                        <div style={{ width:8, height:8, borderRadius:4, background: cd.co_slack_channel ? "#4a154b" : slackConnected ? "#4a154b66" : _C.muted }} />
                         <div>
                           <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Slack</div>
-                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Auto-sync Slack channel messages into Client Intel. Configure channel in Client Intel page.</div>
+                          <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:1 }}>
+                            {cd.co_slack_channel
+                              ? `#${cd.co_slack_channel_name || cd.co_slack_channel} · ${slackMsgCount} message${slackMsgCount!==1?"s":""} synced`
+                              : slackConnected ? "Token configured — set up the channel below" : "Token not configured — add it in API Keys"}
+                          </div>
                         </div>
                       </div>
-                      <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5,
-                        background: slackConnected ? `#4a154b18` : _C.faint, color: slackConnected ? "#4a154b" : _C.muted }}>
-                        {slackConnected ? "CONNECTED" : "NOT CONNECTED"}
-                      </span>
+                      {!slackConnected && (
+                        <button onClick={()=>setMenuApiOpen(true)}
+                          style={{ padding:"6px 14px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint,
+                            color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                          Add token →
+                        </button>
+                      )}
                     </div>
-                    <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Bot Token</div>
-                    <input type={(window as any).__intKeysVisible ? "text" : "password"} value={slackKey}
-                      onChange={e=>{setSlackKey(e.target.value); setSlackToken(e.target.value);}}
-                      placeholder="xoxb-…"
-                      style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", marginBottom:10 }} />
+
                     {slackConnected && (() => {
                       const channelConfigured = !!cd.co_slack_channel;
                       const slackChannels: any[] = (window as any).__slackChannelsIntegrations || [];
@@ -23413,7 +25046,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                       const loadSlackChannels = async () => {
                         (window as any).__slackChLoadingIntegrations = true;
                         (window as any).__slackChErrorIntegrations = "";
-                        setCompanyData(p=>({...p})); // force re-render
+                        setCompanyData(p=>({...p}));
                         try {
                           const chs = await fetchSlackChannels();
                           if (chs.length === 1 && (chs[0] as any).id === "__error__") {
@@ -23429,85 +25062,95 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                         setCompanyData(p=>({...p}));
                       };
                       return (
-                        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                          {/* Channel picker — only needs to be set once per workspace */}
-                          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const, padding:"8px 10px", borderRadius:8, background:_C.faint, border:`1px solid ${_C.border}` }}>
-                            <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:700, letterSpacing:.3, textTransform:"uppercase" as const }}>Channel</div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                          {/* Step 1 */}
+                          <div style={{ padding:"12px 14px", borderRadius:9, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:6 }}>Step 1 — Invite the bot to the channel</div>
+                            <div style={{ fontSize:12, color:_C.textSoft, fontFamily:body, lineHeight:1.6, marginBottom:8 }}>
+                              In Slack, open the client's channel and type this command:
+                            </div>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <code style={{ flex:1, padding:"6px 10px", borderRadius:6, background:_C.canvas, border:`1px solid ${_C.border}`,
+                                fontSize:12, fontFamily:mono, color:_C.text }}>/invite @CX Tool Sync</code>
+                              <button onClick={()=>{ navigator.clipboard.writeText("/invite @CX Tool Sync"); addToast({ title:"Copied", status:"success", message:"" }); }}
+                                style={{ padding:"6px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas,
+                                  color:_C.muted, fontSize:10, fontFamily:mono, cursor:"pointer" }}>Copy</button>
+                            </div>
+                          </div>
+
+                          {/* Step 2 */}
+                          <div style={{ padding:"12px 14px", borderRadius:9, background:_C.faint, border:`1px solid ${_C.border}` }}>
+                            <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.3, textTransform:"uppercase" as const, marginBottom:6 }}>
+                              Step 2 — Select the channel
+                              {channelConfigured && <span style={{ marginLeft:8, color:"#22c55e", fontWeight:400 }}>✓ #{cd.co_slack_channel_name || cd.co_slack_channel}</span>}
+                            </div>
                             {slackChannels.length === 0 ? (
-                              <>
-                                {channelConfigured && <div style={{ fontSize:11, fontFamily:mono, color:_C.textSoft }}>#{cd.co_slack_channel_name || cd.co_slack_channel}</div>}
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                                 <button onClick={loadSlackChannels} disabled={channelLoading}
-                                  style={{ padding:"5px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor:channelLoading?"wait":"pointer" }}>
+                                  style={{ padding:"6px 14px", borderRadius:7, border:"none",
+                                    background: channelLoading ? _C.muted : "#4a154b", color:"#fff",
+                                    fontSize:11, fontFamily:head, fontWeight:700, cursor: channelLoading ? "wait" : "pointer" }}>
                                   {channelLoading ? "Loading…" : channelConfigured ? "Change channel" : "Load channels"}
                                 </button>
-                              </>
+                                {channelConfigured && <span style={{ fontSize:11, color:_C.muted, fontFamily:body }}>or click to change</span>}
+                              </div>
                             ) : (
                               <select value={cd.co_slack_channel || ""} onChange={e=>{
                                 const id = e.target.value;
                                 const ch = slackChannels.find((c:any) => c.id === id);
                                 setCompanyData((prev:any) => ({ ...prev, co_slack_channel: id, co_slack_channel_name: ch?.name || "" }));
                               }}
-                                style={{ flex:1, padding:"6px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:11, fontFamily:mono, outline:"none" }}>
+                                style={{ width:"100%", padding:"7px 10px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.canvas, fontSize:12, fontFamily:mono, outline:"none", color:_C.text }}>
                                 <option value="">Select channel…</option>
                                 {slackChannels.map((c:any) => (
                                   <option key={c.id} value={c.id}>#{c.name}</option>
                                 ))}
                               </select>
                             )}
+                            {channelError && (
+                              <div style={{ fontSize:10, color:"#FF6B6B", fontFamily:body, lineHeight:1.4, marginTop:6 }}>
+                                {channelError}{channelError.includes("not_in_channel") ? " — complete Step 1 first." : ""}
+                              </div>
+                            )}
                           </div>
-                          {channelError && (
-                            <div style={{ fontSize:10, color:_C.red || "#FF6B6B", fontFamily:body, lineHeight:1.4 }}>
-                              {channelError}{channelError.includes("not_in_channel") ? " — invite the bot with /invite @CX-Tool-Sync in Slack." : ""}
-                            </div>
-                          )}
-                          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+
+                          {/* Sync */}
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                             <button onClick={syncSlackForIntegrations} disabled={slackSyncing || !channelConfigured}
-                              title={channelConfigured ? "Fetch new Slack messages since last sync" : "Pick a channel above first"}
                               style={{ padding:"7px 14px", borderRadius:7, border:"none",
                                 background: (slackSyncing || !channelConfigured) ? _C.muted : "#4a154b", color:"#fff",
                                 fontSize:11, fontFamily:head, fontWeight:700,
-                                cursor: slackSyncing ? "wait" : (channelConfigured ? "pointer" : "not-allowed"),
-                                opacity: (!channelConfigured && !slackSyncing) ? 0.6 : 1 }}>
-                              {slackSyncing ? "◌ Syncing…" : "Sync Now"}
+                                cursor: slackSyncing ? "wait" : channelConfigured ? "pointer" : "not-allowed",
+                                opacity: !channelConfigured && !slackSyncing ? 0.6 : 1 }}>
+                              {slackSyncing ? "◌ Syncing…" : "Sync messages"}
                             </button>
-                            <div style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
-                              {!channelConfigured
-                                ? "Pick a channel to enable sync"
+                            <span style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
+                              {!channelConfigured ? "Complete steps above first"
                                 : cd.co_slack_last_sync
-                                  ? `Last sync: ${new Date(cd.co_slack_last_sync).toLocaleString()} · ${slackMsgCount} message${slackMsgCount!==1?"s":""} imported`
-                                  : `Never synced for this workspace${slackMsgCount > 0 ? ` · ${slackMsgCount} existing messages` : ""}`}
-                            </div>
+                                  ? `Last sync ${new Date(cd.co_slack_last_sync).toLocaleDateString()} · ${slackMsgCount} msg${slackMsgCount!==1?"s":""}`
+                                  : "Never synced"}
+                            </span>
                           </div>
                         </div>
                       );
                     })()}
-                    {!slackConnected && (
-                      <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const }}>
-                        Create a Slack Bot in api.slack.com. Required scopes: <code>channels:history</code>, <code>groups:history</code>, <code>users:read</code>.
-                      </div>
-                    )}
                   </div>
 
-                  {/* ═══════ SALES ENABLEMENT ═══════ */}
-                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginTop:24, marginBottom:8, textTransform:"uppercase" as const }}>
-                    Sales Enablement
-                  </div>
-
-                  {/* Bebop Playbooks — sales playbook URLs used with the client pre-onboarding.
-                      Fetched content feeds the AI so Copilot + analyses know what the sales team had. */}
+                  {/* ── Bebop Playbooks ── */}
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>Bebop Playbooks</div>
                   {(() => {
                     const bebopUrls = (cd.co_bebop_playbook_urls || "").trim();
-                    const urlCount = bebopUrls ? bebopUrls.split(/[\n,]+/).map(u=>u.trim()).filter(Boolean).length : 0;
-                    const bebopSnapshot: any = (cd as any)._bebopPlaybookContent || null;
+                    const urlCount = bebopUrls ? bebopUrls.split(/[\n,]+/).map((u:string)=>u.trim()).filter(Boolean).length : 0;
+                    const bebopSnapshot: any = cd._bebopPlaybookContent || null;
                     const bebopChars = bebopSnapshot ? Object.values(bebopSnapshot).reduce((acc:number, v:any) => acc + (typeof v === "string" ? v.length : 0), 0) : 0;
                     const bebopSyncing = (window as any).__bebopSyncing || false;
                     const syncBebop = async () => {
-                      const urls = bebopUrls.split(/[\n,]+/).map(u => u.trim()).filter(Boolean).map(u => /^https?:\/\//i.test(u) ? u : `https://${u}`);
+                      const urls = bebopUrls.split(/[\n,]+/).map((u:string) => u.trim()).filter(Boolean).map((u:string) => /^https?:\/\//i.test(u) ? u : `https://${u}`);
                       if (urls.length === 0) { addToast({ title:"Paste at least one Bebop URL first", status:"error", message:"" }); return; }
                       (window as any).__bebopSyncing = true; setCompanyData(p=>({...p}));
                       const toastId = addToast({ title:"Fetching Bebop playbooks…", status:"loading", message:`${urls.length} URL${urls.length!==1?"s":""}` });
                       try {
-                        const results = await Promise.allSettled(urls.slice(0, 10).map(async u => {
+                        const results = await Promise.allSettled(urls.slice(0, 10).map(async (u:string) => {
                           const html = await fetchPageHTML(u);
                           return { url: u, text: html ? htmlToText(html, 15000) : "", structure: html ? extractOfferingStructure(html) : "" };
                         }));
@@ -23515,75 +25158,70 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                         let fetched = 0;
                         for (const r of results) {
                           if (r.status === "fulfilled" && r.value.text.length > 200) {
-                            snapshot[r.value.url] = r.value.structure
-                              ? `${r.value.structure}\n\n${r.value.text}`
-                              : r.value.text;
+                            snapshot[r.value.url] = r.value.structure ? `${r.value.structure}\n\n${r.value.text}` : r.value.text;
                             fetched++;
                           }
                         }
                         if (fetched === 0) throw new Error("No Bebop URL returned usable content — check the URLs and try again");
-                        setCompanyData((prev:any) => ({
-                          ...prev,
-                          _bebopPlaybookContent: snapshot,
-                          _bebopPlaybookLastSync: new Date().toISOString(),
-                        }));
+                        setCompanyData((prev:any) => ({ ...prev, _bebopPlaybookContent: snapshot, _bebopPlaybookLastSync: new Date().toISOString() }));
                         (window as any).__bebopSyncing = false; setCompanyData(p=>({...p}));
-                        const totalChars = Object.values(snapshot).reduce((a,s) => a + s.length, 0);
-                        updateToast(toastId, { status:"success", title:"Bebop playbooks synced", message:`${fetched}/${urls.length} URL${urls.length!==1?"s":""} · ${Math.round(totalChars/1000)}k chars of sales context` });
+                        updateToast(toastId, { status:"success", title:"Bebop playbooks synced", message:`${fetched}/${urls.length} URL${urls.length!==1?"s":""} · ${Math.round(Object.values(snapshot).reduce((a,s)=>a+s.length,0)/1000)}k chars` });
                       } catch (err:any) {
-                        console.error("[Bebop] sync failed:", err);
                         (window as any).__bebopSyncing = false; setCompanyData(p=>({...p}));
                         updateToast(toastId, { status:"error", title:"Bebop sync failed", message:(err?.message || "Check console").slice(0, 120) });
                       }
                     };
                     return (
-                      <div style={{ background:_C.canvas, border:`1px solid ${urlCount > 0 ? "#FF8C4222" : _C.border}`, borderRadius:14, padding:"18px 22px", marginBottom:12 }}>
-                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                            <div style={{ width:8, height:8, borderRadius:4, background: urlCount > 0 ? "#FF8C42" : _C.muted }} />
-                            <div>
-                              <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Bebop Sales Playbooks</div>
-                              <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
-                                Paste the Bebop playbook URLs the sales team used with this client. We'll pull the content so Copilot + analyses know what was pitched pre-onboarding.
-                              </div>
-                            </div>
+                      <div style={{ background:_C.canvas, border:`1px solid ${urlCount > 0 ? "#FF8C4222" : _C.border}`, borderRadius:14, padding:"20px 22px", marginBottom:20 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                          <div>
+                            <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Bebop Sales Playbooks</div>
+                            <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Paste the playbook URLs the sales team used. Fetched content feeds every AI call so the assistant knows what was pitched.</div>
                           </div>
-                          <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5,
-                            background: urlCount > 0 ? "#FF8C4218" : _C.faint, color: urlCount > 0 ? "#FF8C42" : _C.muted }}>
-                            {urlCount > 0 ? `${urlCount} URL${urlCount!==1?"s":""}` : "NONE ADDED"}
-                          </span>
+                          {urlCount > 0 && <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"3px 9px", borderRadius:5, background:"#FF8C4218", color:"#FF8C42", flexShrink:0 }}>{urlCount} URL{urlCount!==1?"s":""}</span>}
                         </div>
-                        <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginBottom:5 }}>Playbook URLs (one per line)</div>
-                        <textarea
-                          value={cd.co_bebop_playbook_urls || ""}
+                        <textarea value={cd.co_bebop_playbook_urls || ""}
                           onChange={e=>setCompanyData((prev:any)=>({ ...prev, co_bebop_playbook_urls: e.target.value }))}
-                          placeholder={"https://bebop.ai/sales/06b87a56-watermitigation\nhttps://bebop.ai/sales/another-playbook"}
+                          placeholder={"https://bebop.ai/sales/06b87a56-…\nhttps://bebop.ai/sales/another-playbook"}
                           rows={3}
                           style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontFamily:mono, fontSize:12, boxSizing:"border-box" as const, outline:"none", resize:"vertical" as const, marginBottom:10 }} />
-                        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                           <button onClick={syncBebop} disabled={bebopSyncing || urlCount === 0}
                             style={{ padding:"7px 14px", borderRadius:7, border:"none",
                               background: (bebopSyncing || urlCount === 0) ? _C.muted : "#FF8C42", color:"#fff",
-                              fontSize:11, fontFamily:head, fontWeight:700,
-                              cursor: bebopSyncing ? "wait" : (urlCount === 0 ? "not-allowed" : "pointer"),
-                              opacity: (urlCount === 0 && !bebopSyncing) ? 0.6 : 1 }}>
-                            {bebopSyncing ? "◌ Fetching…" : "Fetch Playbooks"}
+                              fontSize:11, fontFamily:head, fontWeight:700, cursor: bebopSyncing ? "wait" : urlCount === 0 ? "not-allowed" : "pointer", opacity: urlCount === 0 && !bebopSyncing ? 0.6 : 1 }}>
+                            {bebopSyncing ? "◌ Fetching…" : bebopSnapshot ? "Re-fetch" : "Fetch playbooks"}
                           </button>
-                          <div style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
-                            {bebopSnapshot && (cd as any)._bebopPlaybookLastSync
-                              ? `Last sync: ${new Date((cd as any)._bebopPlaybookLastSync).toLocaleString()} · ${Object.keys(bebopSnapshot).length} playbook${Object.keys(bebopSnapshot).length!==1?"s":""} · ${Math.round(bebopChars/1000)}k chars cached`
-                              : urlCount === 0 ? "Paste URLs above, then fetch" : "Never fetched — click Fetch Playbooks"}
-                          </div>
-                        </div>
-                        <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const, marginTop:8 }}>
-                          Fetched content flows into every AI call (Copilot, sentiment, pitch, coaching, campaign diagnostic) so the assistant knows what the sales team pitched.
+                          <span style={{ fontSize:10, color:_C.muted, fontFamily:mono }}>
+                            {bebopSnapshot && cd._bebopPlaybookLastSync
+                              ? `Last fetch ${new Date(cd._bebopPlaybookLastSync).toLocaleDateString()} · ${Math.round(bebopChars/1000)}k chars`
+                              : urlCount === 0 ? "Paste URLs above first" : "Not yet fetched"}
+                          </span>
                         </div>
                       </div>
                     );
                   })()}
 
-                  <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:16, padding:"12px 16px", background:_C.faint, borderRadius:10, lineHeight:1.5 }}>
-                    🔒 All credentials are stored in your browser's local storage only — they never leave your device except when making direct API calls to the respective services.
+                  {/* ── Implementation Document ── */}
+                  <div style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.5, marginBottom:8, textTransform:"uppercase" as const }}>Bulk Import</div>
+                  <div style={{ background:_C.canvas, border:`1px solid ${_C.border}`, borderRadius:14, padding:"20px 22px", marginBottom:20 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+                      <div>
+                        <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Implementation Document</div>
+                        <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Upload a client-filled implementation form (DOCX / TXT / MD). AI parses it and proposes field updates for your review.</div>
+                      </div>
+                      <button onClick={()=>{
+                        const input = document.createElement("input");
+                        input.type = "file"; input.accept = ".docx,.txt,.md,text/plain";
+                        input.onchange = (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) importImplementationDoc(f); };
+                        input.click();
+                      }}
+                        style={{ padding:"8px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff",
+                          fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const, flexShrink:0 }}>
+                        Upload Doc
+                      </button>
+                    </div>
+                    <div style={{ fontSize:10, color:_C.muted, fontFamily:body, fontStyle:"italic" as const, marginTop:10 }}>Supports .docx, .txt, .md · Export PDF to DOCX first</div>
                   </div>
                 </div>
               </div>);
@@ -24186,7 +25824,7 @@ Be specific. Reference exact transcript moments. Only flag things that are genui
                   </div>
                   {/* Tabs */}
                   <div style={{ display:"flex", gap:4, padding:3, background:_C.faint, borderRadius:8, marginBottom:0, width:"fit-content" }}>
-                    {[["records","Conversations"],["sentiment","Sentiment"],["pitch","Pitch Analysis"],["coaching","CSM Coaching"],["intel","Client Intel"],["gaps","Expectation Gaps"]].map(([id,label])=>(
+                    {[["records","Conversations"],["sentiment","Sentiment"],["coaching","CSM Coaching"]].map(([id,label])=>(
                       <button key={id} onClick={()=>setCallTab(id)}
                         style={{ padding:"6px 16px", borderRadius:6, border:"none", background:callTab===id?_C.canvas:"transparent",
                           color:callTab===id?_C.text:_C.muted, fontSize:11, fontFamily:head, fontWeight:callTab===id?700:500,
@@ -27642,8 +29280,8 @@ RULES:
         document.body
       )}
 
-      {/* Sales → CX Handoff Brief Modal */}
-      {handoffBriefOpen && (companyData as any)._handoffBrief && createPortal(
+      {/* Handoff Brief modal removed — content now lives on the Profile page (view="profile"). */}
+      {false && handoffBriefOpen && (companyData as any)._handoffBrief && createPortal(
         (() => {
         const hb = (companyData as any)._handoffBrief;
         const b = hb.content || {};

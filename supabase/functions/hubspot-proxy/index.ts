@@ -8,16 +8,33 @@ const corsHeaders = {
 
 // Whitelist of allowed paths. Supports wildcards via {id}.
 const ALLOWED_PATHS: RegExp[] = [
+  // Company search + fetch
   /^\/crm\/v3\/objects\/companies\/search$/,
   /^\/crm\/v3\/objects\/companies\/[^/]+$/,
-  /^\/crm\/v3\/objects\/companies\/[^/]+\/associations\/(contacts|emails|notes|calls|meetings|tasks)$/,
+  /^\/crm\/v3\/properties\/companies$/,
+  // Company associations (contacts, emails, notes, calls, meetings, tasks, deals)
+  /^\/crm\/v3\/objects\/companies\/[^/]+\/associations\/(contacts|emails|notes|calls|meetings|tasks|deals)$/,
+  // Contact fetch + batch
   /^\/crm\/v3\/objects\/contacts\/[^/]+$/,
   /^\/crm\/v3\/objects\/contacts\/[^/]+\/associations\/emails$/,
+  /^\/crm\/v3\/objects\/contacts\/batch\/read$/,
+  // Email fetch + batch
   /^\/crm\/v3\/objects\/emails\/[^/]+$/,
   /^\/crm\/v3\/objects\/emails\/batch\/read$/,
+  // Notes fetch + batch
   /^\/crm\/v3\/objects\/notes\/[^/]+$/,
   /^\/crm\/v3\/objects\/notes\/batch\/read$/,
-  /^\/crm\/v3\/properties\/companies$/,
+  // Calls batch
+  /^\/crm\/v3\/objects\/calls\/batch\/read$/,
+  // Meetings batch
+  /^\/crm\/v3\/objects\/meetings\/batch\/read$/,
+  // Deals fetch + batch
+  /^\/crm\/v3\/objects\/deals\/[^/]+$/,
+  /^\/crm\/v3\/objects\/deals\/batch\/read$/,
+  // Owner name resolution
+  /^\/crm\/v3\/owners\/[^/]+$/,
+  // Pipeline definitions
+  /^\/crm\/v3\/pipelines\/deals$/,
 ];
 
 serve(async (req) => {
