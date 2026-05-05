@@ -18312,9 +18312,9 @@ function SharedExportPage({ id }: { id: string }) {
 
                     {/* pain + goals side by side */}
                     {(pain || goalItems.length > 0) && (
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", borderTop:`1px solid ${BD}` }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", borderTop:`1px solid ${BDS}` }}>
                         {/* pain */}
-                        <div style={{ padding:"18px 24px", borderRight:`1px solid ${BD}` }}>
+                        <div style={{ padding:"18px 24px", borderRight:`1px solid ${BDS}` }}>
                           <div style={{ fontSize:10, fontWeight:700, color:"#c76a42", letterSpacing:"0.06em",
                             textTransform:"uppercase" as const, marginBottom:10 }}>Primary Pain</div>
                           <p style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:0 }}>
@@ -18342,7 +18342,7 @@ function SharedExportPage({ id }: { id: string }) {
 
                     {/* hook — full width */}
                     {hook && (
-                      <div style={{ padding:"16px 24px", borderTop:`1px solid ${BD}`, background:BF }}>
+                      <div style={{ padding:"16px 24px", borderTop:`1px solid ${BDS}`, background:S }}>
                         <div style={{ fontSize:10, fontWeight:700, color:pfg, letterSpacing:"0.06em",
                           textTransform:"uppercase" as const, marginBottom:8 }}>Outreach Hook</div>
                         <p style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em",
