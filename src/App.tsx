@@ -18015,12 +18015,16 @@ function SharedExportPage({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("research");
+  const [activeSidebarItem, setActiveSidebarItem] = useState<string>("");
 
   useEffect(() => {
-    const client = createClient(SUPABASE_URL, SUPABASE_KEY);
-    client.from("app_data").select("value").eq("key", `export_${id}`).single().then(({ data: row }) => {
+    if (!supabase) { setNotFound(true); setLoading(false); return; }
+    supabase.from("app_data").select("value").eq("key", `export_${id}`).single().then(({ data: row }) => {
       if (!row?.value) { setNotFound(true); setLoading(false); return; }
-      try { setData(JSON.parse(row.value as string)); } catch { setNotFound(true); }
+      const val = row.value;
+      try {
+        setData(typeof val === "string" ? JSON.parse(val) : val);
+      } catch { setNotFound(true); }
       setLoading(false);
     });
   }, [id]);
@@ -18074,7 +18078,49 @@ function SharedExportPage({ id }: { id: string }) {
   const personas: any[] = data.personas || [];
   const campaignGroups: any[] = data.campaignGroups || data.campaigns || [];
   const domains: any[] = data.domains || [];
+  const strat: any = data.strategy || null;
   const dateStr = data.generatedAt ? new Date(data.generatedAt).toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}) : "";
+  // Merge all available sources — company has co_* fields spread in, companyData is the dedicated block
+  const coFields: any = { ...(data.company || {}), ...(data.companyData || {}) };
+
+  const coDisplaySections: Array<{ title:string; color:string; fields:Array<{id:string;label:string}> }> = [
+    { title:"Value Proposition", color:A, fields:[
+      { id:"co_we_help",      label:"We Help" },
+      { id:"co_who_struggle", label:"Who Struggle With" },
+      { id:"co_by_providing", label:"By Providing" },
+      { id:"co_unlike",       label:"Unlike (Competitors)" },
+      { id:"co_we_uniquely",  label:"We Uniquely" },
+    ]},
+    { title:"Core Problem & Solution", color:"#5a9a6e", fields:[
+      { id:"co_core_problem",    label:"Core Problem You Solve" },
+      { id:"co_product",         label:"What We Sell" },
+      { id:"co_prod_breakdown",  label:"Product Breakdown" },
+    ]},
+    { title:"Market Position", color:"#5b8db8", fields:[
+      { id:"co_category",      label:"Market Category" },
+      { id:"co_competitors",   label:"Competitors" },
+      { id:"co_buying_motion", label:"Buying Motion" },
+      { id:"co_trust_risks",   label:"Trust / Risk Factors" },
+    ]},
+    { title:"Proof & Pipeline", color:"#c76a42", fields:[
+      { id:"co_diff",      label:"Real Differentiators" },
+      { id:"co_proof",     label:"Proof That Works" },
+      { id:"co_customers", label:"Current Customers" },
+      { id:"co_dream",     label:"Dream Customers" },
+    ]},
+    { title:"Outreach Readiness", color:"#8b6fc0", fields:[
+      { id:"co_outbound_maturity",  label:"Outbound Maturity" },
+      { id:"co_months_running",     label:"Months Running Outbound" },
+      { id:"co_monthly_volume",     label:"Monthly Outreach Volume" },
+      { id:"co_prev_tools",         label:"Previous Tools" },
+      { id:"co_existing_leads",     label:"Existing Lead List" },
+      { id:"co_biggest_challenge",  label:"Biggest Challenge" },
+      { id:"co_90day_goal",         label:"90-Day Goal" },
+    ]},
+    { title:"Notes & Context", color:M, fields:[
+      { id:"co_notes", label:"Notes" },
+    ]},
+  ];
 
   const catColors: Record<string,[string,string]> = {
     "Software":  [A,   BT],
@@ -18084,6 +18130,52 @@ function SharedExportPage({ id }: { id: string }) {
     "Agency":    ["#8b6fc0","#f0ecf8"],
   };
   const catIcon: Record<string,string> = { Software:"◈", Service:"◎", Platform:"⬡", Data:"◇", Agency:"◉" };
+  const personaAccents = ["#5761fe","#5a9a6e","#5b8db8","#c76a42","#8b6fc0"];
+
+  const scrollTo = (itemId: string) => {
+    setActiveSidebarItem(itemId);
+    const el = document.getElementById(itemId);
+    if (el) {
+      const offset = el.getBoundingClientRect().top + window.scrollY - 124;
+      window.scrollTo({ top: offset, behavior: "smooth" });
+    }
+  };
+
+  const sidebarItems: Array<{id:string; label:string; sub?:string; color:string}> =
+    activeTab === "products"
+      ? products.map((p:any, i:number) => ({
+          id: `ep-product-${i}`,
+          label: p.name || `Product ${i+1}`,
+          sub: p.category,
+          color: (catColors[p.category||"Software"]||[A,BT])[0],
+        }))
+    : activeTab === "personas"
+      ? personas.map((pe:any, i:number) => ({
+          id: `ep-persona-${i}`,
+          label: pe.buyer || pe.name || `Persona ${i+1}`,
+          sub: (typeof pe.industries === "string" ? pe.industries : (pe.industries||[]).join(", ")).split(",")[0]?.trim(),
+          color: personaAccents[i % personaAccents.length],
+        }))
+    : activeTab === "email"
+      ? campaignGroups.filter((g:any)=>(g.emailSequence||[]).length>0).map((g:any, i:number) => ({
+          id: `ep-email-${i}`,
+          label: [g.productName, g.personaName].filter(Boolean).join(" × ") || `Sequence ${i+1}`,
+          sub: `${(g.emailSequence||[]).length} steps`,
+          color: A,
+        }))
+    : activeTab === "linkedin"
+      ? campaignGroups.filter((g:any)=>(g.linkedinSequence||[]).length>0).map((g:any, i:number) => ({
+          id: `ep-linkedin-${i}`,
+          label: [g.productName, g.personaName].filter(Boolean).join(" × ") || `Sequence ${i+1}`,
+          sub: `${(g.linkedinSequence||[]).length} steps`,
+          color: "#0a66c2",
+        }))
+    : [];
+
+  const hasSidebar = (activeTab === "products" && products.length > 0) ||
+    (activeTab === "personas" && personas.length > 0) ||
+    (activeTab === "email" && campaignGroups.some((g:any)=>(g.emailSequence||[]).length>0)) ||
+    (activeTab === "linkedin" && campaignGroups.some((g:any)=>(g.linkedinSequence||[]).length>0));
 
   const tabs = [
     { id:"research",       label:"Company Research"     },
@@ -18238,12 +18330,17 @@ function SharedExportPage({ id }: { id: string }) {
 
   return (
     <div style={{ background:"#fff", minHeight:"100vh", fontFamily:f, color:B, WebkitFontSmoothing:"antialiased" as any }}>
-      <style>{`
+<style>{`
         * { box-sizing:border-box; margin:0; padding:0; }
         @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
         .ep-card { background:#fff; border-radius:12px; border:1px solid rgba(5,12,70,0.08); box-shadow:3px 5px 30px rgba(5,12,70,0.06); }
         .ep-tab { background:none; border:none; cursor:pointer; font-family:inherit; transition:color 150ms; }
         .ep-tab:hover { color:#050c46; }
+        .ep-nav-item { display:block; width:100%; background:none; border:none; cursor:pointer; font-family:inherit;
+          text-align:left; padding:7px 12px 7px 14px; border-radius:7px; border-left:2px solid transparent;
+          transition:background 120ms,color 120ms; }
+        .ep-nav-item:hover { background:rgba(5,12,70,0.04); }
+        .ep-nav-item.active { border-left-color:currentColor; background:rgba(87,97,254,0.06); }
       `}</style>
 
       {/* ── STICKY HEADER + TABS ── */}
@@ -18278,19 +18375,55 @@ function SharedExportPage({ id }: { id: string }) {
       </div>
 
       {/* ── TAB CONTENT ── */}
-      <div style={{ maxWidth:960, margin:"0 auto", padding:"48px 48px 96px" }}>
+      <div style={{ maxWidth: hasSidebar ? 1200 : 960, margin:"0 auto", padding:"0 48px" }}>
+        <div style={{ display:"flex", alignItems:"flex-start", gap:48 }}>
+
+          {/* LEFT NAV — sticky sidebar for content-heavy tabs */}
+          {hasSidebar && (
+            <div style={{ width:200, flexShrink:0, position:"sticky", top:116, alignSelf:"flex-start", marginTop:48 }}>
+              <div style={{ background:BF, borderRadius:10, border:`1px solid ${BT}`, paddingTop:14, paddingBottom:20 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:A, letterSpacing:"0.06em",
+                  textTransform:"uppercase" as const, marginBottom:10, paddingLeft:16 }}>On this page</div>
+                {sidebarItems.map((item, idx) => {
+                  const isActive = activeSidebarItem === item.id || (activeSidebarItem === "" && idx === 0);
+                  return (
+                    <button key={item.id} className={`ep-nav-item${isActive ? " active" : ""}`}
+                      style={{ color: isActive ? item.color : B, borderLeftColor: isActive ? item.color : "transparent" }}
+                      onClick={() => scrollTo(item.id)}>
+                      <div style={{ fontSize:13, fontWeight: isActive ? 600 : 400, letterSpacing:"-0.008em",
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const,
+                        lineHeight:1.35 }}>{item.label}</div>
+                      {item.sub && <div style={{ fontSize:11, color:M, marginTop:1, overflow:"hidden",
+                        textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{item.sub}</div>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* MAIN CONTENT */}
+          <div style={{ flex:1, minWidth:0, padding:"48px 0 96px" }}>
 
         {/* RESEARCH */}
         {activeTab === "research" && (
           <div>
-            <div className="ep-card" style={{ padding:"28px 32px", marginBottom:36 }}>
-              <div style={{ fontSize:21, fontWeight:600, color:H, letterSpacing:"-0.012em", marginBottom:10 }}>{name}</div>
-              {pitch && <p style={{ fontSize:14, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:"0 0 16px" }}>{pitch}</p>}
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const }}>
-                {industry && <span style={{ fontSize:12, color:M, background:S, border:`1px solid ${BD}`, padding:"3px 10px", borderRadius:980 }}>{industry}</span>}
-                {website && <a href={website} target="_blank" rel="noreferrer" style={{ fontSize:12, color:A, background:BF, border:`1px solid ${BT}`, padding:"3px 10px", borderRadius:980, textDecoration:"none" }}>{website.replace(/^https?:\/\//,"")} ↗</a>}
+            {/* Profile card */}
+            <div className="ep-card" style={{ overflow:"hidden", display:"flex", marginBottom:24 }}>
+              <div style={{ width:4, background:A, flexShrink:0 }} />
+              <div style={{ flex:1, padding:"24px 28px" }}>
+                <div style={{ fontSize:21, fontWeight:600, color:H, letterSpacing:"-0.012em", marginBottom:8 }}>{name}</div>
+                {pitch && <p style={{ fontSize:14, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:"0 0 16px" }}>{pitch}</p>}
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                  {industry && <span style={{ fontSize:12, color:M, background:S, border:`1px solid ${BD}`, padding:"3px 10px", borderRadius:980 }}>{industry}</span>}
+                  {co.size && <span style={{ fontSize:12, color:M, background:S, border:`1px solid ${BD}`, padding:"3px 10px", borderRadius:980 }}>{co.size}</span>}
+                  {co.revenue && <span style={{ fontSize:12, color:M, background:S, border:`1px solid ${BD}`, padding:"3px 10px", borderRadius:980 }}>{co.revenue}</span>}
+                  {website && <a href={website} target="_blank" rel="noreferrer" style={{ fontSize:12, color:A, background:BF, border:`1px solid ${BT}`, padding:"3px 10px", borderRadius:980, textDecoration:"none" }}>{website.replace(/^https?:\/\//,"")} ↗</a>}
+                </div>
               </div>
             </div>
+
+            {/* KSP numbered list */}
             {ksps.length > 0 && (() => {
               const items = ksps;
               const half = Math.ceil(items.length / 2);
@@ -18305,7 +18438,7 @@ function SharedExportPage({ id }: { id: string }) {
                 </div>
               );
               return (
-                <>
+                <div style={{ marginBottom:36 }}>
                   <div style={{ marginBottom:28 }}>
                     <div style={{ fontSize:21, fontWeight:600, color:H, letterSpacing:"-0.012em", marginBottom:4 }}>What Makes {name} Different</div>
                     <div style={{ fontSize:14, color:M, letterSpacing:"-0.008em" }}>Key differentiators for this outbound program</div>
@@ -18314,46 +18447,43 @@ function SharedExportPage({ id }: { id: string }) {
                     <div>{left.map((k,i) => <KRow key={i} k={k} i={i} />)}</div>
                     <div>{right.map((k,i) => <KRow key={i} k={k} i={half+i} />)}</div>
                   </div>
-                </>
+                </div>
               );
             })()}
-          </div>
-        )}
 
-        {/* STRATEGY */}
-        {activeTab === "strategy" && (
-          <div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:16, marginBottom:40 }}>
-              {[
-                { label:"Products Targeted",      value:products.length },
-                { label:"Personas Targeted",       value:personas.length },
-                { label:"Campaign Combinations",   value:campaignGroups.length },
-              ].map(({ label, value }, i) => (
-                <div key={i} className="ep-card" style={{ padding:"24px 20px", textAlign:"center" as const }}>
-                  <div style={{ fontSize:40, fontWeight:600, color:A, letterSpacing:"-0.022em", lineHeight:1, marginBottom:8 }}>{value}</div>
-                  <div style={{ fontSize:13, fontWeight:500, color:M, letterSpacing:"-0.008em" }}>{label}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginBottom:20 }}>
-              <div style={{ fontSize:17, fontWeight:600, color:H, letterSpacing:"-0.010em", marginBottom:4 }}>Targeting Matrix</div>
-              <div style={{ fontSize:13, color:M, letterSpacing:"-0.008em" }}>Each combination gets its own tailored outreach sequence</div>
-            </div>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
-              {campaignGroups.map((g:any, gi:number) => {
-                const eLen = (g.emailSequence||[]).length;
-                const lLen = (g.linkedinSequence||[]).length;
+            {/* Extended research sections */}
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
+              {coDisplaySections.map((section:any, si:number) => {
+                const filledFields = section.fields.filter((f:any) => {
+                  const v = coFields[f.id];
+                  return v && (Array.isArray(v) ? v.length > 0 : String(v).trim());
+                });
+                if (!filledFields.length) return null;
                 return (
-                  <div key={gi} className="ep-card" style={{ padding:"16px 24px", display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" as const }}>
-                    <div style={{ flex:1, minWidth:200 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:H, letterSpacing:"-0.008em" }}>
-                        {[g.productName, g.personaName].filter(Boolean).join("  →  ")}
+                  <div key={si} className="ep-card" style={{ overflow:"hidden", display:"flex" }}>
+                    <div style={{ width:4, background:section.color, flexShrink:0 }} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ padding:"16px 24px 0" }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:section.color, letterSpacing:"0.06em",
+                          textTransform:"uppercase" as const }}>{section.title}</div>
                       </div>
-                      {g.angle && <div style={{ fontSize:13, color:B, marginTop:3, letterSpacing:"-0.008em" }}>{g.angle}</div>}
-                    </div>
-                    <div style={{ display:"flex", gap:8, flexShrink:0 }}>
-                      {eLen > 0 && <span style={{ fontSize:11, fontWeight:600, color:A, background:BF, border:`1px solid ${BT}`, padding:"4px 12px", borderRadius:980 }}>{eLen}-touch Email</span>}
-                      {lLen > 0 && <span style={{ fontSize:11, fontWeight:600, color:"#0a66c2", background:"#ebf2f8", border:"1px solid #c5d9f7", padding:"4px 12px", borderRadius:980 }}>{lLen}-touch LinkedIn</span>}
+                      <div style={{ padding:"14px 24px 24px" }}>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px 32px" }}>
+                          {filledFields.map((f:any) => {
+                            const raw = coFields[f.id];
+                            const val = Array.isArray(raw) ? raw.join(" · ") : String(raw);
+                            const isLong = val.length > 100 || val.includes("\n");
+                            return (
+                              <div key={f.id} style={{ gridColumn: isLong ? "1 / -1" : "auto" }}>
+                                <div style={{ fontSize:10, fontWeight:600, color:M, letterSpacing:"0.05em",
+                                  textTransform:"uppercase" as const, marginBottom:5 }}>{f.label}</div>
+                                <div style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em",
+                                  whiteSpace: val.includes("\n") ? "pre-wrap" as const : "normal" as const }}>{val}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -18361,6 +18491,200 @@ function SharedExportPage({ id }: { id: string }) {
             </div>
           </div>
         )}
+
+        {/* STRATEGY */}
+        {activeTab === "strategy" && (() => {
+          const ns = strat?.northStar || null;
+          const bets: any[] = strat?.bets || [];
+          const phases: any[] = strat?.phases || [];
+          const allProductNames: string[] = Array.from(new Set(campaignGroups.map((g:any) => g.productName).filter(Boolean)));
+          const allPersonaNames: string[] = Array.from(new Set(campaignGroups.map((g:any) => g.personaName).filter(Boolean)));
+          const groupMap: Record<string, any> = {};
+          campaignGroups.forEach((g:any) => { groupMap[`${g.productName}||${g.personaName}`] = g; });
+          const phaseAccents = [A,"#5a9a6e","#5b8db8","#c76a42","#8b6fc0","#e0913a","#3a9ae0","#9a5a6e"];
+          const betStatusColor: Record<string,string> = { proving:"#c76a42", confirmed_hypothesis:"#5a9a6e", disconfirmed_hypothesis:M };
+          const betStatusLabel: Record<string,string> = { proving:"Testing", confirmed_hypothesis:"Confirmed", disconfirmed_hypothesis:"Disproved" };
+          return (
+            <div style={{ paddingTop:48 }}>
+
+              {/* ── NORTH STAR ── */}
+              {ns && (
+                <div style={{ marginBottom:40 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:A, letterSpacing:"0.08em", textTransform:"uppercase" as const, marginBottom:10 }}>North Star</div>
+                  <div className="ep-card" style={{ overflow:"hidden" }}>
+                    <div style={{ height:4, background:`linear-gradient(90deg,${A},#9aa3ff)` }} />
+                    <div style={{ padding:"28px 32px" }}>
+                      {/* ICP + pain */}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"24px 40px", marginBottom:28 }}>
+                        <div>
+                          <div style={{ fontSize:10, fontWeight:700, color:M, letterSpacing:"0.07em", textTransform:"uppercase" as const, marginBottom:8 }}>Ideal Customer Profile</div>
+                          <div style={{ fontSize:15, color:H, lineHeight:1.6, letterSpacing:"-0.008em" }}>{ns.icp}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:10, fontWeight:700, color:M, letterSpacing:"0.07em", textTransform:"uppercase" as const, marginBottom:8 }}>Core Pain We Solve</div>
+                          <div style={{ fontSize:15, color:H, lineHeight:1.6, letterSpacing:"-0.008em" }}>{ns.corePain}</div>
+                        </div>
+                      </div>
+                      {/* channel */}
+                      <div style={{ borderTop:`1px solid ${BD}`, paddingTop:20, marginBottom:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:"20px 40px" }}>
+                        <div>
+                          <div style={{ fontSize:10, fontWeight:700, color:M, letterSpacing:"0.07em", textTransform:"uppercase" as const, marginBottom:8 }}>Primary Channel</div>
+                          <span style={{ fontSize:13, fontWeight:600, color:A, background:BF, border:`1px solid ${BT}`, padding:"4px 12px", borderRadius:980 }}>{ns.primaryChannel}</span>
+                          {ns.channelReason && <div style={{ fontSize:13, color:B, marginTop:8, lineHeight:1.55, letterSpacing:"-0.008em" }}>{ns.channelReason}</div>}
+                        </div>
+                        <div>
+                          <div style={{ fontSize:10, fontWeight:700, color:M, letterSpacing:"0.07em", textTransform:"uppercase" as const, marginBottom:8 }}>90-Day Goal</div>
+                          <div style={{ fontSize:14, fontWeight:500, color:H, lineHeight:1.55, letterSpacing:"-0.008em" }}>{ns.goal90Days}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── 12-MONTH PHASES ── */}
+              {phases.length > 0 && (
+                <div style={{ marginBottom:40 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:A, letterSpacing:"0.08em", textTransform:"uppercase" as const, marginBottom:6 }}>12-Month Roadmap</div>
+                  <div style={{ fontSize:13, color:M, letterSpacing:"-0.008em", marginBottom:16 }}>Where we start, what we prove, and where we scale</div>
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
+                    {phases.map((ph:any, pi:number) => {
+                      const accent = phaseAccents[pi % phaseAccents.length];
+                      const campCount = (ph.campaigns||[]).length;
+                      return (
+                        <div key={pi} className="ep-card" style={{ overflow:"hidden", display:"flex" }}>
+                          <div style={{ width:4, background:accent, flexShrink:0 }} />
+                          <div style={{ flex:1 }}>
+                            <div style={{ padding:"16px 24px", display:"flex", alignItems:"flex-start", gap:20, borderBottom:`1px solid ${BD}` }}>
+                              <div style={{ flex:1 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:5 }}>
+                                  <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.010em" }}>{ph.name}</div>
+                                  {ph.monthRange && <span style={{ fontSize:11, fontWeight:600, color:accent, background:`${accent}14`, padding:"2px 8px", borderRadius:980 }}>{ph.monthRange}</span>}
+                                  {ph.status && ph.status !== "pending" && <span style={{ fontSize:11, fontWeight:600, color: ph.status==="completed"?"#5a9a6e":ph.status==="in_progress"?A:M,
+                                    background: ph.status==="completed"?"#eaf5ee":ph.status==="in_progress"?BF:S, padding:"2px 8px", borderRadius:980 }}>
+                                    {ph.status==="completed"?"✓ Done":ph.status==="in_progress"?"In Progress":"Pending"}
+                                  </span>}
+                                </div>
+                                {ph.focus && <div style={{ fontSize:13, color:B, letterSpacing:"-0.008em" }}>{ph.focus}</div>}
+                              </div>
+                              {campCount > 0 && <div style={{ fontSize:12, fontWeight:500, color:M, flexShrink:0 }}>{campCount} campaign{campCount!==1?"s":""}</div>}
+                            </div>
+                            {ph.goal && (
+                              <div style={{ padding:"12px 24px", background:S }}>
+                                <span style={{ fontSize:10, fontWeight:700, color:M, letterSpacing:"0.07em", textTransform:"uppercase" as const, marginRight:10 }}>Goal</span>
+                                <span style={{ fontSize:13, color:H, letterSpacing:"-0.008em" }}>{ph.goal}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── ACTIVE BETS ── */}
+              {bets.length > 0 && (
+                <div style={{ marginBottom:40 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:A, letterSpacing:"0.08em", textTransform:"uppercase" as const, marginBottom:6 }}>Hypotheses We're Testing</div>
+                  <div style={{ fontSize:13, color:M, letterSpacing:"-0.008em", marginBottom:16 }}>Bets on what will work — each backed by a campaign</div>
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+                    {bets.map((bet:any, bi:number) => {
+                      const sc = betStatusColor[bet.status] || M;
+                      const sl = betStatusLabel[bet.status] || bet.status;
+                      return (
+                        <div key={bi} className="ep-card" style={{ padding:"18px 24px" }}>
+                          <div style={{ display:"flex", alignItems:"flex-start", gap:14 }}>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:14, color:H, lineHeight:1.6, letterSpacing:"-0.008em", marginBottom: bet.evidence ? 10 : 0 }}>{bet.hypothesis}</div>
+                              {bet.evidence && <div style={{ fontSize:13, color:B, fontStyle:"italic" as const, lineHeight:1.5, letterSpacing:"-0.008em" }}>"{bet.evidence}"</div>}
+                            </div>
+                            <div style={{ display:"flex", flexDirection:"column" as const, alignItems:"flex-end", gap:6, flexShrink:0 }}>
+                              <span style={{ fontSize:11, fontWeight:600, color:sc, background:`${sc}14`, padding:"3px 10px", borderRadius:980 }}>{sl}</span>
+                              {bet.channel && <span style={{ fontSize:11, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 8px", borderRadius:980 }}>{bet.channel}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── OUTREACH MATRIX ── */}
+              {allProductNames.length > 0 && allPersonaNames.length > 0 && (
+                <div style={{ marginBottom:40 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:A, letterSpacing:"0.08em", textTransform:"uppercase" as const, marginBottom:6 }}>Outreach Matrix</div>
+                  <div style={{ fontSize:13, color:M, letterSpacing:"-0.008em", marginBottom:16 }}>Active sequences by product × persona — ✉ email touches, in LinkedIn touches</div>
+                  <div className="ep-card" style={{ overflow:"auto" }}>
+                    <div style={{ display:"grid", gridTemplateColumns:`180px repeat(${allPersonaNames.length},1fr)`,
+                      padding:"10px 16px", background:S, borderBottom:`1px solid ${BD}`, minWidth:480 }}>
+                      <div />
+                      {allPersonaNames.map((pn:string, pi:number) => (
+                        <div key={pi} style={{ fontSize:11, fontWeight:600, color:H, letterSpacing:"-0.005em",
+                          paddingLeft:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{pn}</div>
+                      ))}
+                    </div>
+                    {allProductNames.map((prod:string, ri:number) => (
+                      <div key={ri} style={{ display:"grid", gridTemplateColumns:`180px repeat(${allPersonaNames.length},1fr)`,
+                        padding:"14px 16px", borderBottom: ri < allProductNames.length-1 ? `1px solid ${BD}` : "none",
+                        minWidth:480, alignItems:"center" }}>
+                        <div style={{ fontSize:13, fontWeight:600, color:H, letterSpacing:"-0.008em",
+                          paddingRight:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{prod}</div>
+                        {allPersonaNames.map((pn:string, ci:number) => {
+                          const g = groupMap[`${prod}||${pn}`];
+                          const eLen = g ? (g.emailSequence||[]).length : 0;
+                          const lLen = g ? (g.linkedinSequence||[]).length : 0;
+                          return (
+                            <div key={ci} style={{ paddingLeft:12, display:"flex", gap:5, flexWrap:"wrap" as const }}>
+                              {eLen > 0 && <span style={{ fontSize:10, fontWeight:600, color:A, background:BF, border:`1px solid ${BT}`, padding:"2px 7px", borderRadius:980, whiteSpace:"nowrap" as const }}>✉ {eLen}</span>}
+                              {lLen > 0 && <span style={{ fontSize:10, fontWeight:600, color:"#0a66c2", background:"#ebf2f8", border:"1px solid #c5d9f7", padding:"2px 7px", borderRadius:980, whiteSpace:"nowrap" as const }}>in {lLen}</span>}
+                              {!eLen && !lLen && <span style={{ fontSize:12, color:M }}>—</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── MESSAGING ANGLES ── */}
+              {campaignGroups.some((g:any) => g.angle) && (
+                <div>
+                  <div style={{ fontSize:12, fontWeight:700, color:A, letterSpacing:"0.08em", textTransform:"uppercase" as const, marginBottom:6 }}>Messaging Angles</div>
+                  <div style={{ fontSize:13, color:M, letterSpacing:"-0.008em", marginBottom:16 }}>The strategic hook driving each combination's outreach</div>
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+                    {campaignGroups.filter((g:any) => g.angle).map((g:any, gi:number) => {
+                      const eLen = (g.emailSequence||[]).length;
+                      const lLen = (g.linkedinSequence||[]).length;
+                      return (
+                        <div key={gi} className="ep-card" style={{ overflow:"hidden", display:"flex" }}>
+                          <div style={{ width:4, background:A, flexShrink:0 }} />
+                          <div style={{ flex:1, padding:"16px 20px" }}>
+                            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16, flexWrap:"wrap" as const }}>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:M, letterSpacing:"0.05em", textTransform:"uppercase" as const, marginBottom:6 }}>
+                                  {[g.productName, g.personaName].filter(Boolean).join("  ×  ")}
+                                </div>
+                                <div style={{ fontSize:14, color:H, lineHeight:1.6, letterSpacing:"-0.008em" }}>{g.angle}</div>
+                              </div>
+                              <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                                {eLen > 0 && <span style={{ fontSize:11, fontWeight:600, color:A, background:BF, border:`1px solid ${BT}`, padding:"3px 10px", borderRadius:980 }}>✉ {eLen} email</span>}
+                                {lLen > 0 && <span style={{ fontSize:11, fontWeight:600, color:"#0a66c2", background:"#ebf2f8", border:"1px solid #c5d9f7", padding:"3px 10px", borderRadius:980 }}>in {lLen} LinkedIn</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          );
+        })()}
 
         {/* PRODUCTS */}
         {activeTab === "products" && (
@@ -18373,7 +18697,7 @@ function SharedExportPage({ id }: { id: string }) {
                 core:A, market:"#5a9a6e", commercials:"#c76a42", proof:"#5b8db8", positioning:"#8b6fc0",
               };
               return (
-                <div key={i} className="ep-card" style={{ overflow:"hidden", display:"flex" }}>
+                <div key={i} id={`ep-product-${i}`} className="ep-card" style={{ scrollMarginTop:124, overflow:"hidden", display:"flex" }}>
                   <div style={{ width:4, background:fg, flexShrink:0 }} />
                   <div style={{ flex:1, minWidth:0 }}>
                     {/* header */}
@@ -18405,7 +18729,11 @@ function SharedExportPage({ id }: { id: string }) {
         {/* PERSONAS */}
         {activeTab === "personas" && (
           <div style={{ display:"flex", flexDirection:"column" as const, gap:30 }}>
-            {personas.map((pe:any, i:number) => <PersonaCard key={i} pe={pe} i={i} />)}
+            {personas.map((pe:any, i:number) => (
+              <div key={i} id={`ep-persona-${i}`} style={{ scrollMarginTop:124 }}>
+                <PersonaCard pe={pe} i={i} />
+              </div>
+            ))}
           </div>
         )}
 
@@ -18413,7 +18741,7 @@ function SharedExportPage({ id }: { id: string }) {
         {activeTab === "email" && (
           <div style={{ display:"flex", flexDirection:"column" as const, gap:24 }}>
             {campaignGroups.filter((g:any)=>(g.emailSequence||[]).length>0).map((g:any, gi:number) => (
-              <div key={gi} className="ep-card" style={{ overflow:"hidden" }}>
+              <div key={gi} id={`ep-email-${gi}`} className="ep-card" style={{ scrollMarginTop:124, overflow:"hidden" }}>
                 <div style={{ padding:"14px 24px", background:S, borderBottom:`1px solid ${BD}`,
                   display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
                   <div style={{ width:8, height:8, borderRadius:"50%", background:A, flexShrink:0 }} />
@@ -18436,7 +18764,7 @@ function SharedExportPage({ id }: { id: string }) {
         {activeTab === "linkedin" && (
           <div style={{ display:"flex", flexDirection:"column" as const, gap:24 }}>
             {campaignGroups.filter((g:any)=>(g.linkedinSequence||[]).length>0).map((g:any, gi:number) => (
-              <div key={gi} className="ep-card" style={{ overflow:"hidden" }}>
+              <div key={gi} id={`ep-linkedin-${gi}`} className="ep-card" style={{ scrollMarginTop:124, overflow:"hidden" }}>
                 <div style={{ padding:"14px 24px", background:"#ebf2f8", borderBottom:"1px solid #c5d9f7",
                   display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
                   <div style={{ width:8, height:8, borderRadius:"50%", background:"#0a66c2", flexShrink:0 }} />
@@ -18457,36 +18785,45 @@ function SharedExportPage({ id }: { id: string }) {
 
         {/* INFRASTRUCTURE */}
         {activeTab === "infrastructure" && (
-          <div>
-            <div className="ep-card" style={{ overflow:"hidden", marginBottom:24 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", borderBottom:`1px solid ${BD}` }}>
-                {[
-                  { label:"Sending Domains", value:String(domains.length),   sub:"Separate sender identities" },
-                  { label:"Mailboxes",        value:String(domains.length*3), sub:"3 per domain" },
-                ].map((s,i) => (
-                  <div key={i} style={{ padding:"28px 24px", borderRight: i<1 ? `1px solid ${BD}` : "none", textAlign:"center" as const }}>
-                    <div style={{ fontSize:40, fontWeight:600, color:A, letterSpacing:"-0.022em", lineHeight:1, marginBottom:6 }}>{s.value}</div>
-                    <div style={{ fontSize:13, fontWeight:600, color:H, letterSpacing:"-0.008em", marginBottom:3 }}>{s.label}</div>
-                    <div style={{ fontSize:12, color:M }}>{s.sub}</div>
-                  </div>
+          <div style={{ paddingTop:48 }}>
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:21, fontWeight:600, color:H, letterSpacing:"-0.012em", marginBottom:4 }}>Sending Infrastructure</div>
+              <div style={{ fontSize:14, color:M, letterSpacing:"-0.008em" }}>{domains.length} domain{domains.length !== 1 ? "s" : ""} configured</div>
+            </div>
+            <div className="ep-card" style={{ overflow:"hidden" }}>
+              {/* header row */}
+              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr", gap:0,
+                padding:"10px 24px", background:S, borderBottom:`1px solid ${BD}` }}>
+                {["Domain","Mailboxes","Provider","Status"].map((h) => (
+                  <div key={h} style={{ fontSize:10, fontWeight:700, color:M, letterSpacing:"0.06em", textTransform:"uppercase" as const }}>{h}</div>
                 ))}
               </div>
-              <div style={{ padding:24 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:M, letterSpacing:"0.06em", textTransform:"uppercase" as const, marginBottom:14 }}>Domain List</div>
-                <div style={{ display:"flex", flexWrap:"wrap" as const, gap:8 }}>
-                  {domains.map((d:any,i:number) => (
-                    <span key={i} style={{ fontSize:12, fontFamily:"'Fira Code','Fira Mono','Consolas',monospace",
-                      background:S, color:H, padding:"5px 12px", borderRadius:8, border:`1px solid ${BD}`, letterSpacing:"-0.2px" }}>
-                      {d.full || `${d.domain}.${d.tld||"com"}`}
-                    </span>
-                  ))}
+              {domains.map((d:any, i:number) => (
+                <div key={i} style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr", gap:0,
+                  padding:"14px 24px", borderBottom: i < domains.length - 1 ? `1px solid ${BD}` : "none",
+                  alignItems:"center" }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:H, letterSpacing:"-0.005em",
+                    fontFamily:"'Fira Code','Fira Mono','Consolas',monospace" }}>
+                    {d.full || `${d.domain}.${d.tld||"com"}`}
+                  </div>
+                  <div style={{ fontSize:13, color:B }}>{d.mailboxCount ?? 3}</div>
+                  <div style={{ fontSize:13, color:B }}>{d.provider || "—"}</div>
+                  <div style={{ fontSize:12 }}>
+                    {d.status ? (
+                      <span style={{ background: d.status.toLowerCase().includes("active") ? "#eaf5ee" : S,
+                        color: d.status.toLowerCase().includes("active") ? "#5a9a6e" : M,
+                        padding:"2px 8px", borderRadius:980, fontWeight:500 }}>{d.status}</span>
+                    ) : "—"}
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
         )}
 
-      </div>
+          </div>{/* end MAIN CONTENT */}
+        </div>{/* end flex row */}
+      </div>{/* end outer maxWidth wrapper */}
 
       {/* ── FOOTER ── */}
       <div style={{ maxWidth:960, margin:"0 auto", padding:"0 48px 48px" }}>
@@ -18612,6 +18949,7 @@ const LP_STEPS = [
   "Generating 67 domains",
   "Generating campaign strategies",
   "Generating sequences",
+  "Building 12-month strategy",
 ];
 
 function ExportTab({ lpResult, onGenerateExport }: { lpResult: any; onGenerateExport: () => Promise<string> }) {
@@ -22203,20 +22541,32 @@ Return ONLY valid JSON:
   const generateExport = async (): Promise<string> => {
     const id = uid();
     const key = `export_${id}`;
-    const cd = companyData as any;
+    // Load fresh from localStorage to avoid any stale React state
+    const wsId = activeWorkspace ? (activeWorkspace as any).id : null;
+    const freshWs = wsId ? loadWorkspaceData(wsId) : null;
+    const cd = (freshWs?.companyData || companyData || {}) as any;
+    // All co_* prefixed fields
+    const coStarFields: any = Object.fromEntries(
+      Object.entries(cd).filter(([k]) => k.startsWith("co_"))
+    );
     const exportData = {
       generatedAt: new Date().toISOString(),
       company: {
-        name: activeWorkspace?.name || cd?.co_name || "Company",
-        pitch: cd?.co_pitch || cd?.co_description || "",
-        industry: cd?.co_industry || "",
-        website: cd?.co_website || "",
-        ksp: cd?.co_ksp || "",
+        name: activeWorkspace?.name || cd.co_name || "Company",
+        pitch: cd.co_pitch || cd.co_description || "",
+        industry: cd.co_industry || "",
+        website: cd.co_website || "",
+        ksp: cd.co_ksp || "",
+        size: cd.co_size || "",
+        revenue: cd.co_revenue || "",
+        ...coStarFields,
       },
+      companyData: coStarFields,
       products: (products || []) as any[],
       personas: (icps || []) as any[],
       campaignGroups: lpResult?.campaignGroups || [],
       domains: lpResult?.domains || [],
+      strategy: strategy || null,
     };
     await dbPut("app_data", key, JSON.stringify(exportData));
     return `${window.location.origin}${window.location.pathname}?export=${id}`;
@@ -22816,20 +23166,62 @@ Return ONLY valid JSON:
 
       if (allNewCampaigns.length) setCampaigns((prev:any[]) => [...prev, ...allNewCampaigns]);
 
-      // Set strategy
+      // ── STEP 10: Full 12-month strategy (North Star + Bets + Phases) ──
+      upd(10, LP_STEPS[9]);
+      addLog("Building 12-month outreach strategy...");
       try {
-        const stratRaw = await callAI(
-          `Generate a North Star strategy for this company.
-Company: ${JSON.stringify(coFields)}
-Products: ${newProducts.map((p:any)=>p.name).join(", ")}
-Personas: ${newPersonas.map((p:any)=>p.name).join(", ")}
-Return ONLY valid JSON:
-{"northStar":{"icp":"1-sentence ICP definition","corePain":"primary pain we solve","primaryChannel":"Email + LinkedIn","channelReason":"why","goal90Days":"90-day measurable goal"},"bets":[{"hypothesis":"We believe [persona] will respond to [angle] through [channel] because [reason]","channel":"Email","personaRef":"persona name","angle":"messaging angle","status":"proving"}]}`,
-          "", 600
+        const prodList = newProducts.slice(0,5).map((p:any)=>`${p.name}: ${(p.problemsSolved||p.description||"").slice(0,80)}`).join("; ");
+        const persList = newPersonas.slice(0,5).map((p:any)=>`${p.name}`).join("; ");
+
+        const nsRaw = await callAI(
+          `You are a B2B outreach strategist. Generate a north star for this company's outreach.
+COMPANY: ${coFields.co_name||"?"} (${coFields.co_industry||"?"}). Deal: ${coFields.co_deal||"$5K-25K"}. Cycle: ${coFields.co_cycle||"1-3 months"}.
+PRODUCTS: ${prodList||"general"}.
+PERSONAS: ${persList||"general"}.
+Return JSON: { "icp":"specific 1-2 sentence ICP", "corePain":"#1 pain this buyer has that we solve", "primaryChannel":"email|linkedin|both", "channelReason":"why this channel first", "goal90Days":"specific measurable 90-day success definition" }`,
+          "Return ONLY valid JSON. No markdown.", 600
         );
-        const sd = JSON.parse(stratRaw.replace(/```json|```/g,"").trim());
-        setStrategy({ northStar:{...(sd.northStar||{}),updatedAt:new Date().toISOString()}, bets:(sd.bets||[]).map((b:any)=>({...b,id:uid(),createdAt:new Date().toISOString(),evidence:"",campaignIds:[]})), insights:[], history:[], phases:[] });
-      } catch {}
+        const nsData = JSON.parse(nsRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+
+        const betsRaw = await callAI(
+          `Generate 4-5 specific testable strategic bets for this B2B outreach program.
+ICP: ${nsData.icp}. CORE PAIN: ${nsData.corePain}. CHANNEL: ${nsData.primaryChannel}.
+PRODUCTS: ${prodList}. PERSONAS: ${persList}.
+Each bet = hypothesis a campaign will test. Format: "We believe [persona] will respond to [angle] through [channel] because [specific reason]"
+Return JSON array: [{ "hypothesis":"We believe…", "channel":"email|linkedin|rts|both", "personaRef":"persona name", "angle":"the angle being tested", "status":"proving" }]`,
+          "Return ONLY valid JSON array. No markdown.", 900
+        );
+        const betsData: any[] = JSON.parse(betsRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+        const newBets = (Array.isArray(betsData) ? betsData : []).map((b:any,i:number) => ({ ...b, id:`bet-${Date.now()}-${i}`, createdAt:new Date().toISOString(), evidence:"", campaignIds:[] }));
+
+        const phasesRaw = await callAI(
+          `Generate a 6-phase 12-month campaign roadmap for this client.
+NORTH STAR: ${nsData.icp}. Goal: ${nsData.goal90Days}.
+COMPANY: ${coFields.co_name||"?"} (${coFields.co_industry||"?"}). Deal: ${coFields.co_deal||"$5K-25K"}. Cycle: ${coFields.co_cycle||"1-3 months"}.
+PRODUCTS: ${prodList}. PERSONAS: ${persList}.
+Campaigns generated: ${lpGroups.map((g:any)=>`${g.productName} × ${g.personaName}`).join(", ")}.
+Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, startWeek, endWeek, goal, status:"pending", campaigns:[].`,
+          "Return ONLY valid JSON array. No markdown.", 3000
+        );
+        let phasesData: any[] = [];
+        try {
+          const stripped = phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim();
+          const p = JSON.parse(stripped); phasesData = Array.isArray(p) ? p : (p?.phases||[]);
+        } catch {}
+        for (const phase of phasesData) {
+          phase.status = "pending";
+          for (const c of (phase.campaigns||[])) {
+            const isEmail = c.type==="cold_email"||c.type==="retargeting";
+            c.benchmarks = { replyRate:isEmail?3:15, interestedRate:isEmail?1:5, bounceRate:isEmail?3:null, autoReplyRate:isEmail?30:null, meetingRate:isEmail?0.5:1 };
+            c.decisionTree = { ifMet:c.ifBenchmarksMet||(isEmail?"Scale volume 50%. Launch next persona variant.":"Increase volume. Add email follow-up."), ifNotMet:c.ifBenchmarksNotMet||(isEmail?"Day 1-3: Subject lines. Day 4-6: Opening. Day 7-9: CTA.":"New copy. Adjust targeting."), ifFailed:"After 3 iterations → pause. Pivot persona, product, or channel." };
+            if (!c.testPeriod) c.testPeriod = isEmail?"3-5 days":"5-7 days";
+            if (!c.testMetrics) c.testMetrics = isEmail?"Reply >1%, Interested >0.5%, Bounce <3%":"Accept >30%, Reply >10%";
+          }
+        }
+
+        setStrategy({ northStar:{...nsData,updatedAt:new Date().toISOString()}, bets:newBets, insights:[], history:[], phases:phasesData, generatedAt:new Date().toISOString(), status:"active" });
+        addLog(`Strategy built: ${newBets.length} bets · ${phasesData.length} phases`);
+      } catch(e) { addLog(`Warning: strategy generation failed (${e})`); }
 
       // Write company, personas, products into workspace (mirrors handleQSComplete)
       setCompanyData((prev:any) => {
