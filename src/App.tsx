@@ -18169,35 +18169,34 @@ function SharedExportPage({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* ── KSP STRIP ── */}
+      {/* ── KSP / KEY DIFFERENTIATORS ── */}
       {ksps.length > 0 && (
-        <div style={{ background:"linear-gradient(160deg,#0f0e20 0%,#18163a 60%,#1c1840 100%)", borderTop:"1px solid rgba(255,255,255,.05)", position:"relative", overflow:"hidden" }}>
-          {/* subtle grid pattern */}
-          <div style={{ position:"absolute", inset:0, backgroundImage:"linear-gradient(rgba(108,92,231,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(108,92,231,.04) 1px,transparent 1px)", backgroundSize:"40px 40px", pointerEvents:"none" }} />
-          <div style={{ maxWidth:960, margin:"0 auto", padding:"48px 48px", position:"relative" }}>
-            <div style={{ fontSize:11, fontWeight:800, letterSpacing:1.5, textTransform:"uppercase" as const,
-              color:"rgba(108,92,231,.7)", marginBottom:24 }}>Key Differentiators</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:16 }}>
-              {ksps.slice(0,9).map((k:string,i:number) => (
-                <div key={i} style={{
-                  background:"rgba(255,255,255,.03)",
-                  border:"1px solid rgba(108,92,231,.2)",
-                  boxShadow:"inset 0 1px 0 rgba(255,255,255,.05), 0 0 24px rgba(108,92,231,.06)",
-                  borderRadius:16, padding:"20px 22px",
-                  display:"flex", flexDirection:"column" as const, gap:12 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                    <div style={{ width:28, height:28, borderRadius:8, flexShrink:0,
-                      background:"rgba(108,92,231,.18)", border:"1px solid rgba(108,92,231,.3)",
-                      display:"flex", alignItems:"center", justifyContent:"center" }}>
-                      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                        <path d="M2.5 6.5L5.5 9.5L10.5 3.5" stroke="#8b7ff0" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <span style={{ fontSize:11, fontWeight:700, color:"rgba(139,127,240,.8)",
-                      letterSpacing:.5 }}>0{i+1}</span>
+        <div style={{ background:"#fff", borderTop:"1px solid #ebebf5" }}>
+          <div style={{ maxWidth:960, margin:"0 auto", padding:"56px 48px 60px" }}>
+            {/* heading */}
+            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:40 }}>
+              <div style={{ width:4, height:28, borderRadius:2, background:A, flexShrink:0 }} />
+              <div>
+                <div style={{ fontSize:20, fontWeight:800, color:"#1a1a2e", letterSpacing:"-.3px" }}>Why We're Different</div>
+                <div style={{ fontSize:13, color:"#888", marginTop:3 }}>What sets this program apart from standard outbound vendors</div>
+              </div>
+            </div>
+
+            {/* two-column numbered list */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 48px" }}>
+              {ksps.slice(0,10).map((k:string,i:number) => (
+                <div key={i} style={{ display:"flex", gap:20, alignItems:"flex-start",
+                  padding:"20px 0", borderBottom:"1px solid #f0f0f8" }}>
+                  {/* large decorative number */}
+                  <div style={{ fontSize:28, fontWeight:900, color:`${A}22`, letterSpacing:"-1px",
+                    lineHeight:1, flexShrink:0, width:36, textAlign:"right" as const, marginTop:2,
+                    fontVariantNumeric:"tabular-nums" as any }}>
+                    {String(i+1).padStart(2,"0")}
                   </div>
-                  <p style={{ fontSize:14, fontWeight:500, color:"rgba(255,255,255,.82)",
-                    lineHeight:1.65, margin:0 }}>{k}</p>
+                  {/* text */}
+                  <div style={{ flex:1 }}>
+                    <p style={{ fontSize:14, fontWeight:600, color:"#1a1a2e", lineHeight:1.65, margin:0 }}>{k}</p>
+                  </div>
                 </div>
               ))}
             </div>
