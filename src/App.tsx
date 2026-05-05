@@ -18110,41 +18110,43 @@ function SharedExportPage({ id }: { id: string }) {
           background:`radial-gradient(circle,rgba(87,97,254,0.15) 0%,transparent 70%)`, pointerEvents:"none" }} />
 
         <div style={{ maxWidth:960, margin:"0 auto", padding:"72px 48px 64px", position:"relative" }}>
-          <div style={{ marginBottom:40 }}>
-            <h1 style={{ fontSize:52, fontWeight:600, color:"#fff", lineHeight:1.07, letterSpacing:"-0.022em", marginBottom:16 }}>
-              {name}
-            </h1>
-            {pitch && (
-              <p style={{ fontSize:17, lineHeight:1.47, letterSpacing:"-0.011em", color:"rgba(255,255,255,.7)", maxWidth:600, marginBottom:20 }}>
-                {pitch}
-              </p>
-            )}
-            {website && (
-              <a href={website} target="_blank" rel="noreferrer"
-                style={{ display:"inline-block", fontSize:13, fontWeight:500, letterSpacing:"-0.008em", color:"#fff", textDecoration:"none",
-                  background:"rgba(255,255,255,.1)", border:"1px solid rgba(255,255,255,.18)",
-                  padding:"6px 16px", borderRadius:980 }}>
-                {website.replace(/^https?:\/\//,"")} ↗
-              </a>
-            )}
-          </div>
-          <div style={{ display:"flex", justifyContent:"center" }}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:1, borderRadius:12, overflow:"hidden",
-              border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.06)", width:"100%", maxWidth:480 }}>
-              {[
-                { label:"Products",  value:products.length },
-                { label:"Personas",  value:personas.length },
-                { label:"Domains",   value:domains.length },
-                { label:"Mailboxes", value:domains.length * 3 },
-              ].map(({ label, value }, i) => (
-                <div key={i} style={{ textAlign:"center" as const, padding:"20px 32px",
-                  background:"rgba(255,255,255,.04)",
-                  borderRight:  i % 2 === 0 ? "1px solid rgba(255,255,255,.08)" : "none",
-                  borderBottom: i < 2       ? "1px solid rgba(255,255,255,.08)" : "none" }}>
-                  <div style={{ fontSize:32, fontWeight:600, color:"#fff", letterSpacing:"-0.022em", lineHeight:1 }}>{value}</div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", fontWeight:600, letterSpacing:"0.04em", textTransform:"uppercase" as const, marginTop:6 }}>{label}</div>
-                </div>
-              ))}
+          <div style={{ display:"flex", alignItems:"center", gap:48, flexWrap:"wrap" as const }}>
+            <div style={{ flex:1, minWidth:280 }}>
+              <h1 style={{ fontSize:52, fontWeight:600, color:"#fff", lineHeight:1.07, letterSpacing:"-0.022em", marginBottom:16 }}>
+                {name}
+              </h1>
+              {pitch && (
+                <p style={{ fontSize:17, lineHeight:1.47, letterSpacing:"-0.011em", color:"rgba(255,255,255,.7)", maxWidth:520, marginBottom:20 }}>
+                  {pitch}
+                </p>
+              )}
+              {website && (
+                <a href={website} target="_blank" rel="noreferrer"
+                  style={{ display:"inline-block", fontSize:13, fontWeight:500, letterSpacing:"-0.008em", color:"#fff", textDecoration:"none",
+                    background:"rgba(255,255,255,.1)", border:"1px solid rgba(255,255,255,.18)",
+                    padding:"6px 16px", borderRadius:980 }}>
+                  {website.replace(/^https?:\/\//,"")} ↗
+                </a>
+              )}
+            </div>
+            <div style={{ flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:1, borderRadius:12, overflow:"hidden",
+                border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.06)" }}>
+                {[
+                  { label:"Products",  value:products.length },
+                  { label:"Personas",  value:personas.length },
+                  { label:"Domains",   value:domains.length },
+                  { label:"Mailboxes", value:domains.length * 3 },
+                ].map(({ label, value }, i) => (
+                  <div key={i} style={{ textAlign:"center" as const, padding:"24px 36px",
+                    background:"rgba(255,255,255,.04)",
+                    borderRight:  i % 2 === 0 ? "1px solid rgba(255,255,255,.08)" : "none",
+                    borderBottom: i < 2       ? "1px solid rgba(255,255,255,.08)" : "none" }}>
+                    <div style={{ fontSize:36, fontWeight:600, color:"#fff", letterSpacing:"-0.022em", lineHeight:1 }}>{value}</div>
+                    <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", fontWeight:600, letterSpacing:"0.04em", textTransform:"uppercase" as const, marginTop:8 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
