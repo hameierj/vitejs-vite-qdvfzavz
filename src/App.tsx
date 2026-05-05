@@ -18024,24 +18024,32 @@ function SharedExportPage({ id }: { id: string }) {
     });
   }, [id]);
 
-  const A = "#6C5CE7";
-  const f = "'Inter','Segoe UI',system-ui,sans-serif";
+  const A   = "#5761fe";               // brand
+  const H   = "#050c46";               // heading
+  const B   = "#475467";               // body
+  const M   = "#8891a8";               // muted
+  const S   = "#f5f5f7";               // surface
+  const BT  = "#ece9f5";               // brand-tint
+  const BF  = "#f4f3fb";               // brand-faint
+  const BD  = "rgba(5,12,70,0.08)";    // border
+  const BDS = "rgba(5,12,70,0.16)";    // border-strong
+  const f   = "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 
   if (loading) return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", fontFamily:f, background:"#fafafe" }}>
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", fontFamily:f, background:"#fff" }}>
       <div style={{ textAlign:"center" as const }}>
-        <div style={{ width:40, height:40, border:`3px solid ${A}30`, borderTopColor:A, borderRadius:"50%",
+        <div style={{ width:40, height:40, border:`3px solid ${BT}`, borderTopColor:A, borderRadius:"50%",
           animation:"spin 1s linear infinite", margin:"0 auto 16px" }} />
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        <div style={{ fontSize:14, color:"#888" }}>Loading…</div>
+        <div style={{ fontSize:14, color:M, letterSpacing:"-0.008em" }}>Loading…</div>
       </div>
     </div>
   );
   if (notFound) return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100vh", fontFamily:f, gap:12, background:"#fafafe" }}>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100vh", fontFamily:f, gap:12, background:"#fff" }}>
       <div style={{ fontSize:40 }}>🔗</div>
-      <div style={{ fontSize:18, fontWeight:700, color:"#1a1a2e" }}>Link not found</div>
-      <div style={{ fontSize:14, color:"#888" }}>This export may have expired or been removed.</div>
+      <div style={{ fontSize:18, fontWeight:600, color:H, letterSpacing:"-0.012em" }}>Link not found</div>
+      <div style={{ fontSize:14, color:M }}>This export may have expired or been removed.</div>
     </div>
   );
 
@@ -18068,94 +18076,90 @@ function SharedExportPage({ id }: { id: string }) {
   const dateStr = data.generatedAt ? new Date(data.generatedAt).toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}) : "";
 
   const catColors: Record<string,[string,string]> = {
-    "Software":  ["#6C5CE7","#EDE9FF"],
-    "Service":   ["#00B894","#E0FAF4"],
-    "Platform":  ["#0984E3","#E3F2FF"],
-    "Data":      ["#E17055","#FFF0EC"],
-    "Agency":    ["#FDCB6E","#FFFBEE"],
+    "Software":  [A,   BT],
+    "Service":   ["#5a9a6e","#eaf5ee"],
+    "Platform":  ["#5b8db8","#ebf2f8"],
+    "Data":      ["#c76a42","#fdf0ea"],
+    "Agency":    ["#8b6fc0","#f0ecf8"],
   };
   const catIcon: Record<string,string> = { Software:"◈", Service:"◎", Platform:"⬡", Data:"◇", Agency:"◉" };
 
-  const SectionLabel = ({ icon, children }: { icon:string; children:React.ReactNode }) => (
-    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:28 }}>
-      <div style={{ width:32, height:32, borderRadius:8, background:`${A}15`,
-        display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>{icon}</div>
-      <div style={{ fontSize:13, fontWeight:800, letterSpacing:.6, textTransform:"uppercase" as const,
-        color:"#1a1a2e", fontFamily:f }}>{children}</div>
-      <div style={{ flex:1, height:1, background:"#ebebf5", marginLeft:8 }} />
+  const SectionLabel = ({ children }: { children:React.ReactNode }) => (
+    <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:28 }}>
+      <div style={{ flex:1, height:1, background:BD }} />
+      <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase" as const,
+        color:M, fontFamily:f, whiteSpace:"nowrap" as const }}>{children}</div>
+      <div style={{ flex:1, height:1, background:BD }} />
     </div>
   );
 
   return (
-    <div style={{ background:"#f5f5fb", minHeight:"100vh", fontFamily:f, color:"#1a1a2e" }}>
+    <div style={{ background:"#fff", minHeight:"100vh", fontFamily:f, color:B, WebkitFontSmoothing:"antialiased" as any }}>
       <style>{`
         * { box-sizing:border-box; margin:0; padding:0; }
         @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
-        .ep-card { background:#fff; border-radius:16px; border:1px solid #e8e8f2; box-shadow:0 1px 4px rgba(26,26,46,.05),0 4px 20px rgba(26,26,46,.04); }
+        .ep-card { background:#fff; border-radius:12px; border:1px solid rgba(5,12,70,0.08); box-shadow:3px 5px 30px rgba(5,12,70,0.06); }
       `}</style>
 
       {/* ── HERO ── */}
-      <div style={{ background:`linear-gradient(140deg,#0f0e1e 0%,#1c1840 45%,#251e50 100%)`, position:"relative", overflow:"hidden" }}>
+      <div style={{ background:`linear-gradient(140deg,#050c46 0%,#0d1260 50%,#141870 100%)`, position:"relative", overflow:"hidden" }}>
         {/* decorative blobs */}
         <div style={{ position:"absolute", top:-80, right:-80, width:400, height:400, borderRadius:"50%",
-          background:`radial-gradient(circle, ${A}28 0%, transparent 70%)`, pointerEvents:"none" }} />
-        <div style={{ position:"absolute", bottom:-60, left:60, width:300, height:300, borderRadius:"50%",
-          background:`radial-gradient(circle, #00b89420 0%, transparent 70%)`, pointerEvents:"none" }} />
+          background:`radial-gradient(circle,${A}30 0%,transparent 70%)`, pointerEvents:"none" }} />
+        <div style={{ position:"absolute", bottom:-60, left:60, width:320, height:320, borderRadius:"50%",
+          background:`radial-gradient(circle,rgba(87,97,254,0.15) 0%,transparent 70%)`, pointerEvents:"none" }} />
 
         <div style={{ maxWidth:960, margin:"0 auto", padding:"72px 48px 64px", position:"relative" }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:32, flexWrap:"wrap" as const }}>
             <div style={{ flex:1, minWidth:280 }}>
-              <h1 style={{ fontSize:52, fontWeight:800, color:"#fff", lineHeight:1.08, letterSpacing:"-1px", marginBottom:16 }}>
+              <h1 style={{ fontSize:52, fontWeight:600, color:"#fff", lineHeight:1.07, letterSpacing:"-0.022em", marginBottom:16 }}>
                 {name}
               </h1>
               {pitch && (
-                <p style={{ fontSize:16, lineHeight:1.75, color:"rgba(255,255,255,.65)", maxWidth:580, marginBottom:20 }}>
+                <p style={{ fontSize:17, lineHeight:1.47, letterSpacing:"-0.011em", color:"rgba(255,255,255,.7)", maxWidth:560, marginBottom:20 }}>
                   {pitch}
                 </p>
               )}
               {website && (
                 <a href={website} target="_blank" rel="noreferrer"
-                  style={{ display:"inline-block", fontSize:12, fontWeight:600, color:"#fff", textDecoration:"none",
-                    background:"rgba(255,255,255,.1)", border:"1px solid rgba(255,255,255,.2)",
-                    padding:"5px 14px", borderRadius:20 }}>
+                  style={{ display:"inline-block", fontSize:13, fontWeight:500, letterSpacing:"-0.008em", color:"#fff", textDecoration:"none",
+                    background:"rgba(255,255,255,.1)", border:"1px solid rgba(255,255,255,.18)",
+                    padding:"6px 16px", borderRadius:980 }}>
                   {website.replace(/^https?:\/\//,"")} ↗
                 </a>
               )}
             </div>
             <div style={{ flexShrink:0 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2, borderRadius:14, overflow:"hidden", border:"1px solid rgba(255,255,255,.12)" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:1, borderRadius:12, overflow:"hidden",
+                border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.06)" }}>
                 {[
                   { label:"Products",  value:products.length },
                   { label:"Personas",  value:personas.length },
                   { label:"Domains",   value:domains.length },
                   { label:"Mailboxes", value:domains.length * 3 },
                 ].map(({ label, value }, i) => (
-                  <div key={i} style={{ textAlign:"center" as const, padding:"18px 28px",
-                    background:"rgba(255,255,255,.05)",
+                  <div key={i} style={{ textAlign:"center" as const, padding:"20px 32px",
+                    background:"rgba(255,255,255,.04)",
                     borderRight:  i % 2 === 0 ? "1px solid rgba(255,255,255,.08)" : "none",
                     borderBottom: i < 2       ? "1px solid rgba(255,255,255,.08)" : "none" }}>
-                    <div style={{ fontSize:30, fontWeight:900, color:"#fff", letterSpacing:"-1px", lineHeight:1 }}>{value}</div>
-                    <div style={{ fontSize:10, color:"rgba(255,255,255,.45)", fontWeight:700, letterSpacing:.8, textTransform:"uppercase" as const, marginTop:6 }}>{label}</div>
+                    <div style={{ fontSize:32, fontWeight:600, color:"#fff", letterSpacing:"-0.022em", lineHeight:1 }}>{value}</div>
+                    <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", fontWeight:600, letterSpacing:"0.04em", textTransform:"uppercase" as const, marginTop:6 }}>{label}</div>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-
         </div>
       </div>
 
       {/* ── KSP / KEY DIFFERENTIATORS ── */}
       {ksps.length > 0 && (
-        <div style={{ background:"#fff", borderTop:"1px solid #ebebf5" }}>
+        <div style={{ background:S, borderTop:`1px solid ${BD}` }}>
           <div style={{ maxWidth:960, margin:"0 auto", padding:"56px 48px 60px" }}>
             {/* heading */}
-            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:40 }}>
-              <div style={{ width:4, height:28, borderRadius:2, background:A, flexShrink:0 }} />
-              <div>
-                <div style={{ fontSize:20, fontWeight:800, color:"#1a1a2e", letterSpacing:"-.3px" }}>What Makes {name} Different</div>
-                <div style={{ fontSize:13, color:"#888", marginTop:3 }}>What sets this program apart from standard outbound vendors</div>
-              </div>
+            <div style={{ marginBottom:36 }}>
+              <div style={{ fontSize:28, fontWeight:600, color:H, letterSpacing:"-0.018em", marginBottom:6 }}>What Makes {name} Different</div>
+              <div style={{ fontSize:14, color:M, letterSpacing:"-0.008em" }}>What sets this program apart from standard outbound vendors</div>
             </div>
 
             {/* two-column numbered list — left: 1…half, right: half+1…end */}
@@ -18165,13 +18169,13 @@ function SharedExportPage({ id }: { id: string }) {
               const left = items.slice(0, half);
               const right = items.slice(half);
               const Row = ({ k, i }: { k:string; i:number }) => (
-                <div style={{ display:"flex", gap:20, alignItems:"flex-start",
-                  padding:"20px 0", borderBottom:"1px solid #f0f0f8" }}>
-                  <div style={{ fontSize:28, fontWeight:900, color:`${A}22`, letterSpacing:"-1px",
-                    lineHeight:1, flexShrink:0, width:36, textAlign:"right" as const, marginTop:2 }}>
+                <div style={{ display:"flex", gap:16, alignItems:"flex-start",
+                  padding:"18px 0", borderBottom:`1px solid ${BD}` }}>
+                  <div style={{ fontSize:24, fontWeight:600, color:`${A}30`, letterSpacing:"-0.018em",
+                    lineHeight:1, flexShrink:0, width:32, textAlign:"right" as const, marginTop:1 }}>
                     {String(i+1).padStart(2,"0")}
                   </div>
-                  <p style={{ fontSize:14, fontWeight:600, color:"#1a1a2e", lineHeight:1.65, margin:0, flex:1 }}>{k}</p>
+                  <p style={{ fontSize:14, fontWeight:500, color:H, lineHeight:1.5, letterSpacing:"-0.008em", margin:0, flex:1 }}>{k}</p>
                 </div>
               );
               return (
@@ -18190,41 +18194,41 @@ function SharedExportPage({ id }: { id: string }) {
         {/* ── PRODUCTS ── */}
         {products.length > 0 && (
           <div style={{ marginBottom:64 }}>
-            <SectionLabel icon="📦">Products &amp; Services</SectionLabel>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
+            <SectionLabel>Products &amp; Services</SectionLabel>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
               {products.map((p:any,i:number) => {
                 const cat = p.category || "Software";
-                const [fg, bg] = catColors[cat] || [A, `${A}15`];
+                const [fg, bg] = catColors[cat] || [A, BT];
                 const icon = catIcon[cat] || "◈";
                 return (
                   <div key={i} className="ep-card" style={{ display:"flex", overflow:"hidden", alignItems:"stretch" }}>
                     {/* colored left accent bar */}
-                    <div style={{ width:5, background:`linear-gradient(180deg,${fg},${fg}66)`, flexShrink:0 }} />
+                    <div style={{ width:4, background:fg, flexShrink:0 }} />
 
                     {/* identity column */}
-                    <div style={{ width:220, flexShrink:0, padding:"24px 20px", borderRight:"1px solid #ebebf5",
-                      display:"flex", flexDirection:"column" as const, gap:12, justifyContent:"center" }}>
+                    <div style={{ width:216, flexShrink:0, padding:"22px 20px", borderRight:`1px solid ${BD}`,
+                      display:"flex", flexDirection:"column" as const, gap:10, justifyContent:"center" }}>
                       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                        <div style={{ width:44, height:44, borderRadius:12, background:bg, flexShrink:0,
+                        <div style={{ width:40, height:40, borderRadius:10, background:bg, flexShrink:0,
                           display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:fg, fontWeight:700 }}>
                           {icon}
                         </div>
                         <div>
-                          <div style={{ fontSize:15, fontWeight:800, color:"#1a1a2e", lineHeight:1.2 }}>{p.name}</div>
+                          <div style={{ fontSize:15, fontWeight:600, color:H, lineHeight:1.19, letterSpacing:"-0.008em" }}>{p.name}</div>
                         </div>
                       </div>
                       {(p.avgDealSize || p.dealType) && (
-                        <div style={{ display:"flex", flexDirection:"column" as const, gap:5 }}>
+                        <div style={{ display:"flex", flexDirection:"column" as const, gap:4 }}>
                           {p.avgDealSize && (
-                            <span style={{ fontSize:11, fontWeight:600, color:"#666", background:"#f4f4fa",
-                              border:"1px solid #e8e8f2", padding:"4px 9px", borderRadius:7, display:"block" }}>
-                              💰 {p.avgDealSize}
+                            <span style={{ fontSize:12, fontWeight:500, color:B, background:S,
+                              border:`1px solid ${BD}`, padding:"3px 8px", borderRadius:6, display:"block" }}>
+                              {p.avgDealSize}
                             </span>
                           )}
                           {p.dealType && (
-                            <span style={{ fontSize:11, fontWeight:600, color:"#666", background:"#f4f4fa",
-                              border:"1px solid #e8e8f2", padding:"4px 9px", borderRadius:7, display:"block" }}>
-                              {p.dealType === "Recurring" ? "↻" : p.dealType === "One-Time" ? "→" : "⇄"} {p.dealType}
+                            <span style={{ fontSize:12, fontWeight:500, color:B, background:S,
+                              border:`1px solid ${BD}`, padding:"3px 8px", borderRadius:6, display:"block" }}>
+                              {p.dealType}
                             </span>
                           )}
                         </div>
@@ -18232,20 +18236,20 @@ function SharedExportPage({ id }: { id: string }) {
                     </div>
 
                     {/* description column */}
-                    <div style={{ flex:"1 1 0", padding:"24px 28px", borderRight: p.valueProposition ? "1px solid #ebebf5" : "none",
+                    <div style={{ flex:"1 1 0", padding:"22px 28px", borderRight: p.valueProposition ? `1px solid ${BD}` : "none",
                       display:"flex", flexDirection:"column" as const, justifyContent:"center" }}>
                       {p.description && (
-                        <p style={{ fontSize:14, color:"#444", lineHeight:1.75, margin:0 }}>{p.description}</p>
+                        <p style={{ fontSize:14, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:0 }}>{p.description}</p>
                       )}
                     </div>
 
                     {/* value prop column */}
                     {p.valueProposition && (
-                      <div style={{ width:300, flexShrink:0, padding:"24px 24px", background:`${fg}05`,
-                        display:"flex", flexDirection:"column" as const, justifyContent:"center", gap:8 }}>
-                        <div style={{ fontSize:10, fontWeight:800, color:fg, letterSpacing:1,
+                      <div style={{ width:280, flexShrink:0, padding:"22px 24px", background:BF,
+                        display:"flex", flexDirection:"column" as const, justifyContent:"center", gap:6 }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:A, letterSpacing:"0.06em",
                           textTransform:"uppercase" as const }}>Why it wins</div>
-                        <div style={{ fontSize:13, color:"#444", lineHeight:1.7 }}>{p.valueProposition}</div>
+                        <div style={{ fontSize:13, color:B, lineHeight:1.6, letterSpacing:"-0.008em" }}>{p.valueProposition}</div>
                       </div>
                     )}
                   </div>
@@ -18258,45 +18262,46 @@ function SharedExportPage({ id }: { id: string }) {
         {/* ── PERSONAS ── */}
         {personas.length > 0 && (
           <div style={{ marginBottom:64 }}>
-            <SectionLabel icon="🎯">Who We're Targeting</SectionLabel>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
+            <SectionLabel>Who We're Targeting</SectionLabel>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
               {personas.map((pe:any,i:number) => {
                 const d = pe.data || pe.fields || {};
-                const colors = [["#6C5CE7","#EDE9FF"],["#00B894","#E0FAF4"],["#0984E3","#E3F2FF"],["#E17055","#FFF0EC"],["#FDCB6E","#FFFBEE"]];
-                const [pfg, pbg] = colors[i % colors.length];
+                const palette = [[A,BT],["#5a9a6e","#eaf5ee"],["#5b8db8","#ebf2f8"],["#c76a42","#fdf0ea"],["#8b6fc0","#f0ecf8"]];
+                const [pfg, pbg] = palette[i % palette.length];
                 const initials = (pe.name||"?").split(/\s+/).map((w:string)=>w[0]).slice(0,2).join("").toUpperCase();
                 return (
                   <div key={i} className="ep-card" style={{ overflow:"hidden" }}>
                     {/* name bar */}
-                    <div style={{ padding:"18px 24px", borderBottom:"1px solid #f0f0f8", display:"flex", alignItems:"center", gap:14 }}>
-                      <div style={{ width:44, height:44, borderRadius:12, background:pbg, flexShrink:0,
-                        display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, fontWeight:800, color:pfg }}>
+                    <div style={{ padding:"16px 24px", borderBottom:`1px solid ${BD}`, display:"flex", alignItems:"center", gap:14 }}>
+                      <div style={{ width:40, height:40, borderRadius:10, background:pbg, flexShrink:0,
+                        display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:600, color:pfg,
+                        boxShadow:`inset 0 0 0 1px ${pfg}22` }}>
                         {initials}
                       </div>
                       <div>
-                        <div style={{ fontSize:16, fontWeight:800, color:"#1a1a2e" }}>{pe.name}</div>
-                        <div style={{ display:"flex", gap:8, marginTop:5, flexWrap:"wrap" as const }}>
-                          {d.buyer && <span style={{ fontSize:12, color:"#666" }}>{d.buyer}</span>}
-                          {d.industries && <span style={{ fontSize:11, color:"#888", background:"#f4f4fa", border:"1px solid #e8e8f2", padding:"2px 8px", borderRadius:6 }}>{d.industries}</span>}
+                        <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.008em" }}>{pe.name}</div>
+                        <div style={{ display:"flex", gap:6, marginTop:5, flexWrap:"wrap" as const }}>
+                          {d.buyer && <span style={{ fontSize:12, color:M }}>{d.buyer}</span>}
+                          {d.industries && <span style={{ fontSize:11, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 8px", borderRadius:6 }}>{d.industries}</span>}
                           {Array.isArray(d.co_sizes) && d.co_sizes.slice(0,3).map((s:string,j:number) => (
-                            <span key={j} style={{ fontSize:11, color:"#888", background:"#f4f4fa", border:"1px solid #e8e8f2", padding:"2px 8px", borderRadius:6 }}>{s}</span>
+                            <span key={j} style={{ fontSize:11, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 8px", borderRadius:6 }}>{s}</span>
                           ))}
-                          {d.best_channel && <span style={{ fontSize:11, fontWeight:700, color:pfg, background:pbg, padding:"2px 8px", borderRadius:6 }}>{d.best_channel}</span>}
+                          {d.best_channel && <span style={{ fontSize:11, fontWeight:600, color:pfg, background:pbg, padding:"2px 8px", borderRadius:6 }}>{d.best_channel}</span>}
                         </div>
                       </div>
                     </div>
                     {/* 3-column content */}
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:0 }}>
                       {[
-                        { label:"Primary Pain", color:"#E17055", bg:"#FFF7F5", content: d.pain1 || d.pain2 || d.challenge },
-                        { label:"Goals",        color:"#00B894", bg:"#F5FDFB", content: d.goals },
-                        { label:"Outreach Hook", color:pfg,       bg:`${pbg}60`, content: d.hook, italic:true },
+                        { label:"Primary Pain",  color:"#c76a42", bg:"#fdf0ea", content: d.pain1 || d.pain2 || d.challenge },
+                        { label:"Goals",         color:"#5a9a6e", bg:"#eaf5ee", content: d.goals },
+                        { label:"Outreach Hook", color:pfg,       bg:pbg,       content: d.hook, italic:true },
                       ].map(({ label, color, bg, content, italic }, ci) => content ? (
-                        <div key={ci} style={{ padding:"16px 20px", borderRight: ci < 2 ? "1px solid #f0f0f8" : "none",
-                          borderTop:"1px solid #f0f0f8", background: ci===2 ? bg : undefined }}>
-                          <div style={{ fontSize:10, fontWeight:800, color, letterSpacing:.8,
-                            textTransform:"uppercase" as const, marginBottom:8 }}>{label}</div>
-                          <div style={{ fontSize:12, color:"#444", lineHeight:1.65,
+                        <div key={ci} style={{ padding:"14px 20px", borderRight: ci < 2 ? `1px solid ${BD}` : "none",
+                          borderTop:`1px solid ${BD}`, background: ci===2 ? `${bg}50` : undefined }}>
+                          <div style={{ fontSize:10, fontWeight:700, color, letterSpacing:"0.04em",
+                            textTransform:"uppercase" as const, marginBottom:7 }}>{label}</div>
+                          <div style={{ fontSize:13, color:B, lineHeight:1.6, letterSpacing:"-0.008em",
                             fontStyle: italic ? "italic" as const : "normal" as const }}>
                             {italic ? `"${content}"` : content}
                           </div>
@@ -18313,8 +18318,8 @@ function SharedExportPage({ id }: { id: string }) {
         {/* ── SEQUENCES ── */}
         {campaignGroups.filter((g:any)=>(g.emailSequence||[]).length>0||(g.linkedinSequence||[]).length>0).length > 0 && (
           <div style={{ marginBottom:64 }}>
-            <SectionLabel icon="✉️">Outbound Sequences</SectionLabel>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:20 }}>
+            <SectionLabel>Outbound Sequences</SectionLabel>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
               {campaignGroups.slice(0,8).map((g:any,gi:number) => {
                 const emailSeq: any[] = g.emailSequence || [];
                 const liSeq: any[] = g.linkedinSequence || [];
@@ -18322,23 +18327,23 @@ function SharedExportPage({ id }: { id: string }) {
                 return (
                   <div key={gi} className="ep-card" style={{ overflow:"hidden" }}>
                     {/* group header */}
-                    <div style={{ padding:"14px 24px", background:`linear-gradient(90deg,${A}08,transparent)`,
-                      borderBottom:"1px solid #ebebf5", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" as const }}>
-                      <div style={{ width:10, height:10, borderRadius:"50%", background:A, flexShrink:0 }} />
-                      <div style={{ fontSize:14, fontWeight:800, color:"#1a1a2e", flex:1 }}>
+                    <div style={{ padding:"13px 20px", background:S,
+                      borderBottom:`1px solid ${BD}`, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                      <div style={{ width:8, height:8, borderRadius:"50%", background:A, flexShrink:0 }} />
+                      <div style={{ fontSize:14, fontWeight:600, color:H, letterSpacing:"-0.008em", flex:1 }}>
                         {[g.productName, g.personaName].filter(Boolean).join(" × ")}
                       </div>
-                      <div style={{ display:"flex", gap:8 }}>
+                      <div style={{ display:"flex", gap:6 }}>
                         {emailSeq.length > 0 && (
-                          <span style={{ fontSize:11, fontWeight:700, color:"#666", background:"#f4f4fa",
-                            border:"1px solid #e8e8f2", padding:"3px 10px", borderRadius:20 }}>
-                            ✉ {emailSeq.length}-touch email
+                          <span style={{ fontSize:11, fontWeight:600, color:B, background:"#fff",
+                            border:`1px solid ${BD}`, padding:"3px 10px", borderRadius:980 }}>
+                            {emailSeq.length}-touch email
                           </span>
                         )}
                         {liSeq.length > 0 && (
-                          <span style={{ fontSize:11, fontWeight:700, color:"#0a66c2", background:"#e8f1fd",
-                            border:"1px solid #c5d9f7", padding:"3px 10px", borderRadius:20 }}>
-                            in {liSeq.length}-touch LinkedIn
+                          <span style={{ fontSize:11, fontWeight:600, color:"#0a66c2", background:"#ebf2f8",
+                            border:"1px solid #c5d9f7", padding:"3px 10px", borderRadius:980 }}>
+                            {liSeq.length}-touch LinkedIn
                           </span>
                         )}
                       </div>
@@ -18346,28 +18351,30 @@ function SharedExportPage({ id }: { id: string }) {
                     <div style={{ padding:24, display:"grid", gridTemplateColumns: emailSeq.length && liSeq.length ? "1fr 1fr" : "1fr", gap:24 }}>
                       {emailSeq.length > 0 && (
                         <div>
-                          <div style={{ fontSize:11, fontWeight:800, color:"#888", letterSpacing:.8,
+                          <div style={{ fontSize:11, fontWeight:700, color:M, letterSpacing:"0.06em",
                             textTransform:"uppercase" as const, marginBottom:16 }}>Email Sequence</div>
                           <div style={{ position:"relative" as const }}>
-                            {/* connecting line */}
-                            <div style={{ position:"absolute", left:14, top:28, bottom:0, width:1, background:"#ebebf5" }} />
-                            <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
+                            <div style={{ position:"absolute", left:14, top:28, bottom:0, width:1, background:BD }} />
+                            <div style={{ display:"flex", flexDirection:"column" as const, gap:14 }}>
                               {emailSeq.slice(0,5).map((step:any,si:number) => (
-                                <div key={si} style={{ display:"flex", gap:16, alignItems:"flex-start", position:"relative" as const }}>
-                                  <div style={{ width:28, height:28, borderRadius:"50%", background:`${A}12`, border:`2px solid ${A}25`,
-                                    flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                                    fontSize:11, fontWeight:800, color:A, zIndex:1, background:"#fff" as any }}>
+                                <div key={si} style={{ display:"flex", gap:14, alignItems:"flex-start", position:"relative" as const }}>
+                                  <div style={{ width:28, height:28, borderRadius:"50%", background:"#fff",
+                                    border:`2px solid ${BD}`, flexShrink:0, display:"flex", alignItems:"center",
+                                    justifyContent:"center", fontSize:11, fontWeight:700, color:A, zIndex:1,
+                                    boxShadow:"0 1px 4px rgba(5,12,70,0.06)" }}>
                                     {si+1}
                                   </div>
-                                  <div style={{ flex:1, minWidth:0, paddingBottom:si < emailSeq.slice(0,5).length-1 ? 4 : 0 }}>
+                                  <div style={{ flex:1, minWidth:0 }}>
                                     {step.dayOffset !== undefined && (
-                                      <span style={{ fontSize:10, fontWeight:700, color:"#aaa", marginBottom:4, display:"block" }}>Day {step.dayOffset}</span>
+                                      <span style={{ fontSize:10, fontWeight:600, color:M, marginBottom:3, display:"block",
+                                        letterSpacing:"0.04em" }}>Day {step.dayOffset}</span>
                                     )}
                                     {step.subject && (
-                                      <div style={{ fontSize:13, fontWeight:700, color:"#1a1a2e", marginBottom:4, lineHeight:1.3 }}>{step.subject}</div>
+                                      <div style={{ fontSize:13, fontWeight:600, color:H, marginBottom:4,
+                                        lineHeight:1.3, letterSpacing:"-0.008em" }}>{step.subject}</div>
                                     )}
                                     {step.body && (
-                                      <div style={{ fontSize:12, color:"#666", lineHeight:1.65,
+                                      <div style={{ fontSize:12, color:B, lineHeight:1.6, letterSpacing:"-0.005em",
                                         display:"-webkit-box" as any, WebkitLineClamp:3, WebkitBoxOrient:"vertical" as any, overflow:"hidden" }}>
                                         {step.body}
                                       </div>
@@ -18381,25 +18388,27 @@ function SharedExportPage({ id }: { id: string }) {
                       )}
                       {liSeq.length > 0 && (
                         <div>
-                          <div style={{ fontSize:11, fontWeight:800, color:"#0a66c2", letterSpacing:.8,
+                          <div style={{ fontSize:11, fontWeight:700, color:"#0a66c2", letterSpacing:"0.06em",
                             textTransform:"uppercase" as const, marginBottom:16 }}>LinkedIn Sequence</div>
                           <div style={{ position:"relative" as const }}>
-                            <div style={{ position:"absolute", left:14, top:28, bottom:0, width:1, background:"#dceeff" }} />
-                            <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
+                            <div style={{ position:"absolute", left:14, top:28, bottom:0, width:1, background:"#c5d9f7" }} />
+                            <div style={{ display:"flex", flexDirection:"column" as const, gap:14 }}>
                               {liSeq.slice(0,4).map((step:any,si:number) => (
-                                <div key={si} style={{ display:"flex", gap:16, alignItems:"flex-start" }}>
+                                <div key={si} style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
                                   <div style={{ width:28, height:28, borderRadius:"50%", background:"#fff",
                                     border:"2px solid #c5d9f7", flexShrink:0,
                                     display:"flex", alignItems:"center", justifyContent:"center",
-                                    fontSize:11, fontWeight:800, color:"#0a66c2", zIndex:1 }}>
+                                    fontSize:11, fontWeight:700, color:"#0a66c2", zIndex:1,
+                                    boxShadow:"0 1px 4px rgba(10,102,194,0.12)" }}>
                                     {si+1}
                                   </div>
                                   <div style={{ flex:1, minWidth:0 }}>
                                     {step.dayOffset !== undefined && (
-                                      <span style={{ fontSize:10, fontWeight:700, color:"#aaa", marginBottom:4, display:"block" }}>Day {step.dayOffset}</span>
+                                      <span style={{ fontSize:10, fontWeight:600, color:M, marginBottom:3, display:"block",
+                                        letterSpacing:"0.04em" }}>Day {step.dayOffset}</span>
                                     )}
                                     {step.body && (
-                                      <div style={{ fontSize:12, color:"#666", lineHeight:1.65,
+                                      <div style={{ fontSize:12, color:B, lineHeight:1.6, letterSpacing:"-0.005em",
                                         display:"-webkit-box" as any, WebkitLineClamp:3, WebkitBoxOrient:"vertical" as any, overflow:"hidden" }}>
                                         {step.body}
                                       </div>
@@ -18422,29 +18431,29 @@ function SharedExportPage({ id }: { id: string }) {
         {/* ── DOMAINS ── */}
         {domains.length > 0 && (
           <div style={{ marginBottom:64 }}>
-            <SectionLabel icon="🌐">Domain Infrastructure</SectionLabel>
+            <SectionLabel>Domain Infrastructure</SectionLabel>
             <div className="ep-card" style={{ overflow:"hidden" }}>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", borderBottom:"1px solid #ebebf5" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", borderBottom:`1px solid ${BD}` }}>
                 {[
                   { label:"Sending Domains", value:String(domains.length),  sub:"Separate sender identities" },
                   { label:"Mailboxes",        value:String(domains.length*3), sub:"3 per domain" },
                 ].map((s,i) => (
-                  <div key={i} style={{ padding:"28px 24px", borderRight: i<1 ? "1px solid #ebebf5" : "none",
+                  <div key={i} style={{ padding:"28px 24px", borderRight: i<1 ? `1px solid ${BD}` : "none",
                     textAlign:"center" as const }}>
-                    <div style={{ fontSize:36, fontWeight:900, color:A, letterSpacing:"-1px", marginBottom:4 }}>{s.value}</div>
-                    <div style={{ fontSize:13, fontWeight:700, color:"#1a1a2e", marginBottom:3 }}>{s.label}</div>
-                    <div style={{ fontSize:11, color:"#aaa" }}>{s.sub}</div>
+                    <div style={{ fontSize:36, fontWeight:600, color:A, letterSpacing:"-0.022em", lineHeight:1, marginBottom:6 }}>{s.value}</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:H, letterSpacing:"-0.008em", marginBottom:3 }}>{s.label}</div>
+                    <div style={{ fontSize:12, color:M }}>{s.sub}</div>
                   </div>
                 ))}
               </div>
               <div style={{ padding:24 }}>
-                <div style={{ fontSize:11, fontWeight:800, color:"#aaa", letterSpacing:.8,
+                <div style={{ fontSize:11, fontWeight:700, color:M, letterSpacing:"0.06em",
                   textTransform:"uppercase" as const, marginBottom:14 }}>Domain List</div>
                 <div style={{ display:"flex", flexWrap:"wrap" as const, gap:8 }}>
                   {domains.map((d:any,i:number) => (
                     <span key={i} style={{ fontSize:12, fontFamily:"'Fira Code','Fira Mono','Consolas',monospace",
-                      background:"#f5f5fb", color:"#444", padding:"5px 12px", borderRadius:8, border:"1px solid #e8e8f2",
-                      letterSpacing:"-.2px" }}>
+                      background:S, color:H, padding:"5px 12px", borderRadius:8, border:`1px solid ${BD}`,
+                      letterSpacing:"-0.2px" }}>
                       {d.full || `${d.domain}.${d.tld||"com"}`}
                     </span>
                   ))}
@@ -18455,12 +18464,9 @@ function SharedExportPage({ id }: { id: string }) {
         )}
 
         {/* ── FOOTER ── */}
-        <div style={{ borderTop:"1px solid #e0e0ec", paddingTop:32, display:"flex",
-          justifyContent:"space-between", alignItems:"center", flexWrap:"wrap" as const, gap:16 }}>
-          <div style={{ fontSize:12, color:"#bbb" }}>
-            Prepared {dateStr && `on ${dateStr}`}
-          </div>
-          <img src="/b2brocket-logo.png" alt="B2B Rocket" style={{ height:36, objectFit:"contain" as const }} />
+        <div style={{ borderTop:`1px solid ${BD}`, paddingTop:32, display:"flex",
+          justifyContent:"center", alignItems:"center" }}>
+          <img src="/b2brocket-logo.png" alt="B2B Rocket" style={{ height:32, objectFit:"contain" as const, opacity:0.7 }} />
         </div>
       </div>
     </div>
