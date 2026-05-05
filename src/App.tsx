@@ -18418,6 +18418,15 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
             })}
           </div>
 
+          {lpState === "background" && (
+            <div style={{ textAlign:"center" }}>
+              <button onClick={onReset}
+                style={{ background:"none", border:"none", color:C2.muted, fontSize:11, fontFamily:body,
+                  cursor:"pointer", textDecoration:"underline", padding:0 }}>
+                Cancel &amp; restart
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
