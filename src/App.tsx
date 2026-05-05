@@ -18162,24 +18162,29 @@ function SharedExportPage({ id }: { id: string }) {
               </div>
             </div>
 
-            {/* two-column numbered list */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 48px" }}>
-              {ksps.slice(0,10).map((k:string,i:number) => (
-                <div key={i} style={{ display:"flex", gap:20, alignItems:"flex-start",
+            {/* two-column numbered list — left: 1…half, right: half+1…end */}
+            {(() => {
+              const items = ksps.slice(0,10);
+              const half = Math.ceil(items.length / 2);
+              const left = items.slice(0, half);
+              const right = items.slice(half);
+              const Row = ({ k, i }: { k:string; i:number }) => (
+                <div style={{ display:"flex", gap:20, alignItems:"flex-start",
                   padding:"20px 0", borderBottom:"1px solid #f0f0f8" }}>
-                  {/* large decorative number */}
                   <div style={{ fontSize:28, fontWeight:900, color:`${A}22`, letterSpacing:"-1px",
-                    lineHeight:1, flexShrink:0, width:36, textAlign:"right" as const, marginTop:2,
-                    fontVariantNumeric:"tabular-nums" as any }}>
+                    lineHeight:1, flexShrink:0, width:36, textAlign:"right" as const, marginTop:2 }}>
                     {String(i+1).padStart(2,"0")}
                   </div>
-                  {/* text */}
-                  <div style={{ flex:1 }}>
-                    <p style={{ fontSize:14, fontWeight:600, color:"#1a1a2e", lineHeight:1.65, margin:0 }}>{k}</p>
-                  </div>
+                  <p style={{ fontSize:14, fontWeight:600, color:"#1a1a2e", lineHeight:1.65, margin:0, flex:1 }}>{k}</p>
                 </div>
-              ))}
-            </div>
+              );
+              return (
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 48px", alignItems:"start" }}>
+                  <div>{left.map((k,i) => <Row key={i} k={k} i={i} />)}</div>
+                  <div>{right.map((k,i) => <Row key={i} k={k} i={half+i} />)}</div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
