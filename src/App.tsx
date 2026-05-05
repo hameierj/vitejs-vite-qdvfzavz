@@ -18463,7 +18463,10 @@ function SharedExportPage({ id }: { id: string }) {
 
         {/* ── FOOTER ── */}
         <div style={{ borderTop:`1px solid ${BD}`, paddingTop:32, display:"flex",
-          justifyContent:"center", alignItems:"center" }}>
+          justifyContent:"space-between", alignItems:"center" }}>
+          <div style={{ fontSize:12, color:M, letterSpacing:"-0.005em" }}>
+            {dateStr ? `Prepared ${dateStr}` : ""}
+          </div>
           <img src="/b2brocket-logo.png" alt="B2B Rocket" style={{ height:32, objectFit:"contain" as const, opacity:0.7 }} />
         </div>
       </div>
