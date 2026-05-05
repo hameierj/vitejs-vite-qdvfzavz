@@ -18009,6 +18009,305 @@ const ok =
   );
 }
 
+// ─── SHARED EXPORT PAGE (public, no login required) ──────────────────────────
+function SharedExportPage({ id }: { id: string }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    const client = createClient(SUPABASE_URL, SUPABASE_KEY);
+    client.from("app_data").select("value").eq("key", `export_${id}`).single().then(({ data: row }) => {
+      if (!row?.value) { setNotFound(true); setLoading(false); return; }
+      try { setData(JSON.parse(row.value as string)); } catch { setNotFound(true); }
+      setLoading(false);
+    });
+  }, [id]);
+
+  const accent = "#6C5CE7";
+  const fontSans = "'Inter','Segoe UI',system-ui,sans-serif";
+
+  if (loading) return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", fontFamily:fontSans, color:"#888" }}>
+      Loading…
+    </div>
+  );
+  if (notFound) return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100vh", fontFamily:fontSans, color:"#888", gap:12 }}>
+      <div style={{ fontSize:36 }}>🔗</div>
+      <div style={{ fontSize:17, fontWeight:600, color:"#333" }}>Export not found</div>
+      <div style={{ fontSize:14 }}>This link may have expired or been removed.</div>
+    </div>
+  );
+
+  const { companyName, companyData: cd, products=[], personas=[], domains=[], campaignGroups=[], sections={}, createdAt } = data;
+  const name = companyName || cd?.co_name || "Client";
+  const pitch = cd?.co_pitch || cd?.co_usp || "";
+  const industry = cd?.co_industry || "";
+  const website = cd?.co_website || cd?.co_url || "";
+  const kspRaw: string = cd?.co_ksp || "";
+  const ksps: string[] = kspRaw ? kspRaw.split(/\n|•|·/).map((s:string)=>s.trim()).filter(Boolean) : [];
+  const dateStr = createdAt ? new Date(createdAt).toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}) : "";
+
+  const SectionHead = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ fontSize:11, fontWeight:800, letterSpacing:1.2, textTransform:"uppercase" as const,
+      color:accent, fontFamily:fontSans, marginBottom:20, paddingBottom:10,
+      borderBottom:`2px solid ${accent}20` }}>{children}</div>
+  );
+
+  const toneLabels: Record<string,string> = {
+    "Consultative & Educational":"Consultative","Direct & Punchy":"Direct","Casual & Conversational":"Casual",
+    "Formal & Executive":"Formal","Data-driven & Analytical":"Analytical","Blue Collar & Human":"Human",
+    "Blunt & Edgy":"Edgy","Confrontational":"Challenger",
+  };
+
+  return (
+    <div style={{ background:"#f8f8fb", minHeight:"100vh", fontFamily:fontSans, color:"#1a1a2e" }}>
+      <style>{`
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+        * { box-sizing: border-box; }
+      `}</style>
+
+      {/* Hero header */}
+      <div style={{ background:`linear-gradient(135deg, #1a1a2e 0%, #2d2b55 100%)`, color:"#fff", padding:"60px 40px 48px" }}>
+        <div style={{ maxWidth:900, margin:"0 auto" }}>
+          <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap" as const, gap:24 }}>
+            <div style={{ flex:1, minWidth:280 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:`${accent}cc`, letterSpacing:1.5, textTransform:"uppercase" as const, marginBottom:12 }}>
+                Outbound Program Overview
+              </div>
+              <h1 style={{ fontSize:42, fontWeight:800, margin:"0 0 14px", lineHeight:1.1 }}>{name}</h1>
+              {pitch && <p style={{ fontSize:16, lineHeight:1.7, color:"rgba(255,255,255,.75)", margin:"0 0 16px", maxWidth:560 }}>{pitch}</p>}
+              <div style={{ display:"flex", gap:16, flexWrap:"wrap" as const }}>
+                {industry && <span style={{ fontSize:12, color:"rgba(255,255,255,.5)", background:"rgba(255,255,255,.08)", padding:"4px 12px", borderRadius:20 }}>{industry}</span>}
+                {website && <a href={website} target="_blank" rel="noreferrer" style={{ fontSize:12, color:`${accent}cc`, textDecoration:"none" }}>{website.replace(/^https?:\/\//,"")}</a>}
+              </div>
+            </div>
+            <div style={{ textAlign:"right" as const, flexShrink:0 }}>
+              {dateStr && <div style={{ fontSize:12, color:"rgba(255,255,255,.4)" }}>Prepared {dateStr}</div>}
+              <div style={{ marginTop:16, width:56, height:56, borderRadius:14, background:accent,
+                display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, marginLeft:"auto" }}>🚀</div>
+            </div>
+          </div>
+          {ksps.length > 0 && (
+            <div style={{ marginTop:32, display:"flex", gap:12, flexWrap:"wrap" as const }}>
+              {ksps.slice(0,4).map((k:string,i:number) => (
+                <div key={i} style={{ background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)",
+                  borderRadius:10, padding:"10px 16px", fontSize:13, color:"rgba(255,255,255,.8)", flex:"1 1 180px" }}>
+                  <span style={{ color:accent, marginRight:8 }}>✦</span>{k}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ maxWidth:900, margin:"0 auto", padding:"48px 40px 80px" }}>
+
+        {/* PRODUCTS */}
+        {sections.products !== false && products.length > 0 && (
+          <div style={{ marginBottom:56 }}>
+            <SectionHead>Products &amp; Services</SectionHead>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:20 }}>
+              {products.map((p:any,i:number) => (
+                <div key={i} style={{ background:"#fff", borderRadius:16, padding:24, border:"1px solid #e8e8f0",
+                  boxShadow:"0 2px 12px rgba(0,0,0,.04)" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+                    <div style={{ width:36, height:36, borderRadius:10, background:`${accent}15`,
+                      display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>
+                      {p.category==="Software"?"💻":p.category==="Service"?"🤝":p.category==="Platform"?"⚡":"📦"}
+                    </div>
+                    <div>
+                      <div style={{ fontSize:14, fontWeight:700, color:"#1a1a2e" }}>{p.name}</div>
+                      {p.category && <div style={{ fontSize:11, color:"#888" }}>{p.category}</div>}
+                    </div>
+                  </div>
+                  {p.description && <p style={{ fontSize:13, color:"#555", lineHeight:1.65, margin:"0 0 12px" }}>{p.description}</p>}
+                  {p.valueProposition && (
+                    <div style={{ background:`${accent}08`, borderRadius:8, padding:"10px 12px", borderLeft:`3px solid ${accent}` }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:accent, marginBottom:4 }}>VALUE</div>
+                      <div style={{ fontSize:12, color:"#444", lineHeight:1.5 }}>{p.valueProposition}</div>
+                    </div>
+                  )}
+                  {(p.avgDealSize || p.dealType) && (
+                    <div style={{ marginTop:12, fontSize:11, color:"#888", display:"flex", gap:12 }}>
+                      {p.avgDealSize && <span>💰 {p.avgDealSize}</span>}
+                      {p.dealType && <span>🔄 {p.dealType}</span>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* PERSONAS */}
+        {sections.personas !== false && personas.length > 0 && (
+          <div style={{ marginBottom:56 }}>
+            <SectionHead>Who We're Targeting</SectionHead>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
+              {personas.map((pe:any,i:number) => {
+                const d = pe.data || pe.fields || {};
+                const tone = toneLabels[d.tone||""] || d.tone || "";
+                return (
+                  <div key={i} style={{ background:"#fff", borderRadius:16, padding:24, border:"1px solid #e8e8f0",
+                    boxShadow:"0 2px 12px rgba(0,0,0,.04)", display:"grid",
+                    gridTemplateColumns:"1fr 1fr 1fr", gap:20, alignItems:"start" }}>
+                    <div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"#1a1a2e", marginBottom:4 }}>{pe.name}</div>
+                      {d.buyer && <div style={{ fontSize:12, color:"#666", marginBottom:8 }}>{d.buyer}</div>}
+                      {d.industries && <div style={{ fontSize:12, color:"#888" }}>🏢 {d.industries}</div>}
+                      {Array.isArray(d.co_sizes) && d.co_sizes.length > 0 && (
+                        <div style={{ marginTop:6, display:"flex", gap:6, flexWrap:"wrap" as const }}>
+                          {d.co_sizes.map((s:string,j:number) => (
+                            <span key={j} style={{ fontSize:10, background:"#f0f0f8", color:"#555", padding:"2px 8px", borderRadius:10 }}>{s}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      {d.pain1 && <div style={{ marginBottom:10 }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:"#e74c3c", letterSpacing:.8, textTransform:"uppercase" as const, marginBottom:4 }}>Primary Pain</div>
+                        <div style={{ fontSize:12, color:"#444", lineHeight:1.5 }}>{d.pain1}</div>
+                      </div>}
+                      {d.goals && <div>
+                        <div style={{ fontSize:10, fontWeight:700, color:"#27ae60", letterSpacing:.8, textTransform:"uppercase" as const, marginBottom:4 }}>Goals</div>
+                        <div style={{ fontSize:12, color:"#444", lineHeight:1.5 }}>{d.goals}</div>
+                      </div>}
+                    </div>
+                    <div>
+                      {d.hook && <div style={{ marginBottom:10 }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:accent, letterSpacing:.8, textTransform:"uppercase" as const, marginBottom:4 }}>Hook</div>
+                        <div style={{ fontSize:12, color:"#444", lineHeight:1.5, fontStyle:"italic" as const }}>&ldquo;{d.hook}&rdquo;</div>
+                      </div>}
+                      <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const, marginTop:8 }}>
+                        {d.best_channel && <span style={{ fontSize:10, background:`${accent}12`, color:accent, padding:"3px 8px", borderRadius:8, fontWeight:600 }}>{d.best_channel}</span>}
+                        {tone && <span style={{ fontSize:10, background:"#f5f5f5", color:"#666", padding:"3px 8px", borderRadius:8 }}>{tone}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* SEQUENCES */}
+        {sections.sequences !== false && campaignGroups.length > 0 && (
+          <div style={{ marginBottom:56 }}>
+            <SectionHead>Outbound Sequences</SectionHead>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:24 }}>
+              {campaignGroups.slice(0,6).map((g:any,gi:number) => {
+                const emailSeq: any[] = g.emailSequence || [];
+                const liSeq: any[] = g.linkedinSequence || [];
+                if (!emailSeq.length && !liSeq.length) return null;
+                return (
+                  <div key={gi} style={{ background:"#fff", borderRadius:16, border:"1px solid #e8e8f0",
+                    boxShadow:"0 2px 12px rgba(0,0,0,.04)", overflow:"hidden" }}>
+                    <div style={{ padding:"16px 24px", borderBottom:"1px solid #f0f0f8", background:"#fafafa",
+                      display:"flex", alignItems:"center", gap:12 }}>
+                      <div style={{ width:8, height:8, borderRadius:"50%", background:accent, flexShrink:0 }} />
+                      <div style={{ fontSize:14, fontWeight:700, color:"#1a1a2e" }}>
+                        {g.productName || ""}{g.productName && g.personaName ? " × " : ""}{g.personaName || ""}
+                      </div>
+                      {emailSeq.length > 0 && <span style={{ fontSize:11, color:"#888", marginLeft:"auto" }}>✉️ {emailSeq.length}-touch email</span>}
+                      {liSeq.length > 0 && <span style={{ fontSize:11, color:"#888" }}>💼 {liSeq.length}-touch LinkedIn</span>}
+                    </div>
+                    <div style={{ padding:24 }}>
+                      {emailSeq.length > 0 && (
+                        <div style={{ marginBottom: liSeq.length > 0 ? 24 : 0 }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:.8, textTransform:"uppercase" as const, marginBottom:14 }}>Email Sequence</div>
+                          <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
+                            {emailSeq.slice(0,4).map((step:any,si:number) => (
+                              <div key={si} style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
+                                <div style={{ width:28, height:28, borderRadius:"50%", background:`${accent}12`, flexShrink:0,
+                                  display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:accent }}>
+                                  {si+1}
+                                </div>
+                                <div style={{ flex:1, minWidth:0 }}>
+                                  {step.subject && <div style={{ fontSize:13, fontWeight:600, color:"#1a1a2e", marginBottom:4 }}>{step.subject}</div>}
+                                  {step.body && <div style={{ fontSize:12, color:"#555", lineHeight:1.6, maxHeight:80, overflow:"hidden",
+                                    maskImage:"linear-gradient(to bottom, black 60%, transparent 100%)" as any }}>{step.body}</div>}
+                                  {step.dayOffset !== undefined && <div style={{ fontSize:10, color:"#aaa", marginTop:4 }}>Day {step.dayOffset}</div>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {liSeq.length > 0 && (
+                        <div>
+                          <div style={{ fontSize:11, fontWeight:700, color:"#888", letterSpacing:.8, textTransform:"uppercase" as const, marginBottom:14 }}>LinkedIn Sequence</div>
+                          <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
+                            {liSeq.slice(0,3).map((step:any,si:number) => (
+                              <div key={si} style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
+                                <div style={{ width:28, height:28, borderRadius:"50%", background:"#0a66c220", flexShrink:0,
+                                  display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#0a66c2" }}>
+                                  {si+1}
+                                </div>
+                                <div style={{ flex:1, minWidth:0 }}>
+                                  {step.body && <div style={{ fontSize:12, color:"#555", lineHeight:1.6, maxHeight:72, overflow:"hidden",
+                                    maskImage:"linear-gradient(to bottom, black 60%, transparent 100%)" as any }}>{step.body}</div>}
+                                  {step.dayOffset !== undefined && <div style={{ fontSize:10, color:"#aaa", marginTop:4 }}>Day {step.dayOffset}</div>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* DOMAINS */}
+        {sections.domains !== false && domains.length > 0 && (
+          <div style={{ marginBottom:56 }}>
+            <SectionHead>Domain Infrastructure</SectionHead>
+            <div style={{ background:"#fff", borderRadius:16, border:"1px solid #e8e8f0", padding:24,
+              boxShadow:"0 2px 12px rgba(0,0,0,.04)" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:20, marginBottom:24 }}>
+                {[
+                  { label:"Sending Domains", value:domains.length, icon:"🌐" },
+                  { label:"Mailboxes", value:domains.length*3, icon:"📬" },
+                  { label:"Daily Capacity", value:`${domains.length*3*20}–${domains.length*3*35}`, icon:"📈" },
+                ].map((s,i) => (
+                  <div key={i} style={{ textAlign:"center" as const, padding:"20px 16px", background:"#fafafa", borderRadius:12, border:"1px solid #f0f0f8" }}>
+                    <div style={{ fontSize:28, marginBottom:8 }}>{s.icon}</div>
+                    <div style={{ fontSize:26, fontWeight:800, color:accent, marginBottom:4 }}>{s.value}</div>
+                    <div style={{ fontSize:12, color:"#888" }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display:"flex", flexWrap:"wrap" as const, gap:8 }}>
+                {domains.slice(0,30).map((d:any,i:number) => (
+                  <span key={i} style={{ fontSize:12, fontFamily:"monospace", background:"#f5f5fa",
+                    color:"#444", padding:"4px 10px", borderRadius:6, border:"1px solid #e8e8f0" }}>
+                    {d.full || `${d.domain}${d.tld}`}
+                  </span>
+                ))}
+                {domains.length > 30 && <span style={{ fontSize:12, color:"#aaa", padding:"4px 10px" }}>+{domains.length-30} more</span>}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{ borderTop:"1px solid #e8e8f0", paddingTop:24, display:"flex", justifyContent:"space-between",
+          alignItems:"center", flexWrap:"wrap" as const, gap:12 }}>
+          <div style={{ fontSize:12, color:"#bbb" }}>
+            Outbound program prepared {dateStr && `on ${dateStr}`}
+          </div>
+          <div style={{ fontSize:12, color:"#bbb" }}>Powered by B2BRocket</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── LAUNCH PAD ───────────────────────────────────────────────────────────────
 function LaunchPadWelcomeScreen({ companyName, onGetStarted }: { companyName?: string; onGetStarted: () => void }) {
   const [phase, setPhase] = useState<"text"|"icons-white"|"floating">("text");
@@ -18124,18 +18423,156 @@ const LP_STEPS = [
   "Generating sequences",
 ];
 
-function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChange, onLaunch, onContinue, onReset, onRegenDomains, onProcessOnboarding, salesContext, companyName }: {
+function ExportTab({ lpResult, onGenerateExport }: { lpResult: any; onGenerateExport: () => Promise<string> }) {
+  const [generating, setGenerating] = useState(false);
+  const [exportUrl, setExportUrl] = useState<string|null>(null);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState<string|null>(null);
+
+  const hasResult = !!lpResult;
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setErr(null);
+    try {
+      const url = await onGenerateExport();
+      setExportUrl(url);
+    } catch (e: any) {
+      setErr(e?.message || "Failed to generate export");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!exportUrl) return;
+    navigator.clipboard.writeText(exportUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div style={{ maxWidth:760, display:"flex", flexDirection:"column", gap:28 }}>
+
+      {/* Header */}
+      <div>
+        <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:4 }}>
+          Client-Facing Export
+        </div>
+        <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6 }}>
+          Generate a shareable landing page you can send directly to the client. It includes their products, target personas, outbound sequences, and domain setup — formatted for a non-technical audience.
+        </div>
+      </div>
+
+      {!hasResult && (
+        <div style={{ padding:"20px 24px", borderRadius:12, border:`1px dashed ${C2.border}`,
+          background:C2.faint, color:C2.muted, fontFamily:body, fontSize:13, lineHeight:1.6 }}>
+          Run Getting Started first to generate research, campaigns, and domains. The export pulls from all of that data.
+        </div>
+      )}
+
+      {hasResult && (
+        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+          {/* What's included */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            {[
+              { icon:"🏢", label:"Company Overview", desc:"Pitch, industry, key selling points" },
+              { icon:"📦", label:"Products & Services", desc:"All products with value props and deal info" },
+              { icon:"🎯", label:"Target Personas", desc:"Who you're targeting, their pains and goals" },
+              { icon:"✉️", label:"Outbound Sequences", desc:"Email + LinkedIn sequences per campaign" },
+              { icon:"🌐", label:"Domain Infrastructure", desc:"Domains, mailboxes, daily send capacity" },
+            ].map(({ icon, label, desc }) => (
+              <div key={label} style={{ display:"flex", gap:12, alignItems:"flex-start", padding:"14px 16px",
+                borderRadius:10, border:`1px solid ${C2.border}`, background:C2.faint }}>
+                <span style={{ fontSize:20, lineHeight:1 }}>{icon}</span>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:2 }}>{label}</div>
+                  <div style={{ fontSize:12, fontFamily:body, color:C2.muted, lineHeight:1.5 }}>{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Generate button */}
+          {!exportUrl && (
+            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+              <button
+                disabled={generating}
+                onClick={handleGenerate}
+                style={{ padding:"12px 32px", borderRadius:10, border:"none",
+                  background: generating ? C2.muted : C2.accent, color:"#fff",
+                  fontSize:14, fontFamily:head, fontWeight:700, cursor: generating ? "default" : "pointer",
+                  opacity: generating ? 0.7 : 1,
+                  boxShadow: generating ? "none" : `0 2px 16px ${C2.accent}40` }}>
+                {generating ? "Generating…" : "Generate Shareable Link"}
+              </button>
+              {err && <span style={{ fontSize:12, fontFamily:body, color:"#e05252" }}>{err}</span>}
+            </div>
+          )}
+
+          {/* URL display */}
+          {exportUrl && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div style={{ padding:"14px 18px", borderRadius:10, border:`1px solid ${C2.green}44`,
+                background:`${C2.green}0a`, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" as const }}>
+                <span style={{ fontSize:16 }}>✅</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:C2.green, letterSpacing:.7,
+                    textTransform:"uppercase" as const, marginBottom:4 }}>Your shareable link is ready</div>
+                  <div style={{ fontSize:12, fontFamily:"monospace", color:C2.text, wordBreak:"break-all" as const,
+                    background:C2.faint, padding:"6px 10px", borderRadius:6, border:`1px solid ${C2.border}` }}>
+                    {exportUrl}
+                  </div>
+                </div>
+                <button onClick={handleCopy}
+                  style={{ padding:"8px 18px", borderRadius:8, border:`1px solid ${C2.border}`,
+                    background: copied ? `${C2.green}22` : C2.canvas, color: copied ? C2.green : C2.text,
+                    fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", flexShrink:0,
+                    transition:"all 0.15s" }}>
+                  {copied ? "Copied!" : "Copy Link"}
+                </button>
+                <a href={exportUrl} target="_blank" rel="noopener noreferrer"
+                  style={{ padding:"8px 18px", borderRadius:8, border:`1px solid ${C2.accent}`,
+                    background:"none", color:C2.accent, fontSize:12, fontFamily:head, fontWeight:700,
+                    cursor:"pointer", textDecoration:"none", flexShrink:0 }}>
+                  Preview →
+                </a>
+              </div>
+
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <button onClick={handleGenerate} disabled={generating}
+                  style={{ padding:"8px 18px", borderRadius:8, border:`1px solid ${C2.border}`,
+                    background:"none", color:C2.muted, fontSize:12, fontFamily:head, fontWeight:600,
+                    cursor: generating ? "default" : "pointer", opacity: generating ? 0.6 : 1 }}>
+                  {generating ? "Regenerating…" : "Regenerate Link"}
+                </button>
+                <span style={{ fontSize:12, fontFamily:body, color:C2.muted }}>
+                  Regenerating creates a new URL — the old link still works.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChange, onLaunch, onContinue, onReset, onRegenDomains, onProcessOnboarding, onGenerateExport, salesContext, companyName }: {
   lpState: "idle"|"running"|"done";
   lpProgress: { step:number; phase:string; total:number };
   lpLog: string[];
   lpResult: any;
-  lpTab: "research"|"infrastructure"|"campaigns"|"onboarding";
-  onTabChange: (t:"research"|"infrastructure"|"campaigns"|"onboarding") => void;
+  lpTab: "research"|"infrastructure"|"campaigns"|"onboarding"|"export";
+  onTabChange: (t:"research"|"infrastructure"|"campaigns"|"onboarding"|"export") => void;
   onLaunch: (url:string, extra:string, linkedin:string, extraUrls:string, offerings:string, playbook:PlaybookKey, salesContext:string) => void;
   onContinue: () => void;
   onReset: () => void;
   onRegenDomains: () => Promise<void>;
   onProcessOnboarding: (transcript:string, implForm:string, direction:string) => Promise<void>;
+  onGenerateExport: () => Promise<string>;
   salesContext: { count: number; snippet: string; full: string };
   companyName?: string;
 }) {
@@ -18449,7 +18886,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
 
       {/* Tabs */}
       <div style={{ display:"flex", borderBottom:`1px solid ${C2.border}`, flexShrink:0, padding:"0 24px" }}>
-        {(["research","infrastructure","campaigns","onboarding"] as const).map(t => (
+        {(["research","infrastructure","campaigns","onboarding","export"] as const).map(t => (
           <button key={t} onClick={() => onTabChange(t)}
             style={{ padding:"13px 18px", border:"none", marginBottom:-1,
               borderBottom: lpTab===t ? `2px solid ${C2.accent}` : "2px solid transparent",
@@ -18457,7 +18894,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
               fontSize:12, fontFamily:head, fontWeight: lpTab===t ? 700 : 500,
               cursor:"pointer", textTransform:"uppercase" as const, letterSpacing:.8,
               position:"relative" as const }}>
-            {t === "research" ? "Research" : t === "infrastructure" ? "Infrastructure" : t === "campaigns" ? "Campaigns" : "Onboarding"}
+            {t === "research" ? "Research" : t === "infrastructure" ? "Infrastructure" : t === "campaigns" ? "Campaigns" : t === "onboarding" ? "Onboarding" : "Export"}
             {t === "onboarding" && lpResult?.onboarding?.processedAt && (
               <span style={{ position:"absolute", top:10, right:6, width:6, height:6, borderRadius:"50%", background:C2.green, display:"block" }} />
             )}
@@ -18858,6 +19295,11 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
           </div>
         )}
 
+        {/* EXPORT */}
+        {lpTab === "export" && (() => {
+          return <ExportTab lpResult={lpResult} onGenerateExport={onGenerateExport} />;
+        })()}
+
         {/* ONBOARDING */}
         {lpTab === "onboarding" && (() => {
           const ob = lpResult?.onboarding;
@@ -18973,6 +19415,8 @@ const IS_LOCALHOST    = ["localhost","127.0.0.1","app.local"].includes(window.lo
 
 export default function App() {
   if (IS_ADMIN_DOMAIN) return <AdminGate />;
+  const exportId = new URLSearchParams(window.location.search).get("export");
+  if (exportId) return <SharedExportPage id={exportId} />;
   return <AppMain />;
 }
 
@@ -19143,7 +19587,7 @@ function AppMain() {
   const [lpProgress, setLpProgress] = useState<{step:number;phase:string;total:number}>({step:0,phase:"",total:LP_STEPS.length});
   const [lpLog,      setLpLog]      = useState<string[]>([]);
   const [lpResult,   setLpResult]   = useState<any>(null);
-  const [lpTab,      setLpTab]      = useState<"research"|"infrastructure"|"campaigns"|"onboarding">("research");
+  const [lpTab,      setLpTab]      = useState<"research"|"infrastructure"|"campaigns"|"onboarding"|"export">("research");
   const [navExpanded, setNavExpanded] = useState(false);
 
 
@@ -21565,6 +22009,29 @@ Return ONLY valid JSON:
     addToast({ title: "LaunchPad complete!", status: "success", message: "Research, domains, and campaigns are ready. Click Getting Started to view." });
   }, [activeWorkspace]); // eslint-disable-line
 
+  const generateExport = async (): Promise<string> => {
+    const id = uid();
+    const key = `export_${id}`;
+    const cd = companyData as any;
+    const exportData = {
+      generatedAt: new Date().toISOString(),
+      company: {
+        name: activeWorkspace?.name || cd?.co_name || "Company",
+        pitch: cd?.co_pitch || cd?.co_description || "",
+        industry: cd?.co_industry || "",
+        website: cd?.co_website || "",
+        ksp: cd?.co_ksp || "",
+      },
+      products: (products || []) as any[],
+      personas: (icps || []) as any[],
+      campaigns: lpResult?.campaigns || [],
+      domains: lpResult?.domains || [],
+      onboarding: lpResult?.onboarding || null,
+    };
+    await dbPut("app_data", key, JSON.stringify(exportData));
+    return `${window.location.origin}${window.location.pathname}?export=${id}`;
+  };
+
   const runLaunchPad = async (inputUrl: string, extraText: string, linkedinUrl: string = "", extraUrlsText: string = "", offeringsOverride: string = "", playbookKey: PlaybookKey = "auto", salesContext: string = "") => {
     const wsId = activeWorkspace ? (activeWorkspace as any).id : null;
     setLpState("running");
@@ -23561,6 +24028,7 @@ Return ONLY valid JSON:
                 onReset={() => { setLpState("idle"); setLpResult(null); if (activeWorkspace) { try { const id=(activeWorkspace as any).id; localStorage.removeItem(`lp_result_${id}`); localStorage.removeItem(`lp_running_${id}`); } catch {} } }}
                 onRegenDomains={regenLpDomains}
                 onProcessOnboarding={processOnboarding}
+                onGenerateExport={generateExport}
                 salesContext={buildLpSalesContext()}
                 companyName={activeWorkspace?.name}
               />
