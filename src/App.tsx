@@ -18158,20 +18158,26 @@ function SharedExportPage({ id }: { id: string }) {
             </div>
           </div>
 
-          {ksps.length > 0 && (
-            <div style={{ marginTop:36, display:"flex", gap:12, flexWrap:"wrap" as const }}>
-              {ksps.slice(0,5).map((k:string,i:number) => (
-                <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8,
-                  background:"rgba(255,255,255,.055)", border:"1px solid rgba(255,255,255,.09)",
-                  borderRadius:12, padding:"10px 16px", flex:"1 1 200px", maxWidth:280 }}>
-                  <span style={{ color:A, fontWeight:700, fontSize:13, lineHeight:1, marginTop:1 }}>✓</span>
-                  <span style={{ fontSize:13, color:"rgba(255,255,255,.75)", lineHeight:1.5 }}>{k}</span>
+        </div>
+      </div>
+
+      {/* ── KSP STRIP ── */}
+      {ksps.length > 0 && (
+        <div style={{ background:"linear-gradient(140deg,#13122a 0%,#1e1b40 100%)", borderTop:"1px solid rgba(255,255,255,.06)" }}>
+          <div style={{ maxWidth:960, margin:"0 auto", padding:"32px 48px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(ksps.length, 4)},1fr)`, gap:12 }}>
+              {ksps.slice(0,8).map((k:string,i:number) => (
+                <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:10,
+                  background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.09)",
+                  borderRadius:12, padding:"14px 16px" }}>
+                  <span style={{ color:A, fontWeight:800, fontSize:14, lineHeight:1, marginTop:1, flexShrink:0 }}>✓</span>
+                  <span style={{ fontSize:13, color:"rgba(255,255,255,.75)", lineHeight:1.55 }}>{k}</span>
                 </div>
               ))}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div style={{ maxWidth:960, margin:"0 auto", padding:"56px 48px 96px" }}>
 
@@ -18179,64 +18185,65 @@ function SharedExportPage({ id }: { id: string }) {
         {products.length > 0 && (
           <div style={{ marginBottom:64 }}>
             <SectionLabel icon="📦">Products &amp; Services</SectionLabel>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:20 }}>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
               {products.map((p:any,i:number) => {
                 const cat = p.category || "Software";
                 const [fg, bg] = catColors[cat] || [A, `${A}15`];
                 const icon = catIcon[cat] || "◈";
                 return (
-                  <div key={i} className="ep-card" style={{ display:"flex", flexDirection:"column" as const, overflow:"hidden" }}>
-                    {/* colored top bar */}
-                    <div style={{ height:4, background:`linear-gradient(90deg,${fg},${fg}88)` }} />
-                    <div style={{ padding:24, flex:1, display:"flex", flexDirection:"column" as const, gap:14 }}>
-                      {/* header */}
-                      <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
-                        <div style={{ width:40, height:40, borderRadius:10, background:bg, flexShrink:0,
-                          display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:fg, fontWeight:700 }}>
+                  <div key={i} className="ep-card" style={{ display:"flex", overflow:"hidden", alignItems:"stretch" }}>
+                    {/* colored left accent bar */}
+                    <div style={{ width:5, background:`linear-gradient(180deg,${fg},${fg}66)`, flexShrink:0 }} />
+
+                    {/* identity column */}
+                    <div style={{ width:220, flexShrink:0, padding:"24px 20px", borderRight:"1px solid #ebebf5",
+                      display:"flex", flexDirection:"column" as const, gap:12, justifyContent:"center" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                        <div style={{ width:44, height:44, borderRadius:12, background:bg, flexShrink:0,
+                          display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:fg, fontWeight:700 }}>
                           {icon}
                         </div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:15, fontWeight:800, color:"#1a1a2e", lineHeight:1.25, marginBottom:4 }}>{p.name}</div>
-                          {cat && (
-                            <span style={{ fontSize:11, fontWeight:700, color:fg, background:bg,
-                              padding:"2px 8px", borderRadius:6, display:"inline-block" }}>{cat}</span>
-                          )}
+                        <div>
+                          <div style={{ fontSize:15, fontWeight:800, color:"#1a1a2e", lineHeight:1.2, marginBottom:5 }}>{p.name}</div>
+                          <span style={{ fontSize:11, fontWeight:700, color:fg, background:bg,
+                            padding:"3px 9px", borderRadius:6, display:"inline-block" }}>{cat}</span>
                         </div>
                       </div>
-
-                      {/* description */}
-                      {p.description && (
-                        <p style={{ fontSize:13, color:"#555", lineHeight:1.7, flex:1 }}>{p.description}</p>
-                      )}
-
-                      {/* value prop */}
-                      {p.valueProposition && (
-                        <div style={{ background:`${fg}08`, border:`1px solid ${fg}22`, borderRadius:10, padding:"12px 14px" }}>
-                          <div style={{ fontSize:10, fontWeight:800, color:fg, letterSpacing:1, textTransform:"uppercase" as const, marginBottom:6 }}>
-                            Why it wins
-                          </div>
-                          <div style={{ fontSize:12, color:"#444", lineHeight:1.6 }}>{p.valueProposition}</div>
-                        </div>
-                      )}
-
-                      {/* deal info */}
                       {(p.avgDealSize || p.dealType) && (
-                        <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const, paddingTop:4 }}>
+                        <div style={{ display:"flex", flexDirection:"column" as const, gap:5 }}>
                           {p.avgDealSize && (
-                            <span style={{ fontSize:11, fontWeight:700, color:"#555", background:"#f4f4fa",
-                              border:"1px solid #e8e8f2", padding:"4px 10px", borderRadius:8 }}>
+                            <span style={{ fontSize:11, fontWeight:600, color:"#666", background:"#f4f4fa",
+                              border:"1px solid #e8e8f2", padding:"4px 9px", borderRadius:7, display:"block" }}>
                               💰 {p.avgDealSize}
                             </span>
                           )}
                           {p.dealType && (
-                            <span style={{ fontSize:11, fontWeight:700, color:"#555", background:"#f4f4fa",
-                              border:"1px solid #e8e8f2", padding:"4px 10px", borderRadius:8 }}>
+                            <span style={{ fontSize:11, fontWeight:600, color:"#666", background:"#f4f4fa",
+                              border:"1px solid #e8e8f2", padding:"4px 9px", borderRadius:7, display:"block" }}>
                               {p.dealType === "Recurring" ? "↻" : p.dealType === "One-Time" ? "→" : "⇄"} {p.dealType}
                             </span>
                           )}
                         </div>
                       )}
                     </div>
+
+                    {/* description column */}
+                    <div style={{ flex:"1 1 0", padding:"24px 28px", borderRight: p.valueProposition ? "1px solid #ebebf5" : "none",
+                      display:"flex", flexDirection:"column" as const, justifyContent:"center" }}>
+                      {p.description && (
+                        <p style={{ fontSize:14, color:"#444", lineHeight:1.75, margin:0 }}>{p.description}</p>
+                      )}
+                    </div>
+
+                    {/* value prop column */}
+                    {p.valueProposition && (
+                      <div style={{ width:300, flexShrink:0, padding:"24px 24px", background:`${fg}05`,
+                        display:"flex", flexDirection:"column" as const, justifyContent:"center", gap:8 }}>
+                        <div style={{ fontSize:10, fontWeight:800, color:fg, letterSpacing:1,
+                          textTransform:"uppercase" as const }}>Why it wins</div>
+                        <div style={{ fontSize:13, color:"#444", lineHeight:1.7 }}>{p.valueProposition}</div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
