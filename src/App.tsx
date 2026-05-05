@@ -18222,9 +18222,7 @@ function SharedExportPage({ id }: { id: string }) {
                           {icon}
                         </div>
                         <div>
-                          <div style={{ fontSize:15, fontWeight:800, color:"#1a1a2e", lineHeight:1.2, marginBottom:5 }}>{p.name}</div>
-                          <span style={{ fontSize:11, fontWeight:700, color:fg, background:bg,
-                            padding:"3px 9px", borderRadius:6, display:"inline-block" }}>{cat}</span>
+                          <div style={{ fontSize:15, fontWeight:800, color:"#1a1a2e", lineHeight:1.2 }}>{p.name}</div>
                         </div>
                       </div>
                       {(p.avgDealSize || p.dealType) && (
