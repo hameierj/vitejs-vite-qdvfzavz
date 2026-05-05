@@ -18205,59 +18205,30 @@ function SharedExportPage({ id }: { id: string }) {
         .ep-tab:hover { color:#050c46; }
       `}</style>
 
-      {/* ── HERO ── */}
-      <div style={{ background:`linear-gradient(140deg,#050c46 0%,#0d1260 50%,#141870 100%)`, position:"relative", overflow:"hidden" }}>
-        <div style={{ position:"absolute", top:-80, right:-80, width:400, height:400, borderRadius:"50%",
-          background:`radial-gradient(circle,${A}30 0%,transparent 70%)`, pointerEvents:"none" }} />
-        <div style={{ position:"absolute", bottom:-60, left:60, width:320, height:320, borderRadius:"50%",
-          background:`radial-gradient(circle,rgba(87,97,254,0.15) 0%,transparent 70%)`, pointerEvents:"none" }} />
-        <div style={{ maxWidth:960, margin:"0 auto", padding:"72px 48px 64px", position:"relative" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:48, flexWrap:"wrap" as const }}>
-            <div style={{ flex:1, minWidth:280 }}>
-              <h1 style={{ fontSize:52, fontWeight:600, color:"#fff", lineHeight:1.07, letterSpacing:"-0.022em", marginBottom:16 }}>{name}</h1>
-              {pitch && <p style={{ fontSize:17, lineHeight:1.47, letterSpacing:"-0.011em", color:"rgba(255,255,255,.7)", maxWidth:520, marginBottom:20 }}>{pitch}</p>}
-              {website && (
-                <a href={website} target="_blank" rel="noreferrer"
-                  style={{ display:"inline-block", fontSize:13, fontWeight:500, letterSpacing:"-0.008em", color:"#fff", textDecoration:"none",
-                    background:"rgba(255,255,255,.1)", border:"1px solid rgba(255,255,255,.18)", padding:"6px 16px", borderRadius:980 }}>
-                  {website.replace(/^https?:\/\//,"")} ↗
-                </a>
-              )}
-            </div>
-            <div style={{ flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:1, borderRadius:12, overflow:"hidden",
-                border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.06)" }}>
-                {[
-                  { label:"Products",  value:products.length },
-                  { label:"Personas",  value:personas.length },
-                  { label:"Domains",   value:domains.length },
-                  { label:"Mailboxes", value:domains.length * 3 },
-                ].map(({ label, value }, i) => (
-                  <div key={i} style={{ textAlign:"center" as const, padding:"24px 36px", background:"rgba(255,255,255,.04)",
-                    borderRight:  i % 2 === 0 ? "1px solid rgba(255,255,255,.08)" : "none",
-                    borderBottom: i < 2       ? "1px solid rgba(255,255,255,.08)" : "none" }}>
-                    <div style={{ fontSize:36, fontWeight:600, color:"#fff", letterSpacing:"-0.022em", lineHeight:1 }}>{value}</div>
-                    <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", fontWeight:600, letterSpacing:"0.04em", textTransform:"uppercase" as const, marginTop:8 }}>{label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+      {/* ── STICKY HEADER + TABS ── */}
+      <div style={{ position:"sticky", top:0, zIndex:10, background:"#fff",
+        borderBottom:`1px solid ${BD}`, boxShadow:"0 2px 12px rgba(5,12,70,0.06)" }}>
+        {/* company name bar */}
+        <div style={{ maxWidth:960, margin:"0 auto", padding:"0 48px",
+          display:"flex", alignItems:"center", justifyContent:"space-between", height:56, borderBottom:`1px solid ${BD}` }}>
+          <div style={{ fontSize:17, fontWeight:600, color:H, letterSpacing:"-0.012em", lineHeight:1 }}>{name}</div>
+          {website && (
+            <a href={website} target="_blank" rel="noreferrer"
+              style={{ fontSize:12, fontWeight:500, color:A, textDecoration:"none", letterSpacing:"-0.005em" }}>
+              {website.replace(/^https?:\/\//,"")} ↗
+            </a>
+          )}
         </div>
-      </div>
-
-      {/* ── TAB BAR ── */}
-      <div style={{ position:"sticky", top:0, zIndex:10, background:"#fff", borderBottom:`1px solid ${BD}`,
-        boxShadow:"0 2px 8px rgba(5,12,70,0.04)" }}>
+        {/* tabs */}
         <div style={{ maxWidth:960, margin:"0 auto", padding:"0 48px", display:"flex", overflowX:"auto" as const }}>
           {tabs.map((tab:any) => (
             <button key={tab.id} className="ep-tab"
               onClick={() => setActiveTab(tab.id)}
-              style={{ padding:"15px 18px", fontSize:13,
+              style={{ padding:"16px 20px", fontSize:14,
                 fontWeight: activeTab === tab.id ? 600 : 500,
                 color: activeTab === tab.id ? A : M,
                 letterSpacing:"-0.008em", whiteSpace:"nowrap" as const,
-                borderBottom: activeTab === tab.id ? `2px solid ${A}` : "2px solid transparent",
+                borderBottom: activeTab === tab.id ? `3px solid ${A}` : "3px solid transparent",
                 marginBottom:-1 }}>
               {tab.label}
             </button>
