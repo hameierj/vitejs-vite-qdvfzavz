@@ -18095,6 +18095,36 @@ function SharedExportPage({ id }: { id: string }) {
     { id:"infrastructure", label:"Infrastructure",     show: domains.length > 0 },
   ].filter((t:any) => t.show !== false);
 
+  // Renders a labelled section of fields from a data object — skips empty values
+  const SecBlock = ({ title, fields, obj, accentColor }: { title:string; fields:any[]; obj:any; accentColor?:string }) => {
+    const filled = fields.filter((f:any) => {
+      const v = obj[f.id];
+      return v && (Array.isArray(v) ? v.length > 0 : String(v).trim());
+    });
+    if (!filled.length) return null;
+    return (
+      <div style={{ padding:"20px 24px", borderTop:`1px solid ${BD}` }}>
+        <div style={{ fontSize:10, fontWeight:700, color: accentColor || A, letterSpacing:"0.08em",
+          textTransform:"uppercase" as const, marginBottom:14 }}>{title}</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px 32px" }}>
+          {filled.map((f:any) => {
+            const raw = obj[f.id];
+            const val = Array.isArray(raw) ? raw.join(" · ") : String(raw);
+            const isLong = val.length > 100 || val.includes("\n");
+            return (
+              <div key={f.id} style={{ gridColumn: isLong ? "1 / -1" : "auto" }}>
+                <div style={{ fontSize:10, fontWeight:600, color:M, letterSpacing:"0.05em",
+                  textTransform:"uppercase" as const, marginBottom:5 }}>{f.label}</div>
+                <div style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em",
+                  whiteSpace: val.includes("\n") ? "pre-wrap" as const : "normal" as const }}>{val}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   // helper: sequence step list (shared by email + linkedin tabs)
   const SeqSteps = ({ steps, color, lineColor }: { steps:any[]; color:string; lineColor:string }) => (
     <div style={{ position:"relative" as const }}>
@@ -18132,37 +18162,41 @@ function SharedExportPage({ id }: { id: string }) {
     </div>
   );
 
-  // helper: persona card (used in both personas tab)
+  // helper: persona card — full ICP sections
   const PersonaCard = ({ pe, i }: { pe:any; i:number }) => {
     const d = pe.data || pe.fields || {};
     const palette: [string,string][] = [[A,BT],["#5a9a6e","#eaf5ee"],["#5b8db8","#ebf2f8"],["#c76a42","#fdf0ea"],["#8b6fc0","#f0ecf8"]];
-    const [pfg, pbg] = palette[i % palette.length];
+    const [pfg] = palette[i % palette.length];
     const industryPills: string[] = d.industries
-      ? (d.industries as string).split(/[,;]/).map((s:string)=>s.trim()).filter(Boolean).slice(0,3) : [];
-    const coSizes: string[] = Array.isArray(d.co_sizes) ? d.co_sizes.slice(0,2) : [];
+      ? (d.industries as string).split(/[,;]/).map((s:string)=>s.trim()).filter(Boolean).slice(0,4) : [];
+    const coSizes: string[] = Array.isArray(d.co_sizes) ? d.co_sizes : [];
     const goalItems: string[] = d.goals
       ? (d.goals as string).split(/[;\n]/).map((s:string)=>s.trim()).filter(Boolean) : [];
     const pain = d.pain1 || d.pain2 || d.challenge;
     const hook = d.hook;
+    const icpSectionColors: Record<string,string> = {
+      targeting:"#5b8db8", persona:A, pains:"#c76a42",
+      messaging:"#5a9a6e", competitorIntel:"#8b6fc0", channelBehavior:"#5b8db8", leadScoring:"#c76a42",
+    };
     return (
       <div className="ep-card" style={{ overflow:"hidden", display:"flex" }}>
         <div style={{ width:4, background:pfg, flexShrink:0 }} />
         <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
-          <div style={{ padding:"18px 24px", borderBottom:`1px solid ${BD}`, display:"flex", alignItems:"center", gap:14 }}>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.010em", lineHeight:1.3 }}>{pe.name}</div>
-              {(industryPills.length > 0 || coSizes.length > 0) && (
-                <div style={{ display:"flex", gap:5, marginTop:6, flexWrap:"wrap" as const }}>
-                  {industryPills.map((ind:string, j:number) => (
-                    <span key={j} style={{ fontSize:11, fontWeight:500, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>{ind}</span>
-                  ))}
-                  {coSizes.map((s:string, j:number) => (
-                    <span key={`cs-${j}`} style={{ fontSize:11, fontWeight:500, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>{s}</span>
-                  ))}
-                </div>
-              )}
-            </div>
+          {/* header */}
+          <div style={{ padding:"18px 24px", borderBottom:`1px solid ${BD}` }}>
+            <div style={{ fontSize:16, fontWeight:600, color:H, letterSpacing:"-0.010em", lineHeight:1.3, marginBottom:8 }}>{pe.name}</div>
+            {(industryPills.length > 0 || coSizes.length > 0) && (
+              <div style={{ display:"flex", gap:5, flexWrap:"wrap" as const }}>
+                {industryPills.map((ind:string, j:number) => (
+                  <span key={j} style={{ fontSize:11, fontWeight:500, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>{ind}</span>
+                ))}
+                {coSizes.map((s:string, j:number) => (
+                  <span key={`cs-${j}`} style={{ fontSize:11, fontWeight:500, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>{s}</span>
+                ))}
+              </div>
+            )}
           </div>
+          {/* pain + goals — keep prominent */}
           {(pain || goalItems.length > 0) && (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", borderTop:`1px solid ${BDS}` }}>
               <div style={{ padding:"18px 24px", borderRight:`1px solid ${BDS}` }}>
@@ -18190,6 +18224,13 @@ function SharedExportPage({ id }: { id: string }) {
               <p style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em", fontStyle:"italic" as const, margin:0 }}>"{hook}"</p>
             </div>
           )}
+          {/* all remaining ICP sections */}
+          {Object.entries(ICP_SECTIONS).filter(([key]) => key !== "notes").map(([key, sec]:any) => {
+            const remainingFields = sec.fields.filter((f:any) =>
+              !["industries","co_sizes","pain1","pain2","challenge","goals","hook"].includes(f.id)
+            );
+            return <SecBlock key={key} title={sec.label} fields={remainingFields} obj={d} accentColor={icpSectionColors[key] || A} />;
+          })}
         </div>
       </div>
     );
@@ -18323,41 +18364,38 @@ function SharedExportPage({ id }: { id: string }) {
 
         {/* PRODUCTS */}
         {activeTab === "products" && (
-          <div style={{ display:"flex", flexDirection:"column" as const, gap:20 }}>
+          <div style={{ display:"flex", flexDirection:"column" as const, gap:24 }}>
             {products.map((p:any, i:number) => {
               const cat = p.category || "Software";
               const [fg, bg] = catColors[cat] || [A, BT];
               const icon = catIcon[cat] || "◈";
+              const prodSectionColors: Record<string,string> = {
+                core:A, market:"#5a9a6e", commercials:"#c76a42", proof:"#5b8db8", positioning:"#8b6fc0",
+              };
               return (
-                <div key={i} className="ep-card" style={{ display:"flex", overflow:"hidden", alignItems:"stretch" }}>
+                <div key={i} className="ep-card" style={{ overflow:"hidden", display:"flex" }}>
                   <div style={{ width:4, background:fg, flexShrink:0 }} />
-                  <div style={{ width:216, flexShrink:0, padding:"22px 20px", borderRight:`1px solid ${BD}`,
-                    display:"flex", flexDirection:"column" as const, gap:10, justifyContent:"center" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    {/* header */}
+                    <div style={{ padding:"18px 24px", display:"flex", alignItems:"center", gap:14 }}>
                       <div style={{ width:40, height:40, borderRadius:10, background:bg, flexShrink:0,
-                        display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:fg, fontWeight:700 }}>
+                        display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:fg, fontWeight:700 }}>
                         {icon}
                       </div>
-                      <div style={{ fontSize:15, fontWeight:600, color:H, lineHeight:1.19, letterSpacing:"-0.008em" }}>{p.name}</div>
-                    </div>
-                    {(p.avgDealSize || p.dealType) && (
-                      <div style={{ display:"flex", flexDirection:"column" as const, gap:4 }}>
-                        {p.avgDealSize && <span style={{ fontSize:12, fontWeight:500, color:B, background:S, border:`1px solid ${BD}`, padding:"3px 8px", borderRadius:6, display:"block" }}>{p.avgDealSize}</span>}
-                        {p.dealType && <span style={{ fontSize:12, fontWeight:500, color:B, background:S, border:`1px solid ${BD}`, padding:"3px 8px", borderRadius:6, display:"block" }}>{p.dealType}</span>}
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:16, fontWeight:600, color:H, letterSpacing:"-0.010em" }}>{p.name}</div>
+                        <div style={{ display:"flex", gap:6, marginTop:5, flexWrap:"wrap" as const }}>
+                          {p.category && <span style={{ fontSize:11, fontWeight:600, color:fg, background:bg, padding:"2px 9px", borderRadius:980 }}>{p.category}</span>}
+                          {p.dealType && <span style={{ fontSize:11, fontWeight:500, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>{p.dealType}</span>}
+                          {(p.acv || p.avgDealSize) && <span style={{ fontSize:11, fontWeight:500, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>{p.acv || p.avgDealSize}</span>}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div style={{ flex:"1 1 0", padding:"22px 28px", borderRight: p.valueProposition ? `1px solid ${BD}` : "none",
-                    display:"flex", flexDirection:"column" as const, justifyContent:"center" }}>
-                    {p.description && <p style={{ fontSize:14, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:0 }}>{p.description}</p>}
-                  </div>
-                  {p.valueProposition && (
-                    <div style={{ width:280, flexShrink:0, padding:"22px 24px", background:BF,
-                      display:"flex", flexDirection:"column" as const, justifyContent:"center", gap:6 }}>
-                      <div style={{ fontSize:10, fontWeight:700, color:A, letterSpacing:"0.06em", textTransform:"uppercase" as const }}>Why it wins</div>
-                      <div style={{ fontSize:13, color:B, lineHeight:1.6, letterSpacing:"-0.008em" }}>{p.valueProposition}</div>
                     </div>
-                  )}
+                    {/* all product sections */}
+                    {Object.entries(PRODUCT_SECTIONS).filter(([key]) => key !== "notes").map(([key, sec]:any) => (
+                      <SecBlock key={key} title={sec.label} fields={sec.fields} obj={p} accentColor={prodSectionColors[key] || A} />
+                    ))}
+                  </div>
                 </div>
               );
             })}
