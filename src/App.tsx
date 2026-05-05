@@ -48,7 +48,7 @@ function makeWelcomeFloatConfig(i: number) {
   const seed = (i * 7 + 3) % 13;
   return { duration: 3 + (seed % 5) * 0.6, delay: (seed % 7) * 0.4, dy: (5 + (seed % 4) * 2.5) * (seed % 2 === 0 ? 1 : -1) };
 }
-function WelcomeScreen({ companyName, onQuickStart, onManual, onImport, onPasteForm }: { companyName?: string; onQuickStart: () => void; onManual: () => void; onImport: () => void; onPasteForm: () => void }) {
+function WelcomeScreen({ companyName, onQuickStart, onManual, onImport, onPasteForm, onLaunchPad }: { companyName?: string; onQuickStart: () => void; onManual: () => void; onImport: () => void; onPasteForm: () => void; onLaunchPad: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [phase, setPhase] = useState<"text"|"icons-white"|"floating">("text");
   const [iconPositions, setIconPositions] = useState(() => welcomeIcons.map(ic => ({ cx: ic.cx, cy: ic.cy, scale: ic.scale, rotate: ic.rotate })));
@@ -146,7 +146,8 @@ function WelcomeScreen({ companyName, onQuickStart, onManual, onImport, onPasteF
                 background:"#fff", borderRadius:14, border:"1px solid #e5e5ec", boxShadow:"0 8px 32px rgba(0,0,0,0.12)",
                 padding:6, minWidth:200, animation:"welcomeDropIn .15s ease", zIndex:20 }}>
                 {[
-                  { label:"Quick Start", sub:"AI-powered", icon:"⚡", onClick:onQuickStart },
+                  { label:"Launch Pad", sub:"Full auto — URL to campaigns", icon:"🚀", onClick:onLaunchPad },
+                  { label:"Quick Start", sub:"AI-powered, guided", icon:"⚡", onClick:onQuickStart },
                   { label:"Start from Scratch", sub:"Manual", icon:"+", onClick:onManual },
                   { label:"Paste Form", sub:"Implementation form", icon:"📋", onClick:onPasteForm },
                   { label:"Import Workspace", sub:"JSON file", icon:"↑", onClick:onImport },
@@ -429,6 +430,7 @@ const PREFERENCES_SECTIONS: Record<string, {label:string; icon?:string; group?:s
   outbound: { label:"Outbound Readiness", icon:"◎", group:"client",
     fields:[
       { id:"co_outbound_maturity", label:"Outbound Maturity",       type:"select",   opts:["Just Getting Started","Have Done Some Outreach","Running & Optimizing","Scaling Existing Program"], noConf:true, aiFill:false, hint:"Where you are today with outbound lead generation" },
+      { id:"co_months_running",    label:"Months Running Outbound", type:"number",   ph:"0", noConf:true, aiFill:false, hint:"If migrating from another tool, enter how many months you've actively been running outbound. Leave 0 if brand new." },
       { id:"co_monthly_volume",    label:"Monthly Outreach Volume", type:"select",   opts:["Not sending yet","Under 100","100–500","500–2,000","2,000–10,000","10,000+"], noConf:true, aiFill:false, hint:"How many outreach messages (emails + LinkedIn) sent per month" },
       { id:"co_prev_tools",        label:"Previous Outbound Tools", type:"textarea", ph:"HubSpot, Apollo, Outreach, Salesloft, Lemlist, Instantly…", rows:2, noConf:true, aiFill:false, hint:"Tools you've used for outbound — helps understand workflow expectations" },
       { id:"co_existing_leads",    label:"Existing Lead List",      type:"select",   opts:["No list yet","Some, but incomplete","Yes — needs cleaning","Yes — ready to use"], noConf:true, aiFill:false, hint:"Do you have existing contacts/leads to start with?" },
@@ -8532,6 +8534,8 @@ function CoverageMatrix({ products, personas, offers, campaigns, rtsLists = [], 
 }
 
 // ─── STRATEGY PAGE ───────────────────────────────────────────────────────────
+// Living strategy: North Star → Active Bets → Learning Log → History → Campaign Roadmap
+// Campaigns are tests of the strategy; their results feed back up to evolve it.
 function StrategyPage({ strategy, onStrategyChange, companyData, products, offers, personas, v2 = false, addToast = (_t:any)=>"",
   genState, onGenStateChange, activeWorkspace = null as any, onLaunchPhaseCampaign = null as any, workspaceCampaigns = [] as any[], rtsLists = [] as any[],
   autoRun = false, onAutoRunConsumed = null as any }: {
@@ -8547,7 +8551,6 @@ function StrategyPage({ strategy, onStrategyChange, companyData, products, offer
   const _C = v2 ? C2 : C;
   const generating = genState?.running ?? false;
   const genStep = genState?.step ?? 0;
-  // Use refs so async function can update state even after component unmounts/remounts
   const genStateRef = useRef(onGenStateChange);
   genStateRef.current = onGenStateChange;
   const strategyRef = useRef(onStrategyChange);
@@ -8556,789 +8559,945 @@ function StrategyPage({ strategy, onStrategyChange, companyData, products, offer
   toastRef.current = addToast;
   const setGenerating = (v: boolean) => genStateRef.current?.({ running: v, step: v ? (genState?.step||0) : 0 });
   const setGenStep = (v: number) => genStateRef.current?.({ running: true, step: v });
+
+  // ── Shape helpers ──
+  const northStar = strategy?.northStar ?? null;
+  const bets: any[] = strategy?.bets ?? [];
+  const insights: any[] = strategy?.insights ?? [];
+  const historyLog: any[] = strategy?.history ?? [];
+  const phases: any[] = strategy?.phases ?? [];
+  const hasAnyStrategy = !!(northStar || bets.length > 0 || phases.length > 0);
+
+  // ── UI state ──
+  const [editingNorthStar, setEditingNorthStar] = useState(false);
+  const [northStarDraft, setNorthStarDraft] = useState<any>(null);
+  const [showBetModal, setShowBetModal] = useState(false);
+  const [betDraft, setBetDraft] = useState<any>(null);
+  const [acceptingInsightId, setAcceptingInsightId] = useState<string|null>(null);
+  const [acceptNote, setAcceptNote] = useState("");
+  const [addingManualInsight, setAddingManualInsight] = useState(false);
+  const [manualInsightDraft, setManualInsightDraft] = useState<any>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  // Show legacy phases expanded only if no north star yet (old-style data)
+  const [showPhases, setShowPhases] = useState(() => phases.length > 0 && !strategy?.northStar);
   const [expandedPhase, setExpandedPhase] = useState<string|null>(null);
 
-  const phases = strategy?.phases ?? [];
+  // ── Infrastructure readiness (used in generation prompts) ──
   const infra = strategy?.infrastructure ?? {};
-  const benchmarks = strategy?.benchmarks ?? {};
-
-  // Calculate infrastructure readiness
   const warmupStart = infra.warmupStartDate ? new Date(infra.warmupStartDate) : null;
-  const now = new Date();
-  const warmupDaysLeft = warmupStart ? Math.max(0, 14 - Math.floor((now.getTime() - warmupStart.getTime()) / 86400000)) : 14;
-  const emailReady = warmupDaysLeft === 0;
+  const _now = new Date();
+  const warmupDaysLeft = warmupStart ? Math.max(0, 14 - Math.floor((_now.getTime() - warmupStart.getTime()) / 86400000)) : 14;
 
-  const generateRoadmap = async () => {
+  // ── Bet / Insight status configs ──
+  const BET_STATUSES: Record<string,{label:string;color:string}> = {
+    proving:      { label:"Proving",      color:_C.blue   },
+    disproving:   { label:"Disproving",   color:_C.red    },
+    inconclusive: { label:"Inconclusive", color:_C.muted  },
+    confirmed:    { label:"Confirmed",    color:_C.green  },
+    rejected:     { label:"Rejected",     color:_C.muted  },
+  };
+  const INSIGHT_TYPES: Record<string,{label:string;color:string}> = {
+    confirmed_hypothesis:    { label:"Confirmed",    color:_C.green  },
+    disconfirmed_hypothesis: { label:"Disconfirmed", color:_C.red    },
+    new_signal:              { label:"New Signal",   color:_C.accent },
+    pivot_recommendation:    { label:"Pivot Rec",    color:_C.amber  },
+  };
+  const activeBets = bets.filter((b:any) => ["proving","disproving","inconclusive"].includes(b.status));
+  const resolvedBets = bets.filter((b:any) => ["confirmed","rejected"].includes(b.status));
+  const pendingInsights = insights.filter((i:any) => i.status === "pending");
+  const resolvedInsights = insights.filter((i:any) => i.status !== "pending");
+
+  const inputSt: any = { padding:"7px 10px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:12, fontFamily:body, outline:"none", width:"100%" };
+  const labelSt: any = { fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:4, display:"block" };
+
+  // ── Helpers: generate an id ──
+  const uid = () => Math.random().toString(36).slice(2,10);
+  const saveHistory = (change: string, reason: string, extra?: any) => ({
+    id: uid(), date: new Date().toISOString(), change, reason, ...extra
+  });
+
+  // ── North Star ──
+  const startEditNorthStar = () => {
+    setNorthStarDraft({ icp: northStar?.icp||"", corePain: northStar?.corePain||"", primaryChannel: northStar?.primaryChannel||"", channelReason: northStar?.channelReason||"", goal90Days: northStar?.goal90Days||"" });
+    setEditingNorthStar(true);
+  };
+  const saveNorthStar = () => {
+    if (!northStarDraft) return;
+    strategyRef.current?.({ ...strategy,
+      northStar: { ...northStarDraft, updatedAt: new Date().toISOString() },
+      history: [...historyLog, saveHistory("North Star updated", "Manual update")],
+    });
+    setEditingNorthStar(false);
+    setNorthStarDraft(null);
+    toastRef.current?.({ title:"North Star saved", status:"success" });
+  };
+
+  // ── Bets ──
+  const saveBet = (bet: any) => {
+    const isNew = !bet.id;
+    const obj = isNew ? { ...bet, id: uid(), createdAt: new Date().toISOString(), status: bet.status||"proving", campaignIds:[] } : bet;
+    strategyRef.current?.({ ...strategy, bets: isNew ? [...bets, obj] : bets.map((b:any) => b.id===obj.id ? obj : b) });
+    setShowBetModal(false); setBetDraft(null);
+    toastRef.current?.({ title: isNew?"Bet added":"Bet updated", status:"success" });
+  };
+  const resolveBet = (id: string, resolution: "confirmed"|"rejected") => {
+    const bet = bets.find((b:any) => b.id===id);
+    strategyRef.current?.({ ...strategy,
+      bets: bets.map((b:any) => b.id===id ? { ...b, status:resolution, resolvedAt:new Date().toISOString() } : b),
+      history: [...historyLog, saveHistory(`Bet ${resolution}: "${(bet?.hypothesis||"").slice(0,60)}…"`, "Based on campaign data")],
+    });
+    toastRef.current?.({ title:`Bet ${resolution}`, status: resolution==="confirmed"?"success":"info" });
+  };
+
+  // ── Insights ──
+  const surfaceInsights = () => {
+    const now2 = new Date().toISOString();
+    const newInsights: any[] = [];
+    for (const camp of workspaceCampaigns) {
+      const m = camp.performance?.metrics;
+      if (!m || !m.sent || m.sent < 30) continue;
+      const bm = camp.benchmarks;
+      if (!bm?.replyRate) continue;
+      if (insights.some((i:any) => i.campaignId===camp.id && i.status==="pending")) continue;
+      const replyRate = (m.replied||0) / m.sent * 100;
+      if (replyRate >= bm.replyRate * 1.5) {
+        newInsights.push({ id:uid(), type:"confirmed_hypothesis", status:"pending", surfacedAt:now2, campaignId:camp.id, campaignName:camp.name,
+          title:`${camp.name} outperforming at ${replyRate.toFixed(1)}% reply rate`,
+          body:`That's ${(replyRate/bm.replyRate).toFixed(1)}× your ${bm.replyRate}% baseline. Scale volume and test the same angle on adjacent personas.`,
+        });
+      } else if (replyRate < bm.replyRate * 0.5 && m.sent >= 80) {
+        newInsights.push({ id:uid(), type:"disconfirmed_hypothesis", status:"pending", surfacedAt:now2, campaignId:camp.id, campaignName:camp.name,
+          title:`${camp.name} underperforming at ${replyRate.toFixed(1)}% reply rate`,
+          body:`Below 50% of your ${bm.replyRate}% baseline after ${m.sent} sends. Consider pivoting the angle, offer tier, or persona.`,
+        });
+      }
+    }
+    if (!newInsights.length) { toastRef.current?.({ title:"No new insights", status:"info", message:"Need 30+ sends per campaign or insights already reviewed." }); return; }
+    strategyRef.current?.({ ...strategy, insights:[...insights,...newInsights] });
+    toastRef.current?.({ title:`${newInsights.length} insight${newInsights.length!==1?"s":""} surfaced`, status:"success" });
+  };
+  const resolveInsight = (id: string, action: "accepted"|"rejected"|"watching", note?: string) => {
+    const insight = insights.find((i:any) => i.id===id);
+    const updated = insights.map((i:any) => i.id===id ? { ...i, status:action, resolvedAt:new Date().toISOString(), acceptedNote:note } : i);
+    const newHistory = (action==="accepted" && note)
+      ? [...historyLog, saveHistory(note, `From insight: ${(insight?.title||"").slice(0,60)}`, { insightId:id })]
+      : historyLog;
+    strategyRef.current?.({ ...strategy, insights:updated, history:newHistory });
+    setAcceptingInsightId(null); setAcceptNote("");
+  };
+  const saveManualInsight = () => {
+    if (!manualInsightDraft?.title?.trim()) return;
+    const obj = { id:uid(), type:manualInsightDraft.type||"new_signal", status:"pending", surfacedAt:new Date().toISOString(), title:manualInsightDraft.title, body:manualInsightDraft.body||"" };
+    strategyRef.current?.({ ...strategy, insights:[...insights, obj] });
+    setAddingManualInsight(false); setManualInsightDraft(null);
+    toastRef.current?.({ title:"Insight logged", status:"success" });
+  };
+
+  // ── Client stage detection ──
+  // Auto-detects from campaign data + co_outbound_maturity; co_months_running overrides for migrated clients.
+  const computeClientStage = () => {
     const cd = companyData as Record<string,string>;
-    if (!cd.co_name && products.length === 0 && personas.length === 0) {
-      addToast({ title:"Not enough data", status:"error", message:"Fill in the company profile, add products, and create at least one persona before generating a strategy" });
-      return;
+    const camps = workspaceCampaigns||[];
+    const activeCamps    = camps.filter((c:any)=>c.status==="active").length;
+    const completedCamps = camps.filter((c:any)=>c.status==="completed").length;
+    const totalSent    = camps.reduce((s:number,c:any)=>s+(c.performance?.metrics?.sent||0),0);
+    const totalReplied = camps.reduce((s:number,c:any)=>s+(c.performance?.metrics?.replied||0),0);
+    const winners      = camps.filter((c:any)=>{ const m=c.performance?.metrics; const b=c.benchmarks; if(!m?.sent||!b?.replyRate||m.sent<50) return false; return (m.replied||0)/m.sent*100>=b.replyRate; }).length;
+    const monthsRunning = Math.max(0, parseInt(cd.co_months_running||"0")||0);
+    const maturity = cd.co_outbound_maturity||"";
+
+    let stage: "launching"|"testing"|"optimizing";
+    if (maturity==="Scaling Existing Program"||monthsRunning>=6||(completedCamps>=2&&totalSent>=3000)||winners>=2) {
+      stage = "optimizing";
+    } else if (maturity==="Running & Optimizing"||maturity==="Have Done Some Outreach"||monthsRunning>=2||activeCamps>=1||totalSent>=300) {
+      stage = "testing";
+    } else {
+      stage = "launching";
     }
-    if (products.length === 0) {
-      addToast({ title:"No products defined", status:"error", message:"Add at least one product on the Products & Services page first" });
-      return;
-    }
-    if (personas.length === 0) {
-      addToast({ title:"No personas defined", status:"error", message:"Create at least one persona first — the strategy needs target audiences" });
-      return;
-    }
-    setGenerating(true);
-    setGenStep(1);
+    return { stage, activeCamps, completedCamps, totalSent, totalReplied, winners, monthsRunning, maturity };
+  };
+
+  const stageContextBlock = (s: ReturnType<typeof computeClientStage>): string => {
+    if (s.stage==="optimizing") return `
+CLIENT STAGE: OPTIMIZING — This is NOT a new launch. Client has been running outbound${s.monthsRunning>0?` for ${s.monthsRunning} months`:""} with ${s.totalSent.toLocaleString()} messages sent, ${s.completedCamps} campaigns completed${s.winners>0?`, ${s.winners} campaign${s.winners!==1?"s":""} already at or above benchmark`:""}.
+STRATEGY IMPLICATIONS (follow strictly):
+- Infrastructure is fully live — DO NOT mention domain warmup timelines or "start warmup in week 1"
+- Phase 1 must NOT be "setup and launch." Pick up where they are: optimize winners, pivot losers, expand coverage.
+- Offer tier: start at medium CTAs — soft CTAs have already been tested.
+- North star should reflect LEARNED knowledge, not untested assumptions.
+- Roadmap arc: Optimize → Expand → Compound (not Launch → Test → Scale).`;
+
+    if (s.stage==="testing") return `
+CLIENT STAGE: TESTING IN PROGRESS — Client has ${s.activeCamps} active campaign${s.activeCamps!==1?"s":""} and ${s.totalSent.toLocaleString()} messages sent. Not starting from zero.
+STRATEGY IMPLICATIONS (follow strictly):
+- Infrastructure is running — no warmup preamble needed in Phase 1.
+- Do NOT restart from "Month 1: Launch." Build on what's already running.
+- Phase 1 focus: fill coverage gaps (persona×product combos not yet tested), don't re-test what's already active.
+- Offer tier: existing campaigns testing soft — new campaigns should test medium in parallel.
+- North star should incorporate early signals from live campaign data.
+- Roadmap arc: Close Gaps → Learn → Escalate (not Launch → Test → Scale).`;
+
+    return `
+CLIENT STAGE: LAUNCHING — Brand new to outbound, no campaigns running.
+STRATEGY IMPLICATIONS:
+- Infrastructure needs warmup — include warmup timeline and week 1 setup steps.
+- Start from scratch: domain warmup first, LinkedIn connection building, soft CTAs only in first campaigns.
+- Be conservative on volume until warmup completes. First test window: 3-5 days, watch bounce + auto-reply closely.
+- Roadmap arc: Setup → Aggressive Launch → Test → Optimize.`;
+  };
+
+  // ── Generate: North Star + Bets (preserves existing phases) ──
+  const generateStrategy = async () => {
+    if (products.length===0||personas.length===0) { toastRef.current?.({ title:"Not enough data", status:"error", message:"Add products and personas first." }); return; }
+    setGenerating(true); setGenStep(1);
     try {
       const cd = companyData as Record<string,string>;
-      const hasLists = cd.co_existing_lists && cd.co_existing_lists !== "No lists available";
-
-      // Step 1: Generate comprehensive phased roadmap
-      setGenStep(1);
       const prodList = products.slice(0,5).map((p:any)=>`${p.name}: ${(p.problemsSolved||"").slice(0,80)}`).join("; ");
-      const persList = personas.slice(0,5).map((p:any)=>`${p.name} (${p.data?.buyer||"?"})`).join("; ");
-      const phasesRaw = await callAI(
-        `You are a senior B2B outreach strategist. Create a detailed 12-month campaign roadmap.
+      const persList = personas.slice(0,5).map((p:any)=>`${p.name} (${p.data?.seniority||"?"}, ${p.data?.department||"?"})`).join("; ");
+      const stageData = computeClientStage();
+      const stageCtx = stageContextBlock(stageData);
 
-COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"$5K-25K"}. Cycle: ${cd.co_cycle||"1-3 months"}. Goal: ${cd.co_goal||"10-20"} meetings/mo.
+      setGenStep(1);
+      const nsRaw = await callAI(
+        `You are a B2B outreach strategist. Generate a north star for this company's outreach.
+COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"$5K-25K"}. Cycle: ${cd.co_cycle||"1-3 months"}. Goal: ${cd.co_goal||"10-20 meetings/mo"}.
 PRODUCTS: ${prodList||"general"}.
 PERSONAS: ${persList||"general"}.
-INFRA: ${cd.co_mailbox_count||200} mailboxes (${warmupDaysLeft>0?warmupDaysLeft+" days warmup left":"ready"}). LinkedIn+RTS: ready now. Retargeting lists: ${hasLists?"yes":"no"}.
-${rtsLists.length ? `RTS LISTS AVAILABLE (${rtsLists.length}/${MAX_RTS_LISTS_PER_WORKSPACE}) — HIGH-INTENT, triple-qualified, refreshed daily:\n${rtsLists.slice(0,5).map((l:any,i:number)=>`  ${i+1}. "${l.name}" — signal: ${(l.bebopSetup?.customerProfile||"").slice(0,120)}... goal: ${l.bebopSetup?.campaignGoal||""}`).join("\n")}\nThese leads are ALREADY showing intent. They need a DIFFERENT playbook from cold outbound: short sequence (2-3 touches over 5-7 days), direct meeting ask from touch 1 (no soft content offers), reference the trigger/signal in the opener. They should run from DAY 1 in parallel with domain warmup — no need to wait for mailbox warmup since they can go through LinkedIn or AI-calling (for opt-in lists only).\n` : ""}
-${(() => {
-  const intel: string[] = [];
-  const _pi = (window as any)[`__pitchAnalysis_${activeWorkspace?.id||""}`]?.result;
-  const _ci = (window as any)[`__clientIntel_${activeWorkspace?.id||""}`]?.result;
-  const _se = (window as any)[`__sentAnalysis_${activeWorkspace?.id||""}`]?.result;
-  const _sa = (window as any)[`__stratAnalysis_${activeWorkspace?.id||""}`]?.result;
-  if (_ci?.decisionMaking) intel.push(`CLIENT DECISION STYLE: ${_ci.decisionMaking.style} — ${_ci.decisionMaking.description}`);
-  if (_ci?.objections?.length) intel.push(`KNOWN OBJECTIONS: ${_ci.objections.map((o:any)=>`${o.objection} (${o.status})`).join("; ")}`);
-  if (_pi?.rewrittenPitch) intel.push(`OPTIMIZED PITCH: ${_pi.rewrittenPitch}`);
-  if (_pi?.talkingPoints?.length) intel.push(`KEY TALKING POINTS: ${_pi.talkingPoints.join("; ")}`);
-  if (_pi?.avoidList?.length) intel.push(`MESSAGING TO AVOID: ${_pi.avoidList.join("; ")}`);
-  if (_se?.overallSentiment) intel.push(`CLIENT SENTIMENT: ${_se.overallSentiment.score}/10 (${_se.overallSentiment.label}), trend: ${_se.overallSentiment.trend}`);
-  if (_se?.riskSignals?.length) intel.push(`RISK SIGNALS: ${_se.riskSignals.map((r:any)=>r.signal).join("; ")}`);
-  if (_sa?.positioning) intel.push(`POSITIONING: ${_sa.positioning.score}/10 — ${_sa.positioning.assessment}`);
-  if (_sa?.strategicPivots?.length) intel.push(`SUGGESTED PIVOTS: ${_sa.strategicPivots.map((p:any)=>p.title).join("; ")}`);
-  if (_sa?.whatDoesnt?.rootCauses?.length) intel.push(`ROOT CAUSES OF FAILURE: ${_sa.whatDoesnt.rootCauses.join("; ")}`);
-  return intel.length ? `\nCLIENT INTELLIGENCE (from calls, Slack, emails):\n${intel.join("\n")}\nUse this intelligence to shape the strategy — adjust messaging, channel priorities, offer escalation, and campaign sequencing based on what we know about this client.\n` : "";
-})()}
-METHODOLOGY — follow this exact playbook:
-
-${rtsLists.length ? `RTS / HIGH-INTENT LANE (runs CONTINUOUSLY from Week 1 — parallel to cold, not sequenced after):
-- Each RTS list gets its OWN campaign (type: "rts_high_intent"), ONE campaign per list, ONE persona per list.
-- Channel: LinkedIn message OR email (or AI-calling if list is opt-in compliant — check compliance field). Never cold call non-opt-in lists.
-- Sequence: 2-3 touches MAX over 5-7 days. Touch 1 references the buying signal explicitly. CTA is a direct meeting ask from touch 1 — no gated content, no "quick question", no free audit offers.
-- Volume: low (10-30/day per list — high-intent is quality, not volume).
-- Test window: 1-2 days initial (not 3-5). Signals decay fast — if touch 1 doesn't get a response in 48h, the signal may be stale.
-- Benchmarks: expect 2-4× the reply rate of cold (6-12% reply, 2-4% meeting). If RTS is NOT outperforming cold by 2×, the list targeting is wrong — revisit the signal criteria, not the copy.
-- Decision tree: if RTS campaign fails initial benchmarks, re-evaluate the SIGNAL used (is the trigger still relevant? did the buying window close?), not the copy. Copy iteration is for cold.
-- Every RTS list that doesn't convert is ALSO a client hand-off candidate — push raw leads to client's own reps if AI/email isn't working.
-
-` : ""}MONTHS 1-3 (AGGRESSIVE — most critical, user retention depends on early results):
-- Week 1-2: SETUP. Domain warmup begins. Launch LinkedIn connection campaigns immediately (50-100/day). ${rtsLists.length ? "Launch ALL RTS campaigns Day 1 (no warmup needed — low volume through LinkedIn/AI-call/opt-in channels)." : "Start RTS lead lists for cold calling."}${hasLists?" Launch retargeting campaign with existing contacts (3-step sequence, 3-5 day test).":""}
-- Week 3: First cold email campaign launches. Start with 1 persona × 1 product × soft CTA. 5-step sequence. 3-day initial test period.
-- TESTING METHODOLOGY per campaign: Day 1-3 = initial test. Check reply rate (>1%), interested reply rate, bounce (<3%), auto-reply rate (<30%). Do NOT track open rates (unreliable with privacy proxies) or click rates (tracked links hurt deliverability). If benchmarks NOT met: Day 4-6 test new subject lines. Day 7-9 test new opening lines. Day 10-12 test new CTA/offer. If still failing after 3 iterations → pivot persona or product.
-- If benchmarks MET: scale volume, extend duration, launch parallel campaign for next persona.
-- Week 4-6: Add 2nd cold email campaign (different persona OR product). Run simultaneously with campaign 1.
-- Week 7-12: Add LinkedIn message campaigns to warm connections from week 1-2. Launch 3rd email campaign. Escalate from soft to medium offers.
-- Run 3-4 campaigns simultaneously by end of month 3.
-
-MONTHS 4-6 (OPTIMIZATION):
-- Refine top performers based on data. Kill underperformers.
-- Test medium → hard offer escalation on engaged segments.
-- Add new persona/product combinations based on learnings.
-- Continue scaling volume on winners.
-
-MONTHS 7-9 (EXPANSION):
-- Launch campaigns for remaining products/personas.
-- Multi-channel sequences (email + LinkedIn + calling).
-- Seasonal/trigger campaigns based on industry.
-
-MONTHS 10-12 (COMPOUNDING):
-- Slow build — focus on optimization, not new launches.
-- Running campaigns continue to improve with data.
-- Re-engage non-responders from months 1-6 with new angles.
-- Plan next year's strategy based on full year of data.
-
-Return ONLY a JSON array of 6 phases. Each campaign MUST include:
-- id, type (cold_email/retargeting/linkedin_connection/linkedin_message/rts_calling/rts_high_intent)
-- intentTier ("cold" for standard outbound, "high" for any RTS-sourced campaign)
-- rtsListName (required when intentTier="high" — must match one of the RTS list names above)
-- personaName (exact name from list), productName (exact name from list)
-- offerTier (soft/medium/hard), duration (e.g. "2 weeks"), dailyVolume
-- goal (specific, measurable)
-- testPeriod (e.g. "3 days"), testMetrics (what to watch)
-- ifBenchmarksMet (next action), ifBenchmarksNotMet (specific test sequence)
-
-Keep each campaign object compact. No nested objects except as specified.
-
-RETURN SHAPE — return EXACTLY this shape, no wrapper object, just the array:
-[
-  {
-    "id": "phase-1",
-    "name": "Months 1-3: Aggressive Launch",
-    "monthRange": "Months 1-3",
-    "focus": "short description",
-    "campaigns": [ { ...campaign fields listed above... } ]
-  },
-  ...6 phases total
-]`,
-        "Return ONLY valid JSON array (no wrapper object, no markdown fences, no explanatory prose). Must be parseable by JSON.parse().", 10000,
-        { useFullContext: true }
+${stageCtx}
+Return JSON: { "icp":"specific 1-2 sentence ICP", "corePain":"#1 pain this buyer has that we solve", "primaryChannel":"email|linkedin|both", "channelReason":"why this channel first", "goal90Days":"specific measurable 90-day success definition" }`,
+        "Return ONLY valid JSON. No markdown.", 600, { useFullContext:true }
       );
-      let phases: any[];
-      // Robust JSON extraction — tolerates markdown fences, leading/trailing prose, and
-      // responses wrapped in an object like {"phases":[...]} instead of a bare array.
-      const extractPhases = (raw: string): any[] => {
-        const stripped = (raw || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-        // 1. Direct parse
-        try {
-          const p = JSON.parse(stripped);
-          if (Array.isArray(p)) return p;
-          if (p && Array.isArray(p.phases)) return p.phases;
-          if (p && Array.isArray(p.roadmap)) return p.roadmap;
-          if (p && Array.isArray(p.data)) return p.data;
-        } catch {}
-        // 2. Find the first "[" and walk to the matching "]" (string-aware)
-        const firstBr = stripped.indexOf("[");
-        if (firstBr >= 0) {
-          let depth = 0, inStr = false, esc = false;
-          for (let i = firstBr; i < stripped.length; i++) {
-            const ch = stripped[i];
-            if (esc) { esc = false; continue; }
-            if (ch === "\\" && inStr) { esc = true; continue; }
-            if (ch === '"') { inStr = !inStr; continue; }
-            if (inStr) continue;
-            if (ch === "[") depth++;
-            else if (ch === "]") {
-              depth--;
-              if (depth === 0) {
-                try {
-                  const p = JSON.parse(stripped.slice(firstBr, i + 1));
-                  if (Array.isArray(p)) return p;
-                } catch {}
-                break;
-              }
-            }
-          }
-        }
-        // 3. Truncation salvage — find the last complete object inside the array so a cut-off
-        //    response still yields whatever phases DID finish.
-        const openBr = stripped.indexOf("[");
-        if (openBr >= 0) {
-          // Collect every complete top-level object inside the array
-          const collected: string[] = [];
-          let i = openBr + 1;
-          while (i < stripped.length) {
-            // Skip whitespace + commas
-            while (i < stripped.length && /[\s,]/.test(stripped[i])) i++;
-            if (stripped[i] !== "{") break;
-            const objStart = i;
-            let depth = 0, inStr = false, esc = false;
-            for (; i < stripped.length; i++) {
-              const ch = stripped[i];
-              if (esc) { esc = false; continue; }
-              if (ch === "\\" && inStr) { esc = true; continue; }
-              if (ch === '"') { inStr = !inStr; continue; }
-              if (inStr) continue;
-              if (ch === "{") depth++;
-              else if (ch === "}") { depth--; if (depth === 0) { i++; break; } }
-            }
-            if (depth !== 0) break; // unfinished object — stop
-            collected.push(stripped.slice(objStart, i));
-          }
-          if (collected.length) {
-            try { return JSON.parse("[" + collected.join(",") + "]"); } catch {}
-          }
-        }
-        throw new Error("Could not parse phases from model response");
-      };
-      try {
-        phases = extractPhases(phasesRaw);
-      } catch (parseErr) {
-        console.error("[Roadmap] Parse failed. Raw response (first 2000 chars):", phasesRaw?.slice(0, 2000));
-        throw new Error("Could not parse strategy response — model may have returned malformed or truncated JSON. See console for raw response.");
-      }
-      if (!Array.isArray(phases) || phases.length === 0) {
-        console.error("[Roadmap] Empty phases. Raw:", phasesRaw?.slice(0, 2000));
-        throw new Error("No phases generated");
-      }
+      let nsData: any;
+      try { nsData = JSON.parse(nsRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim()); }
+      catch { throw new Error("Could not parse north star response"); }
 
-      // Step 2: Generate benchmarks + decision trees for each phase
       setGenStep(2);
-      for (const phase of phases) {
+      const betsRaw = await callAI(
+        `Generate 4-5 specific testable strategic bets for this B2B outreach program.
+ICP: ${nsData.icp}. CORE PAIN: ${nsData.corePain}. CHANNEL: ${nsData.primaryChannel}.
+PRODUCTS: ${prodList}. PERSONAS: ${persList}.
+${stageCtx}
+Each bet = hypothesis a campaign will test. Format: "We believe [persona] will respond to [angle] through [channel] because [specific reason]"
+${stageData.stage==="optimizing"?"Focus bets on scaling/pivoting existing approaches, not cold starts.":stageData.stage==="testing"?"Include bets that build on early signals from live campaigns.":"Focus bets on initial testing hypotheses."}
+Return JSON array: [{ "hypothesis":"We believe…", "channel":"email|linkedin|rts|both", "personaRef":"persona name", "angle":"the angle being tested", "status":"proving" }]`,
+        "Return ONLY valid JSON array. No markdown.", 900, { useFullContext:true }
+      );
+      let betsData: any[] = [];
+      try { const p = JSON.parse(betsRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim()); betsData = Array.isArray(p) ? p : []; } catch {}
+      const newBets = betsData.map((b:any,i:number)=>({ ...b, id:`bet-${Date.now()}-${i}`, createdAt:new Date().toISOString(), evidence:"", campaignIds:[] }));
+
+      setGenStep(3);
+      const phasesRaw = await callAI(
+        `Generate a 6-phase campaign roadmap for this client. This is the starting plan — it will evolve as they learn.
+NORTH STAR: ${nsData.icp}. Goal: ${nsData.goal90Days}.
+COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"$5K-25K"}. Cycle: ${cd.co_cycle||"1-3 months"}.
+PRODUCTS: ${prodList}. PERSONAS: ${persList}.
+INFRA: ${cd.co_mailbox_count||200} mailboxes (${warmupDaysLeft>0?warmupDaysLeft+" days warmup left":"ready"}). LinkedIn+RTS: ready.${rtsLists.length?` RTS: ${rtsLists.slice(0,3).map((l:any)=>l.name).join(", ")}.`:""}
+${stageCtx}
+Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, startWeek, endWeek, goal, status:"pending", campaigns[].
+Each campaign: id, type(cold_email|retargeting|linkedin_connection|linkedin_message|rts_calling|rts_high_intent), intentTier(cold|high), personaName, productName, offerTier(soft|medium|hard), duration, dailyVolume, goal, testPeriod, testMetrics, ifBenchmarksMet, ifBenchmarksNotMet${rtsLists.length?", rtsListName (for rts_high_intent)":""}.
+Raw JSON array only.`,
+        "Return ONLY valid JSON array. No markdown.", 7000, { useFullContext:true }
+      );
+      let phasesData: any[] = [];
+      try {
+        const stripped = phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim();
+        const p = JSON.parse(stripped); phasesData = Array.isArray(p) ? p : (p?.phases||[]);
+      } catch {}
+      for (const phase of phasesData) {
         phase.status = "pending";
         for (const c of (phase.campaigns||[])) {
-          // Add benchmarks
-          const isEmail = c.type === "cold_email" || c.type === "retargeting";
-          c.benchmarks = {
-            replyRate: isEmail ? 3 : c.type?.includes("linkedin") ? 15 : 5,
-            interestedRate: isEmail ? 1 : c.type?.includes("linkedin") ? 5 : 2,
-            bounceRate: isEmail ? 3 : null,
-            autoReplyRate: isEmail ? 30 : null,
-            meetingRate: isEmail ? 0.5 : 1,
+          const isEmail = c.type==="cold_email"||c.type==="retargeting";
+          c.benchmarks = { replyRate:isEmail?3:c.type?.includes("linkedin")?15:5, interestedRate:isEmail?1:c.type?.includes("linkedin")?5:2, bounceRate:isEmail?3:null, autoReplyRate:isEmail?30:null, meetingRate:isEmail?0.5:1 };
+          c.decisionTree = {
+            ifMet: c.ifBenchmarksMet||(isEmail?"Scale volume 50%. Launch next persona variant.":"Increase volume. Add email follow-up."),
+            ifNotMet: c.ifBenchmarksNotMet||(isEmail?"Day 1-3: Subject lines. Day 4-6: Opening. Day 7-9: CTA.":"New copy. Adjust targeting."),
+            ifFailed: "After 3 iterations → pause. Pivot persona, product, or channel.",
           };
+          if (!c.testPeriod) c.testPeriod = isEmail?"3-5 days":"5-7 days";
+          if (!c.testMetrics) c.testMetrics = isEmail?"Reply >1%, Interested >0.5%, Bounce <3%":"Accept >30%, Reply >10%";
         }
       }
 
-      // Step 3: Enrich with decision trees and testing methodology
-      setGenStep(3);
-      for (const phase of phases) {
-        for (const c of (phase.campaigns||[])) {
-          // If AI already provided testing fields, build decision tree from them
-          if (c.ifBenchmarksMet || c.ifBenchmarksNotMet) {
-            c.decisionTree = {
-              ifMet: c.ifBenchmarksMet || "Scale volume and launch next campaign.",
-              ifNotMet: c.ifBenchmarksNotMet || "Test subject lines → opening lines → CTA → offer tier. 3-day cycles.",
-              ifFailed: "Pivot to different persona/product combination or change channel entirely.",
-            };
-          } else {
-            // Generate testing methodology based on campaign type
-            const isEmail = c.type === "cold_email" || c.type === "retargeting";
-            c.decisionTree = {
-              ifMet: isEmail
-                ? "Scale daily volume by 50%. Extend duration. Launch parallel campaign for next persona."
-                : "Increase daily connection/message volume. Begin multi-channel sequence adding email.",
-              ifNotMet: isEmail
-                ? "Day 1-3: Test 2 new subject lines. Day 4-6: Test new opening hook. Day 7-9: Test different CTA/offer tier. Day 10-12: Test new pain angle."
-                : "Test new connection note copy. Try InMail vs connection request. Adjust targeting filters.",
-              ifFailed: "After 3 test iterations with no improvement → pause campaign. Pivot to different persona × product combination or switch to different channel.",
-            };
-          }
-          // Ensure test period exists
-          const isEmailType = c.type === "cold_email" || c.type === "retargeting";
-          if (!c.testPeriod) c.testPeriod = isEmailType ? "3-5 days" : "5-7 days";
-          if (!c.testMetrics) c.testMetrics = isEmailType ? "Reply >1%, Interested >0.5%, Bounce <3%, Auto-reply <30%" : "Accept >30%, Reply >10%, Meeting >1%";
-        }
-      }
-
-      // Step 4: Assemble final strategy
       setGenStep(4);
-      const strategyObj = {
-        phases,
-        infrastructure: { warmupStartDate: infra.warmupStartDate || new Date().toISOString().split("T")[0], estimatedReadyDate: "", mailboxCount: parseInt(cd.co_mailbox_count||"200"), dailyCapacity: parseInt(cd.co_mailbox_count||"200") * 30 },
-        benchmarks: { baseReplyRate: 3, baseInterestedRate: 1, baseBounceMax: 3, baseAutoReplyMax: 30, baseMeetingRate: 0.5 },
-        generatedAt: new Date().toISOString(),
-        status: "draft",
-      };
-      strategyRef.current?.(strategyObj);
-      if (phases.length > 0) setExpandedPhase(phases[0].id);
-      toastRef.current?.({ title:"Roadmap generated", status:"success", message:`${phases.length} phases created` });
-    } catch (e) { console.error("Strategy generation failed:", e); toastRef.current?.({ title:"Roadmap generation failed", status:"error", message:String(e).slice(0,100) }); }
-    genStateRef.current?.({ running: false, step: 0 });
+      strategyRef.current?.({ ...strategy,
+        northStar: { ...nsData, updatedAt:new Date().toISOString() },
+        bets: newBets,
+        insights: strategy?.insights??[],
+        history: [...historyLog, saveHistory("Strategy generated", `North star set · ${newBets.length} bets · ${phasesData.length} phases`)],
+        phases: phasesData,
+        infrastructure: { warmupStartDate:infra.warmupStartDate||new Date().toISOString().split("T")[0], mailboxCount:parseInt(cd.co_mailbox_count||"200"), dailyCapacity:parseInt(cd.co_mailbox_count||"200")*30 },
+        benchmarks: { baseReplyRate:3, baseInterestedRate:1, baseBounceMax:3, baseAutoReplyMax:30, baseMeetingRate:0.5 },
+        generatedAt: new Date().toISOString(), status:"active",
+      });
+      toastRef.current?.({ title:"Strategy generated", status:"success", message:`North Star set · ${newBets.length} bets · ${phasesData.length} phases` });
+    } catch(e) { console.error("Strategy generation failed:", e); toastRef.current?.({ title:"Generation failed", status:"error", message:String(e).slice(0,100) }); }
+    genStateRef.current?.({ running:false, step:0 });
   };
 
-  // Auto-run trigger — fired from the DFY panel after purchase so the CSM doesn't have to manually click.
-  // Only fires if there's no existing strategy (never overwrites) and nothing is currently generating.
-  const autoRunFiredRef = useRef(false);
-  useEffect(() => {
-    if (!autoRun) return;
-    if (autoRunFiredRef.current) return;
-    if (generating) return;
-    if ((strategy?.phases?.length || 0) > 0) {
-      // Strategy already exists — just consume the flag without re-generating
-      autoRunFiredRef.current = true;
-      onAutoRunConsumed?.();
-      return;
-    }
-    if (products.length === 0 || personas.length === 0) {
-      // Can't generate without the prerequisites; consume flag silently
-      autoRunFiredRef.current = true;
-      onAutoRunConsumed?.();
-      return;
-    }
-    autoRunFiredRef.current = true;
-    onAutoRunConsumed?.();
-    // Kick it off
-    generateRoadmap();
-  }, [autoRun, generating, strategy?.phases?.length, products.length, personas.length]);
-
-  const updatePhaseStatus = (phaseId: string, status: string) => {
-    const updated = { ...strategy, phases: phases.map((p:any) => p.id === phaseId ? { ...p, status } : p) };
-    onStrategyChange(updated);
+  // ── Regenerate pending phases only (preserves in-progress/completed) ──
+  const regeneratePendingPhases = async () => {
+    const pendingPhases = phases.filter((p:any)=>p.status==="pending");
+    if (!pendingPhases.length) { toastRef.current?.({ title:"Nothing to regenerate", status:"info", message:"No pending phases." }); return; }
+    const lockedPhases = phases.filter((p:any)=>p.status!=="pending");
+    if (!confirm(`Regenerate ${pendingPhases.length} pending phase${pendingPhases.length!==1?"s":""}? ${lockedPhases.length} phase${lockedPhases.length!==1?"s":""} will be preserved.`)) return;
+    setGenerating(true); setGenStep(1);
+    try {
+      const cd = companyData as Record<string,string>;
+      const prodList = products.slice(0,5).map((p:any)=>`${p.name}: ${(p.problemsSolved||"").slice(0,80)}`).join("; ");
+      const persList = personas.slice(0,5).map((p:any)=>`${p.name} (${p.data?.buyer||"?"})`).join("; ");
+      const lockedSummary = lockedPhases.map((p:any)=>`- Phase ${p.number||p.id}: "${p.name}" (weeks ${p.startWeek}-${p.endWeek}, ${p.status})`).join("\n");
+      const pendingSummary = pendingPhases.map((p:any)=>`- Phase ${p.number||p.id}: "${p.name}" (weeks ${p.startWeek}-${p.endWeek})`).join("\n");
+      setGenStep(2);
+      const raw = await callAI(
+        `Regenerate only these pending phases. Locked phases below must not be recreated.
+COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal}. PRODUCTS: ${prodList}. PERSONAS: ${persList}.
+LOCKED: ${lockedSummary||"(none)"}
+REGENERATE: ${pendingSummary}
+Return ONLY JSON array of ${pendingPhases.length} phase objects with exact same id/number/startWeek/endWeek. No markdown.`,
+        "Return ONLY valid JSON array.", 4000, { useFullContext:true }
+      );
+      let newPhases: any[] = [];
+      try { newPhases = JSON.parse(raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim()); } catch { throw new Error("Could not parse response"); }
+      if (!Array.isArray(newPhases)||!newPhases.length) throw new Error("No phases returned");
+      setGenStep(3);
+      for (const phase of newPhases) {
+        phase.status="pending";
+        for (const c of (phase.campaigns||[])) {
+          const isEmail=c.type==="cold_email"||c.type==="retargeting";
+          c.benchmarks={ replyRate:isEmail?3:c.type?.includes("linkedin")?15:5, interestedRate:isEmail?1:c.type?.includes("linkedin")?5:2, bounceRate:isEmail?3:null, autoReplyRate:isEmail?30:null, meetingRate:isEmail?0.5:1 };
+          c.decisionTree={ ifMet:c.ifBenchmarksMet||(isEmail?"Scale 50%. Next persona.":"Increase volume."), ifNotMet:c.ifBenchmarksNotMet||(isEmail?"Day 1-3: Subjects. Day 4-6: Opening. Day 7-9: CTA.":"New copy."), ifFailed:"3 iterations → pause. Pivot." };
+          if (!c.testPeriod) c.testPeriod=isEmail?"3-5 days":"5-7 days";
+          if (!c.testMetrics) c.testMetrics=isEmail?"Reply >1%, Bounce <3%":"Accept >30%, Reply >10%";
+        }
+      }
+      setGenStep(4);
+      const merged = phases.map((p:any)=>{ if(p.status!=="pending") return p; const r=newPhases.find((np:any)=>String(np.id)===String(p.id)||String(np.number)===String(p.number)); return r?{...r,id:p.id,number:p.number,status:"pending"}:p; });
+      strategyRef.current?.({ ...strategy, phases:merged, regeneratedAt:new Date().toISOString() });
+      toastRef.current?.({ title:"Phases regenerated", status:"success", message:`${newPhases.length} rebuilt · ${lockedPhases.length} preserved` });
+    } catch(e) { console.error(e); toastRef.current?.({ title:"Regeneration failed", status:"error", message:String(e).slice(0,100) }); }
+    genStateRef.current?.({ running:false, step:0 });
   };
 
-  // Client-facing strategy export — clean markdown suitable for pasting into a shared doc.
-  // Strips internal status codes, iteration history, intentTier flags, phase IDs — keeps only
-  // what the client should see.
+  const updatePhaseStatus = (phaseId:string, status:string) => {
+    strategyRef.current?.({ ...strategy, phases:phases.map((p:any)=>p.id===phaseId?{...p,status}:p) });
+  };
+
   const exportStrategyForClient = () => {
     const cd = companyData as Record<string,string>;
-    const clientName = cd.co_name || "Client";
     const today = new Date().toLocaleDateString(undefined, { month:"long", day:"numeric", year:"numeric" });
-    const lines: string[] = [];
-    lines.push(`# Outreach Strategy — ${clientName}`);
-    lines.push(`_Prepared ${today}_`);
-    lines.push("");
-    if (cd.co_goal) lines.push(`**Goal:** ${cd.co_goal}`);
-    if (cd.co_industry) lines.push(`**Industry:** ${cd.co_industry}`);
+    const lines: string[] = [`# Outreach Strategy — ${cd.co_name||"Client"}`, `_Prepared ${today}_`, ""];
+    if (northStar) {
+      lines.push("## Strategic Direction");
+      if (northStar.icp) lines.push(`**ICP:** ${northStar.icp}`);
+      if (northStar.corePain) lines.push(`**Core Pain:** ${northStar.corePain}`);
+      if (northStar.goal90Days) lines.push(`**90-Day Goal:** ${northStar.goal90Days}`);
+      lines.push("");
+    }
     if (cd.co_deal) lines.push(`**Deal Size:** ${cd.co_deal}`);
     if (cd.co_cycle) lines.push(`**Sales Cycle:** ${cd.co_cycle}`);
     lines.push("");
-
-    // Infrastructure
-    const mailboxes = parseInt(cd.co_mailbox_count || "0") || 0;
-    const liAccts = parseInt(cd.co_linkedin_accounts || "0") || 0;
-    if (mailboxes || liAccts) {
-      lines.push(`## Infrastructure`);
-      if (mailboxes) lines.push(`- **${mailboxes} email mailboxes** — ${mailboxes * 30} emails/day capacity after warmup`);
-      if (liAccts) lines.push(`- **${liAccts} LinkedIn account${liAccts!==1?"s":""}** — ${liAccts * 10} connections + ${liAccts * 10} messages/day capacity`);
+    const mailboxes=parseInt(cd.co_mailbox_count||"0")||0;
+    const liAccts=parseInt(cd.co_linkedin_accounts||"0")||0;
+    if (mailboxes||liAccts) {
+      lines.push("## Infrastructure");
+      if (mailboxes) lines.push(`- ${mailboxes} email mailboxes — ${mailboxes*30} emails/day capacity after warmup`);
+      if (liAccts) lines.push(`- ${liAccts} LinkedIn account${liAccts!==1?"s":""} — ${liAccts*10} connections + ${liAccts*10} messages/day`);
       lines.push("");
     }
-
-    // Phases
-    if (phases.length) {
-      lines.push(`## 12-Month Roadmap`);
-      lines.push(`${phases.length} phase${phases.length!==1?"s":""} across 12 months: 3-month proof-of-concept phase, then 9-month scale & optimization.`);
+    if (activeBets.length) {
+      lines.push("## Active Hypotheses");
+      activeBets.forEach((b:any) => lines.push(`- ${b.hypothesis}`));
       lines.push("");
-      phases.forEach((p:any, idx:number) => {
-        lines.push(`### Phase ${idx + 1}: ${p.name}`);
-        const weeks = (p.startWeek && p.endWeek) ? `Weeks ${p.startWeek}–${p.endWeek}` : "";
-        if (weeks) lines.push(`_${weeks}_`);
-        if (p.goal) lines.push(`\n**Goal:** ${p.goal}`);
-        const camps = p.campaigns || [];
-        if (camps.length) {
-          lines.push(`\n**Campaigns (${camps.length}):**`);
-          camps.forEach((c:any) => {
-            const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
-            const parts: string[] = [];
-            parts.push(`**${typeObj.label}**`);
-            if (c.personaName) parts.push(`targeting ${c.personaName}`);
-            if (c.productName) parts.push(`for ${c.productName}`);
-            if (c.offerTier) parts.push(`(${c.offerTier} CTA)`);
-            lines.push(`- ${parts.join(" ")}`);
-            if (c.goal) lines.push(`  - Goal: ${c.goal}`);
-            if (c.duration || c.dailyVolume) lines.push(`  - ${c.duration || ""}${c.duration && c.dailyVolume ? " · " : ""}${c.dailyVolume ? `${c.dailyVolume}/day` : ""}`);
-          });
-        }
+    }
+    if (phases.length) {
+      lines.push("## Campaign Roadmap");
+      phases.forEach((p:any,i:number)=>{
+        lines.push(`### Phase ${i+1}: ${p.name}`);
+        if (p.goal) lines.push(`Goal: ${p.goal}`);
+        (p.campaigns||[]).forEach((c:any)=>{
+          const t=CAMPAIGN_TYPES.find((x:any)=>x.id===c.type)||CAMPAIGN_TYPES[0];
+          lines.push(`- ${t.label}: ${c.personaName||"All"} · ${c.productName||"All"} · ${c.offerTier||"soft"} CTA · ${c.duration||""}`);
+        });
         lines.push("");
       });
     }
-
-    // Benchmarks
-    const bm = strategy?.benchmarks;
-    if (bm) {
-      lines.push(`## Success Benchmarks`);
-      if (bm.baseReplyRate) lines.push(`- Reply rate: ${bm.baseReplyRate}%+ (healthy)`);
-      if (bm.baseInterestedRate) lines.push(`- Interested reply rate: ${bm.baseInterestedRate}%+`);
-      if (bm.baseMeetingRate) lines.push(`- Meeting rate: ${bm.baseMeetingRate}%+`);
-      lines.push("");
-    }
-
-    lines.push(`---`);
-    lines.push(`_This roadmap is a living document — it will be reviewed and adjusted monthly based on campaign performance._`);
-
-    const md = lines.join("\n");
-    navigator.clipboard.writeText(md);
-    toastRef.current?.({ title:"Strategy exported", status:"success", message:`Markdown copied — ${phases.length} phases · paste into your client deliverable` });
+    lines.push("---"); lines.push("_This strategy is a living document — updated as campaigns produce results._");
+    navigator.clipboard.writeText(lines.join("\n"));
+    toastRef.current?.({ title:"Strategy exported", status:"success", message:"Markdown copied to clipboard" });
   };
 
-  // Regenerate ONLY pending phases — preserves in-progress, completed, skipped ones.
-  // Passes the preserved phases to the AI as context so the new ones sequence correctly.
-  const regeneratePendingPhases = async () => {
-    const pendingPhases = phases.filter((p:any) => p.status === "pending");
-    if (pendingPhases.length === 0) {
-      toastRef.current?.({ title:"Nothing to regenerate", status:"info", message:"No phases are currently marked Pending." });
-      return;
-    }
-    const lockedPhases = phases.filter((p:any) => p.status !== "pending");
-    if (!confirm(`Regenerate ${pendingPhases.length} pending phase${pendingPhases.length!==1?"s":""}? ${lockedPhases.length} phase${lockedPhases.length!==1?"s":""} (in progress / completed / skipped) will be preserved.`)) return;
+  // ── autoRun (from DFY purchase flow) ──
+  const autoRunFiredRef = useRef(false);
+  useEffect(()=>{
+    if (!autoRun||autoRunFiredRef.current||generating) return;
+    if (strategy?.northStar||(strategy?.phases?.length||0)>0) { autoRunFiredRef.current=true; onAutoRunConsumed?.(); return; }
+    if (products.length===0||personas.length===0) { autoRunFiredRef.current=true; onAutoRunConsumed?.(); return; }
+    autoRunFiredRef.current=true; onAutoRunConsumed?.();
+    generateStrategy();
+  }, [autoRun, generating, strategy?.northStar, strategy?.phases?.length, products.length, personas.length]);
 
-    setGenerating(true);
-    setGenStep(1);
-    try {
-      const cd = companyData as Record<string,string>;
-      const prodList = products.slice(0,5).map((p:any)=>`${p.name}: ${(p.problemsSolved||"").slice(0,80)}`).join("; ");
-      const persList = personas.slice(0,5).map((p:any)=>`${p.name} (${p.data?.buyer||"?"})`).join("; ");
+  // ═════════════════════ RENDER ═════════════════════════════════════════════
 
-      // Build a summary of what's already in flight so the AI can pick up where it left off
-      const lockedSummary = lockedPhases.map((p:any) => `- Phase ${p.number || p.id}: "${p.name}" (weeks ${p.startWeek}-${p.endWeek}, status: ${p.status}) — ${(p.campaigns||[]).length} campaigns${(p.campaigns||[]).length?": "+(p.campaigns||[]).map((c:any)=>c.type||"").filter(Boolean).join(", "):""}`).join("\n");
-      const pendingSummary = pendingPhases.map((p:any) => `- Phase ${p.number || p.id}: "${p.name}" (weeks ${p.startWeek}-${p.endWeek}) — currently ${(p.campaigns||[]).length} campaigns`).join("\n");
-
-      setGenStep(2);
-      const phasesRaw = await callAI(
-        `You are regenerating ONLY the pending phases of a campaign strategy. The preserved phases are locked — do not recreate them.
-
-COMPANY: ${cd.co_name||"?"} (${cd.co_industry||"?"}). Deal: ${cd.co_deal||"$5K-25K"}. Goal: ${cd.co_goal||"10-20"} meetings/mo.
-PRODUCTS: ${prodList||"general"}.
-PERSONAS: ${persList||"general"}.
-${rtsLists.length ? `RTS LISTS: ${rtsLists.length} high-intent list${rtsLists.length!==1?"s":""} available — ${rtsLists.slice(0,3).map((l:any)=>l.name).join(", ")}\n` : ""}
-LOCKED PHASES (already in progress or completed — do NOT regenerate):
-${lockedSummary || "(none)"}
-
-PENDING PHASES TO REGENERATE (produce one replacement for each, matching its number/week range):
-${pendingSummary}
-
-Produce replacements for ONLY the pending phases. Your replacements should sequence naturally AFTER the locked phases — learn from what's already been done and adjust accordingly. For example, if an early cold-email phase is already "in progress", later phases should lean into channels that complement (LinkedIn warm, retargeting, RTS-lead follow-up) rather than stacking more cold email.
-
-Return ONLY a JSON array of ${pendingPhases.length} phase objects, in the same shape as before. Each phase keeps its id and number so it can be merged back:
-[{"id":"<keep exact id from pending list>","number":<keep>,"name":"","startWeek":<keep>,"endWeek":<keep>,"goal":"","campaigns":[{"id":"","type":"cold_email|linkedin_message|linkedin_connection|retargeting|rts_calling|rts_high_intent","intentTier":"cold|high","personaName":"","productName":"","offerTier":"soft|medium|hard","duration":"","dailyVolume":100,"goal":"","testPeriod":"","testMetrics":"","ifBenchmarksMet":"","ifBenchmarksNotMet":"","rtsListName":""}]}]
-
-Raw JSON only, no markdown.`,
-        "Return ONLY valid JSON array. No markdown.", 4000,
-        { useFullContext: true }
-      );
-      let newPendingPhases: any[];
-      try {
-        newPendingPhases = JSON.parse(phasesRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
-      } catch {
-        throw new Error("Could not parse regeneration response");
-      }
-      if (!Array.isArray(newPendingPhases) || newPendingPhases.length === 0) throw new Error("No phases returned");
-
-      setGenStep(3);
-      // Enrich each regenerated phase with benchmarks + decision trees (same as initial generation)
-      for (const phase of newPendingPhases) {
-        phase.status = "pending";
-        for (const c of (phase.campaigns||[])) {
-          const isEmail = c.type === "cold_email" || c.type === "retargeting";
-          c.benchmarks = {
-            replyRate: isEmail ? 3 : c.type?.includes("linkedin") ? 15 : 5,
-            interestedRate: isEmail ? 1 : c.type?.includes("linkedin") ? 5 : 2,
-            bounceRate: isEmail ? 3 : null,
-            autoReplyRate: isEmail ? 30 : null,
-            meetingRate: isEmail ? 0.5 : 1,
-          };
-          c.decisionTree = {
-            ifMet: c.ifBenchmarksMet || (isEmail ? "Scale daily volume by 50%. Extend duration. Launch parallel campaign for next persona." : "Increase volume. Begin multi-channel sequence."),
-            ifNotMet: c.ifBenchmarksNotMet || (isEmail ? "Day 1-3: Test 2 new subject lines. Day 4-6: Test new opening. Day 7-9: Test different CTA." : "Test new copy. Adjust targeting filters."),
-            ifFailed: "After 3 test iterations → pause. Pivot persona × product or switch channel.",
-          };
-          if (!c.testPeriod) c.testPeriod = isEmail ? "3-5 days" : "5-7 days";
-          if (!c.testMetrics) c.testMetrics = isEmail ? "Reply >1%, Interested >0.5%, Bounce <3%" : "Accept >30%, Reply >10%";
-        }
-      }
-
-      setGenStep(4);
-      // Merge: keep locked phases, replace pending phases by id match
-      const mergedPhases = phases.map((p:any) => {
-        if (p.status !== "pending") return p; // keep locked
-        const replacement = newPendingPhases.find((np:any) => String(np.id) === String(p.id) || String(np.number) === String(p.number));
-        return replacement ? { ...replacement, id: p.id, number: p.number, status: "pending" } : p;
-      });
-
-      strategyRef.current?.({ ...strategy, phases: mergedPhases, regeneratedAt: new Date().toISOString() });
-      toastRef.current?.({ title:"Pending phases regenerated", status:"success", message: `${newPendingPhases.length} phase${newPendingPhases.length!==1?"s":""} rebuilt · ${lockedPhases.length} preserved` });
-    } catch (e) {
-      console.error("Regenerate pending phases failed:", e);
-      toastRef.current?.({ title:"Regeneration failed", status:"error", message: String(e).slice(0,100) });
-    }
-    genStateRef.current?.({ running: false, step: 0 });
-  };
-
-  const inputSt: any = { padding:"7px 10px", borderRadius:8, border:`1px solid ${_C.border}`,
-    background:_C.faint, color:_C.text, fontSize:12, fontFamily:body, outline:"none", width:"100%" };
 
   return (
     <div style={{ padding:"28px 32px", overflowY:"auto", height:"100%" }}>
+      <style>{`@keyframes stratSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}} @keyframes stratPulse{0%,100%{opacity:.5}50%{opacity:1}} @keyframes fadeSlide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
-      {/* Header + Generate */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:28 }}>
+      {/* ── Header ── */}
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28 }}>
         <div>
-          <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Outreach Strategy</h2>
+          <h2 style={{ fontSize:22, fontWeight:800, color:_C.text, fontFamily:head, margin:"0 0 4px" }}>Strategy</h2>
           <p style={{ fontSize:13, color:_C.muted, fontFamily:body, margin:0 }}>
-            {phases.length > 0 && phases.some((p:any) => p.startWeek <= 6)
-              ? "Launch plan (weeks 1-6) + evolving roadmap. Updates as campaign data comes in."
-              : "Generate a launch plan for the first 45 days, then expand as you learn what works."}
+            Set the north star, track what you're testing, and let campaign results evolve the plan.
           </p>
         </div>
-        <div style={{ display:"flex", gap:10 }}>
-          {phases.length > 0 && (
+        <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+          {hasAnyStrategy && (
             <button onClick={exportStrategyForClient}
-              style={{ padding:"10px 18px", borderRadius:12, border:`1px solid ${_C.border}`,
-                background: _C.canvas, color: _C.text,
-                fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}
-              title="Export a client-facing markdown summary of the roadmap">
-              📤 Export for Client
+              style={{ padding:"9px 16px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.text, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+              Export
             </button>
           )}
-          {phases.length > 0 && phases.some((p:any) => p.status === "pending") && (
-            <button onClick={() => regeneratePendingPhases()} disabled={generating}
-              style={{ padding:"10px 18px", borderRadius:12, border:`1px solid ${_C.border}`,
-                background: _C.canvas, color: _C.text,
-                fontSize:12, fontFamily:head, fontWeight:600, cursor:generating?"wait":"pointer",
-                opacity:generating?0.5:1 }}
-              title="Regenerate only phases still marked Pending. In-progress, completed, and skipped phases are preserved.">
-              ↻ Regenerate Pending
-            </button>
-          )}
-          <button onClick={generateRoadmap} disabled={generating}
-            style={{ padding:"10px 24px", borderRadius:12, border:"none",
-              background:generating?_C.muted:_C.accent, color:"#fff",
-              fontSize:13, fontFamily:head, fontWeight:700, cursor:generating?"wait":"pointer",
-              boxShadow:`0 4px 14px ${_C.accent}44`, opacity:generating?0.7:1 }}>
-            {generating ? "◌ Generating roadmap..." : phases.length > 0 ? "◎ Regenerate All" : "◎ Generate Roadmap"}
+          <button onClick={generateStrategy} disabled={generating}
+            style={{ padding:"9px 20px", borderRadius:10, border:"none", background:generating?_C.muted:_C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:generating?"wait":"pointer", opacity:generating?0.7:1, boxShadow:`0 3px 10px ${_C.accent}33` }}>
+            {generating?"◌ Generating…":hasAnyStrategy?"↻ Regenerate":"◎ Generate Strategy"}
           </button>
         </div>
       </div>
 
-      {/* Infrastructure banner */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:16, marginBottom:28 }}>
-        {[
-          { label:"Email Status", value:emailReady?"Ready":"Warming Up", color:emailReady?_C.green:_C.amber,
-            sub:emailReady?"All mailboxes active":`${warmupDaysLeft} days remaining` },
-          { label:"LinkedIn", value:"Ready", color:_C.green, sub:"Available immediately" },
-          { label:"RTS Calling", value:"Ready", color:_C.green, sub:"Available immediately" },
-          { label:"Phases", value:phases.length>0?`${phases.filter((p:any)=>p.status==="completed").length}/${phases.length}`:"—", color:_C.accent,
-            sub:phases.length>0?`${phases.filter((p:any)=>p.status==="in_progress").length} in progress · ${phases.filter((p:any)=>p.status==="pending").length} pending`:"Generate to start" },
-        ].map(c => (
-          <div key={c.label} style={{ padding:"16px 20px", borderRadius:14, background:_C.canvas,
-            border:`1px solid ${_C.border}`, boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
-            <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, fontWeight:600, letterSpacing:.4, marginBottom:6 }}>{c.label.toUpperCase()}</div>
-            <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:c.color, marginBottom:2 }}>{c.value}</div>
-            <div style={{ fontSize:11, fontFamily:body, color:_C.muted }}>{c.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Phases or generating state */}
       {generating ? (
-        /* Inline progress animation */
+        /* ── Spinner ── */
         <div style={{ textAlign:"center", padding:"60px 20px" }}>
-          <style>{`@keyframes stratSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}} @keyframes stratPulse{0%,100%{opacity:.5}50%{opacity:1}}`}</style>
-          <div style={{ position:"relative", width:100, height:100, margin:"0 auto 28px" }}>
-            <div style={{ width:100, height:100, borderRadius:"50%", border:`3px solid ${_C.faint}`,
-              borderTopColor:_C.accent, animation:"stratSpin 1.2s linear infinite" }} />
-            <div style={{ position:"absolute", inset:16, borderRadius:"50%", background:_C.canvas,
-              display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ fontSize:28 }}>{[" 🔍","🏗️","🎯","✓"][genStep-1] || "◎"}</span>
+          <div style={{ position:"relative", width:80, height:80, margin:"0 auto 24px" }}>
+            <div style={{ width:80, height:80, borderRadius:"50%", border:`3px solid ${_C.faint}`, borderTopColor:_C.accent, animation:"stratSpin 1.2s linear infinite" }} />
+            <div style={{ position:"absolute", inset:12, borderRadius:"50%", background:_C.canvas, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <span style={{ fontSize:22 }}>{["🧭","🎯","◎","✓"][genStep-1]||"◎"}</span>
             </div>
           </div>
-          <div style={{ fontSize:20, fontWeight:800, fontFamily:head, color:_C.text, marginBottom:8 }}>
-            {["","Analyzing your data…","Building campaign phases…","Adding decision trees…","Finalizing strategy…"][genStep] || "Generating…"}
+          <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:_C.text, marginBottom:8 }}>
+            {["","Setting the north star…","Building strategic bets…","Planning campaigns…","Assembling strategy…"][genStep]||"Generating…"}
           </div>
-          <div style={{ fontSize:13, color:_C.muted, fontFamily:body, marginBottom:24 }}>
-            {["","Reviewing products, personas, and infrastructure","Mapping campaign types, timings, and volumes","Defining success criteria and pivot plans","Assembling your 12-month roadmap"][genStep] || ""}
+          <div style={{ fontSize:13, color:_C.muted, fontFamily:body }}>
+            {["","Defining ICP, core pain, and 90-day goal","Creating testable hypotheses from your data","Mapping out the first campaign roadmap","Putting it all together"][genStep]||""}
           </div>
-          {/* Step indicators */}
-          <div style={{ display:"flex", justifyContent:"center", gap:12 }}>
-            {["Analyze","Phases","Decisions","Finalize"].map((label, i) => {
-              const stepIdx = i + 1;
-              const isDone = genStep > stepIdx;
-              const isActive = genStep === stepIdx;
+          <div style={{ display:"flex", justifyContent:"center", gap:12, marginTop:24 }}>
+            {["North Star","Bets","Campaign Plan","Done"].map((label,i)=>{
+              const si=i+1; const isDone=genStep>si; const isActive=genStep===si;
               return (
                 <div key={label} style={{ display:"flex", alignItems:"center", gap:6 }}>
-                  <div style={{ width:24, height:24, borderRadius:8,
-                    background: isDone ? _C.green : isActive ? `${_C.accent}22` : _C.faint,
-                    border: isActive ? `2px solid ${_C.accent}` : isDone ? "none" : `1px solid ${_C.border}`,
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    animation: isActive ? "stratPulse 1.5s ease-in-out infinite" : undefined }}>
-                    {isDone ? <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>
-                      : <span style={{ fontSize:10, color:isActive?_C.accent:_C.muted, fontWeight:600 }}>{stepIdx}</span>}
+                  <div style={{ width:22, height:22, borderRadius:6, background:isDone?_C.green:isActive?`${_C.accent}22`:_C.faint, border:isActive?`2px solid ${_C.accent}`:isDone?"none":`1px solid ${_C.border}`, display:"flex", alignItems:"center", justifyContent:"center", animation:isActive?"stratPulse 1.5s ease-in-out infinite":undefined }}>
+                    {isDone?<span style={{ color:"#fff", fontSize:10, fontWeight:700 }}>✓</span>:<span style={{ fontSize:9, color:isActive?_C.accent:_C.muted, fontWeight:600 }}>{si}</span>}
                   </div>
-                  <span style={{ fontSize:11, fontFamily:head, fontWeight:isActive?700:400,
-                    color:isActive?_C.accent:isDone?_C.text:_C.muted }}>{label}</span>
-                  {i < 3 && <div style={{ width:20, height:2, background:isDone?_C.green:_C.border, borderRadius:1 }} />}
+                  <span style={{ fontSize:11, fontFamily:head, fontWeight:isActive?700:400, color:isActive?_C.accent:isDone?_C.text:_C.muted }}>{label}</span>
+                  {i<3&&<div style={{ width:16, height:2, background:isDone?_C.green:_C.border, borderRadius:1 }} />}
                 </div>
               );
             })}
           </div>
         </div>
-      ) : phases.length === 0 ? (
+      ) : !hasAnyStrategy ? (
+        /* ── Empty state ── */
         <div style={{ textAlign:"center", padding:"60px 20px" }}>
-          <div style={{ fontSize:48, marginBottom:16, opacity:.15 }}>◎</div>
-          <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>No strategy generated yet</div>
-          <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, maxWidth:420, margin:"0 auto", marginBottom:20 }}>
-            Fill in your company profile, products, and personas first. Then click "Generate Roadmap" to create a phased 12-month campaign plan.
+          <div style={{ fontSize:44, marginBottom:16, opacity:0.1 }}>🧭</div>
+          <div style={{ fontSize:18, fontWeight:700, color:_C.text, fontFamily:head, marginBottom:8 }}>No strategy yet</div>
+          <div style={{ fontSize:13, color:_C.muted, fontFamily:body, lineHeight:1.6, maxWidth:400, margin:"0 auto 20px" }}>
+            Click "Generate Strategy" to set a north star, create strategic bets, and build a campaign plan — all in one shot.
           </div>
           <div style={{ fontSize:12, fontFamily:body, color:_C.muted }}>
             {products.length} product{products.length!==1?"s":""} · {personas.length} persona{personas.length!==1?"s":""}
           </div>
         </div>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-          {phases.map((phase: any, pi: number) => {
-            const isExpanded = expandedPhase === phase.id;
-            const campaigns = phase.campaigns || [];
-            const statusObj = PHASE_STATUSES.find(s => s.id === phase.status) || PHASE_STATUSES[0];
-            // Sync indicator — live = campaign exists AND has sending activity uploaded (sent > 0).
-            // Draft = campaign exists but no sending activity yet.
-            let liveInPhase = 0, draftInPhase = 0;
-            (phase.campaigns || []).forEach((_c:any, ci:number) => {
-              const phaseSpecId = `${phase.id || phase.number}_${ci}`;
-              const linked = (workspaceCampaigns||[]).find((rc:any) => rc.strategyPhaseId === phaseSpecId);
-              if (!linked) return;
-              if ((linked.performance?.metrics?.sent || 0) > 0) liveInPhase++;
-              else draftInPhase++;
-            });
-            return (
-              <div key={phase.id} style={{ background:_C.canvas, borderRadius:16, border:`1px solid ${_C.border}`,
-                overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)", transition:"box-shadow .2s",
-                opacity: phase.status === "skipped" ? 0.55 : 1 }}>
-                {/* Phase header */}
-                <div onClick={()=>setExpandedPhase(isExpanded?null:phase.id)}
-                  style={{ padding:"18px 24px", cursor:"pointer", display:"flex", alignItems:"center", gap:16,
-                    borderBottom: isExpanded ? `1px solid ${_C.border}` : "none" }}
-                  onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=_C.faint}
-                  onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="transparent"}>
-                  <div style={{ width:36, height:36, borderRadius:10, background:`${statusObj.color}15`,
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:14, fontWeight:700, fontFamily:mono, color:statusObj.color }}>{pi+1}</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      <div style={{ fontSize:15, fontWeight:700, fontFamily:head, color:_C.text }}>{phase.name}</div>
-                      {campaigns.length > 0 && (
-                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4,
-                          background: liveInPhase === campaigns.length ? `${_C.green}15` : liveInPhase > 0 ? `${_C.amber}15` : _C.faint,
-                          color: liveInPhase === campaigns.length ? _C.green : liveInPhase > 0 ? _C.amber : _C.muted }}>
-                          {liveInPhase}/{campaigns.length} live{draftInPhase > 0 ? ` · ${draftInPhase} draft` : ""}
-                        </span>
-                      )}
+        <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
+
+          {/* ══ SECTION 1: NORTH STAR ══ */}
+          <section>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:15 }}>🧭</span>
+                <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>North Star</span>
+                <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, background:_C.faint, padding:"2px 7px", borderRadius:4, letterSpacing:.3 }}>CURRENT OPERATING THESIS</span>
+              </div>
+              {!editingNorthStar && (
+                <button onClick={startEditNorthStar}
+                  style={{ padding:"5px 12px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  Edit
+                </button>
+              )}
+            </div>
+
+            {editingNorthStar && northStarDraft ? (
+              <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.accent}44`, padding:"20px 24px", animation:"fadeSlide .2s ease" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
+                  {([
+                    { key:"icp",            label:"ICP — Who we believe the buyer is",       ph:"VP of Sales at Series B SaaS, 50-200 employees, scaling SDR team…" },
+                    { key:"corePain",       label:"Core Pain — What they need solved",        ph:"Can't scale outbound without burning through reps…" },
+                    { key:"primaryChannel", label:"Primary Channel",                          ph:"email / linkedin / both" },
+                    { key:"channelReason",  label:"Why This Channel First",                   ph:"Email reaches this persona faster; LinkedIn warms before email…" },
+                  ] as {key:string;label:string;ph:string}[]).map(f=>(
+                    <div key={f.key}>
+                      <label style={labelSt}>{f.label.toUpperCase()}</label>
+                      <input value={northStarDraft[f.key]||""} onChange={e=>setNorthStarDraft((d:any)=>({...d,[f.key]:e.target.value}))} placeholder={f.ph} style={inputSt} />
                     </div>
-                    <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>
-                      Weeks {phase.startWeek}–{phase.endWeek} · {campaigns.length} campaign{campaigns.length!==1?"s":""}
+                  ))}
+                </div>
+                <div style={{ marginBottom:14 }}>
+                  <label style={labelSt}>90-DAY SUCCESS DEFINITION</label>
+                  <input value={northStarDraft.goal90Days||""} onChange={e=>setNorthStarDraft((d:any)=>({...d,goal90Days:e.target.value}))}
+                    placeholder="15 qualified meetings, 2 deals in pipeline, reply rate >3% on primary campaign…" style={inputSt} />
+                </div>
+                <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+                  <button onClick={()=>{setEditingNorthStar(false);setNorthStarDraft(null);}}
+                    style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+                  <button onClick={saveNorthStar}
+                    style={{ padding:"7px 16px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>Save North Star</button>
+                </div>
+              </div>
+            ) : northStar ? (
+              <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, padding:"20px 24px" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom: northStar.goal90Days ? 14 : 0 }}>
+                  {([
+                    { key:"icp",            label:"ICP",              color:_C.accent },
+                    { key:"corePain",       label:"Core Pain",        color:_C.blue   },
+                    { key:"primaryChannel", label:"Primary Channel",  color:_C.green  },
+                    { key:"channelReason",  label:"Why This Channel", color:_C.muted  },
+                  ] as {key:string;label:string;color:string}[]).map(f=>northStar[f.key]&&(
+                    <div key={f.key}>
+                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:4 }}>{f.label.toUpperCase()}</div>
+                      <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.5 }}>{northStar[f.key]}</div>
+                    </div>
+                  ))}
+                </div>
+                {northStar.goal90Days&&(
+                  <div style={{ background:`${_C.accent}08`, borderRadius:10, padding:"10px 14px", border:`1px solid ${_C.accent}22` }}>
+                    <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.accent, letterSpacing:.4, marginBottom:3 }}>90-DAY GOAL</div>
+                    <div style={{ fontSize:13, fontFamily:body, color:_C.text }}>{northStar.goal90Days}</div>
+                  </div>
+                )}
+                {northStar.updatedAt&&<div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginTop:10 }}>Last updated {new Date(northStar.updatedAt).toLocaleDateString()}</div>}
+              </div>
+            ) : (
+              <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, padding:"24px", textAlign:"center" }}>
+                <div style={{ fontSize:13, color:_C.muted, fontFamily:body, marginBottom:12 }}>No north star set. Generate strategy or add one manually.</div>
+                <button onClick={startEditNorthStar}
+                  style={{ padding:"7px 16px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  + Set Manually
+                </button>
+              </div>
+            )}
+          </section>
+
+          {/* ══ SECTION 2: ACTIVE BETS ══ */}
+          <section>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:15 }}>🎯</span>
+                <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Active Bets</span>
+                {activeBets.length>0&&<span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.blue, background:`${_C.blue}15`, padding:"2px 7px", borderRadius:4 }}>{activeBets.length} TESTING</span>}
+                {resolvedBets.length>0&&<span style={{ fontSize:9, fontFamily:mono, color:_C.muted, background:_C.faint, padding:"2px 7px", borderRadius:4 }}>{resolvedBets.length} resolved</span>}
+              </div>
+              <button onClick={()=>{setBetDraft({hypothesis:"",channel:"",personaRef:"",angle:"",status:"proving"});setShowBetModal(true);}}
+                style={{ padding:"5px 12px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                + Add Bet
+              </button>
+            </div>
+
+            {bets.length===0 ? (
+              <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, padding:"28px 24px", textAlign:"center" }}>
+                <div style={{ fontSize:13, color:_C.muted, fontFamily:body }}>No bets yet. Generate a strategy or add a hypothesis manually.</div>
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {[...activeBets,...resolvedBets].map((bet:any)=>{
+                  const sc=BET_STATUSES[bet.status as string]||BET_STATUSES.proving;
+                  const linkedCamps=(workspaceCampaigns||[]).filter((c:any)=>(bet.campaignIds||[]).includes(c.id));
+                  const faded=bet.status==="confirmed"||bet.status==="rejected";
+                  return (
+                    <div key={bet.id} style={{ background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`, borderLeft:`4px solid ${sc.color}`, padding:"16px 20px", opacity:faded?0.6:1, animation:"fadeSlide .2s ease" }}>
+                      <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:6 }}>
+                            <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:`${sc.color}18`, color:sc.color }}>{sc.label.toUpperCase()}</span>
+                            {bet.channel&&<span style={{ fontSize:9, fontFamily:mono, color:_C.muted, background:_C.faint, padding:"2px 7px", borderRadius:4 }}>{bet.channel.toUpperCase()}</span>}
+                            {bet.personaRef&&<span style={{ fontSize:9, fontFamily:mono, color:_C.muted, background:_C.faint, padding:"2px 7px", borderRadius:4 }}>{bet.personaRef}</span>}
+                          </div>
+                          <div style={{ fontSize:13, fontFamily:body, color:_C.text, lineHeight:1.55 }}>{bet.hypothesis}</div>
+                          {bet.evidence&&<div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, background:_C.faint, borderRadius:7, padding:"6px 10px", marginTop:8 }}><span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.muted }}>EVIDENCE: </span>{bet.evidence}</div>}
+                          {linkedCamps.length>0&&(
+                            <div style={{ display:"flex", gap:5, marginTop:8, flexWrap:"wrap" }}>
+                              {linkedCamps.map((c:any)=><span key={c.id} style={{ fontSize:10, fontFamily:mono, color:_C.accent, background:`${_C.accent}10`, padding:"2px 8px", borderRadius:4 }}>⊕ {c.name}</span>)}
+                            </div>
+                          )}
+                        </div>
+                        {!faded&&(
+                          <div style={{ display:"flex", flexDirection:"column", gap:5, flexShrink:0, minWidth:90 }}>
+                            <select value={bet.status} onChange={e=>saveBet({...bet,status:e.target.value})}
+                              style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.text, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer", outline:"none" }}>
+                              <option value="proving">Proving</option>
+                              <option value="disproving">Disproving</option>
+                              <option value="inconclusive">Inconclusive</option>
+                            </select>
+                            <button onClick={()=>resolveBet(bet.id,"confirmed")}
+                              style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.green}44`, background:`${_C.green}10`, color:_C.green, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                              ✓ Confirm
+                            </button>
+                            <button onClick={()=>resolveBet(bet.id,"rejected")}
+                              style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.muted, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                              ✗ Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Bet modal */}
+            {showBetModal&&betDraft&&(
+              <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}
+                onClick={e=>{if(e.target===e.currentTarget){setShowBetModal(false);setBetDraft(null);}}}>
+                <div style={{ background:_C.canvas, borderRadius:16, padding:"24px 28px", width:520, maxWidth:"90vw", boxShadow:"0 20px 60px rgba(0,0,0,.25)", animation:"fadeSlide .2s ease" }}>
+                  <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:18 }}>{betDraft.id?"Edit Bet":"Add Strategic Bet"}</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
+                    <div>
+                      <label style={labelSt}>HYPOTHESIS</label>
+                      <textarea value={betDraft.hypothesis||""} onChange={e=>setBetDraft((b:any)=>({...b,hypothesis:e.target.value}))}
+                        placeholder="We believe [persona] will respond to [angle] through [channel] because [reason]…"
+                        style={{ ...inputSt, resize:"vertical" as const, minHeight:72 }} />
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      <div>
+                        <label style={labelSt}>CHANNEL</label>
+                        <select value={betDraft.channel||""} onChange={e=>setBetDraft((b:any)=>({...b,channel:e.target.value}))} style={inputSt}>
+                          <option value="">Select…</option>
+                          <option value="email">Email</option>
+                          <option value="linkedin">LinkedIn</option>
+                          <option value="rts">RTS / High-Intent</option>
+                          <option value="both">Email + LinkedIn</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelSt}>PERSONA (optional)</label>
+                        <select value={betDraft.personaRef||""} onChange={e=>setBetDraft((b:any)=>({...b,personaRef:e.target.value}))} style={inputSt}>
+                          <option value="">All personas</option>
+                          {personas.map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={labelSt}>EARLY EVIDENCE (optional)</label>
+                      <input value={betDraft.evidence||""} onChange={e=>setBetDraft((b:any)=>({...b,evidence:e.target.value}))}
+                        placeholder="Signals, early data, or reasoning you already have…" style={inputSt} />
                     </div>
                   </div>
-                  <select value={phase.status} onClick={e=>e.stopPropagation()}
-                    onChange={e=>updatePhaseStatus(phase.id, e.target.value)}
-                    style={{ padding:"5px 10px", borderRadius:8, border:`1px solid ${statusObj.color}44`,
-                      background:`${statusObj.color}11`, color:statusObj.color,
-                      fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", outline:"none" }}>
-                    {PHASE_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                  </select>
-                  <span style={{ fontSize:16, color:_C.muted, transition:"transform .2s",
-                    transform:isExpanded?"rotate(180deg)":"rotate(0)" }}>▾</span>
+                  <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:18 }}>
+                    <button onClick={()=>{setShowBetModal(false);setBetDraft(null);}}
+                      style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+                    <button onClick={()=>saveBet(betDraft)} disabled={!betDraft.hypothesis?.trim()}
+                      style={{ padding:"8px 18px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", opacity:betDraft.hypothesis?.trim()?1:0.5 }}>
+                      Save Bet
+                    </button>
+                  </div>
                 </div>
+              </div>
+            )}
+          </section>
 
-                {/* Phase detail */}
-                {isExpanded && (
-                  <div style={{ padding:"20px 24px", animation:"contentFade .3s ease" }}>
-                    {/* Campaign slots */}
-                    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-                      {campaigns.map((c: any, ci: number) => {
-                        const typeObj = CAMPAIGN_TYPES.find(t => t.id === c.type) || CAMPAIGN_TYPES[0];
-                        const phaseSpecId = `${phase.id || phase.number}_${ci}`;
-                        const linkedCampaign = (workspaceCampaigns || []).find((rc:any) => rc.strategyPhaseId === phaseSpecId);
-                        const isLive = linkedCampaign && (linkedCampaign.performance?.metrics?.sent || 0) > 0;
-                        const firstActivityDate = isLive && linkedCampaign.performance?.lastUpdated
-                          ? new Date(linkedCampaign.performance.lastUpdated).toLocaleDateString()
-                          : null;
+          {/* ══ SECTION 3: LEARNING LOG ══ */}
+          <section>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:15 }}>📊</span>
+                <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Learning Log</span>
+                {pendingInsights.length>0&&<span style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:_C.amber, background:`${_C.amber}15`, padding:"2px 7px", borderRadius:4 }}>{pendingInsights.length} AWAITING REVIEW</span>}
+              </div>
+              <div style={{ display:"flex", gap:7 }}>
+                <button onClick={()=>{setManualInsightDraft({title:"",body:"",type:"new_signal"});setAddingManualInsight(true);}}
+                  style={{ padding:"5px 12px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  + Log Insight
+                </button>
+                <button onClick={surfaceInsights}
+                  style={{ padding:"5px 12px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  ↑ Surface from Campaigns
+                </button>
+              </div>
+            </div>
+
+            {/* Manual insight modal */}
+            {addingManualInsight&&manualInsightDraft&&(
+              <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}
+                onClick={e=>{if(e.target===e.currentTarget){setAddingManualInsight(false);setManualInsightDraft(null);}}}>
+                <div style={{ background:_C.canvas, borderRadius:16, padding:"24px 28px", width:480, maxWidth:"90vw", boxShadow:"0 20px 60px rgba(0,0,0,.25)", animation:"fadeSlide .2s ease" }}>
+                  <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:18 }}>Log Insight</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
+                    <div>
+                      <label style={labelSt}>TYPE</label>
+                      <select value={manualInsightDraft.type||"new_signal"} onChange={e=>setManualInsightDraft((d:any)=>({...d,type:e.target.value}))} style={inputSt}>
+                        <option value="new_signal">New Signal</option>
+                        <option value="confirmed_hypothesis">Confirmed Hypothesis</option>
+                        <option value="disconfirmed_hypothesis">Disconfirmed Hypothesis</option>
+                        <option value="pivot_recommendation">Pivot Recommendation</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelSt}>TITLE</label>
+                      <input value={manualInsightDraft.title||""} onChange={e=>setManualInsightDraft((d:any)=>({...d,title:e.target.value}))} placeholder="What did you learn or observe?" style={inputSt} />
+                    </div>
+                    <div>
+                      <label style={labelSt}>DETAILS (optional)</label>
+                      <textarea value={manualInsightDraft.body||""} onChange={e=>setManualInsightDraft((d:any)=>({...d,body:e.target.value}))}
+                        placeholder="Context, source, or implication…" style={{ ...inputSt, resize:"vertical" as const, minHeight:60 }} />
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:18 }}>
+                    <button onClick={()=>{setAddingManualInsight(false);setManualInsightDraft(null);}}
+                      style={{ padding:"8px 16px", borderRadius:8, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.muted, fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+                    <button onClick={saveManualInsight} disabled={!manualInsightDraft.title?.trim()}
+                      style={{ padding:"8px 18px", borderRadius:8, border:"none", background:_C.accent, color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", opacity:manualInsightDraft.title?.trim()?1:0.5 }}>
+                      Log Insight
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {insights.length===0 ? (
+              <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, padding:"28px 24px", textAlign:"center" }}>
+                <div style={{ fontSize:13, color:_C.muted, fontFamily:body, marginBottom:6 }}>No insights yet.</div>
+                <div style={{ fontSize:12, color:_C.muted, fontFamily:body }}>Once campaigns are live with 30+ sends, click "Surface from Campaigns" to scan for signals. Or log an insight manually from a client call or observation.</div>
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {pendingInsights.map((insight:any)=>{
+                  const tc=INSIGHT_TYPES[insight.type as string]||INSIGHT_TYPES.new_signal;
+                  const accepting=acceptingInsightId===insight.id;
+                  return (
+                    <div key={insight.id} style={{ background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`, borderLeft:`4px solid ${tc.color}`, padding:"16px 20px", animation:"fadeSlide .2s ease" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:6 }}>
+                        <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 7px", borderRadius:4, background:`${tc.color}18`, color:tc.color }}>{tc.label.toUpperCase()}</span>
+                        {insight.campaignName&&<span style={{ fontSize:9, fontFamily:mono, color:_C.muted, background:_C.faint, padding:"2px 7px", borderRadius:4 }}>From: {insight.campaignName}</span>}
+                        <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{new Date(insight.surfacedAt).toLocaleDateString()}</span>
+                      </div>
+                      <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:4 }}>{insight.title}</div>
+                      {insight.body&&<div style={{ fontSize:12, fontFamily:body, color:_C.textSoft, lineHeight:1.5 }}>{insight.body}</div>}
+                      {accepting ? (
+                        <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:8, background:_C.faint, borderRadius:8, padding:"12px" }}>
+                          <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:_C.text }}>What action are you taking based on this insight?</div>
+                          <input value={acceptNote} onChange={e=>setAcceptNote(e.target.value)}
+                            placeholder="e.g. Pivoting North Star ICP to include VP Eng, scaling this campaign…"
+                            style={{ ...inputSt, fontSize:12 }} autoFocus />
+                          <div style={{ display:"flex", gap:7 }}>
+                            <button onClick={()=>resolveInsight(insight.id,"accepted",acceptNote||"Accepted")}
+                              style={{ padding:"6px 14px", borderRadius:7, border:"none", background:_C.green, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                              Accept &amp; Save to History
+                            </button>
+                            <button onClick={()=>{setAcceptingInsightId(null);setAcceptNote("");}}
+                              style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display:"flex", gap:7, marginTop:12 }}>
+                          <button onClick={()=>{setAcceptingInsightId(insight.id);setAcceptNote("");}}
+                            style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${_C.green}44`, background:`${_C.green}10`, color:_C.green, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                            ✓ Accept
+                          </button>
+                          <button onClick={()=>resolveInsight(insight.id,"watching")}
+                            style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                            Watch
+                          </button>
+                          <button onClick={()=>resolveInsight(insight.id,"rejected")}
+                            style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${_C.border}`, background:_C.faint, color:_C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {resolvedInsights.length>0&&(
+                  <details>
+                    <summary style={{ fontSize:11, fontFamily:head, fontWeight:600, color:_C.muted, padding:"8px 12px", borderRadius:8, background:_C.faint, cursor:"pointer", listStyle:"none" }}>
+                      ▾ {resolvedInsights.length} resolved insight{resolvedInsights.length!==1?"s":""}
+                    </summary>
+                    <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:8 }}>
+                      {resolvedInsights.map((insight:any)=>{
+                        const tc=INSIGHT_TYPES[insight.type as string]||INSIGHT_TYPES.new_signal;
                         return (
-                          <div key={c.id||ci} style={{ padding:"16px 20px", borderRadius:12,
-                            border:`1px solid ${_C.border}`, borderLeft:`4px solid ${typeObj.color}`,
-                            background:_C.faint }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
-                              <span style={{ fontSize:16 }}>{typeObj.icon}</span>
-                              <div style={{ flex:1 }}>
-                                <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:_C.text }}>{typeObj.label}</div>
-                                <div style={{ fontSize:11, color:_C.muted, fontFamily:body }}>
-                                  {c.personaName || "All personas"} · {c.productName || "All products"} · {c.offerTier || "soft"} CTA
-                                </div>
-                              </div>
-                              <div style={{ textAlign:"right" }}>
-                                <div style={{ fontSize:12, fontFamily:mono, color:_C.text, fontWeight:600 }}>{c.duration}</div>
-                                <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{c.dailyVolume}/day</div>
-                              </div>
-                              {onLaunchPhaseCampaign && (
-                                isLive ? (
-                                  <div style={{ textAlign:"right" as const }}>
-                                    <span style={{ padding:"5px 12px", borderRadius:6, background:`${_C.green}15`, color:_C.green, fontSize:10, fontFamily:mono, fontWeight:700 }}>● LIVE</span>
-                                    {firstActivityDate && <div style={{ fontSize:9, color:_C.muted, fontFamily:mono, marginTop:3 }}>Activity: {firstActivityDate}</div>}
-                                  </div>
-                                ) : linkedCampaign ? (
-                                  <span style={{ padding:"5px 12px", borderRadius:6, background:`${_C.amber}15`, color:_C.amber, fontSize:10, fontFamily:mono, fontWeight:700 }}>◯ DRAFT</span>
-                                ) : (
-                                  <button onClick={()=>onLaunchPhaseCampaign({ ...c, _phaseSpecId: phaseSpecId, _phaseId: phase.id || phase.number, _phaseLabel: phase.name || `Phase ${phase.number}` }, phase.id || phase.number)}
-                                    style={{ padding:"6px 14px", borderRadius:7, border:"none", background:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
-                                    Create Campaign →
-                                  </button>
-                                )
-                              )}
+                          <div key={insight.id} style={{ background:_C.canvas, borderRadius:10, border:`1px solid ${_C.border}`, borderLeft:`4px solid ${tc.color}44`, padding:"10px 14px", opacity:0.65 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3 }}>
+                              <span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 6px", borderRadius:3, background:`${tc.color}14`, color:tc.color }}>{tc.label.toUpperCase()}</span>
+                              <span style={{ fontSize:9, fontFamily:mono, color:_C.muted }}>{insight.status.toUpperCase()}</span>
                             </div>
-
-                            {/* Goal */}
-                            {c.goal && (
-                              <div style={{ fontSize:12, fontFamily:body, color:_C.textSoft, marginBottom:10,
-                                padding:"8px 12px", background:_C.canvas, borderRadius:8 }}>
-                                <span style={{ fontWeight:600, color:_C.text }}>Goal: </span>{c.goal}
-                              </div>
-                            )}
-
-                            {/* Benchmarks */}
-                            {c.benchmarks && (
-                              <div style={{ display:"flex", gap:12, marginBottom:10, flexWrap:"wrap" }}>
-                                {[
-                                  c.benchmarks.replyRate!=null && { label:"Reply >", value:`${c.benchmarks.replyRate}%`, color:_C.green },
-                                  c.benchmarks.interestedRate!=null && { label:"Interested >", value:`${c.benchmarks.interestedRate}%`, color:_C.accent },
-                                  c.benchmarks.bounceRate!=null && { label:"Bounce <", value:`${c.benchmarks.bounceRate}%`, color:_C.red },
-                                  c.benchmarks.autoReplyRate!=null && { label:"Auto-reply <", value:`${c.benchmarks.autoReplyRate}%`, color:_C.amber },
-                                  c.benchmarks.meetingRate!=null && { label:"Meeting >", value:`${c.benchmarks.meetingRate}%`, color:_C.blue },
-                                ].filter(Boolean).map((b: any) => (
-                                  <div key={b.label} style={{ padding:"4px 10px", borderRadius:6, background:`${b.color}11`,
-                                    border:`1px solid ${b.color}22`, fontSize:10, fontFamily:mono, color:b.color, fontWeight:600 }}>
-                                    {b.label}: {b.value}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Testing methodology */}
-                            {(c.testPeriod || c.testMetrics) && (
-                              <div style={{ display:"flex", gap:10, marginBottom:10, flexWrap:"wrap" }}>
-                                {c.testPeriod && (
-                                  <div style={{ padding:"4px 10px", borderRadius:6, background:`${_C.blue}11`, border:`1px solid ${_C.blue}22`,
-                                    fontSize:10, fontFamily:mono, color:_C.blue, fontWeight:600 }}>
-                                    Test: {c.testPeriod}
-                                  </div>
-                                )}
-                                {c.testMetrics && (
-                                  <div style={{ padding:"4px 10px", borderRadius:6, background:_C.faint, border:`1px solid ${_C.border}`,
-                                    fontSize:10, fontFamily:mono, color:_C.textSoft }}>
-                                    Watch: {c.testMetrics}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Decision tree */}
-                            {c.decisionTree && (
-                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, fontSize:11, fontFamily:body }}>
-                                <div style={{ padding:"8px 10px", borderRadius:8, background:`${_C.green}08`, border:`1px solid ${_C.green}22` }}>
-                                  <div style={{ fontSize:9, fontFamily:mono, color:_C.green, fontWeight:700, marginBottom:4 }}>IF BENCHMARKS MET</div>
-                                  <div style={{ color:_C.textSoft, lineHeight:1.4 }}>{c.decisionTree.ifMet}</div>
-                                </div>
-                                <div style={{ padding:"8px 10px", borderRadius:8, background:`${_C.amber}08`, border:`1px solid ${_C.amber}22` }}>
-                                  <div style={{ fontSize:9, fontFamily:mono, color:_C.amber, fontWeight:700, marginBottom:4 }}>IF NOT MET</div>
-                                  <div style={{ color:_C.textSoft, lineHeight:1.4 }}>{c.decisionTree.ifNotMet}</div>
-                                </div>
-                                <div style={{ padding:"8px 10px", borderRadius:8, background:`${_C.red}08`, border:`1px solid ${_C.red}22` }}>
-                                  <div style={{ fontSize:9, fontFamily:mono, color:_C.red, fontWeight:700, marginBottom:4 }}>IF FAILED (2+ ITERATIONS)</div>
-                                  <div style={{ color:_C.textSoft, lineHeight:1.4 }}>{c.decisionTree.ifFailed}</div>
-                                </div>
-                              </div>
-                            )}
+                            <div style={{ fontSize:12, fontFamily:body, color:_C.text }}>{insight.title}</div>
+                            {insight.acceptedNote&&<div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, marginTop:3 }}>Action: {insight.acceptedNote}</div>}
                           </div>
                         );
                       })}
                     </div>
-                  </div>
+                  </details>
                 )}
               </div>
-            );
-          })}
+            )}
+          </section>
 
-          {/* Benchmarks summary */}
-          {benchmarks.baseReplyRate && (
-            <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, padding:"18px 24px",
-              boxShadow:"0 1px 3px rgba(0,0,0,.04)" }}>
-              <div style={{ fontSize:12, fontFamily:mono, fontWeight:700, color:_C.muted, letterSpacing:.4, marginBottom:12 }}>DEFAULT BENCHMARKS (ADJUSTED FOR THIS CLIENT)</div>
-              <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
-                {[
-                  { label:"Reply Rate", value:`${benchmarks.baseReplyRate}%+`, color:_C.green },
-                  { label:"Interested", value:`${benchmarks.baseInterestedRate}%+`, color:_C.accent },
-                  { label:"Max Bounce", value:`${benchmarks.baseBounceMax}%`, color:_C.red },
-                  { label:"Max Auto-Reply", value:`${benchmarks.baseAutoReplyMax}%`, color:_C.amber },
-                  { label:"Meeting Rate", value:`${benchmarks.baseMeetingRate}%+`, color:_C.blue },
-                ].map(b => (
-                  <div key={b.label} style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <div style={{ width:8, height:8, borderRadius:4, background:b.color }} />
-                    <span style={{ fontSize:12, fontFamily:body, color:_C.textSoft }}>{b.label}:</span>
-                    <span style={{ fontSize:13, fontFamily:head, fontWeight:700, color:b.color }}>{b.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {/* ══ SECTION 4: STRATEGY HISTORY ══ */}
+          {historyLog.length>0&&(
+            <section>
+              <button onClick={()=>setShowHistory(h=>!h)}
+                style={{ display:"flex", alignItems:"center", gap:8, background:"none", border:"none", cursor:"pointer", padding:"0 0 12px", width:"100%" }}>
+                <span style={{ fontSize:15 }}>📋</span>
+                <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Strategy History</span>
+                <span style={{ fontSize:9, fontFamily:mono, color:_C.muted, background:_C.faint, padding:"2px 7px", borderRadius:4 }}>{historyLog.length} entries</span>
+                <span style={{ fontSize:12, color:_C.muted, transition:"transform .2s", transform:showHistory?"rotate(180deg)":"rotate(0)", marginLeft:"auto" }}>▾</span>
+              </button>
+              {showHistory&&(
+                <div style={{ display:"flex", flexDirection:"column", gap:8, animation:"fadeSlide .2s ease" }}>
+                  {[...historyLog].reverse().map((entry:any,i:number)=>(
+                    <div key={entry.id||i} style={{ display:"flex", gap:12, background:_C.canvas, borderRadius:10, border:`1px solid ${_C.border}`, padding:"12px 16px" }}>
+                      <div style={{ width:8, height:8, borderRadius:4, background:_C.accent, marginTop:5, flexShrink:0 }} />
+                      <div>
+                        <div style={{ fontSize:12, fontWeight:600, fontFamily:body, color:_C.text }}>{entry.change}</div>
+                        {entry.reason&&<div style={{ fontSize:11, fontFamily:body, color:_C.muted, marginTop:2 }}>{entry.reason}</div>}
+                        <div style={{ fontSize:10, fontFamily:mono, color:_C.muted, marginTop:3 }}>{new Date(entry.date).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           )}
+
+          {/* ══ SECTION 5: CAMPAIGN ROADMAP (collapsible) ══ */}
+          {phases.length>0&&(
+            <section>
+              <button onClick={()=>setShowPhases(p=>!p)}
+                style={{ display:"flex", alignItems:"center", gap:8, background:"none", border:"none", cursor:"pointer", padding:"0 0 12px", width:"100%" }}>
+                <span style={{ fontSize:15 }}>◎</span>
+                <span style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>Campaign Roadmap</span>
+                <span style={{ fontSize:9, fontFamily:mono, color:_C.muted, background:_C.faint, padding:"2px 7px", borderRadius:4 }}>{phases.length} phases</span>
+                {phases.some((p:any)=>p.status==="pending")&&(
+                  <button onClick={e=>{e.stopPropagation();regeneratePendingPhases();}} disabled={generating}
+                    style={{ marginLeft:"auto", padding:"4px 10px", borderRadius:6, border:`1px solid ${_C.border}`, background:_C.canvas, color:_C.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                    ↻ Regen Pending
+                  </button>
+                )}
+                <span style={{ fontSize:12, color:_C.muted, transition:"transform .2s", transform:showPhases?"rotate(180deg)":"rotate(0)", marginLeft:phases.some((p:any)=>p.status==="pending")?"4px":"auto" }}>▾</span>
+              </button>
+              {showPhases&&(
+                <div style={{ display:"flex", flexDirection:"column", gap:12, animation:"fadeSlide .2s ease" }}>
+                  {phases.map((phase:any,pi:number)=>{
+                    const isExpanded=expandedPhase===phase.id;
+                    const phaseCamps=phase.campaigns||[];
+                    const statusObj=PHASE_STATUSES.find((s:any)=>s.id===phase.status)||PHASE_STATUSES[0];
+                    let liveInPhase=0, draftInPhase=0;
+                    phaseCamps.forEach((_c:any,ci:number)=>{
+                      const sid=`${phase.id||phase.number}_${ci}`;
+                      const linked=(workspaceCampaigns||[]).find((rc:any)=>rc.strategyPhaseId===sid);
+                      if (!linked) return;
+                      if ((linked.performance?.metrics?.sent||0)>0) liveInPhase++; else draftInPhase++;
+                    });
+                    return (
+                      <div key={phase.id} style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`, overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.04)", opacity:phase.status==="skipped"?0.55:1 }}>
+                        <div onClick={()=>setExpandedPhase(isExpanded?null:phase.id)}
+                          style={{ padding:"16px 20px", cursor:"pointer", display:"flex", alignItems:"center", gap:14, borderBottom:isExpanded?`1px solid ${_C.border}`:"none" }}
+                          onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=_C.faint}
+                          onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="transparent"}>
+                          <div style={{ width:32, height:32, borderRadius:9, background:`${statusObj.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, fontFamily:mono, color:statusObj.color }}>{pi+1}</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:_C.text }}>{phase.name}</div>
+                              {phaseCamps.length>0&&<span style={{ fontSize:9, fontFamily:mono, fontWeight:700, padding:"2px 6px", borderRadius:4, background:liveInPhase===phaseCamps.length?`${_C.green}15`:liveInPhase>0?`${_C.amber}15`:_C.faint, color:liveInPhase===phaseCamps.length?_C.green:liveInPhase>0?_C.amber:_C.muted }}>{liveInPhase}/{phaseCamps.length} live{draftInPhase>0?` · ${draftInPhase} draft`:""}</span>}
+                            </div>
+                            <div style={{ fontSize:11, color:_C.muted, fontFamily:body, marginTop:2 }}>Wk {phase.startWeek}–{phase.endWeek} · {phaseCamps.length} campaign{phaseCamps.length!==1?"s":""}</div>
+                          </div>
+                          <select value={phase.status} onClick={e=>e.stopPropagation()} onChange={e=>updatePhaseStatus(phase.id,e.target.value)}
+                            style={{ padding:"4px 8px", borderRadius:7, border:`1px solid ${statusObj.color}44`, background:`${statusObj.color}11`, color:statusObj.color, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer", outline:"none" }}>
+                            {PHASE_STATUSES.map((s:any)=><option key={s.id} value={s.id}>{s.label}</option>)}
+                          </select>
+                          <span style={{ fontSize:14, color:_C.muted, transition:"transform .2s", transform:isExpanded?"rotate(180deg)":"rotate(0)" }}>▾</span>
+                        </div>
+                        {isExpanded&&(
+                          <div style={{ padding:"18px 20px" }}>
+                            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                              {phaseCamps.map((c:any,ci:number)=>{
+                                const typeObj=CAMPAIGN_TYPES.find((t:any)=>t.id===c.type)||CAMPAIGN_TYPES[0];
+                                const phaseSpecId=`${phase.id||phase.number}_${ci}`;
+                                const linkedCamp=(workspaceCampaigns||[]).find((rc:any)=>rc.strategyPhaseId===phaseSpecId);
+                                const isLive=linkedCamp&&(linkedCamp.performance?.metrics?.sent||0)>0;
+                                return (
+                                  <div key={c.id||ci} style={{ padding:"14px 16px", borderRadius:10, border:`1px solid ${_C.border}`, borderLeft:`4px solid ${typeObj.color}`, background:_C.faint }}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                                      <span style={{ fontSize:14 }}>{typeObj.icon}</span>
+                                      <div style={{ flex:1 }}>
+                                        <div style={{ fontSize:12, fontWeight:700, fontFamily:head, color:_C.text }}>{typeObj.label}</div>
+                                        <div style={{ fontSize:11, color:_C.muted, fontFamily:body }}>{c.personaName||"All"} · {c.productName||"All"} · {c.offerTier||"soft"} CTA</div>
+                                      </div>
+                                      <div style={{ textAlign:"right" as const }}>
+                                        <div style={{ fontSize:11, fontFamily:mono, color:_C.text, fontWeight:600 }}>{c.duration}</div>
+                                        <div style={{ fontSize:10, fontFamily:mono, color:_C.muted }}>{c.dailyVolume}/day</div>
+                                      </div>
+                                      {onLaunchPhaseCampaign&&(
+                                        isLive?(
+                                          <span style={{ padding:"4px 10px", borderRadius:6, background:`${_C.green}15`, color:_C.green, fontSize:9, fontFamily:mono, fontWeight:700 }}>● LIVE</span>
+                                        ):linkedCamp?(
+                                          <span style={{ padding:"4px 10px", borderRadius:6, background:`${_C.amber}15`, color:_C.amber, fontSize:9, fontFamily:mono, fontWeight:700 }}>◯ DRAFT</span>
+                                        ):(
+                                          <button onClick={()=>onLaunchPhaseCampaign({...c,_phaseSpecId:phaseSpecId,_phaseId:phase.id||phase.number,_phaseLabel:phase.name||`Phase ${phase.number}`},phase.id||phase.number)}
+                                            style={{ padding:"5px 12px", borderRadius:7, border:"none", background:_C.accent, color:"#fff", fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                                            Create Campaign →
+                                          </button>
+                                        )
+                                      )}
+                                    </div>
+                                    {c.goal&&<div style={{ fontSize:11, fontFamily:body, color:_C.textSoft, padding:"7px 10px", background:_C.canvas, borderRadius:7, marginBottom:8 }}><span style={{ fontWeight:700, color:_C.text }}>Goal: </span>{c.goal}</div>}
+                                    {c.benchmarks&&(
+                                      <div style={{ display:"flex", gap:8, marginBottom:8, flexWrap:"wrap" as const }}>
+                                        {[c.benchmarks.replyRate!=null&&{label:"Reply >",value:`${c.benchmarks.replyRate}%`,color:_C.green},c.benchmarks.interestedRate!=null&&{label:"Interested >",value:`${c.benchmarks.interestedRate}%`,color:_C.accent},c.benchmarks.bounceRate!=null&&{label:"Bounce <",value:`${c.benchmarks.bounceRate}%`,color:_C.red},c.benchmarks.meetingRate!=null&&{label:"Meeting >",value:`${c.benchmarks.meetingRate}%`,color:_C.blue}].filter(Boolean).map((b:any)=>(
+                                          <div key={b.label} style={{ padding:"3px 8px", borderRadius:5, background:`${b.color}11`, border:`1px solid ${b.color}22`, fontSize:9, fontFamily:mono, color:b.color, fontWeight:600 }}>{b.label}{b.value}</div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {c.decisionTree&&(
+                                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, fontSize:10, fontFamily:body }}>
+                                        <div style={{ padding:"7px 9px", borderRadius:7, background:`${_C.green}08`, border:`1px solid ${_C.green}22` }}>
+                                          <div style={{ fontSize:8, fontFamily:mono, color:_C.green, fontWeight:700, marginBottom:3 }}>IF MET</div>
+                                          <div style={{ color:_C.textSoft, lineHeight:1.4 }}>{c.decisionTree.ifMet}</div>
+                                        </div>
+                                        <div style={{ padding:"7px 9px", borderRadius:7, background:`${_C.amber}08`, border:`1px solid ${_C.amber}22` }}>
+                                          <div style={{ fontSize:8, fontFamily:mono, color:_C.amber, fontWeight:700, marginBottom:3 }}>IF NOT MET</div>
+                                          <div style={{ color:_C.textSoft, lineHeight:1.4 }}>{c.decisionTree.ifNotMet}</div>
+                                        </div>
+                                        <div style={{ padding:"7px 9px", borderRadius:7, background:`${_C.red}08`, border:`1px solid ${_C.red}22` }}>
+                                          <div style={{ fontSize:8, fontFamily:mono, color:_C.red, fontWeight:700, marginBottom:3 }}>IF FAILED</div>
+                                          <div style={{ color:_C.textSoft, lineHeight:1.4 }}>{c.decisionTree.ifFailed}</div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
         </div>
       )}
     </div>
   );
 }
+
 
 // ─── CAMPAIGNS PAGE ──────────────────────────────────────────────────────────
 const STEP_ROLES = [
@@ -17850,6 +18009,956 @@ const ok =
   );
 }
 
+// ─── LAUNCH PAD ───────────────────────────────────────────────────────────────
+function LaunchPadWelcomeScreen({ companyName, onGetStarted }: { companyName?: string; onGetStarted: () => void }) {
+  const [phase, setPhase] = useState<"text"|"icons-white"|"floating">("text");
+  const [iconPositions] = useState(() => welcomeIcons.map(ic => ({ cx: ic.cx, cy: ic.cy, scale: ic.scale, rotate: ic.rotate })));
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase("icons-white"), 300);
+    const t2 = setTimeout(() => setPhase("floating"), 2000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  const showIcons = phase !== "text";
+  const floating  = phase === "floating";
+
+  return (
+    <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", background:"#fff" }}>
+      <style>{`
+        @keyframes lpwLetterIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes lpwSubIn    { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        ${welcomeIcons.map((_, i) => {
+          const cfg = makeWelcomeFloatConfig(i);
+          return `@keyframes lpwFloat-${i} { from{transform:translate(calc(-50% + ${iconPositions[i].cx}px),calc(-50% + ${iconPositions[i].cy}px)) rotate(${iconPositions[i].rotate}deg) translateY(0)} to{transform:translate(calc(-50% + ${iconPositions[i].cx}px),calc(-50% + ${iconPositions[i].cy}px)) rotate(${iconPositions[i].rotate}deg) translateY(${cfg.dy}px)} }`;
+        }).join("\n")}
+      `}</style>
+
+      {welcomeIcons.map((item, i) => {
+        const Icon = item.icon;
+        const cfg  = makeWelcomeFloatConfig(i);
+        const pos  = iconPositions[i];
+        return (
+          <div key={i} style={{
+            position:"absolute", left:"50%", top:"50%",
+            transform:`translate(calc(-50% + ${pos.cx}px), calc(-50% + ${pos.cy}px)) rotate(${pos.rotate}deg)`,
+            opacity: showIcons ? 1 : 0,
+            transition:`opacity 500ms ease ${(_welcomeAnimOrder[i] ?? i) * 80}ms, transform 0.5s ease`,
+            animation: floating ? `lpwFloat-${i} ${cfg.duration}s ease-in-out ${cfg.delay}s infinite alternate` : "none",
+          }}>
+            <div style={{ width: 44 * pos.scale, height: 44 * pos.scale, borderRadius: 10 * pos.scale,
+              backgroundColor: item.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <Icon width={20 * pos.scale} height={20 * pos.scale} strokeWidth={1.5} style={{ color: item.color }} />
+            </div>
+          </div>
+        );
+      })}
+
+      <div style={{ position:"relative", zIndex:10, display:"flex", flexDirection:"column", alignItems:"center", textAlign:"center", padding:"0 24px" }}>
+        <h1 style={{ fontSize:56, fontWeight:600, lineHeight:1.15, letterSpacing:"-0.28px", color:"#1d1d1f", margin:0 }}>
+          {(() => {
+            const line1 = companyName || "Your Company";
+            let charIdx = 0;
+            return (
+              <div style={{ whiteSpace:"nowrap" }}>
+                {line1.split("").map((ch, i) => {
+                  const idx = charIdx++;
+                  return <span key={idx} style={{ display:"inline-block", color:"#6C5CE7",
+                    animation:`lpwLetterIn .5s cubic-bezier(0.16,1,0.3,1) ${2.2+idx*0.035}s both`,
+                    ...(ch===" " ? { width:"0.3em" } : {}) }}>{ch===" " ? " " : ch}</span>;
+                })}
+              </div>
+            );
+          })()}
+        </h1>
+        <p style={{ marginTop:16, fontSize:17, letterSpacing:"-0.374px", color:"rgba(0,0,0,0.48)", lineHeight:1.47,
+          maxWidth:520, animation:"lpwSubIn .8s cubic-bezier(0.16,1,0.3,1) 3.2s both" }}>
+          Drop your URL and we'll build your entire outbound program automatically — research, domains, and campaigns.
+        </p>
+        <div style={{ marginTop:32, animation:"lpwSubIn .7s cubic-bezier(0.34,1.3,0.64,1) 3.6s both" }}>
+          <button onClick={onGetStarted}
+            style={{ display:"inline-flex", alignItems:"center", gap:8, padding:"12px 28px",
+              background:"#6C5CE7", color:"#fff", fontSize:17, fontWeight:500,
+              letterSpacing:"-0.374px", borderRadius:980, border:"none", cursor:"pointer",
+              boxShadow:"0 4px 20px rgba(108,92,231,.35)" }}>
+            Get Started →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const LP_DOMAIN_API_KEY = "ca85116eedmsh09b32c4f0f5fb4bp15cb3bjsn07b3d73f24cb";
+const checkDomainAvailability = async (domain: string): Promise<boolean> => {
+  try {
+    const r = await fetch("https://domain-checker30.p.rapidapi.com/checkdomain", {
+      method: "POST",
+      headers: {
+        "x-rapidapi-key": LP_DOMAIN_API_KEY,
+        "x-rapidapi-host": "domain-checker30.p.rapidapi.com",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ domain, tlds: ["com"] }),
+    });
+    const json = await r.json();
+    const entries: any[] = json.requested_domains || json.results || (Array.isArray(json) ? json : [json]);
+    const match = entries.find((e: any) => e.domain && e.domain.endsWith(".com"));
+    if (!match) return false;
+    if (match.available === true && !match.error) return true;
+    // Accept timeouts as likely available for .com
+    if (match.error && match.error.toLowerCase().includes("timeout")) return true;
+    return false;
+  } catch { return false; }
+};
+
+const LP_STEPS = [
+  "Fetching website content",
+  "Building company profile",
+  "Researching products & personas",
+  "Building full product profiles",
+  "Building full persona profiles",
+  "Building intelligence & offers",
+  "Generating 67 domains",
+  "Generating campaign strategies",
+  "Generating sequences",
+];
+
+function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChange, onLaunch, onContinue, onReset, onRegenDomains, onProcessOnboarding, salesContext, companyName }: {
+  lpState: "idle"|"running"|"done";
+  lpProgress: { step:number; phase:string; total:number };
+  lpLog: string[];
+  lpResult: any;
+  lpTab: "research"|"infrastructure"|"campaigns"|"onboarding";
+  onTabChange: (t:"research"|"infrastructure"|"campaigns"|"onboarding") => void;
+  onLaunch: (url:string, extra:string, linkedin:string, extraUrls:string, offerings:string, playbook:PlaybookKey, salesContext:string) => void;
+  onContinue: () => void;
+  onReset: () => void;
+  onRegenDomains: () => Promise<void>;
+  onProcessOnboarding: (transcript:string, implForm:string, direction:string) => Promise<void>;
+  salesContext: { count: number; snippet: string; full: string };
+  companyName?: string;
+}) {
+  const [regenningDomains, setRegenningDomains] = useState(false);
+  const [url, setUrl] = useState("");
+  const [extra, setExtra] = useState("");
+  const [linkedin, setLinkedin] = useState("");
+  const [extraUrls, setExtraUrls] = useState("");
+  const [offerings, setOfferings] = useState("");
+  const [playbook, setPlaybook] = useState<PlaybookKey>("auto");
+  const [showForm, setShowForm] = useState(false);
+  const [lpStep, setLpStep] = useState<1|2>(1);
+  const [salesTranscript, setSalesTranscript] = useState("");
+  const [expandedGroup, setExpandedGroup] = useState<string|null>(null);
+  const [seqTab, setSeqTab] = useState<Record<string,"strategy"|"email"|"linkedin">>({});
+  const [obTranscript, setObTranscript] = useState<string>(lpResult?.onboarding?.transcript || "");
+  const [obImplForm, setObImplForm] = useState<string>(lpResult?.onboarding?.implementationForm || "");
+  const [obDirection, setObDirection] = useState<string>(lpResult?.onboarding?.additionalContext || "");
+  const [obRunning, setObRunning] = useState(false);
+
+  const canLaunch = url.trim().length > 0;
+  const pct = lpProgress.total > 0 ? Math.round((lpProgress.step / lpProgress.total) * 100) : 0;
+
+  if (lpState === "idle" && !showForm) {
+    return <LaunchPadWelcomeScreen companyName={companyName} onGetStarted={() => { setShowForm(true); setLpStep(1); }} />;
+  }
+
+  if (lpState === "idle") {
+    const fadeUp = `@keyframes lpFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`;
+    const inputStyle: React.CSSProperties = { width:"100%", padding:"10px 12px", borderRadius:8,
+      boxSizing:"border-box", border:`1px solid ${C2.border}`, background:C2.faint,
+      color:C2.text, fontSize:13, fontFamily:body, outline:"none" };
+    const taStyle: React.CSSProperties = { ...inputStyle, resize:"vertical" as const, lineHeight:1.5 };
+    const fieldLabel = (text: string) => (
+      <label style={{ display:"block", fontSize:11, fontWeight:700, fontFamily:head, color:C2.muted,
+        letterSpacing:.7, textTransform:"uppercase" as const, marginBottom:6 }}>{text}</label>
+    );
+    const stepDot = (n: 1|2, active: boolean) => (
+      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+        <div style={{ width:22, height:22, borderRadius:"50%", display:"flex", alignItems:"center",
+          justifyContent:"center", fontSize:11, fontWeight:800, fontFamily:head,
+          background: active ? C2.accent : lpStep > n ? C2.green : C2.border,
+          color: (active || lpStep > n) ? "#fff" : C2.muted, flexShrink:0 }}>{n}</div>
+        <span style={{ fontSize:11, fontWeight:700, fontFamily:head,
+          color: active ? C2.text : C2.muted, letterSpacing:.3 }}>
+          {n === 1 ? "Sales Context" : "Setup"}
+        </span>
+      </div>
+    );
+
+    if (lpStep === 1) {
+      return (
+        <div style={{ position:"absolute", inset:0, overflowY:"auto", background:"#fff" }}>
+          <style>{fadeUp}</style>
+          <div style={{ width:"100%", maxWidth:580, margin:"0 auto", padding:"40px 24px 60px", animation:"lpFadeUp .6s cubic-bezier(0.16,1,0.3,1) both" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:24, marginBottom:32 }}>
+              {stepDot(1, true)}
+              <div style={{ flex:1, maxWidth:40, height:1, background:C2.border }} />
+              {stepDot(2, false)}
+            </div>
+            <div style={{ textAlign:"center", marginBottom:28 }}>
+              <div style={{ fontSize:36, marginBottom:10 }}>📋</div>
+              <h1 style={{ fontSize:24, fontWeight:800, fontFamily:head, color:C2.text, margin:"0 0 8px" }}>
+                Sales Call Context
+              </h1>
+              <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0, lineHeight:1.7 }}>
+                Paste any notes or transcripts from pre-sales conversations. The AI uses these to build a more accurate outbound strategy tailored to what you already know about this client.
+              </p>
+            </div>
+
+            <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:16, padding:28,
+              boxShadow:"0 4px 32px rgba(13,15,26,.07)", display:"flex", flexDirection:"column", gap:16 }}>
+              <textarea
+                value={salesTranscript}
+                onChange={e => setSalesTranscript(e.target.value)}
+                placeholder={"Paste sales call transcript(s), notes, or any relevant pre-sales context here...\n\nYou can include multiple calls — just paste them one after another."}
+                rows={10}
+                autoFocus
+                style={{ ...taStyle, fontSize:13 }}
+              />
+              <button onClick={() => setLpStep(2)}
+                style={{ width:"100%", padding:"15px", borderRadius:10, border:"none",
+                  background:C2.accent, color:"#fff",
+                  fontSize:15, fontFamily:head, fontWeight:800, letterSpacing:.5,
+                  cursor:"pointer", transition:"all .15s",
+                  boxShadow:`0 4px 20px ${C2.accent}40` }}>
+                Continue →
+              </button>
+            </div>
+
+            <p style={{ textAlign:"center", fontSize:12, color:C2.muted, fontFamily:body, marginTop:14 }}>
+              <button onClick={() => { setSalesTranscript(""); setLpStep(2); }}
+                style={{ background:"none", border:"none", color:C2.muted, fontSize:12, cursor:"pointer",
+                  textDecoration:"underline", fontFamily:body, padding:0 }}>
+                Skip — I don't have a transcript
+              </button>
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ position:"absolute", inset:0, overflowY:"auto", background:"#fff" }}>
+        <style>{fadeUp}</style>
+        <div style={{ width:"100%", maxWidth:580, margin:"0 auto", padding:"40px 24px 60px", animation:"lpFadeUp .6s cubic-bezier(0.16,1,0.3,1) both" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:24, marginBottom:32 }}>
+            {stepDot(1, false)}
+            <div style={{ flex:1, maxWidth:40, height:1, background:C2.accent }} />
+            {stepDot(2, true)}
+          </div>
+          <div style={{ textAlign:"center", marginBottom:28 }}>
+            <div style={{ fontSize:36, marginBottom:10 }}>🚀</div>
+            <h1 style={{ fontSize:24, fontWeight:800, fontFamily:head, color:C2.text, margin:"0 0 8px" }}>
+              Launch Your Outbound Program
+            </h1>
+            <p style={{ fontSize:13, color:C2.muted, fontFamily:body, margin:0, lineHeight:1.7 }}>
+              Drop your website URL and we'll build everything automatically — research, domains, and campaigns.
+            </p>
+          </div>
+
+          {salesTranscript.trim() && (
+            <div style={{ background:`${C2.accent}08`, border:`1px solid ${C2.accentBorder}`, borderRadius:10,
+              padding:"10px 14px", marginBottom:16, display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ width:6, height:6, borderRadius:"50%", background:C2.accent, flexShrink:0 }} />
+              <span style={{ fontSize:12, fontFamily:body, color:C2.accent, fontWeight:600, flex:1 }}>
+                Sales context attached ({salesTranscript.trim().split(/\s+/).length.toLocaleString()} words)
+              </span>
+              <button onClick={() => setLpStep(1)}
+                style={{ background:"none", border:"none", color:C2.muted, fontSize:11, cursor:"pointer",
+                  fontFamily:body, padding:0, textDecoration:"underline" }}>
+                Edit
+              </button>
+            </div>
+          )}
+
+          <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:16, padding:28,
+            boxShadow:"0 4px 32px rgba(13,15,26,.07)", display:"flex", flexDirection:"column", gap:16 }}>
+
+            <div>
+              {fieldLabel("Company Website *")}
+              <input value={url} onChange={e => setUrl(e.target.value)}
+                placeholder="https://yourcompany.com" autoFocus
+                onKeyDown={e => { if (e.key === "Enter" && canLaunch) onLaunch(url, extra, linkedin, extraUrls, offerings, playbook, salesTranscript.trim()); }}
+                style={{ ...inputStyle, padding:"13px 16px", fontSize:14,
+                  border:`1.5px solid ${url.trim() ? C2.accent : C2.border}`, transition:"border-color .15s" }} />
+            </div>
+
+            <div>
+              {fieldLabel("LinkedIn Company Page")}
+              <input value={linkedin} onChange={e => setLinkedin(e.target.value)}
+                placeholder="https://linkedin.com/company/yourco" style={inputStyle} />
+            </div>
+
+            <div>
+              {fieldLabel("Additional URLs")}
+              <textarea value={extraUrls} onChange={e => setExtraUrls(e.target.value)}
+                placeholder="One URL per line — product pages, case studies, etc." rows={2}
+                style={taStyle} />
+            </div>
+
+            <div>
+              {fieldLabel("Products & Services Override")}
+              <textarea value={offerings} onChange={e => setOfferings(e.target.value)}
+                placeholder="Paste product/service descriptions if the site is hard to scrape — takes priority over scraped content." rows={3}
+                style={taStyle} />
+            </div>
+
+            <div>
+              {fieldLabel("Additional Notes")}
+              <textarea value={extra} onChange={e => setExtra(e.target.value)}
+                placeholder="Target market, existing messaging, ICP hints, etc." rows={2}
+                style={taStyle} />
+            </div>
+
+            <div>
+              {fieldLabel("Voice & Strategy Profile")}
+              <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginBottom:8 }}>
+                Locks voice + strategy across every AI generation in this campaign
+              </div>
+              <select value={playbook} onChange={e => setPlaybook(e.target.value as PlaybookKey)}
+                style={{ ...inputStyle, cursor:"pointer" }}>
+                <option value="auto">✓ Auto (follow persona tone)</option>
+                {(Object.values(PLAYBOOKS).filter((p: any) => p.key !== "auto") as any[]).map((p: any) => (
+                  <option key={p.key} value={p.key}>{p.label} — e.g. {p.figure}</option>
+                ))}
+              </select>
+            </div>
+
+            <button onClick={() => onLaunch(url, extra, linkedin, extraUrls, offerings, playbook, salesTranscript.trim())} disabled={!canLaunch}
+              style={{ width:"100%", marginTop:4, padding:"15px", borderRadius:10, border:"none",
+                background: canLaunch ? C2.accent : C2.faint,
+                color: canLaunch ? "#fff" : C2.muted,
+                fontSize:16, fontFamily:head, fontWeight:800, letterSpacing:.5,
+                cursor: canLaunch ? "pointer" : "default", transition:"all .15s",
+                boxShadow: canLaunch ? `0 4px 20px ${C2.accent}40` : "none" }}>
+              GO →
+            </button>
+          </div>
+
+          <p style={{ textAlign:"center", fontSize:12, color:C2.muted, fontFamily:body, marginTop:14, lineHeight:1.6 }}>
+            <button onClick={() => setLpStep(1)}
+              style={{ background:"none", border:"none", color:C2.muted, fontSize:12, cursor:"pointer",
+                fontFamily:body, padding:0, marginRight:16, textDecoration:"underline" }}>
+              ← Back
+            </button>
+            Builds: company profile · products · personas · 67 domains · 3–5 campaigns with email + LinkedIn sequences
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (lpState === "running") {
+    return (
+      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"#fff" }}>
+        <style>{`
+          @keyframes lpSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+          @keyframes lpPulse{0%,100%{opacity:.5}50%{opacity:1}}
+        `}</style>
+        <div style={{ width:"100%", maxWidth:460, padding:"0 24px" }}>
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:28 }}>
+            <div style={{ position:"relative", width:68, height:68 }}>
+              <div style={{ position:"absolute", inset:0, borderRadius:"50%", border:`3px solid ${C2.accent}20` }} />
+              <div style={{ position:"absolute", inset:0, borderRadius:"50%", border:`3px solid transparent`,
+                borderTopColor:C2.accent, animation:"lpSpin 1.1s linear infinite" }} />
+              <div style={{ position:"absolute", inset:"50%", transform:"translate(-50%,-50%)",
+                width:34, height:34, borderRadius:"50%", background:`${C2.accent}12`,
+                display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>⚡</div>
+            </div>
+          </div>
+
+          <div style={{ textAlign:"center", marginBottom:20 }}>
+            <div style={{ fontSize:17, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:5,
+              animation:"lpPulse 1.8s ease-in-out infinite" }}>
+              {lpProgress.phase || "Starting..."}
+            </div>
+            <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>
+              Step {lpProgress.step} of {lpProgress.total}
+            </div>
+          </div>
+
+          <div style={{ height:5, borderRadius:3, background:C2.border, overflow:"hidden", marginBottom:24 }}>
+            <div style={{ height:"100%", width:`${pct}%`, background:C2.accent, borderRadius:3, transition:"width .7s ease" }} />
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:20 }}>
+            {LP_STEPS.map((s, i) => {
+              const done = lpProgress.step > i + 1;
+              const active = lpProgress.step === i + 1;
+              return (
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 11px", borderRadius:7,
+                  background: active ? `${C2.accent}08` : "transparent",
+                  border: active ? `1px solid ${C2.accent}20` : "1px solid transparent" }}>
+                  <div style={{ width:18, height:18, borderRadius:"50%", flexShrink:0,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    background: done ? C2.green : active ? C2.accent : C2.border,
+                    color: (done||active) ? "#fff" : C2.muted, fontSize:9, fontWeight:700 }}>
+                    {done ? "✓" : i+1}
+                  </div>
+                  <span style={{ fontSize:12, fontFamily:body,
+                    color: done ? C2.muted : active ? C2.text : C2.muted,
+                    fontWeight: active ? 600 : 400 }}>
+                    {s}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  // DONE — 3-tab results view
+  const res = lpResult || {};
+  const company = res.company || {};
+  const prods = res.products || [];
+  const personas = res.personas || [];
+  const domains = res.domains || [];
+  const groups = res.campaignGroups || [];
+
+  return (
+    <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", background:"#fff", overflow:"hidden" }}>
+      {/* Header */}
+      <div style={{ padding:"14px 24px", borderBottom:`1px solid ${C2.border}`, display:"flex",
+        alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+        <div>
+          <div style={{ fontSize:17, fontWeight:800, fontFamily:head, color:C2.text }}>
+            {company.co_name || "Your Company"} — Outbound Program Ready
+          </div>
+          <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:2 }}>
+            {prods.length} product{prods.length!==1?"s":""} · {personas.length} persona{personas.length!==1?"s":""} · {domains.length} domains · {groups.length} campaign group{groups.length!==1?"s":""}
+          </div>
+        </div>
+        <button onClick={onContinue}
+          style={{ padding:"8px 20px", borderRadius:8, border:"none", background:C2.accent, color:"#fff",
+            fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer",
+            boxShadow:`0 2px 12px ${C2.accent}40`, whiteSpace:"nowrap" as const }}>
+          Open Full App →
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", borderBottom:`1px solid ${C2.border}`, flexShrink:0, padding:"0 24px" }}>
+        {(["research","infrastructure","campaigns","onboarding"] as const).map(t => (
+          <button key={t} onClick={() => onTabChange(t)}
+            style={{ padding:"13px 18px", border:"none", marginBottom:-1,
+              borderBottom: lpTab===t ? `2px solid ${C2.accent}` : "2px solid transparent",
+              background:"none", color: lpTab===t ? C2.accent : C2.muted,
+              fontSize:12, fontFamily:head, fontWeight: lpTab===t ? 700 : 500,
+              cursor:"pointer", textTransform:"uppercase" as const, letterSpacing:.8,
+              position:"relative" as const }}>
+            {t === "research" ? "Research" : t === "infrastructure" ? "Infrastructure" : t === "campaigns" ? "Campaigns" : "Onboarding"}
+            {t === "onboarding" && lpResult?.onboarding?.processedAt && (
+              <span style={{ position:"absolute", top:10, right:6, width:6, height:6, borderRadius:"50%", background:C2.green, display:"block" }} />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div style={{ flex:1, overflow:"auto", padding:24 }}>
+
+        {/* RESEARCH */}
+        {lpTab === "research" && (() => {
+          const sectionLabel = (text: string) => (
+            <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:C2.muted, letterSpacing:1,
+              textTransform:"uppercase" as const, marginBottom:14, paddingBottom:8,
+              borderBottom:`1px solid ${C2.border}` }}>{text}</div>
+          );
+          const fieldRow = (label: string, value: string) => value ? (
+            <div style={{ display:"grid", gridTemplateColumns:"140px 1fr", gap:12, alignItems:"baseline", padding:"7px 0", borderBottom:`1px solid ${C2.border}` }}>
+              <div style={{ fontSize:11, color:C2.muted, fontFamily:body, fontWeight:600 }}>{label}</div>
+              <div style={{ fontSize:13, fontFamily:body, color:C2.text, lineHeight:1.6 }}>{value}</div>
+            </div>
+          ) : null;
+
+          // Parse KSPs — may be newline-separated or semicolon-separated single line
+          const rawKsp: string = company.co_ksp || "";
+          const kspItems: string[] = rawKsp.includes("\n")
+            ? rawKsp.split("\n").map((s:string) => s.replace(/^[\d]+[.)]\s*|^[•\-*]\s*/,"").trim()).filter(Boolean)
+            : rawKsp.split(/;\s*|\d+\)\s*/).map((s:string) => s.trim()).filter(Boolean);
+
+          return (
+            <div style={{ maxWidth:860, display:"flex", flexDirection:"column", gap:28 }}>
+
+              {/* ── Company Profile ── */}
+              <div>
+                {sectionLabel(`Company Profile`)}
+                <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, overflow:"hidden" }}>
+                  <div style={{ padding:"0 20px" }}>
+                    {fieldRow("Name", company.co_name)}
+                    {fieldRow("Industry", company.co_industry)}
+                    {fieldRow("Website", company.co_url || company.co_website)}
+                    {company.co_pitch && (
+                      <div style={{ padding:"10px 0", borderBottom:`1px solid ${C2.border}` }}>
+                        <div style={{ fontSize:11, color:C2.muted, fontFamily:body, fontWeight:600, marginBottom:6 }}>Pitch</div>
+                        <div style={{ fontSize:13, fontFamily:body, color:C2.text, lineHeight:1.7 }}>{company.co_pitch}</div>
+                      </div>
+                    )}
+                    {kspItems.length > 0 && (
+                      <div style={{ padding:"10px 0" }}>
+                        <div style={{ fontSize:11, color:C2.muted, fontFamily:body, fontWeight:600, marginBottom:8 }}>Key Selling Points</div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                          {kspItems.map((ksp:string, i:number) => (
+                            <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                              <div style={{ width:20, height:20, borderRadius:"50%", background:`${C2.accent}15`,
+                                display:"flex", alignItems:"center", justifyContent:"center",
+                                fontSize:9, fontWeight:700, color:C2.accent, flexShrink:0, marginTop:1 }}>{i+1}</div>
+                              <div style={{ fontSize:13, fontFamily:body, color:C2.text, lineHeight:1.6 }}>{ksp}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Products & Services ── */}
+              {prods.length > 0 && (
+                <div>
+                  {sectionLabel(`Products & Services (${prods.length})`)}
+                  <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                    {prods.map((p:any, i:number) => {
+                      const catIcon = p.category==="Software"?"💻":p.category==="Service"?"⚙️":p.category==="Platform"?"🏗️":p.category==="Consulting"?"🎯":"◈";
+                      return (
+                        <div key={i} style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, overflow:"hidden" }}>
+                          {/* Header */}
+                          <div style={{ padding:"14px 20px", borderBottom:`1px solid ${C2.border}`,
+                            display:"flex", alignItems:"center", gap:12, background:C2.faint }}>
+                            <div style={{ width:32, height:32, borderRadius:8, background:`${C2.accent}15`,
+                              display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{catIcon}</div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text }}>{p.name}</div>
+                              {p.category && <div style={{ fontSize:11, color:C2.accent, fontFamily:head, fontWeight:600, marginTop:1 }}>{p.category}</div>}
+                            </div>
+                            {p.avgDealSize && <div style={{ fontSize:11, color:C2.muted, fontFamily:body, flexShrink:0 }}>ACV: {p.avgDealSize}</div>}
+                          </div>
+                          {/* Body */}
+                          <div style={{ padding:"0 20px" }}>
+                            {p.description && (
+                              <div style={{ padding:"10px 0", borderBottom:`1px solid ${C2.border}` }}>
+                                <div style={{ fontSize:13, fontFamily:body, color:C2.text, lineHeight:1.7 }}>{p.description}</div>
+                              </div>
+                            )}
+                            {p.valueProposition && fieldRow("Value Prop", p.valueProposition)}
+                            {p.idealCustomer && fieldRow("Ideal Customer", p.idealCustomer)}
+                            {p.problemsSolved && fieldRow("Problems Solved", p.problemsSolved)}
+                            {p.keyFeatures && fieldRow("Key Features", p.keyFeatures)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Ideal Personas ── */}
+              {personas.length > 0 && (
+                <div>
+                  {sectionLabel(`Ideal Personas (${personas.length})`)}
+                  <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                    {personas.map((p:any, i:number) => {
+                      const d = p.data || {};
+                      const color = (ICP_COLORS||["#6C5CE7","#00D68F","#FFC048","#EF4444","#F59E0B"])[i%5];
+                      return (
+                        <div key={i} style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, overflow:"hidden" }}>
+                          {/* Header */}
+                          <div style={{ padding:"14px 20px", borderBottom:`1px solid ${C2.border}`,
+                            display:"flex", alignItems:"center", gap:12, background:`${color}08` }}>
+                            <div style={{ width:32, height:32, borderRadius:"50%", background:`${color}20`,
+                              display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color, flexShrink:0 }}>◉</div>
+                            <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text }}>{p.name}</div>
+                          </div>
+                          {/* Body */}
+                          <div style={{ padding:"0 20px" }}>
+                            {d.buyer && fieldRow("Titles", d.buyer)}
+                            {d.industries && fieldRow("Industries", d.industries)}
+                            {d.co_sizes && fieldRow("Company Size", Array.isArray(d.co_sizes) ? d.co_sizes.join(", ") : d.co_sizes)}
+                            {d.geo && fieldRow("Geography", d.geo)}
+                            {(d.pain1 || d.pain2) && (
+                              <div style={{ padding:"10px 0", borderBottom:`1px solid ${C2.border}` }}>
+                                <div style={{ fontSize:11, color:C2.muted, fontFamily:body, fontWeight:600, marginBottom:8 }}>Core Pains</div>
+                                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                                  {[d.pain1, d.pain2].filter(Boolean).map((pain:string, pi:number) => (
+                                    <div key={pi} style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+                                      <div style={{ width:6, height:6, borderRadius:"50%", background:color, flexShrink:0, marginTop:5 }} />
+                                      <div style={{ fontSize:13, fontFamily:body, color:C2.text, lineHeight:1.6 }}>{pain}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {d.gains && fieldRow("Goals / Gains", d.gains)}
+                            {d.triggers && fieldRow("Buy Triggers", d.triggers)}
+                            {d.objections && fieldRow("Objections", d.objections)}
+                            {d.hook && fieldRow("Hook", d.hook)}
+                            {d.best_channel && fieldRow("Best Channel", d.best_channel)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          );
+        })()}
+
+        {/* INFRASTRUCTURE */}
+        {lpTab === "infrastructure" && (
+          <div style={{ maxWidth:800 }}>
+            {(() => {
+              const mailboxes = domains.length * 3;
+              const minCap = mailboxes * 1;
+              const maxCap = mailboxes * 20;
+              return (
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
+                  {[
+                    { label:"Domains", value:String(domains.length), sub:null, icon:"🌐" },
+                    { label:"Mailboxes", value:String(mailboxes), sub:"3 per domain", icon:"📬" },
+                    { label:"Daily Capacity", value: mailboxes > 0 ? `${minCap.toLocaleString()} – ${maxCap.toLocaleString()}` : "0", sub: mailboxes > 0 ? "Week 1 → fully ramped (6–9 wks)" : null, icon:"⚡" },
+                  ].map((s,i) => (
+                    <div key={i} style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:16, textAlign:"center" }}>
+                      <div style={{ fontSize:22, marginBottom:6 }}>{s.icon}</div>
+                      <div style={{ fontSize: i===2 ? 18 : 24, fontWeight:800, fontFamily:head, color:C2.accent, lineHeight:1.2 }}>{s.value}</div>
+                      <div style={{ fontSize:12, color:C2.muted, fontFamily:body, marginTop:2 }}>{s.label}</div>
+                      {s.sub && <div style={{ fontSize:10, color:C2.muted, fontFamily:body, marginTop:4, lineHeight:1.4 }}>{s.sub}</div>}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+
+            <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, overflow:"hidden" }}>
+              <div style={{ padding:"12px 16px", borderBottom:`1px solid ${C2.border}`,
+                display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:C2.muted,
+                  letterSpacing:.5, textTransform:"uppercase" as const }}>Domain List ({domains.length})</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={async () => { setRegenningDomains(true); await onRegenDomains(); setRegenningDomains(false); }}
+                    disabled={regenningDomains}
+                    style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${C2.accent}44`, background:`${C2.accent}10`,
+                      color:C2.accent, fontSize:11, fontFamily:head, fontWeight:600, cursor:regenningDomains?"default":"pointer",
+                      opacity:regenningDomains?0.6:1 }}>
+                    {regenningDomains ? "Regenerating…" : "↺ Regenerate"}
+                  </button>
+                  <button onClick={() => navigator.clipboard.writeText(domains.map((d:any)=>d.full||d.domain).join("\n"))}
+                    style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.faint,
+                      color:C2.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                    Copy All
+                  </button>
+                </div>
+              </div>
+              <div style={{ maxHeight:420, overflow:"auto" }}>
+                {domains.map((d:any,i:number) => (
+                  <div key={i} style={{ display:"flex", alignItems:"center", padding:"8px 16px",
+                    borderBottom: i<domains.length-1?`1px solid ${C2.border}`:"none",
+                    background: i%2===0?"transparent":C2.faint }}>
+                    <span style={{ fontSize:12, fontFamily:"monospace", color:C2.text, fontWeight:600, flex:1 }}>
+                      {d.full || (d.domain + (d.tld||".com"))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CAMPAIGNS */}
+        {lpTab === "campaigns" && (
+          <div style={{ maxWidth:880 }}>
+            {(() => {
+              const hasSequences = groups.some((g:any) => (g.emailSequence||[]).length > 0 || (g.linkedinSequence||[]).length > 0);
+              const isPlaceholder = groups.length > 0 && !hasSequences;
+              return isPlaceholder ? (
+                <div style={{ background:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:12, padding:"20px 24px", marginBottom:16, display:"flex", alignItems:"flex-start", gap:14 }}>
+                  <span style={{ fontSize:20, flexShrink:0 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:"#92400E", marginBottom:4 }}>
+                      Sequences not available for this run
+                    </div>
+                    <div style={{ fontSize:13, color:"#92400E", fontFamily:body, lineHeight:1.6, marginBottom:12 }}>
+                      The email and LinkedIn sequences from this run weren't captured (this workspace was set up before sequence saving was enabled). Re-run Getting Started to regenerate everything with full sequences.
+                    </div>
+                    <button onClick={onReset}
+                      style={{ padding:"7px 16px", borderRadius:7, border:"none", background:"#92400E", color:"#fff",
+                        fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                      Re-run Getting Started →
+                    </button>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+            {groups.length===0 ? (
+              <div style={{ textAlign:"center", color:C2.muted, fontFamily:body, padding:48 }}>No campaigns generated</div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                {groups.map((g:any, gi:number) => {
+                  const isOpen = expandedGroup===g.id;
+                  const ct = seqTab[g.id]||"strategy";
+                  const seq = ct==="email" ? (g.emailSequence||[]) : (g.linkedinSequence||[]);
+                  const priorityColor = g.priority==="high" ? "#16a34a" : "#ca8a04";
+                  const priorityBg   = g.priority==="high" ? "#16a34a14" : "#ca8a0414";
+                  return (
+                    <div key={g.id} style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:12, overflow:"hidden" }}>
+                      {/* Group header */}
+                      <div onClick={() => setExpandedGroup(isOpen?null:g.id)}
+                        style={{ padding:"16px 20px", display:"flex", alignItems:"flex-start", gap:12, cursor:"pointer",
+                          borderBottom: isOpen?`1px solid ${C2.border}`:"none" }}>
+                        <div style={{ width:36, height:36, borderRadius:8, background:`${C2.accent}15`,
+                          display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:2 }}>
+                          <span style={{ fontSize:15, fontWeight:700, color:C2.accent, fontFamily:head }}>{gi+1}</span>
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          {/* Product + Persona badges */}
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const, marginBottom:7 }}>
+                            <span style={{ fontSize:10, padding:"3px 8px", borderRadius:5,
+                              background:`${C2.accent}18`, color:C2.accent, fontFamily:head, fontWeight:700,
+                              display:"flex", alignItems:"center", gap:4 }}>
+                              <span style={{ opacity:.7 }}>PRODUCT</span> {g.productName}
+                            </span>
+                            <span style={{ fontSize:10, padding:"3px 8px", borderRadius:5,
+                              background:"#7c3aed14", color:"#7c3aed", fontFamily:head, fontWeight:700,
+                              display:"flex", alignItems:"center", gap:4 }}>
+                              <span style={{ opacity:.7 }}>PERSONA</span> {g.personaName}
+                            </span>
+                            <span style={{ fontSize:10, padding:"3px 8px", borderRadius:5,
+                              background:priorityBg, color:priorityColor, fontFamily:head, fontWeight:700,
+                              textTransform:"uppercase" as const }}>
+                              {g.priority||"medium"} fit
+                            </span>
+                          </div>
+                          {/* Channels + step counts */}
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const, alignItems:"center" }}>
+                            <span style={{ fontSize:10, padding:"2px 7px", borderRadius:4,
+                              background:`${C2.accent}15`, color:C2.accent, fontFamily:head, fontWeight:700 }}>📧 EMAIL</span>
+                            <span style={{ fontSize:10, padding:"2px 7px", borderRadius:4,
+                              background:"#0077B514", color:"#0077B5", fontFamily:head, fontWeight:700 }}>💼 LINKEDIN</span>
+                            <span style={{ fontSize:11, color:C2.muted, fontFamily:body }}>
+                              {(g.emailSequence||[]).length} email steps · {(g.linkedinSequence||[]).length} LinkedIn touches
+                            </span>
+                          </div>
+                          {/* Rationale */}
+                          {g.rationale && (
+                            <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:5, lineHeight:1.5,
+                              overflow:"hidden", textOverflow:"ellipsis", display:"-webkit-box",
+                              WebkitLineClamp:2, WebkitBoxOrient:"vertical" as const }}>
+                              {g.rationale}
+                            </div>
+                          )}
+                        </div>
+                        <span style={{ color:C2.muted, fontSize:14, flexShrink:0,
+                          transform:isOpen?"rotate(180deg)":"none", transition:"transform .2s", marginTop:8 }}>▾</span>
+                      </div>
+
+                      {isOpen && (
+                        <div>
+                          {/* Channel tabs: Strategy | divider | Email | LinkedIn */}
+                          <div style={{ display:"flex", alignItems:"center", padding:"0 20px", borderBottom:`1px solid ${C2.border}` }}>
+                            {(["strategy","email","linkedin"] as const).map((t, ti) => (
+                              <>
+                                {ti === 1 && (
+                                  <div key="divider" style={{ width:1, height:20, background:C2.border, margin:"0 4px", flexShrink:0 }} />
+                                )}
+                                <button key={t} onClick={e=>{ e.stopPropagation(); setSeqTab(p=>({...p,[g.id]:t as any})); }}
+                                  style={{ padding:"10px 16px", border:"none", marginBottom:-1,
+                                    borderBottom: ct===t?`2px solid ${C2.accent}`:"2px solid transparent",
+                                    background:"none", color:ct===t?C2.accent:C2.muted,
+                                    fontSize:12, fontFamily:head, fontWeight:ct===t?700:500,
+                                    cursor:"pointer", textTransform:"uppercase" as const, letterSpacing:.5 }}>
+                                  {t==="strategy"?"Strategy":t==="email"?"📧 Email":"💼 LinkedIn"}
+                                </button>
+                              </>
+                            ))}
+                          </div>
+
+                          <div style={{ padding:"20px", display:"flex", flexDirection:"column", gap:16 }}>
+                            {/* Strategy tab */}
+                            {ct === "strategy" && (
+                              <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                                {[{ label:"📧 Email Strategy Brief", text:g.emailStrategy, accent:C2.accent }, { label:"💼 LinkedIn Strategy Brief", text:g.linkedinStrategy, accent:"#0077B5" }].map((s, si) => s.text ? (
+                                  <div key={si} style={{ background:`${s.accent}08`, border:`1px solid ${s.accent}30`, borderRadius:10, overflow:"hidden" }}>
+                                    <div style={{ padding:"12px 16px", borderBottom:`1px solid ${s.accent}20` }}>
+                                      <span style={{ fontSize:13, fontWeight:700, fontFamily:head, color:s.accent }}>{s.label}</span>
+                                    </div>
+                                    <div style={{ padding:"14px 16px", fontSize:12, fontFamily:body, color:C2.textSoft, lineHeight:1.75, whiteSpace:"pre-wrap" as const, maxHeight:360, overflowY:"auto" as const }}>
+                                      {s.text}
+                                    </div>
+                                  </div>
+                                ) : null)}
+                                {!g.emailStrategy && !g.linkedinStrategy && (
+                                  <div style={{ color:C2.muted, fontFamily:body, fontSize:13, textAlign:"center", padding:24 }}>No strategy brief generated</div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Sequence steps (email or linkedin tab) */}
+                            {ct !== "strategy" && <div>
+                              <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:C2.muted,
+                                textTransform:"uppercase" as const, letterSpacing:.8, marginBottom:10 }}>
+                                {ct==="email"?"Email Sequence":"LinkedIn Sequence"}
+                              </div>
+                              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                                {seq.length===0 ? (
+                                  <div style={{ color:C2.muted, fontFamily:body, fontSize:13, textAlign:"center", padding:16 }}>
+                                    No sequence generated
+                                  </div>
+                                ) : seq.map((step:any,si:number) => (
+                                  <div key={si} style={{ background:C2.faint, borderRadius:8, padding:14 }}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, flexWrap:"wrap" as const }}>
+                                      <div style={{ width:22, height:22, borderRadius:"50%", background:C2.accent, color:"#fff",
+                                        display:"flex", alignItems:"center", justifyContent:"center",
+                                        fontSize:10, fontWeight:700, flexShrink:0 }}>{step.stepNumber??si+1}</div>
+                                      <span style={{ fontSize:11, color:C2.muted, fontFamily:body }}>
+                                        Day +{step.dayOffset??si*3}
+                                      </span>
+                                      {step.role && (
+                                        <span style={{ fontSize:10, padding:"2px 6px", borderRadius:4,
+                                          background:`${C2.accent}15`, color:C2.accent, fontFamily:head, fontWeight:600 }}>
+                                          {step.role}
+                                        </span>
+                                      )}
+                                      {step.subject && (
+                                        <span style={{ fontSize:12, fontWeight:600, fontFamily:head, color:C2.text,
+                                          flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis",
+                                          whiteSpace:"nowrap" as const }}>
+                                          "{step.subject}"
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize:13, fontFamily:body, color:C2.textSoft,
+                                      lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>
+                                      {step.body}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ONBOARDING */}
+        {lpTab === "onboarding" && (() => {
+          const ob = lpResult?.onboarding;
+          const taStyle: React.CSSProperties = {
+            width:"100%", padding:"10px 12px", borderRadius:8, boxSizing:"border-box",
+            border:`1px solid ${C2.border}`, background:C2.faint, color:C2.text,
+            fontSize:13, fontFamily:body, outline:"none", resize:"vertical" as const, lineHeight:1.6,
+          };
+          const sectionLabel = (text: string) => (
+            <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:C2.muted, letterSpacing:1,
+              textTransform:"uppercase" as const, marginBottom:8 }}>{text}</div>
+          );
+          return (
+            <div style={{ maxWidth:820, display:"flex", flexDirection:"column", gap:24 }}>
+
+              {/* Header */}
+              <div>
+                <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:4 }}>
+                  Sync from Onboarding
+                </div>
+                <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6 }}>
+                  Paste your onboarding call transcript, implementation form, and any additional direction. The AI will update research, strategy, and campaigns to reflect what the client actually wants.
+                </div>
+              </div>
+
+              {/* What changed — shown after processing */}
+              {ob?.processedAt && ob.changes?.length > 0 && (
+                <div style={{ background:`${C2.green}12`, border:`1px solid ${C2.green}44`, borderRadius:12, padding:"16px 20px" }}>
+                  <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:C2.green, letterSpacing:.7, textTransform:"uppercase" as const, marginBottom:10 }}>
+                    Last synced {new Date(ob.processedAt).toLocaleDateString()} — What changed
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    {ob.changes.map((c:string, i:number) => (
+                      <div key={i} style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+                        <span style={{ color:C2.green, fontWeight:700, flexShrink:0, marginTop:1 }}>✓</span>
+                        <span style={{ fontSize:13, fontFamily:body, color:C2.text, lineHeight:1.5 }}>{c}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {ob.focusProductNames?.length > 0 && (
+                    <div style={{ marginTop:10, fontSize:12, fontFamily:body, color:C2.muted }}>
+                      Priority products: {ob.focusProductNames.join(", ")}
+                    </div>
+                  )}
+                  {ob.focusPersonaNames?.length > 0 && (
+                    <div style={{ fontSize:12, fontFamily:body, color:C2.muted }}>
+                      Priority personas: {ob.focusPersonaNames.join(", ")}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Inputs */}
+              <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+
+                <div>
+                  {sectionLabel("Onboarding Call Transcript")}
+                  <textarea rows={12} value={obTranscript} onChange={e => setObTranscript(e.target.value)}
+                    placeholder="Paste the full transcript from the onboarding call here. The AI will extract product/persona priorities, messaging direction, and any specific instructions."
+                    style={taStyle} />
+                </div>
+
+                <div>
+                  {sectionLabel("Implementation Form")}
+                  <textarea rows={8} value={obImplForm} onChange={e => setObImplForm(e.target.value)}
+                    placeholder="Paste the client's completed implementation form here (goals, target accounts, pain points, competitors, etc.)."
+                    style={taStyle} />
+                </div>
+
+                <div>
+                  {sectionLabel("Additional AI Direction")}
+                  <textarea rows={4} value={obDirection} onChange={e => setObDirection(e.target.value)}
+                    placeholder="Any additional direction or overrides for the AI — messaging angles to emphasize, things to avoid, tone adjustments, etc."
+                    style={taStyle} />
+                </div>
+              </div>
+
+              {/* Action */}
+              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <button
+                  disabled={obRunning || (!obTranscript.trim() && !obImplForm.trim() && !obDirection.trim())}
+                  onClick={async () => {
+                    setObRunning(true);
+                    try { await onProcessOnboarding(obTranscript, obImplForm, obDirection); } finally { setObRunning(false); }
+                  }}
+                  style={{ padding:"11px 28px", borderRadius:10, border:"none",
+                    background: obRunning ? C2.muted : C2.accent, color:"#fff",
+                    fontSize:14, fontFamily:head, fontWeight:700, cursor: obRunning ? "default" : "pointer",
+                    opacity: obRunning || (!obTranscript.trim() && !obImplForm.trim() && !obDirection.trim()) ? 0.6 : 1,
+                    boxShadow: obRunning ? "none" : `0 2px 16px ${C2.accent}40` }}>
+                  {obRunning ? "Syncing… this takes a minute" : ob?.processedAt ? "Re-sync from Onboarding" : "Sync & Update Program"}
+                </button>
+                {ob?.processedAt && !obRunning && (
+                  <span style={{ fontSize:12, fontFamily:body, color:C2.muted }}>
+                    Switch to Campaigns tab to see updated sequences
+                  </span>
+                )}
+              </div>
+
+            </div>
+          );
+        })()}
+
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 const IS_ADMIN_DOMAIN = window.location.hostname.startsWith("admin.") ||
   new URLSearchParams(window.location.search).get("admin") === "1";
@@ -18021,6 +19130,15 @@ function AppMain() {
   const [slackComms, setSlackComms] = useState<any[]>([]);
   // Persisted AI analyses: { sentiment, pitch, coaching, intel } — each is { result, generatedAt } or null
   const [aiAnalyses, setAiAnalyses] = useState<{ sentiment: any; pitch: any; coaching: any; intel: any }>({ sentiment: null, pitch: null, coaching: null, intel: null });
+
+  // Launch Pad state
+  const [lpState,    setLpState]    = useState<"idle"|"running"|"done">("idle");
+  const [lpProgress, setLpProgress] = useState<{step:number;phase:string;total:number}>({step:0,phase:"",total:LP_STEPS.length});
+  const [lpLog,      setLpLog]      = useState<string[]>([]);
+  const [lpResult,   setLpResult]   = useState<any>(null);
+  const [lpTab,      setLpTab]      = useState<"research"|"infrastructure"|"campaigns"|"onboarding">("research");
+  const [navExpanded, setNavExpanded] = useState(false);
+
 
   // Toast policy: ruthlessly trim. Only *true emergencies* surface as a popup:
   //   - status === "error" (hard failures users must act on)
@@ -18213,8 +19331,97 @@ function AppMain() {
     const savedConf = saved?.companyConf ?? {};
     setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
     // Don't override onboarding view — it was intentionally set for new/empty workspaces
-    setView(prev => prev === "onboarding" || prev === "welcome" ? prev : "company");
+    setView(prev => prev === "onboarding" || prev === "welcome" || prev === "launchpad" ? prev : "company");
     setEditingId(null);
+    // Load persisted LP result synchronously so LaunchPadPage sees it on first render
+    if (activeWorkspace) {
+      try {
+        const lpKey = `lp_result_${(activeWorkspace as any).id}`;
+        const lpSaved = localStorage.getItem(lpKey);
+        const lpParsed = lpSaved ? (() => { try { return JSON.parse(lpSaved); } catch { return null; } })() : null;
+        // Always re-reconstruct synthetic results (marked with _synthetic) so sequences update as workspace data grows
+        // Stale = synthetic marker, OR no campaigns but workspace has data AND no fresh domains locked in lpParsed
+        const isStale = lpParsed && (lpParsed._synthetic === true || ((lpParsed.campaignGroups?.length || 0) === 0 && (lpParsed.domains?.length || 0) === 0 && ((saved?.products?.length || 0) > 0 || (saved?.icps?.length || 0) > 0)));
+        if (lpParsed && !isStale) {
+          setLpResult(lpParsed); setLpState("done");
+        } else if ((saved?.campaigns?.length || 0) > 0 || (saved?.icps?.length || 0) > 0) {
+          // Workspace has data from a prior LP run — reconstruct campaignGroups from saved campaigns
+          // Prefer fresh domains from lpParsed (written at step 7) over dfySetup reconstruction
+          const dfy = saved?.dfySetup;
+          const lockedDomains: string[] = dfy?.lockedDomains || dfy?.approvedDomains || [];
+          const reconDomains = (lpParsed?.domains?.length > 0)
+            ? lpParsed.domains
+            : lockedDomains.map((stem: string) => {
+                const tldMatch = stem.match(/(\.[a-z]{2,6})$/);
+                if (tldMatch) return { domain: stem.slice(0, stem.length - tldMatch[0].length), tld: tldMatch[0], full: stem };
+                return { domain: stem, tld: ".com", full: stem + ".com" };
+              });
+          const savedCampaigns: any[] = saved?.campaigns ?? [];
+          const savedProds: any[] = saved?.products ?? [];
+          const savedPersonas: any[] = saved?.icps ?? [];
+          // Group saved campaigns by product+persona combo, pairing email+linkedin
+          const isLinkedIn = (c: any) => c.channel === "linkedin" || c.type === "linkedin_message" || (c.name||"").includes("LinkedIn");
+          const comboKey = (c: any) => `${c.productId||""}__${(c.personaIds||[])[0]||""}`;
+          const comboMap: Record<string, { ec?: any; lc?: any }> = {};
+          for (const c of savedCampaigns) {
+            const k = comboKey(c);
+            if (!comboMap[k]) comboMap[k] = {};
+            if (isLinkedIn(c)) comboMap[k].lc = c;
+            else comboMap[k].ec = c;
+          }
+          let reconGroups: any[];
+          const comboEntries = Object.values(comboMap).filter((v: any) => v.ec || v.lc);
+          if (comboEntries.length > 0) {
+            reconGroups = comboEntries.map((v: any) => {
+              const anchor = v.ec || v.lc;
+              const prod = savedProds.find((p: any) => p.id === anchor.productId);
+              const persona = savedPersonas.find((p: any) => (anchor.personaIds||[]).includes(p.id));
+              const rawName = anchor.name || "";
+              const nameParts = rawName.split(" × ");
+              return {
+                id: anchor.id,
+                productId: anchor.productId, personaId: persona?.id,
+                productName: prod?.name || (nameParts[1] || "").replace(/ — .*/, "") || "",
+                personaName: persona?.name || nameParts[0] || "",
+                priority: "high", rationale: "",
+                emailCampaignId: v.ec?.id || "", linkedinCampaignId: v.lc?.id || "",
+                emailStrategy: "", linkedinStrategy: "",
+                emailSequence: v.ec?.sequence || [], linkedinSequence: v.lc?.sequence || [],
+              };
+            }).slice(0, 10);
+          } else {
+            // No campaigns at all — build placeholder groups from products × personas (cap 5)
+            reconGroups = [];
+            outer: for (const prod of savedProds) {
+              for (const persona of savedPersonas) {
+                if (reconGroups.length >= 5) break outer;
+                reconGroups.push({
+                  id: prod.id + "_" + persona.id,
+                  productId: prod.id, personaId: persona.id,
+                  productName: prod.name, personaName: persona.name,
+                  priority: "high", rationale: "",
+                  emailCampaignId: "", linkedinCampaignId: "",
+                  emailStrategy: "", linkedinStrategy: "",
+                  emailSequence: [], linkedinSequence: [],
+                });
+              }
+            }
+          }
+          const syntheticResult = {
+            _synthetic: true,
+            company: saved?.companyData ?? {},
+            products: savedProds,
+            personas: savedPersonas,
+            domains: reconDomains,
+            campaignGroups: reconGroups,
+          };
+          setLpResult(syntheticResult); setLpState("done");
+          try { localStorage.setItem(lpKey, JSON.stringify(syntheticResult)); } catch {}
+        } else {
+          setLpResult(null); setLpState("idle");
+        }
+      } catch { setLpResult(null); setLpState("idle"); }
+    }
     // Allow save effects to fire after state settles
     requestAnimationFrame(() => { loadingRef.current = false; });
   }, [activeWorkspace?.id]);
@@ -19895,6 +21102,1078 @@ RULES:
     setView("company");
   }, []);
 
+  const regenLpDomains = async () => {
+    const cd = companyData as any;
+    const siteUrl: string = cd.co_website || cd.co_url || "";
+    const coName: string = cd.co_name || "";
+    const coIndustry: string = cd.co_industry || "";
+    const coValueProp: string = cd.co_value_prop || cd.co_tagline || "";
+    const prodNames = (products as any[]).slice(0,5).map((p:any)=>p.name).filter(Boolean).join(", ");
+    const personaNames = (icps as any[]).slice(0,5).map((p:any)=>p.name||p.title||p.role).filter(Boolean).join(", ");
+    // Extract registrable domain (second-to-last part) as brand
+    const hostname2 = siteUrl.replace(/https?:\/\//i,"").replace(/\/.*/,"").replace(/^www\./,"").toLowerCase();
+    const hostParts = hostname2.split(".");
+    const fwdStem = (hostParts.length >= 2 ? hostParts[hostParts.length - 2] : hostParts[0] || "").replace(/[^a-z0-9]/g,"");
+    const stopW = new Set(["the","and","for","inc","llc","ltd","corp","group","company","services","solutions","consulting"]);
+    const nameW = coName.toLowerCase().split(/[\s,.\-&]+/).filter((w:string) => w.length>=2&&!stopW.has(w));
+    const nameJoined = nameW.join("");
+    let brand: string;
+    if (fwdStem && fwdStem.length >= 3 && fwdStem.length <= 14) brand = fwdStem;
+    else if (nameJoined.length <= 14) brand = nameJoined;
+    else if (fwdStem && fwdStem.length <= 18) brand = fwdStem;
+    else brand = nameW[0] || "company";
+    const brandVariants = [brand, ...nameW.filter(w => w.length >= 3 && w !== brand)].slice(0, 3);
+
+    const prefixes = ["get","try","go","my","meet","join","use","run","hello","ask","all","top","best","fast","new","pro","we","by","hey","with","hi","the","at"];
+    const suffixes = ["hq","app","team","co","hub","labs","pro","now","up","biz","mail","digital","online","direct","global","works","cloud","send","reach","zone","base","desk","box","line","edge","plus","one","center","corp","studio","agency","web","first","core","flow","link","key","ace","io","ly"];
+    const candidates = new Set<string>();
+    const addBoth = (a: string, b: string) => { const j=a+b, h=a+"-"+b; if(j.length>=5&&j.length<=26)candidates.add(j); if(h.length>=6&&h.length<=26)candidates.add(h); };
+    for (const bv of brandVariants) {
+      if (bv.length>=4) candidates.add(bv);
+      for (const p of prefixes) addBoth(p, bv);
+      for (const s of suffixes) addBoth(bv, s);
+    }
+    let allCandidates = [...candidates].filter(d => brandVariants.some(bv => d.replace(/-/g,"").includes(bv)));
+    for (let i=allCandidates.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [allCandidates[i],allCandidates[j]]=[allCandidates[j],allCandidates[i]]; }
+
+    const confirmed: {domain:string;tld:string;full:string}[] = [];
+    const needed = 67;
+    const toCheck = allCandidates.slice(0, Math.max(needed * 5, 250));
+    const allTried = new Set(allCandidates);
+
+    // Live-update lpResult as domains are confirmed
+    const flush = () => {
+      setLpResult((prev:any) => prev ? { ...prev, domains: [...confirmed] } : prev);
+    };
+
+    // Batch check initial candidates
+    for (let i = 0; i < toCheck.length && confirmed.length < needed; i += 15) {
+      const batch = toCheck.slice(i, i + 15);
+      const results = await Promise.allSettled(batch.map(async (stem: string) => {
+        const avail = await checkDomainAvailability(stem);
+        return { stem, avail };
+      }));
+      for (const r of results) {
+        if (confirmed.length >= needed) break;
+        if (r.status === "fulfilled" && r.value.avail) {
+          confirmed.push({ domain: r.value.stem, tld: ".com", full: r.value.stem + ".com" });
+        }
+      }
+      flush();
+    }
+
+    // AI rounds if still short
+    let aiRound = 0;
+    while (confirmed.length < needed && aiRound < 6) {
+      aiRound++;
+      try {
+        const still = needed - confirmed.length;
+        const raw = await callAI(
+          `Generate ${still * 6} creative cold-email domain stems. Brand word(s): ${brandVariants.join(", ")}. Every stem MUST contain one of the brand words.
+Company: ${coName} (${coIndustry})
+Products/services: ${prodNames||"n/a"}
+Value prop: ${coValueProp||"n/a"}
+Target personas: ${personaNames||"n/a"}
+Use this context so stems feel relevant to what the company does (industry verbs, outcome words, persona pain points) — but a brand word must appear in every stem.
+Stems only — no TLD. Already tried: ${[...allTried].slice(-80).join(",")}.
+Return ONLY JSON array: ["stem1","stem2",...]`, "", 1200
+        );
+        const parsed: string[] = JSON.parse(raw.replace(/```json|```/g,"").trim());
+        const aiNames = parsed.map((d:string)=>d.toLowerCase().replace(/[^a-z0-9-]/g,""))
+          .filter((d:string)=>d.length>=5&&d.length<=26&&brandVariants.some(bv=>d.replace(/-/g,"").includes(bv))&&!allTried.has(d));
+        aiNames.forEach((n:string)=>allTried.add(n));
+        for (let i = 0; i < aiNames.length && confirmed.length < needed; i += 15) {
+          const batch = aiNames.slice(i, i + 15);
+          const results = await Promise.allSettled(batch.map(async (stem: string) => {
+            const avail = await checkDomainAvailability(stem);
+            return { stem, avail };
+          }));
+          for (const r of results) {
+            if (confirmed.length >= needed) break;
+            if (r.status === "fulfilled" && r.value.avail) {
+              confirmed.push({ domain: r.value.stem, tld: ".com", full: r.value.stem + ".com" });
+            }
+          }
+          flush();
+        }
+      } catch { break; }
+    }
+
+    const final = confirmed.slice(0, needed);
+    const lockedD = final.map(d => d.domain);
+    setDfySetup((prev:any) => ({ ...prev, domainCount:67, mailboxCount:201,
+      suggestedDomains: final.map(d=>({domain:d.full,available:true})),
+      approvedDomains: lockedD, lockedDomains: lockedD }));
+    setLpResult((prev:any) => prev ? { ...prev, domains: final } : prev);
+    if (activeWorkspace) {
+      try { localStorage.removeItem(`lp_result_${(activeWorkspace as any).id}`); } catch {}
+    }
+  };
+
+  const buildLpSalesContext = (): { count: number; snippet: string; full: string } => {
+    const cd = companyData as any;
+    const handoffDate = cd.co_handoff_date || "";
+    const allCalls = callRecords as any[];
+    const allComms = slackComms as any[];
+    const salesCalls = allCalls.filter((r:any) => getCommPhase(r, handoffDate) === "sales");
+    const salesComms = allComms.filter((c:any) => getCommPhase(c, handoffDate) === "sales" && (c.type === "note" || c.type === "email" || c.type === "meeting" || c.type === "hs_call"));
+    const count = salesCalls.length + salesComms.length;
+    if (count === 0) return { count: 0, snippet: "", full: "" };
+
+    const callLines = salesCalls.slice(0, 6).map((r:any) => {
+      const summary = r.result?.summary || "";
+      const excerpt = (r.transcript || "").slice(0, 600);
+      return `[${callTypeLabel(r.callType)} · ${r.callDate || "?"}]${summary ? `\nSummary: ${summary}` : ""}${excerpt ? `\nExcerpt: ${excerpt}` : ""}`;
+    }).join("\n\n---\n\n");
+
+    const commLines = salesComms.slice(0, 12).map((c:any) =>
+      `[${c.type} · ${c.date || "?"}]: ${(c.body || c.subject || c.text || "").slice(0, 300)}`
+    ).join("\n");
+
+    const full = [
+      salesCalls.length > 0 ? `SALES CALLS (${salesCalls.length}):\n${callLines}` : "",
+      salesComms.length > 0 ? `SALES NOTES & EMAILS (${salesComms.length}):\n${commLines}` : "",
+    ].filter(Boolean).join("\n\n");
+
+    const snippet = salesCalls[0]?.result?.summary || (salesComms[0]?.body || "").slice(0, 120) || "";
+    return { count, snippet, full };
+  };
+
+  const processOnboarding = async (transcript: string, implForm: string, direction: string) => {
+    const cd = companyData as any;
+    const currentProds = products as any[];
+    const currentPersonas = icps as any[];
+    const currentLpResult = lpResult as any;
+    const playbookKey: PlaybookKey = currentLpResult?.onboarding?.playbookKey || "auto";
+
+    const allInput = [
+      transcript ? `=== ONBOARDING CALL TRANSCRIPT ===\n${transcript}` : "",
+      implForm   ? `=== IMPLEMENTATION FORM ===\n${implForm}` : "",
+      direction  ? `=== ADDITIONAL DIRECTION ===\n${direction}` : "",
+    ].filter(Boolean).join("\n\n");
+
+    // ── Step 1: Extract decisions ──
+    let extracted: any = {};
+    try {
+      const raw = await callAI(
+        `You are processing onboarding materials for a B2B cold outreach program.
+Current company: ${cd.co_name||""} (${cd.co_industry||""})
+Current products: ${currentProds.map((p:any,i:number)=>`[${i}] ${p.name}: ${(p.description||"").slice(0,80)}`).join("; ")}
+Current ICPs/personas: ${currentPersonas.map((p:any,i:number)=>`[${i}] ${p.name}`).join("; ")}
+
+ONBOARDING MATERIALS:
+${allInput.slice(0, 9000)}
+
+Extract all strategic decisions from these materials. Return ONLY valid JSON:
+{
+  "focusProductNames": [],
+  "deprioritizeProductNames": [],
+  "focusPersonaNames": [],
+  "deprioritizePersonaNames": [],
+  "companyUpdates": {},
+  "productUpdates": [{"name":"...","updates":{"description":"...","problemsSolved":"...","valueProposition":"..."}}],
+  "personaUpdates": [{"name":"...","updates":{"pain":"...","goals":"..."}}],
+  "messagingDirection": "",
+  "avoidTopics": "",
+  "specificInstructions": "",
+  "touchInfrastructure": false,
+  "changes": ["..."]
+}
+focusProductNames = products/services the client explicitly wants to lead with. Empty = use all.
+focusPersonaNames = ICPs the client explicitly wants to target first. Empty = use all.
+companyUpdates = any corrections or additions to the company profile (e.g., new positioning, USP, geography).
+productUpdates / personaUpdates = specific details mentioned about products or personas.
+messagingDirection = key messaging guidance (tone, angle, proof points to emphasize).
+avoidTopics = things the client explicitly said to avoid in outreach.
+specificInstructions = any specific outreach instructions.
+touchInfrastructure = true ONLY if the client explicitly discussed changing domains or mailboxes.
+changes = 5-8 short bullet points summarising the most important decisions from these materials.`, "", 1800
+      );
+      extracted = JSON.parse(raw.replace(/```json|```/g,"").trim());
+    } catch { extracted = { changes: ["Could not parse decisions — applied inputs as direction"] }; }
+
+    // ── Step 2: Apply company data updates ──
+    if (extracted.companyUpdates && Object.keys(extracted.companyUpdates).length > 0) {
+      setCompanyData((prev:any) => ({ ...prev, ...extracted.companyUpdates }));
+    }
+
+    // ── Step 3: Build enriched products/personas with any updates ──
+    const enrichedProds = currentProds.map((p:any) => {
+      const upd = (extracted.productUpdates||[]).find((u:any) => u.name && p.name && p.name.toLowerCase().includes(u.name.toLowerCase()));
+      return upd ? { ...p, ...upd.updates } : p;
+    });
+    const enrichedPersonas = currentPersonas.map((p:any) => {
+      const upd = (extracted.personaUpdates||[]).find((u:any) => u.name && p.name && p.name.toLowerCase().includes(u.name.toLowerCase()));
+      return upd ? { ...p, ...(upd.updates||{}) } : p;
+    });
+    if (enrichedProds.some((p:any,i:number)=>JSON.stringify(p)!==JSON.stringify(currentProds[i])))
+      setProducts(enrichedProds);
+    if (enrichedPersonas.some((p:any,i:number)=>JSON.stringify(p)!==JSON.stringify(currentPersonas[i])))
+      setIcps(enrichedPersonas);
+
+    // ── Step 4: Select combos from focused products × personas ──
+    const focusProdNames: string[] = extracted.focusProductNames || [];
+    const focusPersonaNames: string[] = extracted.focusPersonaNames || [];
+    const deprioProdNames: string[] = extracted.deprioritizeProductNames || [];
+    const deprioPersonaNames: string[] = extracted.deprioritizePersonaNames || [];
+
+    const rankProd = (p:any) => {
+      const n = (p.name||"").toLowerCase();
+      if (focusProdNames.some((f:string)=>n.includes(f.toLowerCase()))) return 0;
+      if (deprioProdNames.some((f:string)=>n.includes(f.toLowerCase()))) return 2;
+      return 1;
+    };
+    const rankPersona = (p:any) => {
+      const n = (p.name||"").toLowerCase();
+      if (focusPersonaNames.some((f:string)=>n.includes(f.toLowerCase()))) return 0;
+      if (deprioPersonaNames.some((f:string)=>n.includes(f.toLowerCase()))) return 2;
+      return 1;
+    };
+    const sortedProds = [...enrichedProds].sort((a:any,b:any)=>rankProd(a)-rankProd(b));
+    const sortedPersonas = [...enrichedPersonas].sort((a:any,b:any)=>rankPersona(a)-rankPersona(b));
+
+    const combos: {product:any;persona:any}[] = [];
+    for (const prod of sortedProds) {
+      if (combos.length >= 5) break;
+      for (const persona of sortedPersonas) {
+        if (combos.length >= 5) break;
+        if (combos.some((c:any)=>c.product.id===prod.id&&c.persona.id===persona.id)) continue;
+        combos.push({ product:prod, persona });
+      }
+    }
+    if (combos.length === 0 && sortedProds[0] && sortedPersonas[0])
+      combos.push({ product:sortedProds[0], persona:sortedPersonas[0] });
+
+    // ── Step 5: Regenerate campaigns with onboarding context ──
+    const pb = PLAYBOOKS[playbookKey] || PLAYBOOKS.auto;
+    const pbBlock = pb.key === "auto" ? "" : `\nVOICE & STRATEGY PROFILE — ${pb.label} (write like ${pb.figure}):\n- Style: ${(pb.voice||[]).join(" | ")}\n- Strategy: ${pb.strategy||""}\n- Opening: ${pb.opening||""}\n- Proof: ${pb.proof||""}\n- CTA: ${pb.cta||""}\n- Avoid: ${pb.avoid||""}\nStay in this voice throughout.\n`;
+    const onboardingBlock = `\nONBOARDING CONTEXT (from client call + implementation form — apply this throughout):\n${extracted.messagingDirection ? `Messaging direction: ${extracted.messagingDirection}\n` : ""}${extracted.specificInstructions ? `Instructions: ${extracted.specificInstructions}\n` : ""}${extracted.avoidTopics ? `Avoid: ${extracted.avoidTopics}\n` : ""}`;
+
+    const allNewCampaigns: any[] = [];
+    const newLpGroups: any[] = [];
+
+    for (let gi = 0; gi < combos.length; gi++) {
+      const { product, persona } = combos[gi];
+      const pd = persona?.data || {};
+      const ctx = {
+        company: { ...cd, ...(extracted.companyUpdates||{}) },
+        icp: { ...pd, name: persona?.name },
+        product: { name:product.name, description:product.description, valueProposition:product.valueProposition,
+          keyFeatures:product.keyFeatures, problemsSolved:product.problemsSolved, elevatorPitch:product.elevatorPitch },
+      };
+      const ctxStr = JSON.stringify(ctx).slice(0, 4000);
+
+      const ec: any = EMPTY_CAMPAIGN();
+      ec.channel="email"; ec.type="cold_email";
+      ec.productId=product.id; ec.personaIds=[persona.id];
+      ec.name=`${persona.name} × ${product.name} — Email`;
+      ec.source="onboarding"; ec.playbook=playbookKey;
+      ec.targeting={ titles:pd.buyer||"", industries:pd.industries||"", companySizes:Array.isArray(pd.co_sizes)?pd.co_sizes.join(", "):(pd.co_sizes||""), personLocation:pd.geo||"", companyLocation:pd.geo||"", keywords:pd.keywords||"", intentTopics:pd.intent_topics||"", excludedDomains:pd.neg||"" };
+
+      const lc: any = EMPTY_CAMPAIGN();
+      lc.channel="linkedin"; lc.type="linkedin_message";
+      lc.productId=product.id; lc.personaIds=[persona.id];
+      lc.name=`${persona.name} × ${product.name} — LinkedIn`;
+      lc.source="onboarding"; lc.playbook=playbookKey; lc.targeting={...ec.targeting};
+
+      let emailStrategy = "";
+      try {
+        emailStrategy = await callAI(
+          `Generate a campaign strategy brief for EMAIL cold outreach.
+Context: ${ctxStr}
+${pbBlock}${onboardingBlock}
+Write a focused strategy brief that the email copy will be based on. Cover:
+
+**ICP SNAPSHOT** (2 sentences — who they are and what drives them)
+
+**LEAD PAIN** (the sharpest pain — must stop a scroll)
+
+**MESSAGE ARCHITECTURE**
+Hook: [opening angle]
+Value: [what we offer against the pain]
+Proof: [credibility signal]
+CTA: [low-friction ask]
+
+**5-EMAIL SEQUENCE STRATEGY**
+Email 1 (Day 0): [angle]
+Email 2 (Day 3): [angle]
+Email 3 (Day 7): [angle]
+Email 4 (Day 14): [angle]
+Email 5 (Day 21): [angle — breakup]
+
+**PERSONALIZATION LAYERS**
+1. [layer]
+2. [layer]
+3. [layer]
+
+HARD RULE: No links or URLs anywhere in the email sequence. All CTAs must be reply-based only.`, "", 800
+        );
+      } catch {}
+
+      let linkedinStrategy = "";
+      try {
+        linkedinStrategy = await callAI(
+          `Generate a campaign strategy brief for LINKEDIN outreach.
+Context: ${ctxStr}
+${pb.key !== "auto" ? `LinkedIn voice: ${pb.linkedin||pbBlock}` : ""}${onboardingBlock}
+Write a focused LinkedIn strategy that the message sequence will be based on. Cover:
+
+**ICP SNAPSHOT** (2 sentences)
+
+**LINKEDIN-SPECIFIC ANGLE** (what makes this persona responsive on LinkedIn)
+
+**5-TOUCH MESSAGE ARC**
+Touch 1 (Day 0 — connection): [angle]
+Touch 2 (Day 2): [angle]
+Touch 3 (Day 5): [angle]
+Touch 4 (Day 10): [angle]
+Touch 5 (Day 17 — breakup): [angle]
+
+**CTA APPROACH** (ultra-low-friction)
+
+**PERSONALIZATION SIGNALS** (what to look for in their LinkedIn profile)`, "", 700
+        );
+      } catch {}
+
+      let emailSeq: any[] = [];
+      try {
+        const er = await callAI(
+          `Write a 5-email cold outreach sequence. Real emails, not templates. Max 100 words each body.
+
+Context: ${ctxStr}
+${pbBlock}${onboardingBlock}
+EMAIL STRATEGY (follow this exactly):
+${emailStrategy.slice(0, 1200)}
+
+Rules:
+- Email 1 (Day 0): lead with the LEAD PAIN — hook, short, personal
+- Email 2 (Day 3): different angle + trigger event
+- Email 3 (Day 7): proof/social proof + objection addressed
+- Email 4 (Day 14): gain angle
+- Email 5 (Day 21): breakup — direct, human, low-friction
+- ZERO links or URLs in any email. CTAs must be reply-based only.
+
+Return ONLY valid JSON:
+{"steps":[{"stepNumber":1,"role":"hook","dayOffset":0,"subject":"...","body":"..."},{"stepNumber":2,"role":"proof","dayOffset":3,"subject":"...","body":"..."},{"stepNumber":3,"role":"value","dayOffset":7,"subject":"...","body":"..."},{"stepNumber":4,"role":"urgency","dayOffset":14,"subject":"...","body":"..."},{"stepNumber":5,"role":"breakup","dayOffset":21,"subject":"...","body":"..."}]}`, "", 1400
+        );
+        const ep = JSON.parse(er.replace(/```json|```/g,"").trim());
+        emailSeq = (ep.steps||[]).map((s:any,i:number) => ({
+          id:uid(), stepNumber:s.stepNumber||i+1, role:s.role||"hook",
+          dayOffset:s.dayOffset??[0,3,7,14,21][i]??i*7, subject:s.subject||"", body:s.body||"", variants:[],
+        }));
+        ec.sequence = emailSeq;
+      } catch {}
+
+      let liSeq: any[] = [];
+      try {
+        const lr = await callAI(
+          `Write a 5-touch LinkedIn outreach sequence. Max 300 chars for connection request, 500 chars for messages.
+
+Context: ${ctxStr}
+${pb.key !== "auto" ? `LinkedIn voice: ${pb.linkedin||""}` : ""}${onboardingBlock}
+LINKEDIN STRATEGY (follow this exactly):
+${linkedinStrategy.slice(0, 1000)}
+
+Rules:
+- Touch 1 (Day 0): connection request only — personal reason to connect, NO pitch
+- Touch 2-5: conversational DMs adapted for LinkedIn format
+- CTAs ultra-low-friction
+
+Return ONLY valid JSON:
+{"steps":[{"stepNumber":1,"role":"connection","dayOffset":0,"body":"connection request text"},{"stepNumber":2,"role":"follow_up","dayOffset":2,"body":"message"},{"stepNumber":3,"role":"value","dayOffset":5,"body":"message"},{"stepNumber":4,"role":"proof","dayOffset":10,"body":"message"},{"stepNumber":5,"role":"breakup","dayOffset":17,"body":"message"}]}`, "", 900
+        );
+        const lp2 = JSON.parse(lr.replace(/```json|```/g,"").trim());
+        liSeq = (lp2.steps||[]).map((s:any,i:number) => ({
+          id:uid(), stepNumber:s.stepNumber||i+1, role:s.role||"follow_up",
+          dayOffset:s.dayOffset??[0,2,5,10,17][i]??i*3, subject:"", body:s.body||"", variants:[],
+        }));
+        lc.sequence = liSeq;
+      } catch {}
+
+      allNewCampaigns.push(ec, lc);
+      newLpGroups.push({
+        id:uid(), productId:product.id, personaId:persona.id,
+        productName:product.name, personaName:persona.name,
+        priority:"high", rationale:"From onboarding",
+        emailCampaignId:ec.id, linkedinCampaignId:lc.id,
+        emailStrategy, linkedinStrategy,
+        emailSequence:emailSeq, linkedinSequence:liSeq,
+      });
+    }
+
+    if (allNewCampaigns.length) setCampaigns((prev:any[]) => [...prev, ...allNewCampaigns]);
+
+    // ── Step 6: Regenerate strategy with onboarding context ──
+    try {
+      const stratRaw = await callAI(
+        `Generate a North Star strategy for this company, informed by onboarding.
+Company: ${JSON.stringify({ ...cd, ...(extracted.companyUpdates||{}) })}
+Products (prioritised): ${sortedProds.map((p:any)=>p.name).join(", ")}
+Personas (prioritised): ${sortedPersonas.map((p:any)=>p.name).join(", ")}
+Onboarding direction: ${extracted.messagingDirection||""}
+Specific instructions: ${extracted.specificInstructions||""}
+Return ONLY valid JSON:
+{"northStar":{"icp":"1-sentence ICP definition","corePain":"primary pain we solve","primaryChannel":"Email + LinkedIn","channelReason":"why","goal90Days":"90-day measurable goal"},"bets":[{"hypothesis":"We believe [persona] will respond to [angle] through [channel] because [reason]","channel":"Email","personaRef":"persona name","angle":"messaging angle","status":"proving"}]}`, "", 600
+      );
+      const sd = JSON.parse(stratRaw.replace(/```json|```/g,"").trim());
+      setStrategy({ northStar:{...(sd.northStar||{}),updatedAt:new Date().toISOString()}, bets:(sd.bets||[]).map((b:any)=>({...b,id:uid(),createdAt:new Date().toISOString(),evidence:"",campaignIds:[]})), insights:[], history:[], phases:[] });
+    } catch {}
+
+    // ── Step 7: Update lpResult with new campaign groups + onboarding metadata ──
+    const onboardingMeta = {
+      transcript, implementationForm: implForm, additionalContext: direction,
+      processedAt: new Date().toISOString(),
+      changes: extracted.changes || [],
+      focusProductNames: focusProdNames, focusPersonaNames,
+      playbookKey,
+    };
+    setLpResult((prev:any) => {
+      const updated = { ...(prev||{}), campaignGroups: newLpGroups, onboarding: onboardingMeta };
+      if (activeWorkspace) {
+        try { localStorage.setItem(`lp_result_${(activeWorkspace as any).id}`, JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+  };
+
+  const runLaunchPad = async (inputUrl: string, extraText: string, linkedinUrl: string = "", extraUrlsText: string = "", offeringsOverride: string = "", playbookKey: PlaybookKey = "auto", salesContext: string = "") => {
+    setLpState("running");
+    setLpLog([]);
+    const log: string[] = [];
+    const addLog = (msg: string) => { log.push(msg); setLpLog([...log]); };
+    const upd = (step: number, phase: string) => setLpProgress({ step, phase, total: LP_STEPS.length });
+
+    try {
+      let normUrl = inputUrl.trim();
+      if (normUrl && !/^https?:\/\//i.test(normUrl)) normUrl = `https://${normUrl}`;
+      let normLinkedin = linkedinUrl.trim();
+      if (normLinkedin && !/^https?:\/\//i.test(normLinkedin)) normLinkedin = `https://${normLinkedin}`;
+
+      // Sales context block — injected into research + campaign prompts when available
+      const salesBlock = salesContext.trim()
+        ? `\nSALES CONTEXT (from pre-sales calls and notes with this client — use to enrich and validate, not replace web research):\n${salesContext.trim().slice(0, 5000)}\n`
+        : "";
+
+      // ── STEP 1: Fetch (same as QuickStart Phase A) ──
+      upd(1, LP_STEPS[0]);
+      addLog("Fetching website...");
+      let context = "";
+      let structureContext = "";
+      let pagesFetched = 0;
+
+      if (normUrl) {
+        try {
+          await Promise.race([
+            (async () => {
+              const homeHTML = await fetchPageHTML(normUrl);
+              if (homeHTML) {
+                pagesFetched++;
+                const homeText = htmlToText(homeHTML);
+                const homeStr = extractOfferingStructure(homeHTML);
+                context += `\n\nWEBSITE HOMEPAGE (${normUrl}):\n${homeText}`;
+                if (homeStr) structureContext += `\n\n── HOMEPAGE (${normUrl}) ──\n${homeStr}`;
+                addLog(`Fetched homepage (${Math.round(context.length/100)/10}k chars)`);
+              } else {
+                context += `\n\nWEBSITE URL: ${normUrl}`;
+              }
+              // Discover sub-pages (same logic as QS)
+              const baseDomain = new URL(normUrl).hostname.replace(/^www\./, "");
+              let allUrls: string[] = [];
+              if (homeHTML) allUrls = extractLinks(homeHTML, normUrl).map((l:any) => l.href);
+              const commonPaths = ["/services","/our-services","/what-we-do","/products","/solutions","/offerings","/capabilities","/platform","/pricing"];
+              for (const p of commonPaths) { try { allUrls.push(new URL(normUrl).origin + p); } catch {} }
+              allUrls = [...new Set(allUrls)];
+              const sameOrigin = allUrls.filter(u => { try { return new URL(u).hostname.replace(/^www\./, "") === baseDomain; } catch { return false; } });
+              const subPicks = sameOrigin.filter(u => {
+                const path = new URL(u).pathname.toLowerCase();
+                const skip = /\/blog|\/login|\/register|\/terms|\/privacy|\/career|\/news|\/cart|\/checkout|\/account|\/policy|\/faq|\/contact|\/wp-|\/sitemap|\/feed|\/404|\/search|\/tag\/|\/category\//i;
+                if (skip.test(path)) return false;
+                return /\/(product|service|solution|about|platform|feature|pricing|offering|what-we-do|what-we-offer|capabilit)/i.test(path);
+              }).slice(0, 6);
+              if (subPicks.length) {
+                addLog(`Fetching ${subPicks.length} sub-pages...`);
+                const subRes = await Promise.allSettled(subPicks.map(u => fetchPageHTML(u)));
+                for (let i = 0; i < subRes.length; i++) {
+                  const r = subRes[i];
+                  if (r.status === "fulfilled" && r.value) {
+                    pagesFetched++;
+                    context += `\n\nPRODUCT/ABOUT PAGE (${subPicks[i]}):\n${htmlToText(r.value)}`;
+                    const ss = extractOfferingStructure(r.value);
+                    if (ss) structureContext += `\n\n── ${subPicks[i]} ──\n${ss}`;
+                  }
+                }
+              }
+            })(),
+            new Promise(res => setTimeout(res, 30000)),
+          ]);
+        } catch (e) { addLog(`Warning: fetch error (${e})`); }
+      }
+
+      // Extra URLs
+      if (extraUrlsText.trim()) {
+        const extraList = extraUrlsText.split(/[\n,]+/).map(u => u.trim()).filter(Boolean)
+          .map(u => /^https?:\/\//i.test(u) ? u : `https://${u}`);
+        if (extraList.length > 0) {
+          addLog(`Fetching ${extraList.length} additional URL(s)...`);
+          const results = await Promise.allSettled(extraList.slice(0, 10).map(async u => {
+            const html = await fetchPageHTML(u);
+            return { url: u, text: html ? htmlToText(html) : "", structure: html ? extractOfferingStructure(html) : "" };
+          }));
+          for (const r of results) {
+            if (r.status === "fulfilled" && r.value.text.length > 100) {
+              pagesFetched++;
+              context += `\n\nADDITIONAL PAGE (${r.value.url}):\n${r.value.text}`;
+              if (r.value.structure) structureContext += `\n\n── ${r.value.url} ──\n${r.value.structure}`;
+            }
+          }
+        }
+      }
+
+      // LinkedIn
+      if (normLinkedin) {
+        addLog("Fetching LinkedIn page...");
+        try {
+          const liHTML = await fetchPageHTML(normLinkedin);
+          const liText = liHTML ? htmlToText(liHTML) : "";
+          context += liText ? `\n\nLINKEDIN PAGE (${normLinkedin}):\n${liText}` : `\n\nLINKEDIN URL: ${normLinkedin}`;
+        } catch (e) { addLog("LinkedIn fetch failed (continuing)"); }
+      }
+
+      if (offeringsOverride.trim()) context = `USER-PROVIDED PRODUCTS & SERVICES (authoritative):\n${offeringsOverride.trim()}\n\n` + context;
+      if (extraText) context += `\n\nADDITIONAL CONTEXT:\n${extraText}`;
+      context = normalizeIntake(context);
+
+      // ── STEP 2: Company Profile (exact QuickStart prompt) ──
+      upd(2, LP_STEPS[1]);
+      addLog("Building company profile...");
+      const coSys = "Return ONLY valid JSON — no prose, no markdown fences, no explanatory text before or after the JSON object. Output must be parseable by JSON.parse().";
+      const coRaw = await callAI(
+        `Analyze this company for B2B cold outreach.
+
+${normUrl ? `WEBSITE URL: ${normUrl}\n` : ""}${normLinkedin ? `LINKEDIN: ${normLinkedin}\n` : ""}${offeringsOverride.trim() ? `USER-PROVIDED PRODUCTS & SERVICES (authoritative):\n${offeringsOverride.trim()}\n\n` : ""}${structureContext ? `DOM-EXTRACTED STRUCTURE (nav + headings from fetched pages):\n${structureContext.slice(0,4000)}\n\n` : ""}SOURCES (body text): ${context}${salesBlock}
+
+CRITICAL RULES:
+- Every field MUST be filled. Never leave any field as empty string.
+- co_name: use the brand name as shown on site / URL hostname.
+- co_website: use the URL verbatim.
+- co_industry: infer from offerings + page content.
+- If not explicitly stated, make a confident best guess.
+
+Return ONLY JSON:
+{"fields":{"co_name":"","co_industry":"","co_website":"","co_size":"","co_revenue":"","co_pitch":"","co_we_help":"","co_who_struggle":"","co_by_providing":"","co_unlike":"","co_we_uniquely":"","co_core_problem":"","co_product":"","co_prod_breakdown":"","co_category":"","co_competitors":"","co_buying_motion":"","co_trust_risks":"","co_ksp":"","co_diff":"","co_proof":"","co_customers":"","co_dream":"","co_deal":"","co_cycle":"","co_exclude":"","co_avoid":""},
+"confidence":{"co_name":0,"co_industry":0,"co_website":0,"co_pitch":0,"co_we_help":0,"co_ksp":0,"co_diff":0,"co_proof":0}}
+
+co_ksp: key selling points that make the product stand out
+co_diff: differentiators vs competitors
+co_proof: proof points, metrics, case studies
+co_prod_breakdown: per-product buyer, pains, gains, triggers, objections
+Raw JSON only.`,
+        coSys, 5000
+      );
+      let coFields: any = {};
+      let coConf: any = {};
+      try {
+        const p = JSON.parse((coRaw || "").replace(/```json?\s*/gi,"").replace(/```/g,"").trim());
+        coFields = p.fields ?? {}; coConf = p.confidence ?? {};
+        for (const [k,v] of Object.entries(coFields)) { if (typeof v === "string") coFields[k] = normalizeIntake(v); }
+      } catch {
+        coFields = { co_name: normUrl ? new URL(normUrl).hostname.replace(/^www\./, "") : "Unknown", co_website: normUrl };
+      }
+      setCompanyData((prev:any) => {
+        const merged = { ...prev };
+        for (const [k,v] of Object.entries(coFields)) { if (v && String(v).trim()) merged[k] = v; }
+        return merged;
+      });
+      setCompanyConf((prev:any) => ({ ...prev, ...coConf }));
+      addLog(`Company: ${coFields.co_name||"?"} (${coFields.co_industry||"?"})`);
+
+      // ── STEP 3: Research Brief (exact QuickStart prompt — auto-selects all) ──
+      upd(3, LP_STEPS[2]);
+      addLog("Running research brief...");
+      let brief: any = { products:[], personas:[], matrix:[] };
+      try {
+        const briefRaw = await callAI(
+          `You are a senior B2B GTM strategist. Analyze this company and produce a comprehensive research brief.
+
+COMPANY: ${JSON.stringify(coFields)}
+${salesBlock}
+${structureContext ? `DOM-EXTRACTED STRUCTURE (authoritative for product taxonomy):\n${structureContext.slice(0,8000)}\n──────────────────────────────────\n\n` : ""}SOURCES (${context.length} chars — body text):
+${context.slice(0,30000)}
+
+CRITICAL GROUNDING RULES:
+- ONLY identify offerings explicitly named in the SOURCES. Do not infer from industry norms.
+- Use exact names from the site — no renaming or generalizing.
+- The DOM-EXTRACTED STRUCTURE is authoritative. If it lists offerings as H2/H3 headings, use exactly those names.
+- Do NOT add plausible-but-unmentioned offerings.
+- Only include personas that represent DISTINCT buyer segments with different pains/motivations.
+- "skip" in the matrix means wrong buyer for this product.
+
+${NAMING_RULES.product}
+${NAMING_RULES.persona}
+
+For each PRODUCT include: name, description, reasoning, dealSize, category, sourceUrl.
+For each PERSONA include: name, buyerTitles, industries, primaryPain, reasoning.
+For the MATRIX: for each product×persona combo include priority (high/medium/low/skip) and brief rationale.
+
+Return ONLY valid JSON:
+{"products":[{"name":"","description":"","reasoning":"","dealSize":"","category":"","sourceUrl":""}],"personas":[{"name":"","buyerTitles":"","industries":"","primaryPain":"","reasoning":""}],"matrix":[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":""}]}`,
+          "Return only valid JSON. Be thorough and specific.", 12000, { useFullContext: true }
+        );
+        brief = JSON.parse(briefRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+        addLog(`Brief: ${brief.products?.length||0} products, ${brief.personas?.length||0} personas`);
+      } catch (e) { addLog(`Warning: research brief failed (${e})`); }
+
+      // ── STEP 4: Full Product Profiles (same Phase B prompts as QuickStart) ──
+      upd(4, LP_STEPS[3]);
+      addLog("Building full product profiles...");
+      const selProds = (brief.products||[]).map((_:any,i:number)=>i); // auto-select all
+      const prodResults = await Promise.allSettled(selProds.map(async (i:number) => {
+        const p = brief.products[i];
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          let prodRaw = "";
+          try {
+            prodRaw = await callAI(
+              `Create a COMPLETE product profile. Fill EVERY field — no empty values. Be specific and actionable.\n\n${NAMING_RULES.product}\n\nProduct: ${p.name}\nDescription: ${p.description||""}\nReasoning: ${p.reasoning||""}\nDeal size hint: ${p.dealSize||""}\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both","acv":"","mrr":"","contractLength":"","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}`,
+              "", attempt === 1 ? 6000 : 8000, { useFullContext: true }
+            );
+            const parsed = JSON.parse(prodRaw.replace(/```json|```/g,"").trim());
+            return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v && String(v).trim())), sourceUrl: p.sourceUrl||"" };
+          } catch {
+            if (attempt === 2) return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other", sourceUrl:p.sourceUrl||"" };
+          }
+        }
+        return { ...EMPTY_PRODUCT(), name:p.name||"", description:p.description||"", category:p.category||"Other" };
+      }));
+      const newProducts: any[] = prodResults.map(r => r.status==="fulfilled" ? r.value : EMPTY_PRODUCT()).filter((p:any)=>p.name);
+      if (newProducts.length) setProducts(newProducts);
+      addLog(`${newProducts.length} product profile${newProducts.length!==1?"s":""}: ${newProducts.map((p:any)=>p.name).join(", ")}`);
+
+      // ── STEP 5: Full Persona Profiles (same Phase B prompts as QuickStart) ──
+      upd(5, LP_STEPS[4]);
+      addLog("Building full persona profiles...");
+      const selPers = (brief.personas||[]).map((_:any,i:number)=>i); // auto-select all
+      const allBriefPersonas = selPers.map((i:number) => brief.personas[i]);
+      const personaDedup = allBriefPersonas.map((pe:any) => `${pe.name}: ${pe.buyerTitles||""}, ${pe.industries||""}, pain=${pe.primaryPain||""}`).join("\n");
+      // Build product ID lookup for the fit matrix
+      const briefMatrix: any[] = Array.isArray(brief?.matrix) ? brief.matrix : [];
+      const productIdByBriefIdx: Record<number,string> = {};
+      selProds.forEach((brIdx:number,k:number) => { productIdByBriefIdx[brIdx] = newProducts[k]?.id||""; });
+      const buildFitMaps = (personaBriefIdx:number) => {
+        const fit: Record<string,string> = {}; const reason: Record<string,string> = {};
+        for (const m of briefMatrix) {
+          if (m?.personaIdx !== personaBriefIdx) continue;
+          const prodId = productIdByBriefIdx[m.productIdx]; if (!prodId) continue;
+          fit[prodId] = String(m.priority||"").toLowerCase();
+          if (m.rationale) reason[prodId] = String(m.rationale);
+        }
+        return { fit, reason };
+      };
+      const personaResults = await Promise.allSettled(allBriefPersonas.map(async (pe:any, idx:number) => {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          let raw = "";
+          try {
+            raw = await callAI(
+              `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\n\nALL PERSONAS (ensure yours is DISTINCT):\n${personaDedup}\n\nReturn ONLY JSON with ALL fields:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1-50","Mid-Market 51-500"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","best_channel":"","best_time":""},"confidence":{}}`,
+              "", attempt === 1 ? 6000 : 8000, { useFullContext: true }
+            );
+            const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+            return { parsed, pe, idx };
+          } catch {
+            if (attempt === 2) return { parsed:null, pe, idx };
+          }
+        }
+        return { parsed:null, pe, idx };
+      }));
+      const newPersonas: any[] = [];
+      for (const r of personaResults) {
+        if (r.status==="fulfilled" && r.value.parsed) {
+          const { parsed, pe, idx } = r.value;
+          const persona = newICP(idx, parsed.fields||{}, parsed.name||pe.name, parsed.confidence||{});
+          persona.linkedProductIds = newProducts.map((p:any)=>p.id);
+          const { fit, reason } = buildFitMaps(idx);
+          persona.linkedProductFit = fit;
+          persona.linkedProductFitReason = reason;
+          newPersonas.push(persona);
+        } else if (r.status==="fulfilled") {
+          const { pe, idx } = r.value;
+          const fallback = newICP(idx, { industries:pe.industries, buyer:pe.buyerTitles, pain1:pe.primaryPain }, pe.name, {});
+          const { fit, reason } = buildFitMaps(idx);
+          fallback.linkedProductFit = fit; fallback.linkedProductFitReason = reason;
+          newPersonas.push(fallback);
+        }
+      }
+      if (newPersonas.length) setIcps((prev:any[]) => [...prev, ...newPersonas]);
+      addLog(`${newPersonas.length} persona${newPersonas.length!==1?"s":""}: ${newPersonas.map((p:any)=>p.name).join(", ")}`);
+
+      // ── STEP 6: Intelligence & Offers (same Phase B parallel calls as QuickStart) ──
+      upd(6, LP_STEPS[5]);
+      addLog("Building intelligence & offers...");
+      const combos = newProducts.flatMap((p:any) => newPersonas.map((pe:any) => ({
+        prodName:p.name, prodId:p.id, persName:pe.name, persId:pe.id,
+        pain:pe.data?.pain1||"", buyer:pe.data?.buyer||"",
+      })));
+      const [offersResult, intelResult, guardrailsResult] = await Promise.all([
+        Promise.allSettled(combos.map(async (combo:any) => {
+          try {
+            const prod = newProducts.find((p:any)=>p.id===combo.prodId);
+            const offerRaw = await callAI(
+              `Generate 3 offer tiers (soft/medium/hard) for: ${combo.prodName} × ${combo.persName}.\nCompany: ${coFields.co_name||""}\nProduct: ${prod?.description||""}\nPersona pain: ${combo.pain||""}\nReturn ONLY JSON array: [{"tier":"soft","name":"","ctaText":"","whatTheyGet":"","frictionReduction":""},...]`,
+              "", 600
+            );
+            const parsed = JSON.parse(offerRaw.replace(/```json|```/g,"").trim());
+            if (Array.isArray(parsed)) return parsed.map((o:any) => ({ ...EMPTY_OFFER(combo.prodId,o.tier||"soft",combo.persId,"cold_outreach"), name:o.name||"", ctaText:o.ctaText||"", whatTheyGet:o.whatTheyGet||"", frictionReduction:o.frictionReduction||"" }));
+            return [];
+          } catch { return []; }
+        })),
+        (async () => {
+          try {
+            const intelRaw = await callAI(
+              `Generate competitive intelligence and per-combo sales playbooks.\n\nCOMPANY: ${coFields.co_name||""} (${coFields.co_industry||""})\nVALUE PROP: ${coFields.co_pitch||""}\nCOMPETITORS: ${coFields.co_competitors||""}\nCOMBOS:\n${combos.map((c:any,i:number)=>`${i}: ${c.prodName} × ${c.persName} (buyer: ${c.buyer}, pain: ${c.pain})`).join("\n")}\n\nReturn ONLY valid JSON:\n{"battlecards":[{"competitorName":"","overview":"","strengths":"","weaknesses":"","pricing":"","landmines":"","displacementAngles":""}],"playbooks":[{"comboIndex":0,"discoveryQuestions":"","demoTalkingPoints":"","objections":[{"objection":"","category":"pricing","severity":"common","rebuttal":""}]}]}\n\nbattlecards 2-4, playbooks ONE per combo (${combos.length}).`,
+              "", 5000, { useFullContext:true }
+            );
+            return JSON.parse(intelRaw.replace(/```json?\n?/g,"").replace(/```/g,"").trim());
+          } catch { return null; }
+        })(),
+        (async () => {
+          try {
+            const gRaw = await callAI(
+              `Set messaging guardrails for cold outreach.\nCompany: ${coFields.co_name||""}\nProducts: ${newProducts.map((p:any)=>p.name).join(", ")}\nPersonas: ${newPersonas.map((p:any)=>p.name).join(", ")}\nCompetitors: ${coFields.co_competitors||""}\nReturn ONLY JSON: {"co_exclude":"domains/companies to never contact","co_avoid":"phrases to avoid"}`,
+              "", 400
+            );
+            return JSON.parse(gRaw.replace(/```json|```/g,"").trim());
+          } catch { return null; }
+        })(),
+      ]);
+      let newOffers: any[] = [];
+      for (const r of offersResult) { if (r.status==="fulfilled" && Array.isArray(r.value)) newOffers.push(...r.value); }
+      if (newOffers.length) setOffers((prev:any[]) => [...prev, ...newOffers]);
+      const intel = intelResult;
+      if (intel) {
+        if (intel.battlecards?.length) setBattlecards((prev:any[]) => [...prev, ...intel.battlecards.map((bc:any) => ({ ...EMPTY_BATTLECARD(), ...bc }))]);
+        if (intel.playbooks?.length) setPlaybooks((prev:any[]) => [...prev, ...intel.playbooks.map((pb:any) => {
+          const combo = combos[pb.comboIndex]||combos[0];
+          return { ...EMPTY_PLAYBOOK(combo?.prodId||"",combo?.persId||""), ...pb, comboIndex:undefined,
+            objections:(pb.objections||[]).map((o:any)=>({...EMPTY_OBJECTION(),...o})) };
+        })]);
+      }
+      if (guardrailsResult) setCompanyData((prev:any) => ({ ...prev, ...(guardrailsResult as any) }));
+      addLog(`Intelligence built: ${newOffers.length} offers, ${intel?.battlecards?.length||0} battlecards`);
+
+      // ── STEP 7: Domains ──
+      upd(7, LP_STEPS[6]);
+      addLog("Generating 67 domains...");
+      const coName2 = (coFields.co_name||"company").toLowerCase();
+      // Extract the registrable domain name (second-to-last part), not the subdomain
+      const hostname2 = (normUrl||"").replace(/https?:\/\//i,"").replace(/\/.*/,"").replace(/^www\./,"").toLowerCase();
+      const hostParts = hostname2.split(".");
+      // e.g. "getbebop.com" → ["getbebop","com"] → "getbebop"
+      // e.g. "app.getbebop.com" → ["app","getbebop","com"] → "getbebop"
+      const fwdStem2 = (hostParts.length >= 2 ? hostParts[hostParts.length - 2] : hostParts[0] || "").replace(/[^a-z0-9]/g,"");
+      const stopW = new Set(["the","and","for","inc","llc","ltd","corp","group","company","services","solutions","consulting"]);
+      const nameW = coName2.split(/[\s,.\-&]+/).filter((w:string) => w.length>=2&&!stopW.has(w));
+      const nameJ = nameW.join("");
+      const brand = fwdStem2&&fwdStem2.length>=3&&fwdStem2.length<=18 ? fwdStem2 : nameJ.length<=18 ? nameJ : nameW[0]||"company";
+      const prefs = ["get","try","go","my","meet","join","use","run","hello","ask","all","top","best","fast","new","pro","we","by","hey","with","hi"];
+      const suffs = ["hq","app","team","co","hub","labs","pro","now","up","biz","mail","digital","online","direct","global","works","cloud","send","reach","zone","base","desk","box","line","edge","plus","one","center","corp","studio","agency","web","first","core","flow","link","key","ace","net","io"];
+      const dc = new Set<string>();
+      for (const p of prefs) { const s=p+brand; if(s.length>=5&&s.length<=22){dc.add(s);dc.add(p+"-"+brand);} }
+      for (const s of suffs) { const d=brand+s; if(d.length>=5&&d.length<=22){dc.add(d);dc.add(brand+"-"+s);} }
+      dc.add(brand);
+      let allDC = [...dc].filter(d=>d.length>=5&&d.length<=26);
+      for (let i=allDC.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [allDC[i],allDC[j]]=[allDC[j],allDC[i]]; }
+      const tldPool = [".com"]; // cold outreach domains use .com only
+      const finalDomains: {domain:string;tld:string;full:string}[] = [];
+      for (const stem of allDC) {
+        if (finalDomains.length>=67) break;
+        finalDomains.push({domain:stem,tld:tldPool[finalDomains.length%tldPool.length],full:stem+tldPool[finalDomains.length%tldPool.length]});
+      }
+      if (finalDomains.length<67) {
+        try {
+          const prodNames = newProducts.slice(0,5).map((p:any)=>p.name).filter(Boolean).join(", ");
+          const personaNames = newPersonas.slice(0,5).map((p:any)=>p.name||p.title).filter(Boolean).join(", ");
+          const valueProp = coFields.co_value_prop || coFields.co_tagline || "";
+          const aiDR = await callAI(
+            `Generate ${(67-finalDomains.length)*4} creative cold-email domain stems for "${coFields.co_name}" (${coFields.co_industry}).
+Brand word: "${brand}". Every stem MUST contain the brand word.
+Products/services: ${prodNames||"n/a"}
+Value prop: ${valueProp||"n/a"}
+Target personas: ${personaNames||"n/a"}
+Use this context so stems feel relevant to what the company does (e.g. industry verbs, outcome words) — but the brand word must appear in every stem.
+Stems only — no TLD. Already used: ${finalDomains.map(d=>d.domain).slice(0,40).join(",")}.
+Return ONLY JSON array of stems: ["name1","name2",...]`, "", 1000
+          );
+          const aiD: string[] = JSON.parse(aiDR.replace(/```json|```/g,"").trim());
+          for (const stem of aiD) {
+            if (finalDomains.length>=67) break;
+            const cl = stem.toLowerCase().replace(/[^a-z0-9-]/g,"");
+            if (cl.length>=5&&cl.length<=26&&!finalDomains.some(d=>d.domain===cl))
+              finalDomains.push({domain:cl,tld:tldPool[finalDomains.length%tldPool.length],full:cl+tldPool[finalDomains.length%tldPool.length]});
+          }
+        } catch {}
+      }
+      const lockedD = finalDomains.map(d=>d.domain);
+      setDfySetup((prev:any) => ({ ...prev, domainCount:67, mailboxCount:201, suggestedDomains:finalDomains.map(d=>({domain:d.full,available:true})), approvedDomains:lockedD, lockedDomains:lockedD }));
+      // Lock domains into lpResult immediately — infrastructure tab is visible before campaigns finish
+      const partialResult = { company:coFields, products:newProducts, personas:newPersonas, domains:finalDomains, campaignGroups:[] as any[] };
+      setLpResult(partialResult);
+      // Persist to localStorage now so a refresh mid-pipeline still shows the new domains
+      if (activeWorkspace) {
+        try { localStorage.setItem(`lp_result_${(activeWorkspace as any).id}`, JSON.stringify(partialResult)); } catch {}
+      }
+      addLog(`${finalDomains.length} domains locked`);
+
+      // ── STEPS 8+9: Campaign Strategies + Sequences ──
+      // Select combos from the brief matrix — high priority first, max 5
+      upd(8, LP_STEPS[7]);
+      addLog("Planning campaigns from matrix...");
+      // Pick combos: high priority first, then medium. Cap at 5.
+      const priorityOrder = ["high","medium","low"];
+      const matrixCombos: {product:any;persona:any;priority:string;rationale:string}[] = [];
+      for (const pri of priorityOrder) {
+        if (matrixCombos.length>=5) break;
+        for (const m of briefMatrix) {
+          if (matrixCombos.length>=5) break;
+          if ((m.priority||"").toLowerCase()!==pri) continue;
+          if ((m.priority||"").toLowerCase()==="skip") continue;
+          const prod = newProducts[selProds.indexOf(m.productIdx)];
+          const pers = newPersonas[m.personaIdx] || newPersonas[0];
+          if (!prod||!pers) continue;
+          // No duplicate product+persona combos
+          if (matrixCombos.some(c=>c.product.id===prod.id&&c.persona.id===pers.id)) continue;
+          matrixCombos.push({product:prod,persona:pers,priority:m.priority||"medium",rationale:m.rationale||""});
+        }
+      }
+      // Fallback: if matrix empty, create 1 combo per product matched to best persona
+      if (matrixCombos.length===0) {
+        for (const prod of newProducts.slice(0,5)) {
+          if (matrixCombos.length>=5) break;
+          const persona = newPersonas[matrixCombos.length%Math.max(newPersonas.length,1)]||newPersonas[0];
+          if (!persona) break;
+          matrixCombos.push({product:prod,persona,priority:"medium",rationale:""});
+        }
+      }
+      addLog(`${matrixCombos.length} campaign groups planned`);
+
+      const allNewCampaigns: any[] = [];
+      const lpGroups: any[] = [];
+
+      // Build playbook voice block for AI prompts
+      const pb = PLAYBOOKS[playbookKey] || PLAYBOOKS.auto;
+      const pbBlock = pb.key === "auto" ? "" : `\nVOICE & STRATEGY PROFILE — ${pb.label} (write like ${pb.figure}):\n- Style: ${(pb.voice||[]).join(" | ")}\n- Strategy: ${pb.strategy||""}\n- Opening: ${pb.opening||""}\n- Proof: ${pb.proof||""}\n- CTA: ${pb.cta||""}\n- Avoid: ${pb.avoid||""}\nStay in this voice throughout — every word, every step.\n`;
+
+      for (let gi=0; gi<matrixCombos.length; gi++) {
+        const {product,persona,priority,rationale} = matrixCombos[gi];
+        const pd = persona?.data||{};
+        const ctx = {
+          company:coFields,
+          icp:{ ...pd, name:persona?.name },
+          product:{ name:product.name, description:product.description, valueProposition:product.valueProposition,
+            keyFeatures:product.keyFeatures, problemsSolved:product.problemsSolved, elevatorPitch:product.elevatorPitch },
+        };
+        const ctxStr = JSON.stringify(ctx).slice(0,4000);
+
+        // Email campaign object
+        const ec: any = EMPTY_CAMPAIGN();
+        ec.channel="email"; ec.type="cold_email";
+        ec.productId=product.id; ec.personaIds=[persona.id];
+        ec.name=`${persona.name} × ${product.name} — Email`;
+        ec.source="quickstart"; ec.playbook=playbookKey;
+        ec.targeting={ titles:pd.buyer||"", industries:pd.industries||"", companySizes:Array.isArray(pd.co_sizes)?pd.co_sizes.join(", "):(pd.co_sizes||""), personLocation:pd.geo||"", companyLocation:pd.geo||"", keywords:pd.keywords||"", intentTopics:pd.intent_topics||"", excludedDomains:pd.neg||"" };
+
+        // LinkedIn campaign object
+        const lc: any = EMPTY_CAMPAIGN();
+        lc.channel="linkedin"; lc.type="linkedin_message";
+        lc.productId=product.id; lc.personaIds=[persona.id];
+        lc.name=`${persona.name} × ${product.name} — LinkedIn`;
+        lc.source="quickstart"; lc.playbook=playbookKey; lc.targeting={...ec.targeting};
+
+        upd(8, `Campaign ${gi+1}/${matrixCombos.length}: email strategy...`);
+        addLog(`Campaign ${gi+1}/${matrixCombos.length}: ${product.name} × ${persona.name}`);
+
+        // ── 8a: Email Strategy (generate BEFORE content) ──
+        let emailStrategy = "";
+        try {
+          emailStrategy = await callAI(
+            `Generate a campaign strategy brief for EMAIL cold outreach.
+Context: ${ctxStr}
+${rationale ? `Matrix note: ${rationale}` : ""}${pbBlock}${salesBlock}
+Write a focused strategy brief that the email copy will be based on. Cover:
+
+**ICP SNAPSHOT** (2 sentences — who they are and what drives them)
+
+**LEAD PAIN** (the sharpest pain — must stop a scroll)
+
+**MESSAGE ARCHITECTURE**
+Hook: [opening angle]
+Value: [what we offer against the pain]
+Proof: [credibility signal]
+CTA: [low-friction ask]
+
+**5-EMAIL SEQUENCE STRATEGY**
+Email 1 (Day 0): [angle]
+Email 2 (Day 3): [angle]
+Email 3 (Day 7): [angle]
+Email 4 (Day 14): [angle]
+Email 5 (Day 21): [angle — breakup]
+
+**PERSONALIZATION LAYERS**
+1. [layer]
+2. [layer]
+3. [layer]
+
+HARD RULE: No links or URLs anywhere in the email sequence. All CTAs must be reply-based only (e.g. "Worth a quick chat?", "Open to a 15-min call?"). Never suggest including a calendar link, website link, or any URL.`,
+            "", 800
+          );
+        } catch { addLog(`Warning: email strategy ${gi+1} failed`); }
+
+        // ── 8b: LinkedIn Strategy ──
+        upd(8, `Campaign ${gi+1}/${matrixCombos.length}: LinkedIn strategy...`);
+        let linkedinStrategy = "";
+        try {
+          linkedinStrategy = await callAI(
+            `Generate a campaign strategy brief for LINKEDIN outreach.
+Context: ${ctxStr}
+${pb.key !== "auto" ? `LinkedIn voice: ${pb.linkedin||pbBlock}` : ""}${salesBlock}
+Write a focused LinkedIn strategy that the message sequence will be based on. Cover:
+
+**CONNECTION ANGLE** (why connect — must feel personal, no pitch)
+
+**OPENER HOOK** (pain-first message 1 angle)
+
+**5-TOUCH MESSAGE ARC**
+Touch 1 (Day 0 — connection): [angle]
+Touch 2 (Day 2): [angle]
+Touch 3 (Day 5): [angle]
+Touch 4 (Day 10): [angle]
+Touch 5 (Day 17 — breakup): [angle]
+
+**CTA APPROACH** (ultra-low-friction — what we ask for)
+
+**PERSONALIZATION SIGNALS** (what to look for in their LinkedIn profile)`,
+            "", 700
+          );
+        } catch { addLog(`Warning: LinkedIn strategy ${gi+1} failed`); }
+
+        // ── 9a: Email Sequence (based on email strategy) ──
+        upd(9, `Campaign ${gi+1}/${matrixCombos.length}: email sequence...`);
+        let emailSeq: any[] = [];
+        try {
+          const er = await callAI(
+            `Write a 5-email cold outreach sequence. Real emails, not templates. Max 100 words each body.
+
+Context: ${ctxStr}
+${pbBlock}${salesBlock}
+EMAIL STRATEGY (follow this exactly — angles, arc, and personalization):
+${emailStrategy.slice(0,1200)}
+
+Rules:
+- Email 1 (Day 0): lead with the LEAD PAIN from strategy — hook, short, personal
+- Email 2 (Day 3): different angle from strategy + trigger event
+- Email 3 (Day 7): proof/social proof + objection addressed
+- Email 4 (Day 14): gain angle from strategy
+- Email 5 (Day 21): breakup — direct, human, low-friction
+- ZERO links or URLs in any email — no website links, no calendar links, no "click here", no hyperlinks of any kind. CTAs must be reply-based only (e.g. "Worth a quick chat?", "Open to a 15-min call?").
+
+Return ONLY valid JSON:
+{"steps":[{"stepNumber":1,"role":"hook","dayOffset":0,"subject":"...","body":"..."},{"stepNumber":2,"role":"proof","dayOffset":3,"subject":"...","body":"..."},{"stepNumber":3,"role":"value","dayOffset":7,"subject":"...","body":"..."},{"stepNumber":4,"role":"urgency","dayOffset":14,"subject":"...","body":"..."},{"stepNumber":5,"role":"breakup","dayOffset":21,"subject":"...","body":"..."}]}`,
+            "", 1400
+          );
+          const ep = JSON.parse(er.replace(/```json|```/g,"").trim());
+          emailSeq = (ep.steps||[]).map((s:any,i:number) => ({
+            id:uid(), stepNumber:s.stepNumber||i+1, role:s.role||"hook",
+            dayOffset:s.dayOffset??[0,3,7,14,21][i]??i*7, subject:s.subject||"", body:s.body||"", variants:[],
+          }));
+          ec.sequence = emailSeq;
+        } catch { addLog(`Warning: email sequence ${gi+1} failed`); }
+
+        // ── 9b: LinkedIn Sequence (based on linkedin strategy) ──
+        upd(9, `Campaign ${gi+1}/${matrixCombos.length}: LinkedIn sequence...`);
+        let liSeq: any[] = [];
+        try {
+          const lr = await callAI(
+            `Write a 5-touch LinkedIn outreach sequence. Max 300 chars for connection request, 500 chars for messages.
+
+Context: ${ctxStr}
+${pb.key !== "auto" ? `LinkedIn voice: ${pb.linkedin||""}` : ""}${salesBlock}
+LINKEDIN STRATEGY (follow this exactly — angles, arc, and personalization signals):
+${linkedinStrategy.slice(0,1000)}
+
+Rules:
+- Touch 1 (Day 0): connection request only — personal reason to connect, NO pitch
+- Touch 2-5: conversational DMs, same pain angles from strategy adapted for LinkedIn format
+- CTAs ultra-low-friction (yes/no reply, quick question)
+
+Return ONLY valid JSON:
+{"steps":[{"stepNumber":1,"role":"connection","dayOffset":0,"body":"connection request text"},{"stepNumber":2,"role":"follow_up","dayOffset":2,"body":"message"},{"stepNumber":3,"role":"value","dayOffset":5,"body":"message"},{"stepNumber":4,"role":"proof","dayOffset":10,"body":"message"},{"stepNumber":5,"role":"breakup","dayOffset":17,"body":"message"}]}`,
+            "", 900
+          );
+          const lp2 = JSON.parse(lr.replace(/```json|```/g,"").trim());
+          liSeq = (lp2.steps||[]).map((s:any,i:number) => ({
+            id:uid(), stepNumber:s.stepNumber||i+1, role:s.role||"follow_up",
+            dayOffset:s.dayOffset??[0,2,5,10,17][i]??i*3, subject:"", body:s.body||"", variants:[],
+          }));
+          lc.sequence = liSeq;
+        } catch { addLog(`Warning: LinkedIn sequence ${gi+1} failed`); }
+
+        allNewCampaigns.push(ec, lc);
+        lpGroups.push({
+          id:uid(), productId:product.id, personaId:persona.id,
+          productName:product.name, personaName:persona.name,
+          priority, rationale,
+          emailCampaignId:ec.id, linkedinCampaignId:lc.id,
+          emailStrategy, linkedinStrategy,
+          emailSequence:emailSeq, linkedinSequence:liSeq,
+        });
+      }
+
+      if (allNewCampaigns.length) setCampaigns((prev:any[]) => [...prev, ...allNewCampaigns]);
+
+      // Set strategy
+      try {
+        const stratRaw = await callAI(
+          `Generate a North Star strategy for this company.
+Company: ${JSON.stringify(coFields)}
+Products: ${newProducts.map((p:any)=>p.name).join(", ")}
+Personas: ${newPersonas.map((p:any)=>p.name).join(", ")}
+Return ONLY valid JSON:
+{"northStar":{"icp":"1-sentence ICP definition","corePain":"primary pain we solve","primaryChannel":"Email + LinkedIn","channelReason":"why","goal90Days":"90-day measurable goal"},"bets":[{"hypothesis":"We believe [persona] will respond to [angle] through [channel] because [reason]","channel":"Email","personaRef":"persona name","angle":"messaging angle","status":"proving"}]}`,
+          "", 600
+        );
+        const sd = JSON.parse(stratRaw.replace(/```json|```/g,"").trim());
+        setStrategy({ northStar:{...(sd.northStar||{}),updatedAt:new Date().toISOString()}, bets:(sd.bets||[]).map((b:any)=>({...b,id:uid(),createdAt:new Date().toISOString(),evidence:"",campaignIds:[]})), insights:[], history:[], phases:[] });
+      } catch {}
+
+      // Write company, personas, products into workspace (mirrors handleQSComplete)
+      setCompanyData((prev:any) => {
+        const merged = {...prev};
+        for (const [k,v] of Object.entries(coFields)) { if (v && String(v).trim()) merged[k] = v; }
+        return merged;
+      });
+      setIcps((prev:any[]) => {
+        const existingIds = new Set(prev.map((p:any) => p.id));
+        return [...prev, ...newPersonas.filter((p:any) => !existingIds.has(p.id))];
+      });
+      setProducts((prev:any[]) => {
+        const existingIds = new Set(prev.map((p:any) => p.id));
+        return [...prev, ...newProducts.filter((p:any) => !existingIds.has(p.id))];
+      });
+
+      addLog(`Done! ${lpGroups.length} campaign groups ready`);
+      const lpFinalResult = { company:coFields, products:newProducts, personas:newPersonas, domains:finalDomains, campaignGroups:lpGroups };
+      setLpResult(lpFinalResult);
+      setLpState("done");
+      // Persist immediately so results survive navigation and refresh
+      if (activeWorkspace) {
+        try { localStorage.setItem(`lp_result_${(activeWorkspace as any).id}`, JSON.stringify(lpFinalResult)); } catch {}
+      }
+
+    } catch (err) {
+      addLog(`Error: ${err}`);
+      setLpState("idle");
+      addToast({ title:"Launch pad failed", status:"error", message:"Check your API key and try again" });
+    }
+  };
+
   const handleAnalyzerComplete = useCallback(result => {
     // If this is a review request, store it and show persistent toast
     if (result.type === "review") {
@@ -20142,24 +22421,61 @@ RULES:
             {/* Navigation */}
             <div style={{ flex:1, overflowY:"auto", padding:"0 12px" }}>
 
-              {/* + New */}
-              {/* Get Started — shows for empty workspaces at the very top */}
-              {activeWorkspace && !(companyData as any)?.co_name && !(icps as any[]).length && !(products as any[]).length && (
-                <button onClick={()=>setView("welcome")}
-                  style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"11px 14px",
-                    borderRadius:12, border:`1.5px dashed ${(view==="welcome"||view==="welcome")?C2.accent:C2.accent+"66"}`,
-                    background: (view==="welcome"||view==="welcome") ? `${C2.accent}14` : `${C2.accent}06`,
-                    cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:8 }}
-                  onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=C2.accent;(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}14`;}}
-                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=(view==="welcome"||view==="welcome")?C2.accent:C2.accent+"66";(e.currentTarget as HTMLButtonElement).style.background=(view==="welcome"||view==="welcome")?`${C2.accent}14`:`${C2.accent}06`;}}>
-                  <span style={{ fontSize:16 }}>🚀</span>
-                  <span style={{ fontSize:13, fontFamily:head, fontWeight:700, color:C2.accent }}>Get Started</span>
-                </button>
+              {/* Launch Pad — always visible at the top */}
+              {activeWorkspace && (
+                <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:6 }}>
+                  <button onClick={()=>{ setView("launchpad"); }}
+                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 14px",
+                      borderRadius:10, border:"none",
+                      background: view==="launchpad" ? C2.accent : `${C2.accent}14`,
+                      cursor:"pointer", textAlign:"left", transition:"all .15s" }}
+                    onMouseEnter={e=>{ if(view!=="launchpad")(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}22`; }}
+                    onMouseLeave={e=>{ if(view!=="launchpad")(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}14`; }}>
+                    <span style={{ fontSize:14 }}>🚀</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:12.5, fontFamily:head, fontWeight:700,
+                        color: view==="launchpad" ? "#fff" : C2.accent }}>Getting Started</div>
+                      <div style={{ fontSize:10, fontFamily:body,
+                        color: view==="launchpad" ? "rgba(255,255,255,.7)" : C2.muted, marginTop:1 }}>URL → full program, auto</div>
+                    </div>
+                  </button>
+                </div>
               )}
 
-              {/* Nav items — grouped */}
-              {activeWorkspace && (
+              {/* Nav items — grouped, collapsed by default */}
+              {activeWorkspace && (() => {
+                const isOpen = navExpanded;
+                return (
                 <>
+                  <button onClick={()=>setNavExpanded(!isOpen)}
+                    style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"8px 14px",
+                      borderRadius:10, border:"none", background:"transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .15s", marginBottom:isOpen?4:0 }}
+                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C2.faint}
+                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background="transparent"}>
+                    <span style={{ fontSize:11, color:C2.muted, display:"inline-block",
+                      transform:isOpen?"rotate(90deg)":"none", transition:"transform .2s" }}>▶</span>
+                    <span style={{ fontSize:11.5, fontFamily:head, fontWeight:600, color:C2.muted }}>
+                      {isOpen ? "View less" : "View more"}
+                    </span>
+                  </button>
+
+                  {isOpen && (<>
+                  {/* Quick Start */}
+                  <button onClick={()=>{ setShowQS(false); setQsProgress(null); setWelcomeExiting(false); setView("welcome"); }}
+                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"9px 14px",
+                      borderRadius:10, border:"none",
+                      background: view==="welcome" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .15s", marginBottom:4 }}
+                    onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=C2.faint}
+                    onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=view==="welcome"?`${C2.accent}14`:"transparent"}>
+                    <span style={{ fontSize:14 }}>⚡</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:12.5, fontFamily:head, fontWeight:600,
+                        color: view==="welcome" ? C2.text : C2.textSoft }}>Quick Start</div>
+                      <div style={{ fontSize:10, fontFamily:body, color:C2.muted, marginTop:1 }}>AI-powered, guided</div>
+                    </div>
+                  </button>
                   {/* ── TODAY (was Home) ── */}
                   <button onClick={()=>guardedNav(()=>setView("home"))}
                     style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"9px 14px",
@@ -20356,8 +22672,10 @@ RULES:
                     <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="integrations"?C2.accent:C2.muted }}>⚿</span>
                     <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="integrations"?700:500, color:view==="integrations"?C2.text:C2.textSoft }}>Integrations</span>
                   </button>
+                  </>)}
                 </>
-              )}
+                );
+              })()}
             </div>
 
             {/* User footer */}
@@ -20530,7 +22848,7 @@ RULES:
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? "relative" as const : undefined, overflow: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? "hidden" : "auto", padding: ["icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -20625,7 +22943,7 @@ RULES:
                       const wsReady = wsIcps.filter(i => i.outputs).length;
                       return (
                         <div key={c.id}
-                          onClick={()=>{ setActiveWorkspace(c); const ws = loadWorkspaceData(c.id); const isEmpty = !ws || (!ws.companyData?.co_name && !(ws.icps||[]).length && !(ws.products||[]).length); setView(isEmpty ? "welcome" : "home"); }}
+                          onClick={()=>{ setActiveWorkspace(c); setView("launchpad"); }}
                           style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px 60px",
                             padding:"13px 20px", gap:12, alignItems:"center", cursor:"pointer",
                             borderBottom: idx < filteredAccts.length-1 ? `1px solid ${C.border}` : "none",
@@ -20702,6 +23020,7 @@ RULES:
                   ? "welcomePhaseOut .5s cubic-bezier(0.4, 0, 1, 1) forwards"
                   : "welcomePhaseIn .8s cubic-bezier(0.16, 1, 0.3, 1) both" }}>
                 <WelcomeScreen companyName={activeWorkspace?.name}
+                  onLaunchPad={()=>{ setView("launchpad"); }}
                   onQuickStart={()=>{ setShowQSAnimated(true); }}
                   onManual={()=>setView("company")}
                   onPasteForm={()=>{ setShowPasteForm(true); }}
@@ -21187,6 +23506,21 @@ RULES:
                   </button>
                 </div>
               </div>
+            )}
+
+            {/* ══ LAUNCH PAD ══ */}
+            {view==="launchpad" && (
+              <LaunchPadPage
+                lpState={lpState} lpProgress={lpProgress} lpLog={lpLog}
+                lpResult={lpResult} lpTab={lpTab} onTabChange={setLpTab}
+                onLaunch={(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx) => runLaunchPad(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx)}
+                onContinue={() => { setLpTab("research"); setView("home"); }}
+                onReset={() => { setLpState("idle"); setLpResult(null); if (activeWorkspace) { try { localStorage.removeItem(`lp_result_${(activeWorkspace as any).id}`); } catch {} } }}
+                onRegenDomains={regenLpDomains}
+                onProcessOnboarding={processOnboarding}
+                salesContext={buildLpSalesContext()}
+                companyName={activeWorkspace?.name}
+              />
             )}
 
             {/* ═══ HOME DASHBOARD ═══ */}
@@ -29866,7 +32200,8 @@ RULES:
                 setNewAcctName("");
                 setNewAcctIndustry("");
                 setActiveWorkspace(newClient);
-                setView("welcome");
+                setLpState("idle"); setLpResult(null);
+                setView("launchpad");
               }}
                 style={{ flex:2, padding:"10px", borderRadius:8, border:"none",
                   background:newAcctName.trim()?C.accent:C.border,
