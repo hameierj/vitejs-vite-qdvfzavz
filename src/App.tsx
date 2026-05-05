@@ -18105,13 +18105,6 @@ function SharedExportPage({ id }: { id: string }) {
         <div style={{ maxWidth:960, margin:"0 auto", padding:"72px 48px 64px", position:"relative" }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:32, flexWrap:"wrap" as const }}>
             <div style={{ flex:1, minWidth:280 }}>
-              <div style={{ display:"inline-flex", alignItems:"center", gap:6, background:"rgba(108,92,231,.18)",
-                border:`1px solid ${A}44`, borderRadius:20, padding:"4px 12px 4px 8px", marginBottom:20 }}>
-                <div style={{ width:6, height:6, borderRadius:"50%", background:A }} />
-                <span style={{ fontSize:11, fontWeight:700, color:`${A}ee`, letterSpacing:1.2, textTransform:"uppercase" as const }}>
-                  Outbound Program Overview
-                </span>
-              </div>
               <h1 style={{ fontSize:52, fontWeight:800, color:"#fff", lineHeight:1.08, letterSpacing:"-1px", marginBottom:16 }}>
                 {name}
               </h1>
