@@ -18436,13 +18436,12 @@ function SharedExportPage({ id }: { id: string }) {
           <div style={{ marginBottom:64 }}>
             <SectionLabel icon="🌐">Domain Infrastructure</SectionLabel>
             <div className="ep-card" style={{ overflow:"hidden" }}>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", borderBottom:"1px solid #ebebf5" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", borderBottom:"1px solid #ebebf5" }}>
                 {[
-                  { label:"Sending Domains",  value:String(domains.length),                     sub:"Separate sender identities" },
-                  { label:"Mailboxes",         value:String(domains.length*3),                   sub:"3 per domain" },
-                  { label:"Daily Capacity",    value:`${domains.length*3*20}–${domains.length*3*35}`, sub:"Emails per day" },
+                  { label:"Sending Domains", value:String(domains.length),  sub:"Separate sender identities" },
+                  { label:"Mailboxes",        value:String(domains.length*3), sub:"3 per domain" },
                 ].map((s,i) => (
-                  <div key={i} style={{ padding:"28px 24px", borderRight: i<2 ? "1px solid #ebebf5" : "none",
+                  <div key={i} style={{ padding:"28px 24px", borderRight: i<1 ? "1px solid #ebebf5" : "none",
                     textAlign:"center" as const }}>
                     <div style={{ fontSize:36, fontWeight:900, color:A, letterSpacing:"-1px", marginBottom:4 }}>{s.value}</div>
                     <div style={{ fontSize:13, fontWeight:700, color:"#1a1a2e", marginBottom:3 }}>{s.label}</div>
@@ -18454,16 +18453,13 @@ function SharedExportPage({ id }: { id: string }) {
                 <div style={{ fontSize:11, fontWeight:800, color:"#aaa", letterSpacing:.8,
                   textTransform:"uppercase" as const, marginBottom:14 }}>Domain List</div>
                 <div style={{ display:"flex", flexWrap:"wrap" as const, gap:8 }}>
-                  {domains.slice(0,40).map((d:any,i:number) => (
+                  {domains.map((d:any,i:number) => (
                     <span key={i} style={{ fontSize:12, fontFamily:"'Fira Code','Fira Mono','Consolas',monospace",
                       background:"#f5f5fb", color:"#444", padding:"5px 12px", borderRadius:8, border:"1px solid #e8e8f2",
                       letterSpacing:"-.2px" }}>
                       {d.full || `${d.domain}.${d.tld||"com"}`}
                     </span>
                   ))}
-                  {domains.length > 40 && (
-                    <span style={{ fontSize:12, color:"#bbb", padding:"5px 12px" }}>+{domains.length-40} more</span>
-                  )}
                 </div>
               </div>
             </div>
