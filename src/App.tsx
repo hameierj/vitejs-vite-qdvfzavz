@@ -18131,12 +18131,7 @@ function SharedExportPage({ id }: { id: string }) {
               </div>
             </div>
             <div style={{ textAlign:"right" as const, flexShrink:0 }}>
-              {dateStr && (
-                <div style={{ fontSize:12, color:"rgba(255,255,255,.3)", fontWeight:500 }}>
-                  Prepared {dateStr}
-                </div>
-              )}
-              <div style={{ marginTop:14, display:"flex", gap:20, justifyContent:"flex-end" }}>
+              <div style={{ display:"flex", gap:20, justifyContent:"flex-end" }}>
                 {products.length > 0 && (
                   <div style={{ textAlign:"center" as const }}>
                     <div style={{ fontSize:28, fontWeight:800, color:"#fff" }}>{products.length}</div>
