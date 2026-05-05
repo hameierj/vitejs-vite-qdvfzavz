@@ -18467,16 +18467,12 @@ function SharedExportPage({ id }: { id: string }) {
         )}
 
         {/* ── FOOTER ── */}
-        <div style={{ borderTop:"1px solid #e0e0ec", paddingTop:28, display:"flex",
-          justifyContent:"space-between", alignItems:"center", flexWrap:"wrap" as const, gap:12 }}>
+        <div style={{ borderTop:"1px solid #e0e0ec", paddingTop:32, display:"flex",
+          justifyContent:"space-between", alignItems:"center", flexWrap:"wrap" as const, gap:16 }}>
           <div style={{ fontSize:12, color:"#bbb" }}>
-            Prepared {dateStr && `on ${dateStr}`} by B2BRocket
+            Prepared {dateStr && `on ${dateStr}`}
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <div style={{ width:20, height:20, borderRadius:5, background:A,
-              display:"flex", alignItems:"center", justifyContent:"center", fontSize:11 }}>🚀</div>
-            <span style={{ fontSize:12, fontWeight:700, color:"#aaa" }}>B2BRocket</span>
-          </div>
+          <img src="/b2brocket-logo.png" alt="B2B Rocket" style={{ height:36, objectFit:"contain" as const }} />
         </div>
       </div>
     </div>
