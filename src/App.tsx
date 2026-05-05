@@ -18195,7 +18195,7 @@ function SharedExportPage({ id }: { id: string }) {
         {products.length > 0 && (
           <div style={{ marginBottom:64 }}>
             <SectionLabel>Products &amp; Services</SectionLabel>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:20 }}>
               {products.map((p:any,i:number) => {
                 const cat = p.category || "Software";
                 const [fg, bg] = catColors[cat] || [A, BT];
@@ -18263,7 +18263,7 @@ function SharedExportPage({ id }: { id: string }) {
         {personas.length > 0 && (
           <div style={{ marginBottom:64 }}>
             <SectionLabel>Who We're Targeting</SectionLabel>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:20 }}>
               {personas.map((pe:any,i:number) => {
                 const d = pe.data || pe.fields || {};
                 const palette = [[A,BT],["#5a9a6e","#eaf5ee"],["#5b8db8","#ebf2f8"],["#c76a42","#fdf0ea"],["#8b6fc0","#f0ecf8"]];
