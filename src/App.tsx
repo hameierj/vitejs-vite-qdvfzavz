@@ -19367,6 +19367,7 @@ function AppMain() {
         if (pendingJob) {
           setLpJobId(pendingJob.jobId);
           setLpState("background");
+          setView("launchpad");
         } else {
 
         // ── Priority 2: fresh LP result in localStorage ──
