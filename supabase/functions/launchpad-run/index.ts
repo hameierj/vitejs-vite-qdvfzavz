@@ -412,30 +412,33 @@ Return ONLY valid JSON:
     console.error("Research brief failed:", e);
   }
 
-  // ── STEP 4: Product Profiles ──
+  // ── STEP 4: Product Profiles (sequential to avoid rate-limit pile-up) ──
   await upd(4, LP_STEPS[3]);
   const selProds = (brief.products || []).map((_: any, i: number) => i);
-  const prodResults = await Promise.allSettled(selProds.map(async (i: number) => {
+  const newProducts: any[] = [];
+  for (const i of selProds) {
     const p = brief.products[i];
+    let result: any = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const prodRaw = await callAI(
           anthropicKey,
           `Create a COMPLETE product profile. Fill EVERY field — no empty values. Be specific and actionable.\n\n${NAMING_RULES.product}\n\nProduct: ${p.name}\nDescription: ${p.description || ""}\nReasoning: ${p.reasoning || ""}\nDeal size hint: ${p.dealSize || ""}\nCompany: ${coFields.co_name || ""} (${coFields.co_industry || ""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both","acv":"","mrr":"","contractLength":"","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}`,
           "",
-          attempt === 1 ? 6000 : 8000,
+          3000,
         );
         const parsed = JSON.parse(prodRaw.replace(/```json|```/g, "").trim());
-        return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
+        result = { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
+        break;
       } catch {
-        if (attempt === 2) return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: p.category || "Other", sourceUrl: p.sourceUrl || "" };
+        if (attempt === 2) result = { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: p.category || "Other", sourceUrl: p.sourceUrl || "" };
       }
     }
-    return { ...EMPTY_PRODUCT(), name: p.name || "", category: p.category || "Other" };
-  }));
-  const newProducts: any[] = prodResults.map((r: any) => r.status === "fulfilled" ? r.value : EMPTY_PRODUCT()).filter((p: any) => p.name);
+    if (result?.name) newProducts.push(result);
+    await upd(4, `${LP_STEPS[3]} (${newProducts.length}/${selProds.length})`);
+  }
 
-  // ── STEP 5: Persona Profiles ──
+  // ── STEP 5: Persona Profiles (sequential to avoid rate-limit pile-up) ──
   await upd(5, LP_STEPS[4]);
   const selPers = (brief.personas || []).map((_: any, i: number) => i);
   const allBriefPersonas = selPers.map((i: number) => brief.personas[i]);
@@ -455,41 +458,38 @@ Return ONLY valid JSON:
     }
     return { fit, reason };
   };
-  const personaResults = await Promise.allSettled(allBriefPersonas.map(async (pe: any, idx: number) => {
+  const newPersonas: any[] = [];
+  for (const [idx, pe] of allBriefPersonas.entries()) {
+    let parsed: any = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const raw = await callAI(
           anthropicKey,
           `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name || ""} (${coFields.co_industry || ""})\nValue Prop: ${coFields.co_pitch || ""}\nPersona: ${pe.name} — ${pe.buyerTitles || ""}\nIndustries: ${pe.industries || ""}\nPrimary pain: ${pe.primaryPain || ""}\n\nALL PERSONAS (ensure yours is DISTINCT):\n${personaDedup}\n\nReturn ONLY JSON with ALL fields:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1-50","Mid-Market 51-500"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","best_channel":"","best_time":""},"confidence":{}}`,
           "",
-          attempt === 1 ? 6000 : 8000,
+          3000,
         );
-        const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-        return { parsed, pe, idx };
+        parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+        break;
       } catch {
-        if (attempt === 2) return { parsed: null, pe, idx };
+        if (attempt === 2) parsed = null;
       }
     }
-    return { parsed: null, pe, idx };
-  }));
-  const newPersonas: any[] = [];
-  for (const r of personaResults) {
-    if (r.status === "fulfilled" && r.value.parsed) {
-      const { parsed, pe, idx } = r.value;
+    if (parsed) {
       const persona = newICP(idx, parsed.fields || {}, parsed.name || pe.name, parsed.confidence || {});
       persona.linkedProductIds = newProducts.map((p: any) => p.id);
       const { fit, reason } = buildFitMaps(idx);
       persona.linkedProductFit = fit;
       persona.linkedProductFitReason = reason;
       newPersonas.push(persona);
-    } else if (r.status === "fulfilled") {
-      const { pe, idx } = r.value;
+    } else {
       const fallback = newICP(idx, { industries: pe.industries, buyer: pe.buyerTitles, pain1: pe.primaryPain }, pe.name, {});
       const { fit, reason } = buildFitMaps(idx);
       fallback.linkedProductFit = fit;
       fallback.linkedProductFitReason = reason;
       newPersonas.push(fallback);
     }
+    await upd(5, `${LP_STEPS[4]} (${newPersonas.length}/${allBriefPersonas.length})`);
   }
 
   // ── STEP 6: Intelligence & Offers ──
