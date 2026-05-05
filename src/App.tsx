@@ -18313,14 +18313,6 @@ function SharedExportPage({ id }: { id: string }) {
                           </div>
                         )}
                       </div>
-                      {channelLabel && (
-                        <span style={{ fontSize:11, fontWeight:600, color:pfg, background:pbg,
-                          border:`1px solid ${pfg}22`, padding:"5px 12px", borderRadius:980,
-                          whiteSpace:"nowrap" as const, flexShrink:0, maxWidth:220,
-                          overflow:"hidden", textOverflow:"ellipsis" }}>
-                          {channelLabel}
-                        </span>
-                      )}
                     </div>
 
                     {/* pain + goals side by side */}
