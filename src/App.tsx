@@ -18269,8 +18269,18 @@ function SharedExportPage({ id }: { id: string }) {
                 const palette = [[A,BT],["#5a9a6e","#eaf5ee"],["#5b8db8","#ebf2f8"],["#c76a42","#fdf0ea"],["#8b6fc0","#f0ecf8"]];
                 const [pfg, pbg] = palette[i % palette.length];
                 const initials = (pe.name||"?").split(/\s+/).map((w:string)=>w[0]).slice(0,2).join("").toUpperCase();
+                // split industries string into individual pills
+                const industryPills: string[] = d.industries
+                  ? (d.industries as string).split(/[,;]/).map((s:string)=>s.trim()).filter(Boolean).slice(0,3)
+                  : [];
+                const coSizes: string[] = Array.isArray(d.co_sizes) ? d.co_sizes.slice(0,2) : [];
+                // channel: first sentence, max 40 chars
                 const channelLabel = d.best_channel
-                  ? (d.best_channel as string).split(/[.\n]/)[0].trim().slice(0, 60)
+                  ? (d.best_channel as string).split(/[.\n;]/)[0].trim().slice(0, 40)
+                  : null;
+                // goals: first sentence only (they're often semicolon-separated lists)
+                const goalsShort = d.goals
+                  ? (d.goals as string).split(/[;\n]/)[0].trim()
                   : null;
                 return (
                   <div key={i} className="ep-card" style={{ overflow:"hidden" }}>
@@ -18283,17 +18293,17 @@ function SharedExportPage({ id }: { id: string }) {
                         {initials}
                       </div>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.010em", lineHeight:1.2 }}>{pe.name}</div>
-                        {(d.industries || (Array.isArray(d.co_sizes) && d.co_sizes.length > 0)) && (
+                        <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.010em", lineHeight:1.3 }}>{pe.name}</div>
+                        {(industryPills.length > 0 || coSizes.length > 0) && (
                           <div style={{ display:"flex", gap:5, marginTop:6, flexWrap:"wrap" as const }}>
-                            {d.industries && (
-                              <span style={{ fontSize:11, fontWeight:500, color:M, background:S,
-                                border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>
-                                {d.industries}
-                              </span>
-                            )}
-                            {Array.isArray(d.co_sizes) && d.co_sizes.slice(0,2).map((s:string,j:number) => (
+                            {industryPills.map((ind:string, j:number) => (
                               <span key={j} style={{ fontSize:11, fontWeight:500, color:M, background:S,
+                                border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>
+                                {ind}
+                              </span>
+                            ))}
+                            {coSizes.map((s:string, j:number) => (
+                              <span key={`cs-${j}`} style={{ fontSize:11, fontWeight:500, color:M, background:S,
                                 border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>
                                 {s}
                               </span>
@@ -18304,7 +18314,8 @@ function SharedExportPage({ id }: { id: string }) {
                       {channelLabel && (
                         <span style={{ fontSize:11, fontWeight:600, color:pfg, background:pbg,
                           border:`1px solid ${pfg}22`, padding:"5px 12px", borderRadius:980,
-                          whiteSpace:"nowrap" as const, flexShrink:0 }}>
+                          whiteSpace:"nowrap" as const, flexShrink:0, maxWidth:200,
+                          overflow:"hidden", textOverflow:"ellipsis" }}>
                           {channelLabel}
                         </span>
                       )}
@@ -18313,7 +18324,7 @@ function SharedExportPage({ id }: { id: string }) {
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr" }}>
                       {[
                         { label:"Primary Pain",  color:"#c76a42", content: d.pain1 || d.pain2 || d.challenge },
-                        { label:"Goals",         color:"#5a9a6e", content: d.goals },
+                        { label:"Goals",         color:"#5a9a6e", content: goalsShort },
                         { label:"Outreach Hook", color:pfg,       content: d.hook, italic:true },
                       ].map(({ label, color, content, italic }, ci) => (
                         <div key={ci} style={{ padding:"18px 24px",
@@ -18322,7 +18333,8 @@ function SharedExportPage({ id }: { id: string }) {
                           <div style={{ fontSize:10, fontWeight:700, color, letterSpacing:"0.06em",
                             textTransform:"uppercase" as const, marginBottom:8 }}>{label}</div>
                           <div style={{ fontSize:13, color: content ? B : M, lineHeight:1.65,
-                            letterSpacing:"-0.008em", fontStyle: italic ? "italic" as const : "normal" as const }}>
+                            letterSpacing:"-0.008em", fontStyle: italic ? "italic" as const : "normal" as const,
+                            display:"-webkit-box" as any, WebkitLineClamp:4, WebkitBoxOrient:"vertical" as any, overflow:"hidden" }}>
                             {content ? (italic ? `"${content}"` : content) : "—"}
                           </div>
                         </div>
