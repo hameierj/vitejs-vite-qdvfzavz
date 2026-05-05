@@ -18289,11 +18289,6 @@ function SharedExportPage({ id }: { id: string }) {
                     {/* header */}
                     <div style={{ padding:"18px 24px", borderBottom:`1px solid ${BD}`,
                       display:"flex", alignItems:"center", gap:14 }}>
-                      <div style={{ width:44, height:44, borderRadius:12, background:pbg, flexShrink:0,
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        fontSize:15, fontWeight:600, color:pfg, boxShadow:`inset 0 0 0 1.5px ${pfg}33` }}>
-                        {initials}
-                      </div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.010em", lineHeight:1.3 }}>{pe.name}</div>
                         {(industryPills.length > 0 || coSizes.length > 0) && (
