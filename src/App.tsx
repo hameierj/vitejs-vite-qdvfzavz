@@ -18086,7 +18086,7 @@ function SharedExportPage({ id }: { id: string }) {
   const catIcon: Record<string,string> = { Software:"◈", Service:"◎", Platform:"⬡", Data:"◇", Agency:"◉" };
 
   const tabs = [
-    { id:"research",       label:"Research"            },
+    { id:"research",       label:"Company Research"     },
     { id:"strategy",       label:"Strategy",           show: campaignGroups.length > 0 },
     { id:"products",       label:"Products & Services",show: products.length > 0 },
     { id:"personas",       label:"Personas",           show: personas.length > 0 },
