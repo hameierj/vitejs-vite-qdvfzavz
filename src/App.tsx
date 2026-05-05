@@ -18125,7 +18125,7 @@ const LP_STEPS = [
 ];
 
 function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChange, onLaunch, onContinue, onReset, onRegenDomains, onProcessOnboarding, salesContext, companyName }: {
-  lpState: "idle"|"running"|"background"|"done";
+  lpState: "idle"|"running"|"done";
   lpProgress: { step:number; phase:string; total:number };
   lpLog: string[];
   lpResult: any;
@@ -18349,7 +18349,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
     );
   }
 
-  if (lpState === "running" || lpState === "background") {
+  if (lpState === "running") {
     return (
       <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"#fff" }}>
         <style>{`
@@ -18371,24 +18371,19 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
           <div style={{ textAlign:"center", marginBottom:20 }}>
             <div style={{ fontSize:17, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:5,
               animation:"lpPulse 1.8s ease-in-out infinite" }}>
-              {lpProgress.phase || (lpState === "background" ? "Job queued — starting pipeline..." : "Starting...")}
+              {lpProgress.phase || "Starting..."}
             </div>
             <div style={{ fontSize:12, color:C2.muted, fontFamily:body }}>
               {lpProgress.step > 0 ? `Step ${lpProgress.step} of ${lpProgress.total}` : "Waiting for server..."}
             </div>
           </div>
 
-          {lpState === "background" && (
-            <div style={{ background:`${C2.accent}08`, border:`1px solid ${C2.accentBorder}`, borderRadius:10,
-              padding:"12px 16px", marginBottom:20, textAlign:"center" }}>
-              <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.accent, marginBottom:4 }}>
-                Running in the background
-              </div>
-              <div style={{ fontSize:12, fontFamily:body, color:C2.muted, lineHeight:1.6 }}>
-                You can leave this page or close the tab — the pipeline keeps running on our servers. Check back later to see your results.
-              </div>
+          <div style={{ background:C2.faint, border:`1px solid ${C2.border}`, borderRadius:10,
+            padding:"10px 16px", marginBottom:20, textAlign:"center" }}>
+            <div style={{ fontSize:12, fontFamily:body, color:C2.muted, lineHeight:1.6 }}>
+              Keep this window open while it runs. You can open other accounts in separate windows to run them in parallel.
             </div>
-          )}
+          </div>
 
           <div style={{ height:5, borderRadius:3, background:C2.border, overflow:"hidden", marginBottom:24 }}>
             <div style={{ height:"100%", width:`${pct}%`, background:C2.accent, borderRadius:3, transition:"width .7s ease" }} />
@@ -18418,15 +18413,6 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
             })}
           </div>
 
-          {lpState === "background" && (
-            <div style={{ textAlign:"center" }}>
-              <button onClick={onReset}
-                style={{ background:"none", border:"none", color:C2.muted, fontSize:11, fontFamily:body,
-                  cursor:"pointer", textDecoration:"underline", padding:0 }}>
-                Cancel &amp; restart
-              </button>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -19153,12 +19139,11 @@ function AppMain() {
   const [aiAnalyses, setAiAnalyses] = useState<{ sentiment: any; pitch: any; coaching: any; intel: any }>({ sentiment: null, pitch: null, coaching: null, intel: null });
 
   // Launch Pad state
-  const [lpState,    setLpState]    = useState<"idle"|"running"|"background"|"done">("idle");
+  const [lpState,    setLpState]    = useState<"idle"|"running"|"done">("idle");
   const [lpProgress, setLpProgress] = useState<{step:number;phase:string;total:number}>({step:0,phase:"",total:LP_STEPS.length});
   const [lpLog,      setLpLog]      = useState<string[]>([]);
   const [lpResult,   setLpResult]   = useState<any>(null);
   const [lpTab,      setLpTab]      = useState<"research"|"infrastructure"|"campaigns"|"onboarding">("research");
-  const [lpJobId,    setLpJobId]    = useState<string|null>(null);
   const [navExpanded, setNavExpanded] = useState(false);
 
 
@@ -19362,23 +19347,7 @@ function AppMain() {
         const lpSaved = localStorage.getItem(lpKey);
         const lpParsed = lpSaved ? (() => { try { return JSON.parse(lpSaved); } catch { return null; } })() : null;
 
-        // ── Priority 1: active background job (must check FIRST — overrides everything) ──
-        const pendingJob = (() => {
-          try {
-            const raw = localStorage.getItem(`lp_job_${(activeWorkspace as any).id}`);
-            if (!raw) return null;
-            const j = JSON.parse(raw);
-            const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
-            return (j.jobId && new Date(j.startedAt || 0).getTime() > twoHoursAgo) ? j : null;
-          } catch { return null; }
-        })();
-        if (pendingJob) {
-          setLpJobId(pendingJob.jobId);
-          setLpState("background");
-          setView("launchpad");
-        } else {
-
-        // ── Priority 2: fresh LP result in localStorage ──
+        // ── Priority 1: fresh LP result in localStorage ──
         const isStale = lpParsed && (lpParsed._synthetic === true || ((lpParsed.campaignGroups?.length || 0) === 0 && (lpParsed.domains?.length || 0) === 0 && ((saved?.products?.length || 0) > 0 || (saved?.icps?.length || 0) > 0)));
         if (lpParsed && !isStale) {
           setLpResult(lpParsed); setLpState("done");
@@ -19458,8 +19427,6 @@ function AppMain() {
         } else {
           setLpResult(null); setLpState("idle");
         }
-
-        } // end pendingJob else
       } catch { setLpResult(null); setLpState("idle"); }
     }
     // Allow save effects to fire after state settles
@@ -21576,7 +21543,7 @@ Return ONLY valid JSON:
     });
   };
 
-  // Apply a completed LP job result to workspace state (called by polling + direct run)
+  // Apply a completed LP run result to workspace state
   const applyLpResult = useCallback((result: any) => {
     if (result.company) setCompanyData((prev: any) => { const m = {...prev}; for (const [k,v] of Object.entries(result.company)) { if (v && String(v).trim()) m[k] = v; } return m; });
     if (result.products?.length) setProducts((prev: any[]) => { const ids = new Set(prev.map((p:any)=>p.id)); return [...prev, ...result.products.filter((p:any)=>!ids.has(p.id))]; });
@@ -21588,78 +21555,21 @@ Return ONLY valid JSON:
     const lpFinal = { company: result.company, products: result.products, personas: result.personas, domains: result.domains, campaignGroups: result.campaignGroups };
     setLpResult(lpFinal);
     setLpState("done");
-    setLpJobId(null);
     if (activeWorkspace) {
       try {
-        localStorage.setItem(`lp_result_${(activeWorkspace as any).id}`, JSON.stringify(lpFinal));
-        localStorage.removeItem(`lp_job_${(activeWorkspace as any).id}`);
+        const wsId = (activeWorkspace as any).id;
+        localStorage.setItem(`lp_result_${wsId}`, JSON.stringify(lpFinal));
+        localStorage.removeItem(`lp_running_${wsId}`);
       } catch {}
     }
     addToast({ title: "LaunchPad complete!", status: "success", message: "Research, domains, and campaigns are ready. Click Getting Started to view." });
   }, [activeWorkspace]); // eslint-disable-line
 
-  // Poll Supabase every 5s while a background LP job is running
-  useEffect(() => {
-    if (lpState !== "background" || !activeWorkspace || !lpJobId || !supabase) return;
-    const wsId = (activeWorkspace as any).id;
-    const poll = setInterval(async () => {
-      try {
-        const { data } = await supabase!.from("app_data").select("value").eq("key", `lp_job_${wsId}`).single();
-        if (!data?.value) return;
-        const job = JSON.parse(data.value as string);
-        if (job.jobId !== lpJobId) return;
-        setLpProgress({ step: job.step || 0, phase: job.phase || "Running...", total: LP_STEPS.length });
-        if (job.status === "done" && job.result) {
-          clearInterval(poll);
-          applyLpResult(job.result);
-        } else if (job.status === "error") {
-          clearInterval(poll);
-          setLpState("idle");
-          setLpJobId(null);
-          if (activeWorkspace) { try { localStorage.removeItem(`lp_job_${wsId}`); } catch {} }
-          addToast({ title: "LaunchPad failed", status: "error", message: job.error || "Background job failed — check your setup and try again." });
-        }
-      } catch { /* ignore transient errors */ }
-    }, 5000);
-    return () => clearInterval(poll);
-  }, [lpState, lpJobId, activeWorkspace, applyLpResult]); // eslint-disable-line
-
-  // Start LP as a server-side background job (survives page close/refresh)
-  const startLpJob = async (inputUrl: string, extraText: string, linkedinUrl: string = "", extraUrlsText: string = "", offeringsOverride: string = "", playbookKey: PlaybookKey = "auto", salesContext: string = "") => {
-    if (!activeWorkspace) return;
-    const wsId = (activeWorkspace as any).id;
-    setLpState("running");
-    setLpProgress({ step: 0, phase: "Submitting to background runner...", total: LP_STEPS.length });
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/launchpad-run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` },
-        body: JSON.stringify({
-          workspaceId: wsId,
-          params: { url: inputUrl, extraText, linkedin: linkedinUrl, extraUrls: extraUrlsText, offerings: offeringsOverride, playbookKey, salesContext },
-          appUrl: window.location.origin,
-          slackToken: getSlackToken() || "",
-          userEmail: _currentUserEmail || "",
-        }),
-      });
-      const json = await res.json();
-      if (json.error || json.message) throw new Error(json.error || json.message);
-      const jobId = json.jobId as string;
-      if (!jobId) throw new Error("No jobId in response");
-      setLpJobId(jobId);
-      setLpState("background");
-      setLpProgress({ step: 0, phase: "Job queued — pipeline starting...", total: LP_STEPS.length });
-      try { localStorage.setItem(`lp_job_${wsId}`, JSON.stringify({ jobId, startedAt: new Date().toISOString() })); } catch {}
-    } catch (err) {
-      // Fall back to running in the browser if edge function unavailable
-      console.warn("Background job failed to start, falling back to browser run:", err);
-      runLaunchPad(inputUrl, extraText, linkedinUrl, extraUrlsText, offeringsOverride, playbookKey, salesContext);
-    }
-  };
-
   const runLaunchPad = async (inputUrl: string, extraText: string, linkedinUrl: string = "", extraUrlsText: string = "", offeringsOverride: string = "", playbookKey: PlaybookKey = "auto", salesContext: string = "") => {
+    const wsId = activeWorkspace ? (activeWorkspace as any).id : null;
     setLpState("running");
     setLpLog([]);
+    if (wsId) { try { localStorage.setItem(`lp_running_${wsId}`, "1"); } catch {} }
     const log: string[] = [];
     const addLog = (msg: string) => { log.push(msg); setLpLog([...log]); };
     const upd = (step: number, phase: string) => setLpProgress({ step, phase, total: LP_STEPS.length });
@@ -22291,6 +22201,7 @@ Return ONLY valid JSON:
     } catch (err) {
       addLog(`Error: ${err}`);
       setLpState("idle");
+      if (wsId) { try { localStorage.removeItem(`lp_running_${wsId}`); } catch {} }
       addToast({ title:"Launch pad failed", status:"error", message:"Check your API key and try again" });
     }
   };
@@ -23063,8 +22974,7 @@ Return ONLY valid JSON:
                       const wsCoData = wsData?.companyData ?? {};
                       const wsPct = Math.round(AI_FILLABLE_ALL_COMPANY_FIELDS.filter(f => fieldFilled(f, (wsCoData as any)[f.id])).length / AI_FILLABLE_ALL_COMPANY_FIELDS.length * 100);
                       const wsReady = wsIcps.filter(i => i.outputs).length;
-                      const lpJob = (() => { try { const r = localStorage.getItem(`lp_job_${c.id}`); return r ? JSON.parse(r) : null; } catch { return null; } })();
-                      const lpRunning = lpJob?.jobId && new Date(lpJob.startedAt || 0).getTime() > Date.now() - 2 * 60 * 60 * 1000;
+                      const lpRunning = (() => { try { return !!localStorage.getItem(`lp_running_${c.id}`); } catch { return false; } })();
                       const lpDone = (() => { try { return !!localStorage.getItem(`lp_result_${c.id}`); } catch { return false; } })();
                       return (
                         <div key={c.id}
@@ -23646,9 +23556,9 @@ Return ONLY valid JSON:
               <LaunchPadPage
                 lpState={lpState} lpProgress={lpProgress} lpLog={lpLog}
                 lpResult={lpResult} lpTab={lpTab} onTabChange={setLpTab}
-                onLaunch={(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx) => startLpJob(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx)}
+                onLaunch={(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx) => runLaunchPad(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx)}
                 onContinue={() => { setLpTab("research"); setView("home"); }}
-                onReset={() => { setLpState("idle"); setLpResult(null); setLpJobId(null); if (activeWorkspace) { try { localStorage.removeItem(`lp_result_${(activeWorkspace as any).id}`); localStorage.removeItem(`lp_job_${(activeWorkspace as any).id}`); } catch {} } }}
+                onReset={() => { setLpState("idle"); setLpResult(null); if (activeWorkspace) { try { const id=(activeWorkspace as any).id; localStorage.removeItem(`lp_result_${id}`); localStorage.removeItem(`lp_running_${id}`); } catch {} } }}
                 onRegenDomains={regenLpDomains}
                 onProcessOnboarding={processOnboarding}
                 salesContext={buildLpSalesContext()}
