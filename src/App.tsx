@@ -18385,8 +18385,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
                 Running in the background
               </div>
               <div style={{ fontSize:12, fontFamily:body, color:C2.muted, lineHeight:1.6 }}>
-                You can leave this page or close the tab — the pipeline keeps running on our servers.
-                {getSlackToken() ? " You'll get a Slack DM when it's done." : " Come back to this page to check progress."}
+                You can leave this page or close the tab — the pipeline keeps running on our servers. Check back later to see your results.
               </div>
             </div>
           )}
