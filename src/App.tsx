@@ -23037,10 +23037,11 @@ Return ONLY valid JSON:
                   </div>
                 ) : (
                   <div style={{ background:C.canvas, borderRadius:12, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+                    <style>{`@keyframes lpSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
                     {/* Table header */}
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px 60px",
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 24px 160px 140px 100px 120px 60px",
                       padding:"10px 20px", borderBottom:`1px solid ${C.border}`, gap:12 }}>
-                      {["Account","Industry","Assigned CSM","Profile","Outputs",""].map((h,i) => (
+                      {["Account","","Industry","Assigned CSM","Profile","Outputs",""].map((h,i) => (
                         <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
                           color:C.muted, letterSpacing:.5 }}>{h}</div>
                       ))}
@@ -23053,10 +23054,13 @@ Return ONLY valid JSON:
                       const wsCoData = wsData?.companyData ?? {};
                       const wsPct = Math.round(AI_FILLABLE_ALL_COMPANY_FIELDS.filter(f => fieldFilled(f, (wsCoData as any)[f.id])).length / AI_FILLABLE_ALL_COMPANY_FIELDS.length * 100);
                       const wsReady = wsIcps.filter(i => i.outputs).length;
+                      const lpJob = (() => { try { const r = localStorage.getItem(`lp_job_${c.id}`); return r ? JSON.parse(r) : null; } catch { return null; } })();
+                      const lpRunning = lpJob?.jobId && new Date(lpJob.startedAt || 0).getTime() > Date.now() - 2 * 60 * 60 * 1000;
+                      const lpDone = (() => { try { return !!localStorage.getItem(`lp_result_${c.id}`); } catch { return false; } })();
                       return (
                         <div key={c.id}
                           onClick={()=>{ setActiveWorkspace(c); setView("launchpad"); }}
-                          style={{ display:"grid", gridTemplateColumns:"1fr 160px 140px 100px 120px 60px",
+                          style={{ display:"grid", gridTemplateColumns:"1fr 24px 160px 140px 100px 120px 60px",
                             padding:"13px 20px", gap:12, alignItems:"center", cursor:"pointer",
                             borderBottom: idx < filteredAccts.length-1 ? `1px solid ${C.border}` : "none",
                             transition:"background .12s" }}
@@ -23076,6 +23080,14 @@ Return ONLY valid JSON:
                                 {new Date(c.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
                               </div>
                             </div>
+                          </div>
+                          {/* LP status icon */}
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
+                            {lpRunning ? (
+                              <div title="Getting Started running in background" style={{ width:14, height:14, borderRadius:"50%", border:`2px solid ${C.accent}`, borderTopColor:"transparent", animation:"lpSpin .8s linear infinite" }} />
+                            ) : lpDone ? (
+                              <div title="Getting Started complete" style={{ width:16, height:16, borderRadius:"50%", background:C.green+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, color:C.green, fontWeight:800 }}>✓</div>
+                            ) : null}
                           </div>
                           {/* Industry */}
                           <div style={{ fontSize:12.5, color:C.textSoft, fontFamily:body,
