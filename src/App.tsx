@@ -18177,7 +18177,7 @@ function SharedExportPage({ id }: { id: string }) {
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:40 }}>
               <div style={{ width:4, height:28, borderRadius:2, background:A, flexShrink:0 }} />
               <div>
-                <div style={{ fontSize:20, fontWeight:800, color:"#1a1a2e", letterSpacing:"-.3px" }}>Why We're Different</div>
+                <div style={{ fontSize:20, fontWeight:800, color:"#1a1a2e", letterSpacing:"-.3px" }}>What Makes {name} Different</div>
                 <div style={{ fontSize:13, color:"#888", marginTop:3 }}>What sets this program apart from standard outbound vendors</div>
               </div>
             </div>
