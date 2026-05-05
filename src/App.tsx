@@ -18263,7 +18263,7 @@ function SharedExportPage({ id }: { id: string }) {
         {personas.length > 0 && (
           <div style={{ marginBottom:64 }}>
             <SectionLabel>Who We're Targeting</SectionLabel>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:20 }}>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:30 }}>
               {personas.map((pe:any,i:number) => {
                 const d = pe.data || pe.fields || {};
                 const palette = [[A,BT],["#5a9a6e","#eaf5ee"],["#5b8db8","#ebf2f8"],["#c76a42","#fdf0ea"],["#8b6fc0","#f0ecf8"]];
@@ -18285,7 +18285,10 @@ function SharedExportPage({ id }: { id: string }) {
                 const pain = d.pain1 || d.pain2 || d.challenge;
                 const hook = d.hook;
                 return (
-                  <div key={i} className="ep-card" style={{ overflow:"hidden" }}>
+                  <div key={i} className="ep-card" style={{ overflow:"hidden", display:"flex" }}>
+                    {/* colored left bar */}
+                    <div style={{ width:4, background:pfg, flexShrink:0 }} />
+                    <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
                     {/* header */}
                     <div style={{ padding:"18px 24px", borderBottom:`1px solid ${BD}`,
                       display:"flex", alignItems:"center", gap:14 }}>
@@ -18349,6 +18352,7 @@ function SharedExportPage({ id }: { id: string }) {
                           fontStyle:"italic" as const, margin:0 }}>"{hook}"</p>
                       </div>
                     )}
+                    </div>
                   </div>
                 );
               })}
