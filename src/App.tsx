@@ -18052,7 +18052,15 @@ function SharedExportPage({ id }: { id: string }) {
   const industry = co.industry || data.companyData?.co_industry || "";
   const website = co.website || data.companyData?.co_website || "";
   const kspRaw: string = co.ksp || data.companyData?.co_ksp || "";
-  const ksps: string[] = kspRaw ? kspRaw.split(/\n|;|•|·/).map((s:string)=>s.replace(/^\d+[.)]\s*/,"").trim()).filter(Boolean) : [];
+  const ksps: string[] = (() => {
+    if (!kspRaw) return [];
+    const raw = kspRaw.trim();
+    // Split on newlines, semicolons, or bullet chars
+    const parts = raw.includes("\n") ? raw.split("\n") : raw.split(/;\s*/);
+    return parts
+      .map((s:string) => s.replace(/^[\s]*\d+[.)]\s*/,"").replace(/^[•\-*]\s*/,"").trim())
+      .filter(Boolean);
+  })();
   const products: any[] = data.products || [];
   const personas: any[] = data.personas || [];
   const campaignGroups: any[] = data.campaignGroups || data.campaigns || [];
@@ -18163,15 +18171,33 @@ function SharedExportPage({ id }: { id: string }) {
 
       {/* ── KSP STRIP ── */}
       {ksps.length > 0 && (
-        <div style={{ background:"linear-gradient(140deg,#13122a 0%,#1e1b40 100%)", borderTop:"1px solid rgba(255,255,255,.06)" }}>
-          <div style={{ maxWidth:960, margin:"0 auto", padding:"32px 48px" }}>
-            <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(ksps.length, 4)},1fr)`, gap:12 }}>
-              {ksps.slice(0,8).map((k:string,i:number) => (
-                <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:10,
-                  background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.09)",
-                  borderRadius:12, padding:"14px 16px" }}>
-                  <span style={{ color:A, fontWeight:800, fontSize:14, lineHeight:1, marginTop:1, flexShrink:0 }}>✓</span>
-                  <span style={{ fontSize:13, color:"rgba(255,255,255,.75)", lineHeight:1.55 }}>{k}</span>
+        <div style={{ background:"linear-gradient(160deg,#0f0e20 0%,#18163a 60%,#1c1840 100%)", borderTop:"1px solid rgba(255,255,255,.05)", position:"relative", overflow:"hidden" }}>
+          {/* subtle grid pattern */}
+          <div style={{ position:"absolute", inset:0, backgroundImage:"linear-gradient(rgba(108,92,231,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(108,92,231,.04) 1px,transparent 1px)", backgroundSize:"40px 40px", pointerEvents:"none" }} />
+          <div style={{ maxWidth:960, margin:"0 auto", padding:"48px 48px", position:"relative" }}>
+            <div style={{ fontSize:11, fontWeight:800, letterSpacing:1.5, textTransform:"uppercase" as const,
+              color:"rgba(108,92,231,.7)", marginBottom:24 }}>Key Differentiators</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:16 }}>
+              {ksps.slice(0,9).map((k:string,i:number) => (
+                <div key={i} style={{
+                  background:"rgba(255,255,255,.03)",
+                  border:"1px solid rgba(108,92,231,.2)",
+                  boxShadow:"inset 0 1px 0 rgba(255,255,255,.05), 0 0 24px rgba(108,92,231,.06)",
+                  borderRadius:16, padding:"20px 22px",
+                  display:"flex", flexDirection:"column" as const, gap:12 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ width:28, height:28, borderRadius:8, flexShrink:0,
+                      background:"rgba(108,92,231,.18)", border:"1px solid rgba(108,92,231,.3)",
+                      display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                        <path d="M2.5 6.5L5.5 9.5L10.5 3.5" stroke="#8b7ff0" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span style={{ fontSize:11, fontWeight:700, color:"rgba(139,127,240,.8)",
+                      letterSpacing:.5 }}>0{i+1}</span>
+                  </div>
+                  <p style={{ fontSize:14, fontWeight:500, color:"rgba(255,255,255,.82)",
+                    lineHeight:1.65, margin:0 }}>{k}</p>
                 </div>
               ))}
             </div>
