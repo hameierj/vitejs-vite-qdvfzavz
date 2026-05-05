@@ -18113,6 +18113,14 @@ function SharedExportPage({ id }: { id: string }) {
                   {pitch}
                 </p>
               )}
+              {website && (
+                <a href={website} target="_blank" rel="noreferrer"
+                  style={{ display:"inline-block", fontSize:12, fontWeight:600, color:"#fff", textDecoration:"none",
+                    background:"rgba(255,255,255,.1)", border:"1px solid rgba(255,255,255,.2)",
+                    padding:"5px 14px", borderRadius:20 }}>
+                  {website.replace(/^https?:\/\//,"")} ↗
+                </a>
+              )}
             </div>
             <div style={{ textAlign:"right" as const, flexShrink:0 }}>
               <div style={{ display:"flex", gap:20, justifyContent:"flex-end" }}>
