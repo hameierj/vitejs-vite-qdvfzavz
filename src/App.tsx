@@ -21625,7 +21625,7 @@ Return ONLY valid JSON:
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/launchpad-run`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY },
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` },
         body: JSON.stringify({
           workspaceId: wsId,
           params: { url: inputUrl, extraText, linkedin: linkedinUrl, extraUrls: extraUrlsText, offerings: offeringsOverride, playbookKey, salesContext },
@@ -21635,8 +21635,9 @@ Return ONLY valid JSON:
         }),
       });
       const json = await res.json();
-      if (json.error) throw new Error(json.error);
+      if (json.error || json.message) throw new Error(json.error || json.message);
       const jobId = json.jobId as string;
+      if (!jobId) throw new Error("No jobId in response");
       setLpJobId(jobId);
       setLpState("background");
       setLpProgress({ step: 0, phase: "Job queued — pipeline starting...", total: LP_STEPS.length });
