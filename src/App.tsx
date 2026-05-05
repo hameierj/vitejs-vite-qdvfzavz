@@ -18014,6 +18014,7 @@ function SharedExportPage({ id }: { id: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("research");
 
   useEffect(() => {
     const client = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -18084,14 +18085,115 @@ function SharedExportPage({ id }: { id: string }) {
   };
   const catIcon: Record<string,string> = { Software:"◈", Service:"◎", Platform:"⬡", Data:"◇", Agency:"◉" };
 
-  const SectionLabel = ({ children }: { children:React.ReactNode }) => (
-    <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:28 }}>
-      <div style={{ flex:1, height:1, background:BD }} />
-      <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase" as const,
-        color:M, fontFamily:f, whiteSpace:"nowrap" as const }}>{children}</div>
-      <div style={{ flex:1, height:1, background:BD }} />
+  const tabs = [
+    { id:"research",       label:"Research"            },
+    { id:"strategy",       label:"Strategy",           show: campaignGroups.length > 0 },
+    { id:"products",       label:"Products & Services",show: products.length > 0 },
+    { id:"personas",       label:"Personas",           show: personas.length > 0 },
+    { id:"email",          label:"Email Sequences",    show: campaignGroups.some((g:any)=>(g.emailSequence||[]).length>0) },
+    { id:"linkedin",       label:"LinkedIn Sequences", show: campaignGroups.some((g:any)=>(g.linkedinSequence||[]).length>0) },
+    { id:"infrastructure", label:"Infrastructure",     show: domains.length > 0 },
+  ].filter((t:any) => t.show !== false);
+
+  // helper: sequence step list (shared by email + linkedin tabs)
+  const SeqSteps = ({ steps, color, lineColor }: { steps:any[]; color:string; lineColor:string }) => (
+    <div style={{ position:"relative" as const }}>
+      <div style={{ position:"absolute", left:14, top:28, bottom:0, width:1, background:lineColor }} />
+      <div style={{ display:"flex", flexDirection:"column" as const, gap:24 }}>
+        {steps.map((step:any, si:number) => (
+          <div key={si} style={{ display:"flex", gap:14, alignItems:"flex-start", position:"relative" as const }}>
+            <div style={{ width:28, height:28, borderRadius:"50%", background:"#fff",
+              border:`2px solid ${lineColor}`, flexShrink:0, display:"flex", alignItems:"center",
+              justifyContent:"center", fontSize:11, fontWeight:700, color, zIndex:1,
+              boxShadow:"0 1px 4px rgba(5,12,70,0.06)" }}>
+              {si+1}
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              {step.dayOffset !== undefined && (
+                <span style={{ fontSize:10, fontWeight:600, color:M, marginBottom:4, display:"block", letterSpacing:"0.04em" }}>
+                  Day {step.dayOffset}
+                </span>
+              )}
+              {step.subject && (
+                <div style={{ fontSize:14, fontWeight:600, color:H, marginBottom:8, lineHeight:1.3, letterSpacing:"-0.008em" }}>
+                  {step.subject}
+                </div>
+              )}
+              {step.body && (
+                <div style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em",
+                  background:S, padding:"14px 16px", borderRadius:8, border:`1px solid ${BD}`, whiteSpace:"pre-wrap" as const }}>
+                  {step.body}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
+
+  // helper: persona card (used in both personas tab)
+  const PersonaCard = ({ pe, i }: { pe:any; i:number }) => {
+    const d = pe.data || pe.fields || {};
+    const palette: [string,string][] = [[A,BT],["#5a9a6e","#eaf5ee"],["#5b8db8","#ebf2f8"],["#c76a42","#fdf0ea"],["#8b6fc0","#f0ecf8"]];
+    const [pfg, pbg] = palette[i % palette.length];
+    const industryPills: string[] = d.industries
+      ? (d.industries as string).split(/[,;]/).map((s:string)=>s.trim()).filter(Boolean).slice(0,3) : [];
+    const coSizes: string[] = Array.isArray(d.co_sizes) ? d.co_sizes.slice(0,2) : [];
+    const goalItems: string[] = d.goals
+      ? (d.goals as string).split(/[;\n]/).map((s:string)=>s.trim()).filter(Boolean) : [];
+    const pain = d.pain1 || d.pain2 || d.challenge;
+    const hook = d.hook;
+    return (
+      <div className="ep-card" style={{ overflow:"hidden", display:"flex" }}>
+        <div style={{ width:4, background:pfg, flexShrink:0 }} />
+        <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
+          <div style={{ padding:"18px 24px", borderBottom:`1px solid ${BD}`, display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.010em", lineHeight:1.3 }}>{pe.name}</div>
+              {(industryPills.length > 0 || coSizes.length > 0) && (
+                <div style={{ display:"flex", gap:5, marginTop:6, flexWrap:"wrap" as const }}>
+                  {industryPills.map((ind:string, j:number) => (
+                    <span key={j} style={{ fontSize:11, fontWeight:500, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>{ind}</span>
+                  ))}
+                  {coSizes.map((s:string, j:number) => (
+                    <span key={`cs-${j}`} style={{ fontSize:11, fontWeight:500, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>{s}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          {(pain || goalItems.length > 0) && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", borderTop:`1px solid ${BDS}` }}>
+              <div style={{ padding:"18px 24px", borderRight:`1px solid ${BDS}` }}>
+                <div style={{ fontSize:10, fontWeight:700, color:"#c76a42", letterSpacing:"0.06em", textTransform:"uppercase" as const, marginBottom:10 }}>Primary Pain</div>
+                <p style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:0 }}>{pain || "—"}</p>
+              </div>
+              <div style={{ padding:"18px 24px" }}>
+                <div style={{ fontSize:10, fontWeight:700, color:"#5a9a6e", letterSpacing:"0.06em", textTransform:"uppercase" as const, marginBottom:10 }}>Goals</div>
+                {goalItems.length > 0 ? (
+                  <ul style={{ margin:0, padding:0, listStyle:"none", display:"flex", flexDirection:"column" as const, gap:7 }}>
+                    {goalItems.map((g:string, gi:number) => (
+                      <li key={gi} style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+                        <span style={{ width:5, height:5, borderRadius:"50%", background:"#5a9a6e", flexShrink:0, marginTop:6 }} />
+                        <span style={{ fontSize:13, color:B, lineHeight:1.55, letterSpacing:"-0.008em" }}>{g}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <span style={{ fontSize:13, color:M }}>—</span>}
+              </div>
+            </div>
+          )}
+          {hook && (
+            <div style={{ padding:"16px 24px", borderTop:`1px solid ${BDS}`, background:S }}>
+              <div style={{ fontSize:10, fontWeight:700, color:pfg, letterSpacing:"0.06em", textTransform:"uppercase" as const, marginBottom:8 }}>Outreach Hook</div>
+              <p style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em", fontStyle:"italic" as const, margin:0 }}>"{hook}"</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={{ background:"#fff", minHeight:"100vh", fontFamily:f, color:B, WebkitFontSmoothing:"antialiased" as any }}>
@@ -18099,32 +18201,25 @@ function SharedExportPage({ id }: { id: string }) {
         * { box-sizing:border-box; margin:0; padding:0; }
         @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
         .ep-card { background:#fff; border-radius:12px; border:1px solid rgba(5,12,70,0.08); box-shadow:3px 5px 30px rgba(5,12,70,0.06); }
+        .ep-tab { background:none; border:none; cursor:pointer; font-family:inherit; transition:color 150ms; }
+        .ep-tab:hover { color:#050c46; }
       `}</style>
 
       {/* ── HERO ── */}
       <div style={{ background:`linear-gradient(140deg,#050c46 0%,#0d1260 50%,#141870 100%)`, position:"relative", overflow:"hidden" }}>
-        {/* decorative blobs */}
         <div style={{ position:"absolute", top:-80, right:-80, width:400, height:400, borderRadius:"50%",
           background:`radial-gradient(circle,${A}30 0%,transparent 70%)`, pointerEvents:"none" }} />
         <div style={{ position:"absolute", bottom:-60, left:60, width:320, height:320, borderRadius:"50%",
           background:`radial-gradient(circle,rgba(87,97,254,0.15) 0%,transparent 70%)`, pointerEvents:"none" }} />
-
         <div style={{ maxWidth:960, margin:"0 auto", padding:"72px 48px 64px", position:"relative" }}>
           <div style={{ display:"flex", alignItems:"center", gap:48, flexWrap:"wrap" as const }}>
             <div style={{ flex:1, minWidth:280 }}>
-              <h1 style={{ fontSize:52, fontWeight:600, color:"#fff", lineHeight:1.07, letterSpacing:"-0.022em", marginBottom:16 }}>
-                {name}
-              </h1>
-              {pitch && (
-                <p style={{ fontSize:17, lineHeight:1.47, letterSpacing:"-0.011em", color:"rgba(255,255,255,.7)", maxWidth:520, marginBottom:20 }}>
-                  {pitch}
-                </p>
-              )}
+              <h1 style={{ fontSize:52, fontWeight:600, color:"#fff", lineHeight:1.07, letterSpacing:"-0.022em", marginBottom:16 }}>{name}</h1>
+              {pitch && <p style={{ fontSize:17, lineHeight:1.47, letterSpacing:"-0.011em", color:"rgba(255,255,255,.7)", maxWidth:520, marginBottom:20 }}>{pitch}</p>}
               {website && (
                 <a href={website} target="_blank" rel="noreferrer"
                   style={{ display:"inline-block", fontSize:13, fontWeight:500, letterSpacing:"-0.008em", color:"#fff", textDecoration:"none",
-                    background:"rgba(255,255,255,.1)", border:"1px solid rgba(255,255,255,.18)",
-                    padding:"6px 16px", borderRadius:980 }}>
+                    background:"rgba(255,255,255,.1)", border:"1px solid rgba(255,255,255,.18)", padding:"6px 16px", borderRadius:980 }}>
                   {website.replace(/^https?:\/\//,"")} ↗
                 </a>
               )}
@@ -18138,8 +18233,7 @@ function SharedExportPage({ id }: { id: string }) {
                   { label:"Domains",   value:domains.length },
                   { label:"Mailboxes", value:domains.length * 3 },
                 ].map(({ label, value }, i) => (
-                  <div key={i} style={{ textAlign:"center" as const, padding:"24px 36px",
-                    background:"rgba(255,255,255,.04)",
+                  <div key={i} style={{ textAlign:"center" as const, padding:"24px 36px", background:"rgba(255,255,255,.04)",
                     borderRight:  i % 2 === 0 ? "1px solid rgba(255,255,255,.08)" : "none",
                     borderBottom: i < 2       ? "1px solid rgba(255,255,255,.08)" : "none" }}>
                     <div style={{ fontSize:36, fontWeight:600, color:"#fff", letterSpacing:"-0.022em", lineHeight:1 }}>{value}</div>
@@ -18152,206 +18246,102 @@ function SharedExportPage({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* ── KSP / KEY DIFFERENTIATORS ── */}
-      {ksps.length > 0 && (
-        <div style={{ background:S, borderTop:`1px solid ${BD}` }}>
-          <div style={{ maxWidth:960, margin:"0 auto", padding:"56px 48px 60px" }}>
-            {/* heading */}
-            <div style={{ marginBottom:36 }}>
-              <div style={{ fontSize:28, fontWeight:600, color:H, letterSpacing:"-0.018em", marginBottom:6 }}>What Makes {name} Different</div>
-              <div style={{ fontSize:14, color:M, letterSpacing:"-0.008em" }}>What sets this program apart from standard outbound vendors</div>
-            </div>
+      {/* ── TAB BAR ── */}
+      <div style={{ position:"sticky", top:0, zIndex:10, background:"#fff", borderBottom:`1px solid ${BD}`,
+        boxShadow:"0 2px 8px rgba(5,12,70,0.04)" }}>
+        <div style={{ maxWidth:960, margin:"0 auto", padding:"0 48px", display:"flex", overflowX:"auto" as const }}>
+          {tabs.map((tab:any) => (
+            <button key={tab.id} className="ep-tab"
+              onClick={() => setActiveTab(tab.id)}
+              style={{ padding:"15px 18px", fontSize:13,
+                fontWeight: activeTab === tab.id ? 600 : 500,
+                color: activeTab === tab.id ? A : M,
+                letterSpacing:"-0.008em", whiteSpace:"nowrap" as const,
+                borderBottom: activeTab === tab.id ? `2px solid ${A}` : "2px solid transparent",
+                marginBottom:-1 }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-            {/* two-column numbered list — left: 1…half, right: half+1…end */}
-            {(() => {
-              const items = ksps.slice(0,10);
+      {/* ── TAB CONTENT ── */}
+      <div style={{ maxWidth:960, margin:"0 auto", padding:"48px 48px 96px" }}>
+
+        {/* RESEARCH */}
+        {activeTab === "research" && (
+          <div>
+            <div className="ep-card" style={{ padding:"28px 32px", marginBottom:36 }}>
+              <div style={{ fontSize:21, fontWeight:600, color:H, letterSpacing:"-0.012em", marginBottom:10 }}>{name}</div>
+              {pitch && <p style={{ fontSize:14, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:"0 0 16px" }}>{pitch}</p>}
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                {industry && <span style={{ fontSize:12, color:M, background:S, border:`1px solid ${BD}`, padding:"3px 10px", borderRadius:980 }}>{industry}</span>}
+                {website && <a href={website} target="_blank" rel="noreferrer" style={{ fontSize:12, color:A, background:BF, border:`1px solid ${BT}`, padding:"3px 10px", borderRadius:980, textDecoration:"none" }}>{website.replace(/^https?:\/\//,"")} ↗</a>}
+              </div>
+            </div>
+            {ksps.length > 0 && (() => {
+              const items = ksps;
               const half = Math.ceil(items.length / 2);
               const left = items.slice(0, half);
               const right = items.slice(half);
-              const Row = ({ k, i }: { k:string; i:number }) => (
-                <div style={{ display:"flex", gap:16, alignItems:"flex-start",
-                  padding:"18px 0", borderBottom:`1px solid ${BD}` }}>
-                  <div style={{ fontSize:24, fontWeight:600, color:`${A}30`, letterSpacing:"-0.018em",
-                    lineHeight:1, flexShrink:0, width:32, textAlign:"right" as const, marginTop:1 }}>
+              const KRow = ({ k, i }: { k:string; i:number }) => (
+                <div style={{ display:"flex", gap:16, alignItems:"flex-start", padding:"18px 0", borderBottom:`1px solid ${BD}` }}>
+                  <div style={{ fontSize:24, fontWeight:600, color:`${A}30`, letterSpacing:"-0.018em", lineHeight:1, flexShrink:0, width:32, textAlign:"right" as const, marginTop:1 }}>
                     {String(i+1).padStart(2,"0")}
                   </div>
                   <p style={{ fontSize:14, fontWeight:500, color:H, lineHeight:1.5, letterSpacing:"-0.008em", margin:0, flex:1 }}>{k}</p>
                 </div>
               );
               return (
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 48px", alignItems:"start" }}>
-                  <div>{left.map((k,i) => <Row key={i} k={k} i={i} />)}</div>
-                  <div>{right.map((k,i) => <Row key={i} k={k} i={half+i} />)}</div>
-                </div>
+                <>
+                  <div style={{ marginBottom:28 }}>
+                    <div style={{ fontSize:21, fontWeight:600, color:H, letterSpacing:"-0.012em", marginBottom:4 }}>What Makes {name} Different</div>
+                    <div style={{ fontSize:14, color:M, letterSpacing:"-0.008em" }}>Key differentiators for this outbound program</div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 48px", alignItems:"start" }}>
+                    <div>{left.map((k,i) => <KRow key={i} k={k} i={i} />)}</div>
+                    <div>{right.map((k,i) => <KRow key={i} k={k} i={half+i} />)}</div>
+                  </div>
+                </>
               );
             })()}
           </div>
-        </div>
-      )}
-
-      <div style={{ maxWidth:960, margin:"0 auto", padding:"56px 48px 96px" }}>
-
-        {/* ── PRODUCTS ── */}
-        {products.length > 0 && (
-          <div style={{ marginBottom:64 }}>
-            <SectionLabel>Products &amp; Services</SectionLabel>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:20 }}>
-              {products.map((p:any,i:number) => {
-                const cat = p.category || "Software";
-                const [fg, bg] = catColors[cat] || [A, BT];
-                const icon = catIcon[cat] || "◈";
-                return (
-                  <div key={i} className="ep-card" style={{ display:"flex", overflow:"hidden", alignItems:"stretch" }}>
-                    {/* colored left accent bar */}
-                    <div style={{ width:4, background:fg, flexShrink:0 }} />
-
-                    {/* identity column */}
-                    <div style={{ width:216, flexShrink:0, padding:"22px 20px", borderRight:`1px solid ${BD}`,
-                      display:"flex", flexDirection:"column" as const, gap:10, justifyContent:"center" }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                        <div style={{ width:40, height:40, borderRadius:10, background:bg, flexShrink:0,
-                          display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:fg, fontWeight:700 }}>
-                          {icon}
-                        </div>
-                        <div>
-                          <div style={{ fontSize:15, fontWeight:600, color:H, lineHeight:1.19, letterSpacing:"-0.008em" }}>{p.name}</div>
-                        </div>
-                      </div>
-                      {(p.avgDealSize || p.dealType) && (
-                        <div style={{ display:"flex", flexDirection:"column" as const, gap:4 }}>
-                          {p.avgDealSize && (
-                            <span style={{ fontSize:12, fontWeight:500, color:B, background:S,
-                              border:`1px solid ${BD}`, padding:"3px 8px", borderRadius:6, display:"block" }}>
-                              {p.avgDealSize}
-                            </span>
-                          )}
-                          {p.dealType && (
-                            <span style={{ fontSize:12, fontWeight:500, color:B, background:S,
-                              border:`1px solid ${BD}`, padding:"3px 8px", borderRadius:6, display:"block" }}>
-                              {p.dealType}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* description column */}
-                    <div style={{ flex:"1 1 0", padding:"22px 28px", borderRight: p.valueProposition ? `1px solid ${BD}` : "none",
-                      display:"flex", flexDirection:"column" as const, justifyContent:"center" }}>
-                      {p.description && (
-                        <p style={{ fontSize:14, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:0 }}>{p.description}</p>
-                      )}
-                    </div>
-
-                    {/* value prop column */}
-                    {p.valueProposition && (
-                      <div style={{ width:280, flexShrink:0, padding:"22px 24px", background:BF,
-                        display:"flex", flexDirection:"column" as const, justifyContent:"center", gap:6 }}>
-                        <div style={{ fontSize:10, fontWeight:700, color:A, letterSpacing:"0.06em",
-                          textTransform:"uppercase" as const }}>Why it wins</div>
-                        <div style={{ fontSize:13, color:B, lineHeight:1.6, letterSpacing:"-0.008em" }}>{p.valueProposition}</div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         )}
 
-        {/* ── PERSONAS ── */}
-        {personas.length > 0 && (
-          <div style={{ marginBottom:64 }}>
-            <SectionLabel>Who We're Targeting</SectionLabel>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:30 }}>
-              {personas.map((pe:any,i:number) => {
-                const d = pe.data || pe.fields || {};
-                const palette = [[A,BT],["#5a9a6e","#eaf5ee"],["#5b8db8","#ebf2f8"],["#c76a42","#fdf0ea"],["#8b6fc0","#f0ecf8"]];
-                const [pfg, pbg] = palette[i % palette.length];
-                const initials = (pe.name||"?").split(/\s+/).map((w:string)=>w[0]).slice(0,2).join("").toUpperCase();
-                // split industries string into individual pills
-                const industryPills: string[] = d.industries
-                  ? (d.industries as string).split(/[,;]/).map((s:string)=>s.trim()).filter(Boolean).slice(0,3)
-                  : [];
-                const coSizes: string[] = Array.isArray(d.co_sizes) ? d.co_sizes.slice(0,2) : [];
-                // channel: first sentence, max 40 chars
-                const channelLabel = d.best_channel
-                  ? (d.best_channel as string).split(/[.\n;]/)[0].trim().slice(0, 40)
-                  : null;
-                // goals: split semicolon/newline list into bullet items
-                const goalItems: string[] = d.goals
-                  ? (d.goals as string).split(/[;\n]/).map((s:string)=>s.trim()).filter(Boolean)
-                  : [];
-                const pain = d.pain1 || d.pain2 || d.challenge;
-                const hook = d.hook;
+        {/* STRATEGY */}
+        {activeTab === "strategy" && (
+          <div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:16, marginBottom:40 }}>
+              {[
+                { label:"Products Targeted",      value:products.length },
+                { label:"Personas Targeted",       value:personas.length },
+                { label:"Campaign Combinations",   value:campaignGroups.length },
+              ].map(({ label, value }, i) => (
+                <div key={i} className="ep-card" style={{ padding:"24px 20px", textAlign:"center" as const }}>
+                  <div style={{ fontSize:40, fontWeight:600, color:A, letterSpacing:"-0.022em", lineHeight:1, marginBottom:8 }}>{value}</div>
+                  <div style={{ fontSize:13, fontWeight:500, color:M, letterSpacing:"-0.008em" }}>{label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:17, fontWeight:600, color:H, letterSpacing:"-0.010em", marginBottom:4 }}>Targeting Matrix</div>
+              <div style={{ fontSize:13, color:M, letterSpacing:"-0.008em" }}>Each combination gets its own tailored outreach sequence</div>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+              {campaignGroups.map((g:any, gi:number) => {
+                const eLen = (g.emailSequence||[]).length;
+                const lLen = (g.linkedinSequence||[]).length;
                 return (
-                  <div key={i} className="ep-card" style={{ overflow:"hidden", display:"flex" }}>
-                    {/* colored left bar */}
-                    <div style={{ width:4, background:pfg, flexShrink:0 }} />
-                    <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
-                    {/* header */}
-                    <div style={{ padding:"18px 24px", borderBottom:`1px solid ${BD}`,
-                      display:"flex", alignItems:"center", gap:14 }}>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.010em", lineHeight:1.3 }}>{pe.name}</div>
-                        {(industryPills.length > 0 || coSizes.length > 0) && (
-                          <div style={{ display:"flex", gap:5, marginTop:6, flexWrap:"wrap" as const }}>
-                            {industryPills.map((ind:string, j:number) => (
-                              <span key={j} style={{ fontSize:11, fontWeight:500, color:M, background:S,
-                                border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>
-                                {ind}
-                              </span>
-                            ))}
-                            {coSizes.map((s:string, j:number) => (
-                              <span key={`cs-${j}`} style={{ fontSize:11, fontWeight:500, color:M, background:S,
-                                border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>
-                                {s}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                  <div key={gi} className="ep-card" style={{ padding:"16px 24px", display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" as const }}>
+                    <div style={{ flex:1, minWidth:200 }}>
+                      <div style={{ fontSize:14, fontWeight:600, color:H, letterSpacing:"-0.008em" }}>
+                        {[g.productName, g.personaName].filter(Boolean).join("  →  ")}
                       </div>
+                      {g.angle && <div style={{ fontSize:13, color:B, marginTop:3, letterSpacing:"-0.008em" }}>{g.angle}</div>}
                     </div>
-
-                    {/* pain + goals side by side */}
-                    {(pain || goalItems.length > 0) && (
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", borderTop:`1px solid ${BDS}` }}>
-                        {/* pain */}
-                        <div style={{ padding:"18px 24px", borderRight:`1px solid ${BDS}` }}>
-                          <div style={{ fontSize:10, fontWeight:700, color:"#c76a42", letterSpacing:"0.06em",
-                            textTransform:"uppercase" as const, marginBottom:10 }}>Primary Pain</div>
-                          <p style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:0 }}>
-                            {pain || "—"}
-                          </p>
-                        </div>
-                        {/* goals as bullets */}
-                        <div style={{ padding:"18px 24px" }}>
-                          <div style={{ fontSize:10, fontWeight:700, color:"#5a9a6e", letterSpacing:"0.06em",
-                            textTransform:"uppercase" as const, marginBottom:10 }}>Goals</div>
-                          {goalItems.length > 0 ? (
-                            <ul style={{ margin:0, padding:0, listStyle:"none", display:"flex", flexDirection:"column" as const, gap:7 }}>
-                              {goalItems.map((g:string, gi:number) => (
-                                <li key={gi} style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
-                                  <span style={{ width:5, height:5, borderRadius:"50%", background:"#5a9a6e",
-                                    flexShrink:0, marginTop:6 }} />
-                                  <span style={{ fontSize:13, color:B, lineHeight:1.55, letterSpacing:"-0.008em" }}>{g}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : <span style={{ fontSize:13, color:M }}>—</span>}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* hook — full width */}
-                    {hook && (
-                      <div style={{ padding:"16px 24px", borderTop:`1px solid ${BDS}`, background:S }}>
-                        <div style={{ fontSize:10, fontWeight:700, color:pfg, letterSpacing:"0.06em",
-                          textTransform:"uppercase" as const, marginBottom:8 }}>Outreach Hook</div>
-                        <p style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em",
-                          fontStyle:"italic" as const, margin:0 }}>"{hook}"</p>
-                      </div>
-                    )}
+                    <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+                      {eLen > 0 && <span style={{ fontSize:11, fontWeight:600, color:A, background:BF, border:`1px solid ${BT}`, padding:"4px 12px", borderRadius:980 }}>{eLen}-touch Email</span>}
+                      {lLen > 0 && <span style={{ fontSize:11, fontWeight:600, color:"#0a66c2", background:"#ebf2f8", border:"1px solid #c5d9f7", padding:"4px 12px", borderRadius:980 }}>{lLen}-touch LinkedIn</span>}
                     </div>
                   </div>
                 );
@@ -18360,145 +18350,124 @@ function SharedExportPage({ id }: { id: string }) {
           </div>
         )}
 
-        {/* ── SEQUENCES ── */}
-        {campaignGroups.filter((g:any)=>(g.emailSequence||[]).length>0||(g.linkedinSequence||[]).length>0).length > 0 && (
-          <div style={{ marginBottom:64 }}>
-            <SectionLabel>Outbound Sequences</SectionLabel>
-            <div style={{ display:"flex", flexDirection:"column" as const, gap:12 }}>
-              {campaignGroups.slice(0,8).map((g:any,gi:number) => {
-                const emailSeq: any[] = g.emailSequence || [];
-                const liSeq: any[] = g.linkedinSequence || [];
-                if (!emailSeq.length && !liSeq.length) return null;
-                return (
-                  <div key={gi} className="ep-card" style={{ overflow:"hidden" }}>
-                    {/* group header */}
-                    <div style={{ padding:"13px 20px", background:S,
-                      borderBottom:`1px solid ${BD}`, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
-                      <div style={{ width:8, height:8, borderRadius:"50%", background:A, flexShrink:0 }} />
-                      <div style={{ fontSize:14, fontWeight:600, color:H, letterSpacing:"-0.008em", flex:1 }}>
-                        {[g.productName, g.personaName].filter(Boolean).join(" × ")}
+        {/* PRODUCTS */}
+        {activeTab === "products" && (
+          <div style={{ display:"flex", flexDirection:"column" as const, gap:20 }}>
+            {products.map((p:any, i:number) => {
+              const cat = p.category || "Software";
+              const [fg, bg] = catColors[cat] || [A, BT];
+              const icon = catIcon[cat] || "◈";
+              return (
+                <div key={i} className="ep-card" style={{ display:"flex", overflow:"hidden", alignItems:"stretch" }}>
+                  <div style={{ width:4, background:fg, flexShrink:0 }} />
+                  <div style={{ width:216, flexShrink:0, padding:"22px 20px", borderRight:`1px solid ${BD}`,
+                    display:"flex", flexDirection:"column" as const, gap:10, justifyContent:"center" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                      <div style={{ width:40, height:40, borderRadius:10, background:bg, flexShrink:0,
+                        display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, color:fg, fontWeight:700 }}>
+                        {icon}
                       </div>
-                      <div style={{ display:"flex", gap:6 }}>
-                        {emailSeq.length > 0 && (
-                          <span style={{ fontSize:11, fontWeight:600, color:B, background:"#fff",
-                            border:`1px solid ${BD}`, padding:"3px 10px", borderRadius:980 }}>
-                            {emailSeq.length}-touch email
-                          </span>
-                        )}
-                        {liSeq.length > 0 && (
-                          <span style={{ fontSize:11, fontWeight:600, color:"#0a66c2", background:"#ebf2f8",
-                            border:"1px solid #c5d9f7", padding:"3px 10px", borderRadius:980 }}>
-                            {liSeq.length}-touch LinkedIn
-                          </span>
-                        )}
+                      <div style={{ fontSize:15, fontWeight:600, color:H, lineHeight:1.19, letterSpacing:"-0.008em" }}>{p.name}</div>
+                    </div>
+                    {(p.avgDealSize || p.dealType) && (
+                      <div style={{ display:"flex", flexDirection:"column" as const, gap:4 }}>
+                        {p.avgDealSize && <span style={{ fontSize:12, fontWeight:500, color:B, background:S, border:`1px solid ${BD}`, padding:"3px 8px", borderRadius:6, display:"block" }}>{p.avgDealSize}</span>}
+                        {p.dealType && <span style={{ fontSize:12, fontWeight:500, color:B, background:S, border:`1px solid ${BD}`, padding:"3px 8px", borderRadius:6, display:"block" }}>{p.dealType}</span>}
                       </div>
-                    </div>
-                    <div style={{ padding:24, display:"grid", gridTemplateColumns: emailSeq.length && liSeq.length ? "1fr 1fr" : "1fr", gap:24 }}>
-                      {emailSeq.length > 0 && (
-                        <div>
-                          <div style={{ fontSize:11, fontWeight:700, color:M, letterSpacing:"0.06em",
-                            textTransform:"uppercase" as const, marginBottom:16 }}>Email Sequence</div>
-                          <div style={{ position:"relative" as const }}>
-                            <div style={{ position:"absolute", left:14, top:28, bottom:0, width:1, background:BD }} />
-                            <div style={{ display:"flex", flexDirection:"column" as const, gap:14 }}>
-                              {emailSeq.slice(0,5).map((step:any,si:number) => (
-                                <div key={si} style={{ display:"flex", gap:14, alignItems:"flex-start", position:"relative" as const }}>
-                                  <div style={{ width:28, height:28, borderRadius:"50%", background:"#fff",
-                                    border:`2px solid ${BD}`, flexShrink:0, display:"flex", alignItems:"center",
-                                    justifyContent:"center", fontSize:11, fontWeight:700, color:A, zIndex:1,
-                                    boxShadow:"0 1px 4px rgba(5,12,70,0.06)" }}>
-                                    {si+1}
-                                  </div>
-                                  <div style={{ flex:1, minWidth:0 }}>
-                                    {step.dayOffset !== undefined && (
-                                      <span style={{ fontSize:10, fontWeight:600, color:M, marginBottom:3, display:"block",
-                                        letterSpacing:"0.04em" }}>Day {step.dayOffset}</span>
-                                    )}
-                                    {step.subject && (
-                                      <div style={{ fontSize:13, fontWeight:600, color:H, marginBottom:4,
-                                        lineHeight:1.3, letterSpacing:"-0.008em" }}>{step.subject}</div>
-                                    )}
-                                    {step.body && (
-                                      <div style={{ fontSize:12, color:B, lineHeight:1.6, letterSpacing:"-0.005em",
-                                        display:"-webkit-box" as any, WebkitLineClamp:3, WebkitBoxOrient:"vertical" as any, overflow:"hidden" }}>
-                                        {step.body}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      {liSeq.length > 0 && (
-                        <div>
-                          <div style={{ fontSize:11, fontWeight:700, color:"#0a66c2", letterSpacing:"0.06em",
-                            textTransform:"uppercase" as const, marginBottom:16 }}>LinkedIn Sequence</div>
-                          <div style={{ position:"relative" as const }}>
-                            <div style={{ position:"absolute", left:14, top:28, bottom:0, width:1, background:"#c5d9f7" }} />
-                            <div style={{ display:"flex", flexDirection:"column" as const, gap:14 }}>
-                              {liSeq.slice(0,4).map((step:any,si:number) => (
-                                <div key={si} style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
-                                  <div style={{ width:28, height:28, borderRadius:"50%", background:"#fff",
-                                    border:"2px solid #c5d9f7", flexShrink:0,
-                                    display:"flex", alignItems:"center", justifyContent:"center",
-                                    fontSize:11, fontWeight:700, color:"#0a66c2", zIndex:1,
-                                    boxShadow:"0 1px 4px rgba(10,102,194,0.12)" }}>
-                                    {si+1}
-                                  </div>
-                                  <div style={{ flex:1, minWidth:0 }}>
-                                    {step.dayOffset !== undefined && (
-                                      <span style={{ fontSize:10, fontWeight:600, color:M, marginBottom:3, display:"block",
-                                        letterSpacing:"0.04em" }}>Day {step.dayOffset}</span>
-                                    )}
-                                    {step.body && (
-                                      <div style={{ fontSize:12, color:B, lineHeight:1.6, letterSpacing:"-0.005em",
-                                        display:"-webkit-box" as any, WebkitLineClamp:3, WebkitBoxOrient:"vertical" as any, overflow:"hidden" }}>
-                                        {step.body}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
-                );
-              })}
-            </div>
+                  <div style={{ flex:"1 1 0", padding:"22px 28px", borderRight: p.valueProposition ? `1px solid ${BD}` : "none",
+                    display:"flex", flexDirection:"column" as const, justifyContent:"center" }}>
+                    {p.description && <p style={{ fontSize:14, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:0 }}>{p.description}</p>}
+                  </div>
+                  {p.valueProposition && (
+                    <div style={{ width:280, flexShrink:0, padding:"22px 24px", background:BF,
+                      display:"flex", flexDirection:"column" as const, justifyContent:"center", gap:6 }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:A, letterSpacing:"0.06em", textTransform:"uppercase" as const }}>Why it wins</div>
+                      <div style={{ fontSize:13, color:B, lineHeight:1.6, letterSpacing:"-0.008em" }}>{p.valueProposition}</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {/* ── DOMAINS ── */}
-        {domains.length > 0 && (
-          <div style={{ marginBottom:64 }}>
-            <SectionLabel>Domain Infrastructure</SectionLabel>
-            <div className="ep-card" style={{ overflow:"hidden" }}>
+        {/* PERSONAS */}
+        {activeTab === "personas" && (
+          <div style={{ display:"flex", flexDirection:"column" as const, gap:30 }}>
+            {personas.map((pe:any, i:number) => <PersonaCard key={i} pe={pe} i={i} />)}
+          </div>
+        )}
+
+        {/* EMAIL SEQUENCES */}
+        {activeTab === "email" && (
+          <div style={{ display:"flex", flexDirection:"column" as const, gap:24 }}>
+            {campaignGroups.filter((g:any)=>(g.emailSequence||[]).length>0).map((g:any, gi:number) => (
+              <div key={gi} className="ep-card" style={{ overflow:"hidden" }}>
+                <div style={{ padding:"14px 24px", background:S, borderBottom:`1px solid ${BD}`,
+                  display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:A, flexShrink:0 }} />
+                  <div style={{ fontSize:14, fontWeight:600, color:H, letterSpacing:"-0.008em", flex:1 }}>
+                    {[g.productName, g.personaName].filter(Boolean).join(" × ")}
+                  </div>
+                  <span style={{ fontSize:11, fontWeight:600, color:A, background:BF, border:`1px solid ${BT}`, padding:"3px 10px", borderRadius:980 }}>
+                    {(g.emailSequence||[]).length}-touch sequence
+                  </span>
+                </div>
+                <div style={{ padding:28 }}>
+                  <SeqSteps steps={g.emailSequence||[]} color={A} lineColor={BD} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* LINKEDIN SEQUENCES */}
+        {activeTab === "linkedin" && (
+          <div style={{ display:"flex", flexDirection:"column" as const, gap:24 }}>
+            {campaignGroups.filter((g:any)=>(g.linkedinSequence||[]).length>0).map((g:any, gi:number) => (
+              <div key={gi} className="ep-card" style={{ overflow:"hidden" }}>
+                <div style={{ padding:"14px 24px", background:"#ebf2f8", borderBottom:"1px solid #c5d9f7",
+                  display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:"#0a66c2", flexShrink:0 }} />
+                  <div style={{ fontSize:14, fontWeight:600, color:H, letterSpacing:"-0.008em", flex:1 }}>
+                    {[g.productName, g.personaName].filter(Boolean).join(" × ")}
+                  </div>
+                  <span style={{ fontSize:11, fontWeight:600, color:"#0a66c2", background:"#fff", border:"1px solid #c5d9f7", padding:"3px 10px", borderRadius:980 }}>
+                    {(g.linkedinSequence||[]).length}-touch sequence
+                  </span>
+                </div>
+                <div style={{ padding:28 }}>
+                  <SeqSteps steps={g.linkedinSequence||[]} color="#0a66c2" lineColor="#c5d9f7" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* INFRASTRUCTURE */}
+        {activeTab === "infrastructure" && (
+          <div>
+            <div className="ep-card" style={{ overflow:"hidden", marginBottom:24 }}>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", borderBottom:`1px solid ${BD}` }}>
                 {[
-                  { label:"Sending Domains", value:String(domains.length),  sub:"Separate sender identities" },
+                  { label:"Sending Domains", value:String(domains.length),   sub:"Separate sender identities" },
                   { label:"Mailboxes",        value:String(domains.length*3), sub:"3 per domain" },
                 ].map((s,i) => (
-                  <div key={i} style={{ padding:"28px 24px", borderRight: i<1 ? `1px solid ${BD}` : "none",
-                    textAlign:"center" as const }}>
-                    <div style={{ fontSize:36, fontWeight:600, color:A, letterSpacing:"-0.022em", lineHeight:1, marginBottom:6 }}>{s.value}</div>
+                  <div key={i} style={{ padding:"28px 24px", borderRight: i<1 ? `1px solid ${BD}` : "none", textAlign:"center" as const }}>
+                    <div style={{ fontSize:40, fontWeight:600, color:A, letterSpacing:"-0.022em", lineHeight:1, marginBottom:6 }}>{s.value}</div>
                     <div style={{ fontSize:13, fontWeight:600, color:H, letterSpacing:"-0.008em", marginBottom:3 }}>{s.label}</div>
                     <div style={{ fontSize:12, color:M }}>{s.sub}</div>
                   </div>
                 ))}
               </div>
               <div style={{ padding:24 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:M, letterSpacing:"0.06em",
-                  textTransform:"uppercase" as const, marginBottom:14 }}>Domain List</div>
+                <div style={{ fontSize:11, fontWeight:700, color:M, letterSpacing:"0.06em", textTransform:"uppercase" as const, marginBottom:14 }}>Domain List</div>
                 <div style={{ display:"flex", flexWrap:"wrap" as const, gap:8 }}>
                   {domains.map((d:any,i:number) => (
                     <span key={i} style={{ fontSize:12, fontFamily:"'Fira Code','Fira Mono','Consolas',monospace",
-                      background:S, color:H, padding:"5px 12px", borderRadius:8, border:`1px solid ${BD}`,
-                      letterSpacing:"-0.2px" }}>
+                      background:S, color:H, padding:"5px 12px", borderRadius:8, border:`1px solid ${BD}`, letterSpacing:"-0.2px" }}>
                       {d.full || `${d.domain}.${d.tld||"com"}`}
                     </span>
                   ))}
@@ -18508,12 +18477,12 @@ function SharedExportPage({ id }: { id: string }) {
           </div>
         )}
 
-        {/* ── FOOTER ── */}
-        <div style={{ borderTop:`1px solid ${BD}`, paddingTop:32, display:"flex",
-          justifyContent:"space-between", alignItems:"center" }}>
-          <div style={{ fontSize:12, color:M, letterSpacing:"-0.005em" }}>
-            {dateStr ? `Prepared ${dateStr}` : ""}
-          </div>
+      </div>
+
+      {/* ── FOOTER ── */}
+      <div style={{ maxWidth:960, margin:"0 auto", padding:"0 48px 48px" }}>
+        <div style={{ borderTop:`1px solid ${BD}`, paddingTop:32, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div style={{ fontSize:12, color:M, letterSpacing:"-0.005em" }}>{dateStr ? `Prepared ${dateStr}` : ""}</div>
           <img src="/b2brocket-logo.png" alt="B2B Rocket" style={{ height:32, objectFit:"contain" as const, opacity:0.7 }} />
         </div>
       </div>
