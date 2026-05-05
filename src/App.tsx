@@ -18278,10 +18278,12 @@ function SharedExportPage({ id }: { id: string }) {
                 const channelLabel = d.best_channel
                   ? (d.best_channel as string).split(/[.\n;]/)[0].trim().slice(0, 40)
                   : null;
-                // goals: first sentence only (they're often semicolon-separated lists)
-                const goalsShort = d.goals
-                  ? (d.goals as string).split(/[;\n]/)[0].trim()
-                  : null;
+                // goals: split semicolon/newline list into bullet items
+                const goalItems: string[] = d.goals
+                  ? (d.goals as string).split(/[;\n]/).map((s:string)=>s.trim()).filter(Boolean)
+                  : [];
+                const pain = d.pain1 || d.pain2 || d.challenge;
+                const hook = d.hook;
                 return (
                   <div key={i} className="ep-card" style={{ overflow:"hidden" }}>
                     {/* header */}
@@ -18314,32 +18316,52 @@ function SharedExportPage({ id }: { id: string }) {
                       {channelLabel && (
                         <span style={{ fontSize:11, fontWeight:600, color:pfg, background:pbg,
                           border:`1px solid ${pfg}22`, padding:"5px 12px", borderRadius:980,
-                          whiteSpace:"nowrap" as const, flexShrink:0, maxWidth:200,
+                          whiteSpace:"nowrap" as const, flexShrink:0, maxWidth:220,
                           overflow:"hidden", textOverflow:"ellipsis" }}>
                           {channelLabel}
                         </span>
                       )}
                     </div>
-                    {/* pain / goals / hook */}
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr" }}>
-                      {[
-                        { label:"Primary Pain",  color:"#c76a42", content: d.pain1 || d.pain2 || d.challenge },
-                        { label:"Goals",         color:"#5a9a6e", content: goalsShort },
-                        { label:"Outreach Hook", color:pfg,       content: d.hook, italic:true },
-                      ].map(({ label, color, content, italic }, ci) => (
-                        <div key={ci} style={{ padding:"18px 24px",
-                          borderRight: ci < 2 ? `1px solid ${BD}` : "none",
-                          borderTop:`1px solid ${BD}` }}>
-                          <div style={{ fontSize:10, fontWeight:700, color, letterSpacing:"0.06em",
-                            textTransform:"uppercase" as const, marginBottom:8 }}>{label}</div>
-                          <div style={{ fontSize:13, color: content ? B : M, lineHeight:1.65,
-                            letterSpacing:"-0.008em", fontStyle: italic ? "italic" as const : "normal" as const,
-                            display:"-webkit-box" as any, WebkitLineClamp:4, WebkitBoxOrient:"vertical" as any, overflow:"hidden" }}>
-                            {content ? (italic ? `"${content}"` : content) : "—"}
-                          </div>
+
+                    {/* pain + goals side by side */}
+                    {(pain || goalItems.length > 0) && (
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", borderTop:`1px solid ${BD}` }}>
+                        {/* pain */}
+                        <div style={{ padding:"18px 24px", borderRight:`1px solid ${BD}` }}>
+                          <div style={{ fontSize:10, fontWeight:700, color:"#c76a42", letterSpacing:"0.06em",
+                            textTransform:"uppercase" as const, marginBottom:10 }}>Primary Pain</div>
+                          <p style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em", margin:0 }}>
+                            {pain || "—"}
+                          </p>
                         </div>
-                      ))}
-                    </div>
+                        {/* goals as bullets */}
+                        <div style={{ padding:"18px 24px" }}>
+                          <div style={{ fontSize:10, fontWeight:700, color:"#5a9a6e", letterSpacing:"0.06em",
+                            textTransform:"uppercase" as const, marginBottom:10 }}>Goals</div>
+                          {goalItems.length > 0 ? (
+                            <ul style={{ margin:0, padding:0, listStyle:"none", display:"flex", flexDirection:"column" as const, gap:7 }}>
+                              {goalItems.map((g:string, gi:number) => (
+                                <li key={gi} style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+                                  <span style={{ width:5, height:5, borderRadius:"50%", background:"#5a9a6e",
+                                    flexShrink:0, marginTop:6 }} />
+                                  <span style={{ fontSize:13, color:B, lineHeight:1.55, letterSpacing:"-0.008em" }}>{g}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : <span style={{ fontSize:13, color:M }}>—</span>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* hook — full width */}
+                    {hook && (
+                      <div style={{ padding:"16px 24px", borderTop:`1px solid ${BD}`, background:BF }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:pfg, letterSpacing:"0.06em",
+                          textTransform:"uppercase" as const, marginBottom:8 }}>Outreach Hook</div>
+                        <p style={{ fontSize:13, color:B, lineHeight:1.65, letterSpacing:"-0.008em",
+                          fontStyle:"italic" as const, margin:0 }}>"{hook}"</p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
