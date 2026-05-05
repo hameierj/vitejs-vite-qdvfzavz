@@ -205,7 +205,7 @@ async function callAI(
           system: sysMsg,
           messages: [{ role: "user", content: prompt }],
         }),
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(30000),
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
         const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
@@ -412,37 +412,35 @@ Return ONLY valid JSON:
     console.error("Research brief failed:", e);
   }
 
-  // ── STEP 4: Product Profiles (sequential to avoid rate-limit pile-up) ──
+  // ── STEP 4: Product Profiles (sequential, lean prompt, no retries) ──
   await upd(4, LP_STEPS[3]);
   const selProds = (brief.products || []).map((_: any, i: number) => i);
   const newProducts: any[] = [];
   for (const i of selProds) {
     const p = brief.products[i];
     let result: any = null;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const prodRaw = await callAI(
-          anthropicKey,
-          `Create a COMPLETE product profile. Fill EVERY field — no empty values. Be specific and actionable.\n\n${NAMING_RULES.product}\n\nProduct: ${p.name}\nDescription: ${p.description || ""}\nReasoning: ${p.reasoning || ""}\nDeal size hint: ${p.dealSize || ""}\nCompany: ${coFields.co_name || ""} (${coFields.co_industry || ""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both","acv":"","mrr":"","contractLength":"","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}`,
-          "",
-          3000,
-        );
-        const parsed = JSON.parse(prodRaw.replace(/```json|```/g, "").trim());
-        result = { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
-        break;
-      } catch {
-        if (attempt === 2) result = { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: p.category || "Other", sourceUrl: p.sourceUrl || "" };
-      }
+    try {
+      const prodRaw = await callAI(
+        anthropicKey,
+        `Product profile for "${p.name}" — ${coFields.co_name || ""} (${coFields.co_industry || ""}).\nDescription: ${p.description || ""}\nDeal size: ${p.dealSize || ""}\n\nReturn ONLY compact JSON (no nulls, no empty strings):\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","idealCustomer":"","competitors":"","dealType":"Recurring|One-Time|Both","avgDealSize":"","elevatorPitch":"","messagingDos":"","messagingDonts":""}`,
+        "Return only valid JSON. Be specific and concise.",
+        1500,
+        1,
+      );
+      const parsed = JSON.parse(prodRaw.replace(/```json|```/g, "").trim());
+      result = { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
+    } catch {
+      result = { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: p.category || "Other", sourceUrl: p.sourceUrl || "" };
     }
     if (result?.name) newProducts.push(result);
     await upd(4, `${LP_STEPS[3]} (${newProducts.length}/${selProds.length})`);
   }
 
-  // ── STEP 5: Persona Profiles (sequential to avoid rate-limit pile-up) ──
+  // ── STEP 5: Persona Profiles (sequential, lean prompt, no retries) ──
   await upd(5, LP_STEPS[4]);
   const selPers = (brief.personas || []).map((_: any, i: number) => i);
   const allBriefPersonas = selPers.map((i: number) => brief.personas[i]);
-  const personaDedup = allBriefPersonas.map((pe: any) => `${pe.name}: ${pe.buyerTitles || ""}, ${pe.industries || ""}, pain=${pe.primaryPain || ""}`).join("\n");
+  const personaDedup = allBriefPersonas.map((pe: any) => `${pe.name}: ${pe.buyerTitles || ""}, pain=${pe.primaryPain || ""}`).join("\n");
   const briefMatrix: any[] = Array.isArray(brief?.matrix) ? brief.matrix : [];
   const productIdByBriefIdx: Record<number, string> = {};
   selProds.forEach((brIdx: number, k: number) => { productIdByBriefIdx[brIdx] = newProducts[k]?.id || ""; });
@@ -461,19 +459,17 @@ Return ONLY valid JSON:
   const newPersonas: any[] = [];
   for (const [idx, pe] of allBriefPersonas.entries()) {
     let parsed: any = null;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const raw = await callAI(
-          anthropicKey,
-          `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name || ""} (${coFields.co_industry || ""})\nValue Prop: ${coFields.co_pitch || ""}\nPersona: ${pe.name} — ${pe.buyerTitles || ""}\nIndustries: ${pe.industries || ""}\nPrimary pain: ${pe.primaryPain || ""}\n\nALL PERSONAS (ensure yours is DISTINCT):\n${personaDedup}\n\nReturn ONLY JSON with ALL fields:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1-50","Mid-Market 51-500"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","best_channel":"","best_time":""},"confidence":{}}`,
-          "",
-          3000,
-        );
-        parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-        break;
-      } catch {
-        if (attempt === 2) parsed = null;
-      }
+    try {
+      const raw = await callAI(
+        anthropicKey,
+        `B2B persona for "${pe.name}" (${pe.buyerTitles || ""}) — selling ${coFields.co_name || ""} to ${pe.industries || ""}.\nPrimary pain: ${pe.primaryPain || ""}\nOther personas: ${personaDedup}\n\nReturn ONLY compact JSON:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1-50","Mid-Market 51-500"],"geo":"","buyer":"","champ":"","goals":"","fears":"","pain1":"","pain2":"","objections":"","tone":"Consultative & Educational|Direct & Punchy|Casual & Conversational|Formal & Executive|Data-driven & Analytical|Blue Collar & Human|Blunt & Edgy|Confrontational","hook":"","cta":"15-min call ask|Soft permission ('worth a chat?')|Video/resource share|Direct demo ask|Open-ended question|Easy yes/no reply|Direct callback ask","best_channel":"","seq_strategy":"","why_client_wins":""},"confidence":{}}`,
+        "Return only valid JSON. Be specific and concise.",
+        1500,
+        1,
+      );
+      parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    } catch {
+      parsed = null;
     }
     if (parsed) {
       const persona = newICP(idx, parsed.fields || {}, parsed.name || pe.name, parsed.confidence || {});
