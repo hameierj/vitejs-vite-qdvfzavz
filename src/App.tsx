@@ -19353,8 +19353,23 @@ function AppMain() {
         const lpKey = `lp_result_${(activeWorkspace as any).id}`;
         const lpSaved = localStorage.getItem(lpKey);
         const lpParsed = lpSaved ? (() => { try { return JSON.parse(lpSaved); } catch { return null; } })() : null;
-        // Always re-reconstruct synthetic results (marked with _synthetic) so sequences update as workspace data grows
-        // Stale = synthetic marker, OR no campaigns but workspace has data AND no fresh domains locked in lpParsed
+
+        // ── Priority 1: active background job (must check FIRST — overrides everything) ──
+        const pendingJob = (() => {
+          try {
+            const raw = localStorage.getItem(`lp_job_${(activeWorkspace as any).id}`);
+            if (!raw) return null;
+            const j = JSON.parse(raw);
+            const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+            return (j.jobId && new Date(j.startedAt || 0).getTime() > twoHoursAgo) ? j : null;
+          } catch { return null; }
+        })();
+        if (pendingJob) {
+          setLpJobId(pendingJob.jobId);
+          setLpState("background");
+        } else {
+
+        // ── Priority 2: fresh LP result in localStorage ──
         const isStale = lpParsed && (lpParsed._synthetic === true || ((lpParsed.campaignGroups?.length || 0) === 0 && (lpParsed.domains?.length || 0) === 0 && ((saved?.products?.length || 0) > 0 || (saved?.icps?.length || 0) > 0)));
         if (lpParsed && !isStale) {
           setLpResult(lpParsed); setLpState("done");
@@ -19432,23 +19447,10 @@ function AppMain() {
           setLpResult(syntheticResult); setLpState("done");
           try { localStorage.setItem(lpKey, JSON.stringify(syntheticResult)); } catch {}
         } else {
-          // No LP result — check if there's a pending background job
-          try {
-            const savedJob = localStorage.getItem(`lp_job_${(activeWorkspace as any).id}`);
-            if (savedJob) {
-              const j = JSON.parse(savedJob);
-              const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
-              if (j.jobId && new Date(j.startedAt || 0).getTime() > twoHoursAgo) {
-                setLpJobId(j.jobId);
-                setLpState("background");
-              } else {
-                setLpResult(null); setLpState("idle");
-              }
-            } else {
-              setLpResult(null); setLpState("idle");
-            }
-          } catch { setLpResult(null); setLpState("idle"); }
+          setLpResult(null); setLpState("idle");
         }
+
+        } // end pendingJob else
       } catch { setLpResult(null); setLpState("idle"); }
     }
     // Allow save effects to fire after state settles
