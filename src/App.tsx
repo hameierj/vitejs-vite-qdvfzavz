@@ -18267,44 +18267,64 @@ function SharedExportPage({ id }: { id: string }) {
                 const palette = [[A,BT],["#5a9a6e","#eaf5ee"],["#5b8db8","#ebf2f8"],["#c76a42","#fdf0ea"],["#8b6fc0","#f0ecf8"]];
                 const [pfg, pbg] = palette[i % palette.length];
                 const initials = (pe.name||"?").split(/\s+/).map((w:string)=>w[0]).slice(0,2).join("").toUpperCase();
+                const channelLabel = d.best_channel
+                  ? (d.best_channel as string).split(/[.\n]/)[0].trim().slice(0, 60)
+                  : null;
                 return (
                   <div key={i} className="ep-card" style={{ overflow:"hidden" }}>
-                    {/* name bar */}
-                    <div style={{ padding:"16px 24px", borderBottom:`1px solid ${BD}`, display:"flex", alignItems:"center", gap:14 }}>
-                      <div style={{ width:40, height:40, borderRadius:10, background:pbg, flexShrink:0,
-                        display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:600, color:pfg,
-                        boxShadow:`inset 0 0 0 1px ${pfg}22` }}>
+                    {/* header */}
+                    <div style={{ padding:"18px 24px", borderBottom:`1px solid ${BD}`,
+                      display:"flex", alignItems:"center", gap:14 }}>
+                      <div style={{ width:44, height:44, borderRadius:12, background:pbg, flexShrink:0,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:15, fontWeight:600, color:pfg, boxShadow:`inset 0 0 0 1.5px ${pfg}33` }}>
                         {initials}
                       </div>
-                      <div>
-                        <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.008em" }}>{pe.name}</div>
-                        <div style={{ display:"flex", gap:6, marginTop:5, flexWrap:"wrap" as const }}>
-                          {d.buyer && <span style={{ fontSize:12, color:M }}>{d.buyer}</span>}
-                          {d.industries && <span style={{ fontSize:11, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 8px", borderRadius:6 }}>{d.industries}</span>}
-                          {Array.isArray(d.co_sizes) && d.co_sizes.slice(0,3).map((s:string,j:number) => (
-                            <span key={j} style={{ fontSize:11, color:M, background:S, border:`1px solid ${BD}`, padding:"2px 8px", borderRadius:6 }}>{s}</span>
-                          ))}
-                          {d.best_channel && <span style={{ fontSize:11, fontWeight:600, color:pfg, background:pbg, padding:"2px 8px", borderRadius:6 }}>{d.best_channel}</span>}
-                        </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:15, fontWeight:600, color:H, letterSpacing:"-0.010em", lineHeight:1.2 }}>{pe.name}</div>
+                        {(d.industries || (Array.isArray(d.co_sizes) && d.co_sizes.length > 0)) && (
+                          <div style={{ display:"flex", gap:5, marginTop:6, flexWrap:"wrap" as const }}>
+                            {d.industries && (
+                              <span style={{ fontSize:11, fontWeight:500, color:M, background:S,
+                                border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>
+                                {d.industries}
+                              </span>
+                            )}
+                            {Array.isArray(d.co_sizes) && d.co_sizes.slice(0,2).map((s:string,j:number) => (
+                              <span key={j} style={{ fontSize:11, fontWeight:500, color:M, background:S,
+                                border:`1px solid ${BD}`, padding:"2px 9px", borderRadius:980 }}>
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                      {channelLabel && (
+                        <span style={{ fontSize:11, fontWeight:600, color:pfg, background:pbg,
+                          border:`1px solid ${pfg}22`, padding:"5px 12px", borderRadius:980,
+                          whiteSpace:"nowrap" as const, flexShrink:0 }}>
+                          {channelLabel}
+                        </span>
+                      )}
                     </div>
-                    {/* 3-column content */}
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:0 }}>
+                    {/* pain / goals / hook */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr" }}>
                       {[
-                        { label:"Primary Pain",  color:"#c76a42", bg:"#fdf0ea", content: d.pain1 || d.pain2 || d.challenge },
-                        { label:"Goals",         color:"#5a9a6e", bg:"#eaf5ee", content: d.goals },
-                        { label:"Outreach Hook", color:pfg,       bg:pbg,       content: d.hook, italic:true },
-                      ].map(({ label, color, bg, content, italic }, ci) => content ? (
-                        <div key={ci} style={{ padding:"14px 20px", borderRight: ci < 2 ? `1px solid ${BD}` : "none",
-                          borderTop:`1px solid ${BD}`, background: ci===2 ? `${bg}50` : undefined }}>
-                          <div style={{ fontSize:10, fontWeight:700, color, letterSpacing:"0.04em",
-                            textTransform:"uppercase" as const, marginBottom:7 }}>{label}</div>
-                          <div style={{ fontSize:13, color:B, lineHeight:1.6, letterSpacing:"-0.008em",
-                            fontStyle: italic ? "italic" as const : "normal" as const }}>
-                            {italic ? `"${content}"` : content}
+                        { label:"Primary Pain",  color:"#c76a42", content: d.pain1 || d.pain2 || d.challenge },
+                        { label:"Goals",         color:"#5a9a6e", content: d.goals },
+                        { label:"Outreach Hook", color:pfg,       content: d.hook, italic:true },
+                      ].map(({ label, color, content, italic }, ci) => (
+                        <div key={ci} style={{ padding:"18px 24px",
+                          borderRight: ci < 2 ? `1px solid ${BD}` : "none",
+                          borderTop:`1px solid ${BD}` }}>
+                          <div style={{ fontSize:10, fontWeight:700, color, letterSpacing:"0.06em",
+                            textTransform:"uppercase" as const, marginBottom:8 }}>{label}</div>
+                          <div style={{ fontSize:13, color: content ? B : M, lineHeight:1.65,
+                            letterSpacing:"-0.008em", fontStyle: italic ? "italic" as const : "normal" as const }}>
+                            {content ? (italic ? `"${content}"` : content) : "—"}
                           </div>
                         </div>
-                      ) : <div key={ci} />)}
+                      ))}
                     </div>
                   </div>
                 );
