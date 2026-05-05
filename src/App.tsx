@@ -18122,26 +18122,22 @@ function SharedExportPage({ id }: { id: string }) {
                 </a>
               )}
             </div>
-            <div style={{ textAlign:"right" as const, flexShrink:0 }}>
-              <div style={{ display:"flex", gap:20, justifyContent:"flex-end" }}>
-                {products.length > 0 && (
-                  <div style={{ textAlign:"center" as const }}>
-                    <div style={{ fontSize:28, fontWeight:800, color:"#fff" }}>{products.length}</div>
-                    <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", fontWeight:600, letterSpacing:.5, textTransform:"uppercase" as const }}>Products</div>
+            <div style={{ flexShrink:0 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2, borderRadius:14, overflow:"hidden", border:"1px solid rgba(255,255,255,.12)" }}>
+                {[
+                  { label:"Products",  value:products.length },
+                  { label:"Personas",  value:personas.length },
+                  { label:"Domains",   value:domains.length },
+                  { label:"Mailboxes", value:domains.length * 3 },
+                ].map(({ label, value }, i) => (
+                  <div key={i} style={{ textAlign:"center" as const, padding:"18px 28px",
+                    background:"rgba(255,255,255,.05)",
+                    borderRight:  i % 2 === 0 ? "1px solid rgba(255,255,255,.08)" : "none",
+                    borderBottom: i < 2       ? "1px solid rgba(255,255,255,.08)" : "none" }}>
+                    <div style={{ fontSize:30, fontWeight:900, color:"#fff", letterSpacing:"-1px", lineHeight:1 }}>{value}</div>
+                    <div style={{ fontSize:10, color:"rgba(255,255,255,.45)", fontWeight:700, letterSpacing:.8, textTransform:"uppercase" as const, marginTop:6 }}>{label}</div>
                   </div>
-                )}
-                {personas.length > 0 && (
-                  <div style={{ textAlign:"center" as const }}>
-                    <div style={{ fontSize:28, fontWeight:800, color:"#fff" }}>{personas.length}</div>
-                    <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", fontWeight:600, letterSpacing:.5, textTransform:"uppercase" as const }}>Personas</div>
-                  </div>
-                )}
-                {domains.length > 0 && (
-                  <div style={{ textAlign:"center" as const }}>
-                    <div style={{ fontSize:28, fontWeight:800, color:"#fff" }}>{domains.length}</div>
-                    <div style={{ fontSize:11, color:"rgba(255,255,255,.4)", fontWeight:600, letterSpacing:.5, textTransform:"uppercase" as const }}>Domains</div>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
           </div>
