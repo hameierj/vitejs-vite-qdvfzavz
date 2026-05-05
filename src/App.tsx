@@ -18113,22 +18113,6 @@ function SharedExportPage({ id }: { id: string }) {
                   {pitch}
                 </p>
               )}
-              <div style={{ display:"flex", gap:10, flexWrap:"wrap" as const }}>
-                {industry && (
-                  <span style={{ fontSize:12, fontWeight:600, color:"rgba(255,255,255,.55)", background:"rgba(255,255,255,.07)",
-                    border:"1px solid rgba(255,255,255,.12)", padding:"5px 14px", borderRadius:20 }}>
-                    {industry}
-                  </span>
-                )}
-                {website && (
-                  <a href={website} target="_blank" rel="noreferrer"
-                    style={{ fontSize:12, fontWeight:600, color:`${A}cc`, textDecoration:"none",
-                      background:"rgba(108,92,231,.1)", border:`1px solid ${A}30`,
-                      padding:"5px 14px", borderRadius:20 }}>
-                    {website.replace(/^https?:\/\//,"")} ↗
-                  </a>
-                )}
-              </div>
             </div>
             <div style={{ textAlign:"right" as const, flexShrink:0 }}>
               <div style={{ display:"flex", gap:20, justifyContent:"flex-end" }}>
