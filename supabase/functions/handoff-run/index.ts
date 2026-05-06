@@ -125,12 +125,24 @@ Return ONLY a JSON object with this exact structure (no markdown, no explanation
   "callSummary": "1-2 sentence exec summary of the relationship so far",
   "fitScore": 1-10 integer based on available data,
   "fitReason": "one sentence explaining the fit score",
+  "objections": [
+    { "objection": "the objection raised", "response": "how sales addressed it or how CS should handle it if it resurfaces" }
+  ],
+  "watchOuts": ["specific red flag, risk, or internal political dynamic CS should know — be direct and honest, not sanitized"],
+  "promisesMade": ["specific commitment or expectation set by sales that CS must deliver on"],
+  "communicationStyle": {
+    "tone": "formal|casual|data-driven|relationship-first — with brief reasoning",
+    "preferredChannels": "email/slack/calls — what worked in sales",
+    "badNews": "how to frame setbacks or delays for this client specifically",
+    "goodNews": "how to present wins to maximize their appreciation"
+  },
+  "successMetrics": "what the client is measuring B2B Rocket against — specific KPIs, volume targets, timelines they mentioned",
   "hubspotOwner": "HubSpot owner full name — use company.ownerName if present, otherwise resolve from hubspot_owner_id if you can, otherwise omit",
   "lastActivity": "date and type of last pre-close CRM activity",
   "closedWonDate": "the deal close date if known, else null"
 }`;
 
-    const raw = await callAI(anthropicKey, prompt);
+    const raw = await callAI(anthropicKey, prompt, "", 4000);
 
     let handoff: any;
     try {

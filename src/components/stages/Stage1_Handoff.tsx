@@ -172,6 +172,11 @@ interface HandoffDoc {
   keyContacts?: { name: string; title: string; email?: string; phone?: string; role?: string; notes?: string }[];
   dealDetails?: Record<string, string>;
   nextSteps?: string[]; callSummary?: string; fitScore?: number; fitReason?: string;
+  objections?: { objection: string; response: string }[];
+  watchOuts?: string[];
+  promisesMade?: string[];
+  communicationStyle?: { tone?: string; preferredChannels?: string; badNews?: string; goodNews?: string };
+  successMetrics?: string;
   hubspotOwner?: string; lastActivity?: string; generatedAt?: string;
   sources?: { hubspot: boolean; transcript: boolean };
 }
@@ -784,6 +789,91 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
                       <li key={i} style={{ fontSize: 13.5, color: C.text, lineHeight: 1.6 }}>{step}</li>
                     ))}
                   </ol>
+                </DocSection>
+              )}
+
+              {/* Promises Made */}
+              {(handoff.promisesMade || []).length > 0 && (
+                <DocSection label="Promises Made by Sales">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {(handoff.promisesMade || []).map((p, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.amberLo, border: `1px solid ${C.amberBorder}`, borderRadius: 8, padding: "10px 14px" }}>
+                        <span style={{ color: C.amber, fontSize: 14, flexShrink: 0, marginTop: 1 }}>⚑</span>
+                        <span style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                </DocSection>
+              )}
+
+              {/* Watch-outs */}
+              {(handoff.watchOuts || []).length > 0 && (
+                <DocSection label="Watch-outs & Red Flags">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {(handoff.watchOuts || []).map((w, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.redLo, border: `1px solid #FF6B6B33`, borderRadius: 8, padding: "10px 14px" }}>
+                        <span style={{ color: C.red, fontSize: 14, flexShrink: 0, marginTop: 1 }}>⚠</span>
+                        <span style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>{w}</span>
+                      </div>
+                    ))}
+                  </div>
+                </DocSection>
+              )}
+
+              {/* Objections */}
+              {(handoff.objections || []).length > 0 && (
+                <DocSection label="Likely Objections">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {(handoff.objections || []).map((o, i) => (
+                      <div key={i} style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+                        <div style={{ padding: "8px 14px", background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{o.objection}</span>
+                        </div>
+                        <div style={{ padding: "8px 14px", background: C.canvas }}>
+                          <span style={{ fontSize: 12.5, color: C.textSoft, lineHeight: 1.6 }}>{o.response}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </DocSection>
+              )}
+
+              {/* Communication Style */}
+              {handoff.communicationStyle && (
+                <DocSection label="Communication Style">
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+                    {handoff.communicationStyle.tone && (
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px" }}>
+                        <div style={{ fontSize: 10, color: C.accent, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 5 }}>TONE</div>
+                        <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{handoff.communicationStyle.tone}</div>
+                      </div>
+                    )}
+                    {handoff.communicationStyle.preferredChannels && (
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px" }}>
+                        <div style={{ fontSize: 10, color: C.accent, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 5 }}>PREFERRED CHANNELS</div>
+                        <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{handoff.communicationStyle.preferredChannels}</div>
+                      </div>
+                    )}
+                    {handoff.communicationStyle.goodNews && (
+                      <div style={{ background: C.greenLo, border: `1px solid ${C.greenBorder}`, borderRadius: 8, padding: "10px 14px" }}>
+                        <div style={{ fontSize: 10, color: C.green, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 5 }}>FRAMING GOOD NEWS</div>
+                        <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{handoff.communicationStyle.goodNews}</div>
+                      </div>
+                    )}
+                    {handoff.communicationStyle.badNews && (
+                      <div style={{ background: C.amberLo, border: `1px solid ${C.amberBorder}`, borderRadius: 8, padding: "10px 14px" }}>
+                        <div style={{ fontSize: 10, color: C.amber, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 5 }}>FRAMING BAD NEWS</div>
+                        <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{handoff.communicationStyle.badNews}</div>
+                      </div>
+                    )}
+                  </div>
+                </DocSection>
+              )}
+
+              {/* Success Metrics */}
+              {handoff.successMetrics && (
+                <DocSection label="Success Metrics">
+                  <p style={{ margin: 0, fontSize: 13.5, color: C.text, lineHeight: 1.7 }}>{handoff.successMetrics}</p>
                 </DocSection>
               )}
 
