@@ -160,12 +160,12 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState("");
   const [hubspotData, setHubspotData] = useState<HubspotData | null>(null);
-  const [transcript, setTranscript] = useState("");
-  const [ffMode, setFfMode] = useState(false);
+  const [transcripts, setTranscripts] = useState<{ label: string; text: string }[]>([{ label: "", text: "" }]);
+  const [ffMode, setFfMode] = useState<number | null>(null); // index of the transcript block using Fireflies
   const [ffCalls, setFfCalls] = useState<any[]>([]);
   const [ffLoading, setFfLoading] = useState(false);
   const [ffError, setFfError] = useState("");
-  const [selectedCall, setSelectedCall] = useState("");
+  const [selectedCall, setSelectedCall] = useState<Record<number, string>>({});
 
   // Step 3 — generate
   const [generating, setGenerating] = useState(false);
@@ -285,7 +285,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
     } catch (e: any) { setFfError(e.message); } finally { setFfLoading(false); }
   }
 
-  async function loadCallTranscript(callId: string) {
+  async function loadCallTranscript(callId: string, idx: number, callTitle: string) {
     setFfLoading(true);
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/fireflies-proxy`, {
@@ -303,13 +303,23 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
       });
       const data = await res.json();
       const t = data.data?.transcript;
-      if (t) setTranscript((t.sentences || []).map((s: any) => `${s.speaker_name}: ${s.text}`).join("\n") || t.summary?.overview || "");
+      if (t) {
+        const text = (t.sentences || []).map((s: any) => `${s.speaker_name}: ${s.text}`).join("\n") || t.summary?.overview || "";
+        setTranscripts(prev => prev.map((tr, i) => i === idx ? { label: tr.label || callTitle, text } : tr));
+        setSelectedCall(prev => ({ ...prev, [idx]: callId }));
+      }
     } catch (e: any) { setFfError(e.message); } finally { setFfLoading(false); }
   }
 
   // ── Step 3: Generate ──────────────────────────────────────────────────────
+  // Combine all transcript blocks into a single string for the AI
+  const combinedTranscript = transcripts
+    .filter(t => t.text.trim())
+    .map((t, i) => t.label.trim() ? `--- ${t.label} ---\n${t.text}` : `--- Call ${i + 1} ---\n${t.text}`)
+    .join("\n\n");
+
   async function generate() {
-    if (!hubspotData && !transcript.trim()) { setGenError("Need HubSpot data or a transcript."); return; }
+    if (!hubspotData && !combinedTranscript) { setGenError("Need HubSpot data or a transcript."); return; }
     setGenerating(true); setGenError(""); setHandoff(null); setEditHandoff(null);
     const msgs = ["Reading CRM data…", "Pulling deal context…", "Structuring handoff doc…", "Scoring fit…"];
     let mi = 0; setGenMsg(msgs[mi]);
@@ -325,7 +335,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
         },
         body: JSON.stringify({
           hubspotData: hubspotData ? { company: hubspotData.company, contacts: hubspotData.contacts, deals: hubspotData.deals, activity: hubspotData.activity } : null,
-          transcript: transcript.trim() || undefined,
+          transcript: combinedTranscript || undefined,
           workspaceId,
         }),
       });
@@ -499,62 +509,94 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
 
           {/* Optional transcript enrichment */}
           {hubspotData && !syncing && (
-            <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-              <div style={{ padding: "12px 16px", background: C.surface, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, fontFamily: head }}>Add Call Transcript</div>
-                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>Optional — enriches the handoff with nuance from the sales call</div>
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {firefliesKey && (
-                    <button onClick={() => { setFfMode(true); if (!ffCalls.length) fetchFirefliesCalls(); }}
-                      style={{ fontSize: 11, color: C.accent, background: C.accentLo, border: `1px solid ${C.accentBorder}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontFamily: head, fontWeight: 600 }}>
-                      Fireflies
-                    </button>
-                  )}
-                  <button onClick={() => setFfMode(false)}
-                    style={{ fontSize: 11, color: C.muted, background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontFamily: head }}>
-                    Paste
-                  </button>
-                </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 11, color: C.muted, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 10 }}>
+                CALL TRANSCRIPTS <span style={{ fontWeight: 400, letterSpacing: 0 }}>— optional, enriches the handoff</span>
               </div>
-              <div style={{ padding: 16 }}>
-                {ffMode ? (
-                  <div>
-                    {ffLoading && <div style={{ fontSize: 12, color: C.muted }}>Loading…</div>}
-                    {ffError && <div style={{ fontSize: 12, color: C.red }}>{ffError}</div>}
-                    {ffCalls.slice(0, 8).map((call, i) => (
-                      <div key={call.id}
-                        onClick={() => { setSelectedCall(call.id); loadCallTranscript(call.id); }}
-                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, cursor: "pointer",
-                          background: selectedCall === call.id ? C.accentLo : "transparent",
-                          borderLeft: selectedCall === call.id ? `3px solid ${C.accent}` : "3px solid transparent", transition: "all .1s" }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12.5, fontWeight: 500, color: C.text }}>{call.title}</div>
-                          <div style={{ fontSize: 10.5, color: C.muted, fontFamily: mono }}>
-                            {new Date(call.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                            {call.duration ? ` · ${Math.round(call.duration / 60)} min` : ""}
-                          </div>
-                        </div>
-                        {selectedCall === call.id && <span style={{ fontSize: 10, color: C.green, fontFamily: mono }}>✓ LOADED</span>}
-                      </div>
-                    ))}
+
+              {transcripts.map((tr, idx) => (
+                <div key={idx} style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 10 }}>
+                  {/* Card header */}
+                  <div style={{ padding: "10px 14px", background: C.surface, display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      value={tr.label}
+                      onChange={e => setTranscripts(prev => prev.map((t, i) => i === idx ? { ...t, label: e.target.value } : t))}
+                      placeholder={`Call ${idx + 1} label (e.g. "Discovery call – Apr 28")`}
+                      style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 10px",
+                        fontSize: 12, color: C.text, fontFamily: body, background: C.canvas, outline: "none" }}
+                    />
+                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                      {firefliesKey && (
+                        <button
+                          onClick={() => { setFfMode(ffMode === idx ? null : idx); if (!ffCalls.length) fetchFirefliesCalls(); }}
+                          style={{ fontSize: 11, color: ffMode === idx ? C.accent : C.muted, background: ffMode === idx ? C.accentLo : "none",
+                            border: `1px solid ${ffMode === idx ? C.accentBorder : C.border}`, borderRadius: 6, padding: "4px 9px",
+                            cursor: "pointer", fontFamily: head, fontWeight: 600 }}>
+                          Fireflies
+                        </button>
+                      )}
+                      {transcripts.length > 1 && (
+                        <button
+                          onClick={() => { setTranscripts(prev => prev.filter((_, i) => i !== idx)); setFfMode(null); }}
+                          style={{ fontSize: 13, color: C.muted, background: "none", border: `1px solid ${C.border}`,
+                            borderRadius: 6, padding: "3px 8px", cursor: "pointer", lineHeight: 1 }}>
+                          ×
+                        </button>
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  <textarea
-                    value={transcript}
-                    onChange={e => setTranscript(e.target.value)}
-                    placeholder="Paste transcript here (optional)…"
-                    rows={4}
-                    style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px",
-                      fontSize: 13, color: C.text, fontFamily: body, lineHeight: 1.6, resize: "vertical",
-                      outline: "none", background: C.canvas, boxSizing: "border-box" as const }}
-                  />
-                )}
-                {transcript && (
-                  <div style={{ fontSize: 11, color: C.green, fontFamily: mono, marginTop: 6 }}>✓ Transcript added ({transcript.length.toLocaleString()} chars)</div>
-                )}
-              </div>
+
+                  {/* Fireflies picker for this block */}
+                  {ffMode === idx && (
+                    <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.border}`, background: C.canvas }}>
+                      {ffLoading && <div style={{ fontSize: 12, color: C.muted }}>Loading calls…</div>}
+                      {ffError && <div style={{ fontSize: 12, color: C.red }}>{ffError}</div>}
+                      {ffCalls.slice(0, 10).map(call => (
+                        <div key={call.id}
+                          onClick={() => { loadCallTranscript(call.id, idx, call.title); setFfMode(null); }}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 7, cursor: "pointer",
+                            background: selectedCall[idx] === call.id ? C.accentLo : "transparent",
+                            borderLeft: selectedCall[idx] === call.id ? `3px solid ${C.accent}` : "3px solid transparent" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 500, color: C.text }}>{call.title}</div>
+                            <div style={{ fontSize: 10.5, color: C.muted, fontFamily: mono }}>
+                              {new Date(call.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                              {call.duration ? ` · ${Math.round(call.duration / 60)} min` : ""}
+                            </div>
+                          </div>
+                          {selectedCall[idx] === call.id && <span style={{ fontSize: 10, color: C.green, fontFamily: mono }}>✓</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Paste area */}
+                  <div style={{ padding: 12 }}>
+                    <textarea
+                      value={tr.text}
+                      onChange={e => setTranscripts(prev => prev.map((t, i) => i === idx ? { ...t, text: e.target.value } : t))}
+                      placeholder="Paste transcript here…"
+                      rows={3}
+                      style={{ width: "100%", border: `1px solid ${tr.text ? C.accentBorder : C.border}`, borderRadius: 8,
+                        padding: "9px 12px", fontSize: 13, color: C.text, fontFamily: body, lineHeight: 1.6,
+                        resize: "vertical", outline: "none", background: C.canvas, boxSizing: "border-box" as const,
+                        transition: "border-color .15s" }}
+                    />
+                    {tr.text && (
+                      <div style={{ fontSize: 10.5, color: C.green, fontFamily: mono, marginTop: 4 }}>
+                        ✓ {tr.text.length.toLocaleString()} chars
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              <button
+                onClick={() => setTranscripts(prev => [...prev, { label: "", text: "" }])}
+                style={{ fontSize: 12, color: C.accent, background: "none", border: `1px dashed ${C.accentBorder}`,
+                  borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontFamily: head, fontWeight: 600, width: "100%" }}>
+                + Add Another Transcript
+              </button>
             </div>
           )}
 
