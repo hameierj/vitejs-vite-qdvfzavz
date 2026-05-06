@@ -115,22 +115,33 @@ export function WorkspaceShell() {
 
         {/* Workspace header */}
         <div style={{ padding: "20px 16px 16px", borderBottom: `1px solid ${C.border}` }}>
-          <a href="/" style={{ fontSize: 11, color: C.muted, textDecoration: "none", fontFamily: mono,
+          <a href="/#/workspaces" style={{ fontSize: 11, color: C.muted, textDecoration: "none", fontFamily: mono,
             display: "flex", alignItems: "center", gap: 4, marginBottom: 12 }}>
-            ← Accounts
+            ← Workspaces
           </a>
           <div style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: head, lineHeight: 1.3 }}>
             {ws.name}
           </div>
-          <div style={{ fontSize: 10, color: C.muted, fontFamily: mono, marginTop: 4 }}>
-            Stage {ws.stage} of 7
-          </div>
 
-          {/* Progress bar */}
-          <div style={{ marginTop: 10, background: C.surface, borderRadius: 4, height: 4, overflow: "hidden" }}>
-            <div style={{ height: "100%", background: C.accent, borderRadius: 4,
-              width: `${Math.round((ws.stage / 7) * 100)}%`, transition: "width .4s" }} />
-          </div>
+          {/* Progress bar + label */}
+          {(() => {
+            const approvedCount = Object.values(ws.stage_statuses || {}).filter(v => v === "approved").length;
+            const done = Math.max(approvedCount, ws.stage - 1);
+            const pct = Math.round((done / 7) * 100);
+            const barColor = done >= 6 ? C.green : done >= 3 ? C.accent : C.amber;
+            return (
+              <>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, marginBottom: 5 }}>
+                  <div style={{ fontSize: 10, color: C.muted, fontFamily: mono }}>{done}/7 stages</div>
+                  <div style={{ fontSize: 10, color: barColor, fontFamily: mono, fontWeight: 700 }}>{pct}%</div>
+                </div>
+                <div style={{ background: C.surface, borderRadius: 4, height: 5, overflow: "hidden" }}>
+                  <div style={{ height: "100%", background: `linear-gradient(90deg, ${C.accent}, ${barColor})`,
+                    borderRadius: 4, width: `${pct}%`, transition: "width .4s" }} />
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         {/* Stage list */}
@@ -163,6 +174,12 @@ export function WorkspaceShell() {
                     fontFamily: head, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {s.icon} {s.label}
                   </div>
+                  {isActive && (
+                    <div style={{ fontSize: 10, color: C.muted, marginTop: 1, lineHeight: 1.3,
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {s.description}
+                    </div>
+                  )}
                 </div>
               </div>
             );

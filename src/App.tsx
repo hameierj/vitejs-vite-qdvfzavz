@@ -2,9 +2,10 @@ import { useState, useRef, useCallback, useEffect, Fragment } from "react";
 import { createPortal } from "react-dom";
 import mammoth from "mammoth";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { Routes, Route, useParams, HashRouter } from "react-router-dom";
+import { Routes, Route, useParams, HashRouter, useNavigate } from "react-router-dom";
 import { ClientPortal } from "./components/portal/ClientPortal";
 import { WorkspaceShell } from "./components/WorkspaceShell";
+import { WorkspaceList } from "./components/WorkspaceList";
 import { PRODUCT_SECTIONS, ICP_SECTIONS } from "./lib/schemas";
 import {
   Upload, Sparkles, Mail, Search, ShieldCheck, Users,
@@ -19001,6 +19002,7 @@ export default function App() {
       <Routes>
         <Route path="/portal/:token" element={<PortalRoute />} />
         <Route path="/workspace/:id" element={<WorkspaceShell />} />
+        <Route path="/workspaces" element={<WorkspaceList />} />
         <Route path="/*" element={<AppMain />} />
       </Routes>
     </HashRouter>
@@ -22885,6 +22887,20 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                       <span style={{ fontSize:13, width:18, textAlign:"center", color:C.muted }}>⊞</span>
                       <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:C.textSoft }}>Client Accounts</span>
                     </button>
+                  )}
+
+                  {/* CX Workspaces */}
+                  {currentRole === "team" && (
+                    <a href="/#/workspaces"
+                      onClick={()=>setProfileMenuOpen(false)}
+                      style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
+                        borderRadius:7, border:"none", background:"transparent", cursor:"pointer", textAlign:"left",
+                        textDecoration:"none", transition:"background .12s" }}
+                      onMouseEnter={e=>{ (e.currentTarget as HTMLAnchorElement).style.background=C.faint; }}
+                      onMouseLeave={e=>{ (e.currentTarget as HTMLAnchorElement).style.background="transparent"; }}>
+                      <span style={{ fontSize:13, width:18, textAlign:"center", color:C.accent }}>◈</span>
+                      <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:C.accent }}>CX Workspaces</span>
+                    </a>
                   )}
 
                   {/* Admin Panel — admin only */}
