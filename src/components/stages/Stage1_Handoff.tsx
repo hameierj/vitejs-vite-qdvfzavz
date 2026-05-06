@@ -106,9 +106,9 @@ async function syncHubspotCompany(companyId: string): Promise<{ company: any; co
   const contactEmailIds = (contactEmailAssocs as any[]).flatMap(assoc =>
     (assoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean)
   );
-  const allEmailIds = [...new Set([...companyEmailIds, ...contactEmailIds])].slice(0, 30);
+  const allEmailIds = [...new Set([...companyEmailIds, ...contactEmailIds])].slice(0, 100);
 
-  const noteIds = (notesAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean).slice(0, 20);
+  const noteIds = (notesAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean).slice(0, 50);
 
   const [notesRes, emailsRes] = await Promise.all([
     noteIds.length ? hsCall("/crm/v3/objects/notes/batch/read", "POST", {
@@ -138,7 +138,7 @@ async function syncHubspotCompany(companyId: string): Promise<{ company: any; co
     })),
   ]
     .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
-    .slice(0, 60); // keep all; filtering happens in the component so user can adjust the date
+    .slice(0, 150); // keep all; filtering happens in the component so user can adjust the date
 
   return { company, contacts, deals, activity, closedWonDate };
 }
@@ -190,6 +190,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
   const [handoff, setHandoff] = useState<HandoffDoc | null>(null);
   const [editHandoff, setEditHandoff] = useState<HandoffDoc | null>(null);
   const [genError, setGenError] = useState("");
+  const [activityOpen, setActivityOpen] = useState(false);
 
   const anthropicKey = (() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } })();
   const hsToken = (() => { try { return localStorage.getItem("b2br_hubspot_token") || ""; } catch { return ""; } })();
@@ -506,6 +507,71 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
                   items={hubspotData.deals.slice(0, 3).map(d => `${d.name}${d.stage ? ` · ${d.stage}` : ""}`)} />
                 <SyncCard icon="📧" label="Emails & Notes" count={filteredActivity.length} total={hubspotData.activity.length}
                   items={filteredActivity.slice(0, 3).map(a => `${a.type === "email" ? a.subject || "Email" : "Note"} · ${a.date ? new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}`)} />
+              </div>
+
+              {/* Expandable activity log */}
+              <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
+                <button
+                  onClick={() => setActivityOpen(o => !o)}
+                  style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "10px 14px", background: C.surface, border: "none", cursor: "pointer", fontFamily: head }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>
+                    Activity included in handoff
+                    <span style={{ fontWeight: 400, color: C.muted, marginLeft: 6 }}>
+                      {filteredActivity.length} item{filteredActivity.length !== 1 ? "s" : ""}
+                      {cutoffDate ? ` on or before ${new Date(cutoffDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 11, color: C.muted, fontFamily: mono }}>{activityOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {activityOpen && (
+                  <div style={{ maxHeight: 360, overflowY: "auto" }}>
+                    {filteredActivity.length === 0 && (
+                      <div style={{ padding: "16px", fontSize: 12, color: C.muted, textAlign: "center" }}>
+                        No activity found before this date.
+                      </div>
+                    )}
+                    {filteredActivity.map((a, i) => (
+                      <div key={i} style={{ padding: "10px 14px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
+                        <div style={{ flexShrink: 0, width: 44, textAlign: "center" }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, fontFamily: mono, color: a.type === "email" ? C.accent : C.amber }}>
+                            {a.type === "email" ? "EMAIL" : "NOTE"}
+                          </div>
+                          <div style={{ fontSize: 10, color: C.muted, fontFamily: mono, marginTop: 2 }}>
+                            {a.date ? new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
+                          </div>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {a.type === "email" ? (
+                            <>
+                              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, fontFamily: head, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {a.subject || "(no subject)"}
+                              </div>
+                              <div style={{ fontSize: 11, color: C.muted, fontFamily: mono, marginBottom: 3 }}>
+                                {a.direction === "INCOMING_EMAIL" ? "↙ Inbound" : "↗ Outbound"}
+                                {a.from ? ` · ${a.from}` : ""}
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, fontFamily: head, marginBottom: 2 }}>Note</div>
+                          )}
+                          {a.body && (
+                            <div style={{ fontSize: 11.5, color: C.textSoft, lineHeight: 1.5,
+                              display: "-webkit-box" as any, WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any, overflow: "hidden" }}>
+                              {a.body}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {cutoffDate && hubspotData.activity.length > filteredActivity.length && (
+                      <div style={{ padding: "10px 14px", background: C.amberLo, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.muted, textAlign: "center" }}>
+                        {hubspotData.activity.length - filteredActivity.length} item{hubspotData.activity.length - filteredActivity.length !== 1 ? "s" : ""} after cutoff date — excluded
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}
