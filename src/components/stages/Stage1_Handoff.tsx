@@ -285,10 +285,12 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
 
 
   // ── Step 3: Generate ──────────────────────────────────────────────────────
-  // Filter activity by the user-editable cutoff date
+  // Filter activity by the user-editable cutoff date.
+  // Compare YYYY-MM-DD prefixes directly — avoids all timezone edge cases.
   const filteredActivity = hubspotData?.activity.filter(a => {
     if (!cutoffDate) return true;
-    return new Date(a.date || 0) <= new Date(cutoffDate + "T23:59:59Z");
+    const itemDate = (a.date || "").slice(0, 10); // "2025-03-15"
+    return itemDate <= cutoffDate;
   }) ?? [];
 
   // Combine all transcript blocks into a single string for the AI
@@ -751,16 +753,16 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
 
 function SyncCard({ icon, label, count, total, items }: { icon: string; label: string; count: number; total?: number; items: string[] }) {
   return (
-    <div style={{ background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+    <div style={{ background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", overflow: "hidden", minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: 16 }}>{icon}</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, fontFamily: mono }}>{label.toUpperCase()}</span>
-        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, fontFamily: mono, marginLeft: "auto" }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, fontFamily: mono, marginLeft: "auto", flexShrink: 0 }}>
           {total !== undefined && total !== count ? `${count}/${total}` : count}
         </span>
       </div>
       {items.map((item, i) => (
-        <div key={i} style={{ fontSize: 11.5, color: C.textSoft, lineHeight: 1.5, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>• {item}</div>
+        <div key={i} style={{ fontSize: 11.5, color: C.textSoft, lineHeight: 1.5, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>• {item}</div>
       ))}
       {count === 0 && <div style={{ fontSize: 11.5, color: C.muted }}>None found</div>}
     </div>
