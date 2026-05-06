@@ -4,6 +4,7 @@ import mammoth from "mammoth";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Routes, Route, useParams, HashRouter } from "react-router-dom";
 import { ClientPortal } from "./components/portal/ClientPortal";
+import { WorkspaceShell } from "./components/WorkspaceShell";
 import { PRODUCT_SECTIONS, ICP_SECTIONS } from "./lib/schemas";
 import {
   Upload, Sparkles, Mail, Search, ShieldCheck, Users,
@@ -18999,7 +19000,7 @@ export default function App() {
     <HashRouter>
       <Routes>
         <Route path="/portal/:token" element={<PortalRoute />} />
-        <Route path="/workspace/:id" element={<AppMain />} />
+        <Route path="/workspace/:id" element={<WorkspaceShell />} />
         <Route path="/*" element={<AppMain />} />
       </Routes>
     </HashRouter>
