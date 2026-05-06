@@ -161,11 +161,6 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
   const [syncError, setSyncError] = useState("");
   const [hubspotData, setHubspotData] = useState<HubspotData | null>(null);
   const [transcripts, setTranscripts] = useState<{ label: string; text: string }[]>([{ label: "", text: "" }]);
-  const [ffMode, setFfMode] = useState<number | null>(null); // index of the transcript block using Fireflies
-  const [ffCalls, setFfCalls] = useState<any[]>([]);
-  const [ffLoading, setFfLoading] = useState(false);
-  const [ffError, setFfError] = useState("");
-  const [selectedCall, setSelectedCall] = useState<Record<number, string>>({});
 
   // Step 3 — generate
   const [generating, setGenerating] = useState(false);
@@ -175,7 +170,6 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
   const [genError, setGenError] = useState("");
 
   const anthropicKey = (() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } })();
-  const firefliesKey = (() => { try { return localStorage.getItem("b2br_fireflies_token") || ""; } catch { return ""; } })();
   const hsToken = (() => { try { return localStorage.getItem("b2br_hubspot_token") || ""; } catch { return ""; } })();
 
   // Load existing workspace HubSpot link + approved handoff
@@ -265,51 +259,6 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
     setSyncing(false);
   }
 
-  async function fetchFirefliesCalls() {
-    if (!firefliesKey) { setFfError("No Fireflies token configured."); return; }
-    setFfLoading(true); setFfError("");
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/fireflies-proxy`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-          "x-fireflies-token": firefliesKey,
-        },
-        body: JSON.stringify({ query: `query { transcripts(limit: 20) { id title date duration organizer_email } }` }),
-      });
-      const data = await res.json();
-      if (data.errors) { setFfError(data.errors[0]?.message || "Fireflies error"); return; }
-      setFfCalls(data.data?.transcripts || []);
-    } catch (e: any) { setFfError(e.message); } finally { setFfLoading(false); }
-  }
-
-  async function loadCallTranscript(callId: string, idx: number, callTitle: string) {
-    setFfLoading(true);
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/fireflies-proxy`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-          "x-fireflies-token": firefliesKey,
-        },
-        body: JSON.stringify({
-          query: `query($id: String!) { transcript(id: $id) { sentences { text speaker_name } summary { overview } } }`,
-          variables: { id: callId },
-        }),
-      });
-      const data = await res.json();
-      const t = data.data?.transcript;
-      if (t) {
-        const text = (t.sentences || []).map((s: any) => `${s.speaker_name}: ${s.text}`).join("\n") || t.summary?.overview || "";
-        setTranscripts(prev => prev.map((tr, i) => i === idx ? { label: tr.label || callTitle, text } : tr));
-        setSelectedCall(prev => ({ ...prev, [idx]: callId }));
-      }
-    } catch (e: any) { setFfError(e.message); } finally { setFfLoading(false); }
-  }
 
   // ── Step 3: Generate ──────────────────────────────────────────────────────
   // Combine all transcript blocks into a single string for the AI
@@ -525,50 +474,15 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
                       style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 10px",
                         fontSize: 12, color: C.text, fontFamily: body, background: C.canvas, outline: "none" }}
                     />
-                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                      {firefliesKey && (
-                        <button
-                          onClick={() => { setFfMode(ffMode === idx ? null : idx); if (!ffCalls.length) fetchFirefliesCalls(); }}
-                          style={{ fontSize: 11, color: ffMode === idx ? C.accent : C.muted, background: ffMode === idx ? C.accentLo : "none",
-                            border: `1px solid ${ffMode === idx ? C.accentBorder : C.border}`, borderRadius: 6, padding: "4px 9px",
-                            cursor: "pointer", fontFamily: head, fontWeight: 600 }}>
-                          Fireflies
-                        </button>
-                      )}
-                      {transcripts.length > 1 && (
-                        <button
-                          onClick={() => { setTranscripts(prev => prev.filter((_, i) => i !== idx)); setFfMode(null); }}
-                          style={{ fontSize: 13, color: C.muted, background: "none", border: `1px solid ${C.border}`,
-                            borderRadius: 6, padding: "3px 8px", cursor: "pointer", lineHeight: 1 }}>
-                          ×
-                        </button>
-                      )}
-                    </div>
+                    {transcripts.length > 1 && (
+                      <button
+                        onClick={() => setTranscripts(prev => prev.filter((_, i) => i !== idx))}
+                        style={{ fontSize: 13, color: C.muted, background: "none", border: `1px solid ${C.border}`,
+                          borderRadius: 6, padding: "3px 8px", cursor: "pointer", lineHeight: 1, flexShrink: 0 }}>
+                        ×
+                      </button>
+                    )}
                   </div>
-
-                  {/* Fireflies picker for this block */}
-                  {ffMode === idx && (
-                    <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.border}`, background: C.canvas }}>
-                      {ffLoading && <div style={{ fontSize: 12, color: C.muted }}>Loading calls…</div>}
-                      {ffError && <div style={{ fontSize: 12, color: C.red }}>{ffError}</div>}
-                      {ffCalls.slice(0, 10).map(call => (
-                        <div key={call.id}
-                          onClick={() => { loadCallTranscript(call.id, idx, call.title); setFfMode(null); }}
-                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 7, cursor: "pointer",
-                            background: selectedCall[idx] === call.id ? C.accentLo : "transparent",
-                            borderLeft: selectedCall[idx] === call.id ? `3px solid ${C.accent}` : "3px solid transparent" }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 500, color: C.text }}>{call.title}</div>
-                            <div style={{ fontSize: 10.5, color: C.muted, fontFamily: mono }}>
-                              {new Date(call.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                              {call.duration ? ` · ${Math.round(call.duration / 60)} min` : ""}
-                            </div>
-                          </div>
-                          {selectedCall[idx] === call.id && <span style={{ fontSize: 10, color: C.green, fontFamily: mono }}>✓</span>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
 
                   {/* Paste area */}
                   <div style={{ padding: 12 }}>
