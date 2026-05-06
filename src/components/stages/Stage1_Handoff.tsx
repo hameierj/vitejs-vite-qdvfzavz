@@ -815,8 +815,8 @@ function SyncCard({ icon, label, count, total, items }: { icon: string; label: s
 function DocSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 14, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "9px 16px", background: C.surface, borderBottom: `1px solid ${C.border}` }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: head, letterSpacing: 0.2 }}>
+      <div style={{ padding: "10px 16px", background: C.accentLo, borderBottom: `1px solid ${C.accentBorder}` }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.accent, fontFamily: head, letterSpacing: 0.8, textTransform: "uppercase" as const }}>
           {label}
         </span>
       </div>
