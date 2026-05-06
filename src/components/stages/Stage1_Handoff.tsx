@@ -100,7 +100,6 @@ async function syncHubspotCompany(companyId: string): Promise<{ company: any; co
   const closedWonDate: string | null = closedWonDeal?.closeDate
     ? new Date(closedWonDeal.closeDate).toISOString()
     : null;
-  const cutoffMs = closedWonDate ? new Date(closedWonDate).getTime() : null;
 
   // Collect all email IDs from company + all contacts, deduplicated
   const companyEmailIds = (companyEmailsAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean);
@@ -138,9 +137,8 @@ async function syncHubspotCompany(companyId: string): Promise<{ company: any; co
       body: e.properties?.hs_email_text?.slice(0, 500),
     })),
   ]
-    .filter(a => !cutoffMs || new Date(a.date || 0).getTime() <= cutoffMs)
     .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
-    .slice(0, 30);
+    .slice(0, 60); // keep all; filtering happens in the component so user can adjust the date
 
   return { company, contacts, deals, activity, closedWonDate };
 }
@@ -183,6 +181,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState("");
   const [hubspotData, setHubspotData] = useState<HubspotData | null>(null);
+  const [cutoffDate, setCutoffDate] = useState<string>(""); // YYYY-MM-DD, user-editable
   const [transcripts, setTranscripts] = useState<{ label: string; text: string }[]>([{ label: "", text: "" }]);
 
   // Step 3 — generate
@@ -272,6 +271,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
     if ((result as any).error) { setSyncError((result as any).error); setSyncing(false); return; }
     const data: HubspotData = { companyId, companyName, ...result };
     setHubspotData(data);
+    if (result.closedWonDate) setCutoffDate(result.closedWonDate.slice(0, 10));
     // Persist to workspace raw_data
     if (supabase) {
       await supabase.from("workspaces").update({
@@ -284,6 +284,12 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
 
 
   // ── Step 3: Generate ──────────────────────────────────────────────────────
+  // Filter activity by the user-editable cutoff date
+  const filteredActivity = hubspotData?.activity.filter(a => {
+    if (!cutoffDate) return true;
+    return new Date(a.date || 0) <= new Date(cutoffDate + "T23:59:59Z");
+  }) ?? [];
+
   // Combine all transcript blocks into a single string for the AI
   const combinedTranscript = transcripts
     .filter(t => t.text.trim())
@@ -306,7 +312,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
           "x-anthropic-key": anthropicKey,
         },
         body: JSON.stringify({
-          hubspotData: hubspotData ? { company: hubspotData.company, contacts: hubspotData.contacts, deals: hubspotData.deals, activity: hubspotData.activity, closedWonDate: hubspotData.closedWonDate } : null,
+          hubspotData: hubspotData ? { company: hubspotData.company, contacts: hubspotData.contacts, deals: hubspotData.deals, activity: filteredActivity, closedWonDate: cutoffDate ? new Date(cutoffDate).toISOString() : hubspotData.closedWonDate } : null,
           transcript: combinedTranscript || undefined,
           workspaceId,
         }),
@@ -470,22 +476,36 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
           {/* Synced data preview */}
           {hubspotData && !syncing && (
             <>
-              {hubspotData.closedWonDate && (
-                <div style={{ background: "#00D68F0F", border: "1px solid #00D68F33", borderRadius: 8, padding: "8px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ color: C.green, fontSize: 13 }}>✓</span>
-                  <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: head }}>
-                    Closed Won — {new Date(hubspotData.closedWonDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                  </span>
-                  <span style={{ fontSize: 11, color: C.muted, marginLeft: 4 }}>Activity filtered to pre-close</span>
-                </div>
-              )}
+              <div style={{ background: cutoffDate ? C.greenLo : C.surface, border: `1px solid ${cutoffDate ? C.greenBorder : C.border}`, borderRadius: 8, padding: "8px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: cutoffDate ? C.green : C.muted, fontFamily: head, flexShrink: 0 }}>
+                  {cutoffDate ? "✓ Closed Won" : "Activity cutoff date"}
+                </span>
+                <input
+                  type="date"
+                  value={cutoffDate}
+                  onChange={e => setCutoffDate(e.target.value)}
+                  style={{ border: `1px solid ${cutoffDate ? C.greenBorder : C.border}`, borderRadius: 6, padding: "3px 8px",
+                    fontSize: 12, color: C.text, background: C.canvas, outline: "none", fontFamily: mono, cursor: "pointer" }}
+                />
+                <span style={{ fontSize: 11, color: C.muted }}>
+                  {cutoffDate
+                    ? `${filteredActivity.length} of ${hubspotData.activity.length} activity items included`
+                    : "No filter — all activity included"}
+                </span>
+                {cutoffDate && (
+                  <button onClick={() => setCutoffDate("")}
+                    style={{ marginLeft: "auto", fontSize: 11, color: C.muted, background: "none", border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 8px", cursor: "pointer", fontFamily: head }}>
+                    Clear
+                  </button>
+                )}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20 }}>
                 <SyncCard icon="👤" label="Contacts" count={hubspotData.contacts.length}
                   items={hubspotData.contacts.slice(0, 3).map(c => `${c.name}${c.title ? ` · ${c.title}` : ""}`)} />
                 <SyncCard icon="💼" label="Deals" count={hubspotData.deals.length}
                   items={hubspotData.deals.slice(0, 3).map(d => `${d.name}${d.stage ? ` · ${d.stage}` : ""}`)} />
-                <SyncCard icon="📧" label="Emails & Notes" count={hubspotData.activity.length}
-                  items={hubspotData.activity.slice(0, 3).map(a => `${a.type === "email" ? a.subject || "Email" : "Note"} · ${a.date ? new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}`)} />
+                <SyncCard icon="📧" label="Emails & Notes" count={filteredActivity.length} total={hubspotData.activity.length}
+                  items={filteredActivity.slice(0, 3).map(a => `${a.type === "email" ? a.subject || "Email" : "Note"} · ${a.date ? new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}`)} />
               </div>
             </>
           )}
@@ -663,13 +683,15 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SyncCard({ icon, label, count, items }: { icon: string; label: string; count: number; items: string[] }) {
+function SyncCard({ icon, label, count, total, items }: { icon: string; label: string; count: number; total?: number; items: string[] }) {
   return (
     <div style={{ background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: 16 }}>{icon}</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, fontFamily: mono }}>{label.toUpperCase()}</span>
-        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, fontFamily: mono, marginLeft: "auto" }}>{count}</span>
+        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, fontFamily: mono, marginLeft: "auto" }}>
+          {total !== undefined && total !== count ? `${count}/${total}` : count}
+        </span>
       </div>
       {items.map((item, i) => (
         <div key={i} style={{ fontSize: 11.5, color: C.textSoft, lineHeight: 1.5, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>• {item}</div>
