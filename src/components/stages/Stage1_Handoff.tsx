@@ -23,7 +23,12 @@ async function hsCall(path: string, method: "GET" | "POST" = "GET", body?: any):
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/hubspot-proxy`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY, "x-hubspot-token": token },
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "x-hubspot-token": token,
+      },
       body: JSON.stringify({ path, method, body }),
     });
     return await res.json();
@@ -175,7 +180,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
   // Load existing workspace HubSpot link + approved handoff
   useEffect(() => {
     if (!supabase || !workspaceId) return;
-    supabase.from("workspaces").select("hubspot_company_id, name, raw_data").eq("id", workspaceId).single()
+    supabase.from("workspaces").select("hubspot_company_id, name, raw_data").eq("id", workspaceId).maybeSingle()
       .then(({ data: ws }) => {
         if (ws?.hubspot_company_id && ws?.raw_data?.hubspot) {
           const raw = ws.raw_data.hubspot;
@@ -185,7 +190,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
         }
       });
     supabase.from("documents").select("content, approved_at, version").eq("workspace_id", workspaceId).eq("type", "handoff")
-      .order("version", { ascending: false }).limit(1).single()
+      .order("version", { ascending: false }).limit(1).maybeSingle()
       .then(({ data }) => {
         if (data?.content) {
           setHandoff(data.content as HandoffDoc);
@@ -263,7 +268,12 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/fireflies-proxy`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY, "x-fireflies-token": firefliesKey },
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "x-fireflies-token": firefliesKey,
+        },
         body: JSON.stringify({ query: `query { transcripts(limit: 20) { id title date duration organizer_email } }` }),
       });
       const data = await res.json();
@@ -277,7 +287,12 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/fireflies-proxy`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY, "x-fireflies-token": firefliesKey },
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "x-fireflies-token": firefliesKey,
+        },
         body: JSON.stringify({
           query: `query($id: String!) { transcript(id: $id) { sentences { text speaker_name } summary { overview } } }`,
           variables: { id: callId },
@@ -299,7 +314,12 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/handoff-run`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY, "x-anthropic-key": anthropicKey },
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "x-anthropic-key": anthropicKey,
+        },
         body: JSON.stringify({
           hubspotData: hubspotData ? { company: hubspotData.company, contacts: hubspotData.contacts, deals: hubspotData.deals, activity: hubspotData.activity } : null,
           transcript: transcript.trim() || undefined,
@@ -315,7 +335,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
 
   async function approveHandoff() {
     if (!supabase || !editHandoff) return;
-    const { data: latest } = await supabase.from("documents").select("id").eq("workspace_id", workspaceId).eq("type", "handoff").order("version", { ascending: false }).limit(1).single();
+    const { data: latest } = await supabase.from("documents").select("id").eq("workspace_id", workspaceId).eq("type", "handoff").order("version", { ascending: false }).limit(1).maybeSingle();
     if (latest?.id) await supabase.from("documents").update({ content: editHandoff, approved_at: new Date().toISOString(), approved_by: "CX Team" }).eq("id", latest.id);
     await supabase.from("workspaces").update({ stage: 2, stage_statuses: { "1": "approved" } }).eq("id", workspaceId);
     setApproved(true);
