@@ -150,6 +150,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
 
   // Step 1 — HubSpot company search
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchedQuery, setSearchedQuery] = useState(""); // what was actually submitted
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -207,7 +208,9 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
     if (!hsToken) { setSearchError("No HubSpot token configured. Add it in Settings → API Keys."); return; }
     setSearching(true);
     setSearchError("");
+    setSearchResults([]);
     const q = searchQuery.trim();
+    setSearchedQuery(q);
     // Use two filterGroups (OR) — CONTAINS_TOKEN for prefix-word match, EQ for exact match
     const res = await hsCall("/crm/v3/objects/companies/search", "POST", {
       filterGroups: [
@@ -442,8 +445,8 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
             </div>
           )}
 
-          {searchResults.length === 0 && searchQuery && !searching && !searchError && (
-            <div style={{ fontSize: 13, color: C.muted, textAlign: "center", padding: "20px 0" }}>No companies found for "{searchQuery}"</div>
+          {searchResults.length === 0 && searchedQuery && !searching && !searchError && (
+            <div style={{ fontSize: 13, color: C.muted, textAlign: "center", padding: "20px 0" }}>No companies found for "{searchedQuery}"</div>
           )}
         </div>
       )}
