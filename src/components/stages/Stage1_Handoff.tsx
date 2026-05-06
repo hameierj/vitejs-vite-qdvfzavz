@@ -728,19 +728,34 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
                 <DocSection label="Key Contacts">
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {(handoff.keyContacts || []).map((c, i) => (
-                      <div key={i} style={{ background: C.surface, borderRadius: 10, padding: "12px 16px", display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
-                        <div style={{ flex: "1 1 160px" }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, fontFamily: head }}>{c.name}</div>
-                          {c.title && <div style={{ fontSize: 12, color: C.textSoft, marginTop: 2 }}>{c.title}</div>}
+                      <div key={i} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                        {/* Header row: name + role */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+                          <div>
+                            <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, fontFamily: head }}>{c.name}</div>
+                            {c.title && <div style={{ fontSize: 12, color: C.textSoft, marginTop: 1 }}>{c.title}</div>}
+                          </div>
+                          {c.role && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, fontFamily: mono, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 9px", borderRadius: 4, flexShrink: 0 }}>
+                              {c.role.toUpperCase()}
+                            </span>
+                          )}
                         </div>
-                        <div style={{ flex: "1 1 160px" }}>
-                          {c.email && <div style={{ fontSize: 12, color: C.muted, fontFamily: mono }}>{c.email}</div>}
-                          {c.phone && <div style={{ fontSize: 12, color: C.muted, fontFamily: mono }}>{c.phone}</div>}
+                        {/* Contact info + notes */}
+                        <div style={{ padding: "10px 14px", background: C.canvas }}>
+                          {(c.email || c.phone) && (
+                            <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: c.notes ? 8 : 0 }}>
+                              {c.email && <span style={{ fontSize: 12, color: C.muted, fontFamily: mono }}>{c.email}</span>}
+                              {c.phone && <span style={{ fontSize: 12, color: C.muted, fontFamily: mono }}>{c.phone}</span>}
+                            </div>
+                          )}
+                          {c.notes && (
+                            <div style={{ fontSize: 12.5, color: C.textSoft, lineHeight: 1.6, borderTop: (c.email || c.phone) ? `1px solid ${C.border}` : "none", paddingTop: (c.email || c.phone) ? 8 : 0 }}>
+                              {c.notes}
+                            </div>
+                          )}
+                          {!c.email && !c.phone && !c.notes && <div style={{ fontSize: 12, color: C.muted }}>No contact details</div>}
                         </div>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 6, flexWrap: "wrap" }}>
-                          {c.role && <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, fontFamily: mono, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 8px", borderRadius: 4 }}>{c.role.toUpperCase()}</span>}
-                        </div>
-                        {c.notes && <div style={{ flex: "0 0 100%", fontSize: 12, color: C.textSoft, lineHeight: 1.5, marginTop: 4 }}>{c.notes}</div>}
                       </div>
                     ))}
                   </div>
@@ -750,10 +765,10 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
               {/* Deal Details */}
               {handoff.dealDetails && Object.values(handoff.dealDetails).some(Boolean) && (
                 <DocSection label="Deal Details">
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px 24px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
                     {Object.entries(handoff.dealDetails).filter(([, v]) => v).map(([k, v]) => (
-                      <div key={k}>
-                        <div style={{ fontSize: 10, color: C.muted, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 3 }}>{k.replace(/([A-Z])/g, " $1").toUpperCase()}</div>
+                      <div key={k} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px" }}>
+                        <div style={{ fontSize: 10, color: C.accent, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 5 }}>{k.replace(/([A-Z])/g, " $1").toUpperCase()}</div>
                         <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{v}</div>
                       </div>
                     ))}
