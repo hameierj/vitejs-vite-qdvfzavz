@@ -125,7 +125,7 @@ Return ONLY a JSON object with this exact structure (no markdown, no explanation
   "callSummary": "1-2 sentence exec summary of the relationship so far",
   "fitScore": 1-10 integer based on available data,
   "fitReason": "one sentence explaining the fit score",
-  "hubspotOwner": "HubSpot deal/company owner name if available",
+  "hubspotOwner": "HubSpot owner full name — use company.ownerName if present, otherwise resolve from hubspot_owner_id if you can, otherwise omit",
   "lastActivity": "date and type of last pre-close CRM activity",
   "closedWonDate": "the deal close date if known, else null"
 }`;

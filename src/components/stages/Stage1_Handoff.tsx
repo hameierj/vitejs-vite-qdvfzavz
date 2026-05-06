@@ -101,6 +101,19 @@ async function syncHubspotCompany(companyId: string): Promise<{ company: any; co
     ? new Date(closedWonDeal.closeDate).toISOString()
     : null;
 
+  // Resolve owner name from HubSpot owners API
+  const ownerIdRaw = company.hubspot_owner_id || closedWonDeal?.hubspot_owner_id;
+  let ownerName = "";
+  if (ownerIdRaw) {
+    const ownerRes = await hsCall(`/crm/v3/owners/${ownerIdRaw}`);
+    if (ownerRes?.firstName || ownerRes?.lastName) {
+      ownerName = [ownerRes.firstName, ownerRes.lastName].filter(Boolean).join(" ");
+    } else if (ownerRes?.email) {
+      ownerName = ownerRes.email;
+    }
+  }
+  if (ownerName) company.ownerName = ownerName;
+
   // Collect all email IDs from company + all contacts, deduplicated
   const companyEmailIds = (companyEmailsAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean);
   const contactEmailIds = (contactEmailAssocs as any[]).flatMap(assoc =>
@@ -656,26 +669,28 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
           {handoff && !generating && (
             <>
               {/* Header strip */}
-              <div style={{ background: C.surface, borderRadius: 12, padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+              <div style={{ background: C.surface, borderRadius: 12, padding: "16px 20px", marginBottom: 24 }}>
+                {/* Row 1: score + reason */}
                 {handoff.fitScore !== undefined && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 26, fontWeight: 800, fontFamily: mono, color: handoff.fitScore >= 8 ? C.green : handoff.fitScore >= 5 ? C.amber : C.red, lineHeight: 1 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 12 }}>
+                    <div style={{ fontSize: 28, fontWeight: 800, fontFamily: mono, lineHeight: 1, flexShrink: 0,
+                      color: handoff.fitScore >= 8 ? C.green : handoff.fitScore >= 5 ? C.amber : C.red }}>
                       {handoff.fitScore}/10
                     </div>
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, fontFamily: mono }}>FIT SCORE</div>
-                      <div style={{ fontSize: 12, color: C.textSoft, maxWidth: 280 }}>{handoff.fitReason}</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, fontFamily: mono, marginBottom: 2 }}>FIT SCORE</div>
+                      <div style={{ fontSize: 12.5, color: C.textSoft, lineHeight: 1.5 }}>{handoff.fitReason}</div>
                     </div>
                   </div>
                 )}
-                <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                {/* Row 2: badges + owner */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   {handoff.sources?.hubspot && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, fontFamily: mono, background: C.greenLo, border: `1px solid ${C.greenBorder}`, padding: "3px 8px", borderRadius: 4 }}>✓ HUBSPOT</span>}
                   {handoff.sources?.transcript && <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, fontFamily: mono, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 8px", borderRadius: 4 }}>✓ TRANSCRIPT</span>}
-                  {handoff.hubspotOwner && (
-                    <div style={{ textAlign: "right", marginLeft: 8 }}>
-                      <div style={{ fontSize: 10, color: C.muted, fontFamily: mono }}>OWNER</div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: C.text, fontFamily: head }}>{handoff.hubspotOwner}</div>
-                    </div>
+                  {handoff.hubspotOwner && !handoff.hubspotOwner.toLowerCase().includes("owner id") && (
+                    <span style={{ fontSize: 11, color: C.muted, marginLeft: 4 }}>
+                      Owner: <span style={{ color: C.text, fontWeight: 600 }}>{handoff.hubspotOwner}</span>
+                    </span>
                   )}
                 </div>
               </div>
