@@ -202,20 +202,27 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
     if (!hsToken) { setSearchError("No HubSpot token configured. Add it in Settings → API Keys."); return; }
     setSearching(true);
     setSearchError("");
+    const q = searchQuery.trim();
+    // Use two filterGroups (OR) — CONTAINS_TOKEN for prefix-word match, EQ for exact match
     const res = await hsCall("/crm/v3/objects/companies/search", "POST", {
-      filterGroups: [{
-        filters: [{
-          propertyName: "name",
-          operator: "CONTAINS_TOKEN",
-          value: searchQuery.trim(),
-        }],
-      }],
+      filterGroups: [
+        { filters: [{ propertyName: "name", operator: "CONTAINS_TOKEN", value: q }] },
+        { filters: [{ propertyName: "name", operator: "EQ", value: q }] },
+      ],
       properties: ["name", "domain", "industry", "numberofemployees"],
       limit: 10,
     });
     setSearching(false);
-    if (res?.error) { setSearchError(res.error); return; }
+    // Surface HubSpot API errors (they return message/category, not error)
+    if (res?.error || res?.message || res?.status === "error") {
+      setSearchError(res.error || res.message || `HubSpot error (${res?.status})`);
+      return;
+    }
     setSearchResults(res?.results || []);
+    if (!res?.results && !res?.error) {
+      // Unexpected response shape — show it for debugging
+      setSearchError(`Unexpected response: ${JSON.stringify(res).slice(0, 200)}`);
+    }
   }
 
   async function linkCompany(result: any) {
