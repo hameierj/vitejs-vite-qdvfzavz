@@ -1,25 +1,48 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { PRODUCT_SECTIONS, ICP_SECTIONS } from "../../lib/schemas";
+import { CxV2Portal } from "./CxV2Portal";
 
 export function ClientPortal({ id }: { id: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [v2Workspace, setV2Workspace] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<string>("research");
   const [activeSidebarItem, setActiveSidebarItem] = useState<string>("");
 
   useEffect(() => {
     if (!supabase) { setNotFound(true); setLoading(false); return; }
-    supabase.from("app_data").select("value").eq("key", `export_${id}`).single().then(({ data: row }) => {
-      if (!row?.value) { setNotFound(true); setLoading(false); return; }
-      const val = row.value;
-      try {
-        setData(typeof val === "string" ? JSON.parse(val) : val);
-      } catch { setNotFound(true); }
-      setLoading(false);
-    });
+
+    // Try CX v2 workspace first (share_token lookup)
+    supabase.from("workspaces").select("id, name, stage, stage_statuses, share_token, client_id").eq("share_token", id).single()
+      .then(async ({ data: ws }) => {
+        if (ws) {
+          // Load all documents for this workspace
+          const { data: docs } = await supabase!.from("documents").select("type, content, version, approved_at").eq("workspace_id", ws.id).order("version", { ascending: false });
+          // Load latest analytics upload
+          const { data: analytics } = await supabase!.from("analytics_uploads").select("scorecard, parsed, filename, uploaded_at").eq("workspace_id", ws.id).order("uploaded_at", { ascending: false }).limit(1);
+          // Load communications count
+          const { count: commsCount } = await supabase!.from("communications").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id);
+          setV2Workspace({ ...ws, docs: docs || [], analytics: analytics?.[0] || null, commsCount: commsCount || 0 });
+          setLoading(false);
+          return;
+        }
+
+        // Fall back to legacy app_data export
+        supabase!.from("app_data").select("value").eq("key", `export_${id}`).single().then(({ data: row }) => {
+          if (!row?.value) { setNotFound(true); setLoading(false); return; }
+          const val = row.value;
+          try {
+            setData(typeof val === "string" ? JSON.parse(val) : val);
+          } catch { setNotFound(true); }
+          setLoading(false);
+        });
+      });
   }, [id]);
+
+  // CX v2 branch
+  if (!loading && v2Workspace) return <CxV2Portal ws={v2Workspace} />;
 
   const A   = "#5761fe";
   const H   = "#050c46";

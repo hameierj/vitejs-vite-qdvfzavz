@@ -14,7 +14,7 @@ create table if not exists workspaces (
   id            uuid primary key default gen_random_uuid(),
   client_id     uuid references clients(id) on delete cascade,
   name          text not null,
-  share_token   text unique not null default encode(gen_random_bytes(16), 'hex'),
+  share_token   text unique not null default replace(gen_random_uuid()::text, '-', ''),
   stage         int not null default 1 check (stage between 1 and 7),
   stage_statuses jsonb not null default '{}',
   raw_data      jsonb not null default '{}',
