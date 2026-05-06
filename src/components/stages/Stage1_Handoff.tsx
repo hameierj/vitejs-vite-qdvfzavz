@@ -188,7 +188,6 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
   const [generating, setGenerating] = useState(false);
   const [genMsg, setGenMsg] = useState("");
   const [handoff, setHandoff] = useState<HandoffDoc | null>(null);
-  const [editHandoff, setEditHandoff] = useState<HandoffDoc | null>(null);
   const [genError, setGenError] = useState("");
   const [activityOpen, setActivityOpen] = useState(false);
 
@@ -212,7 +211,6 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
       .then(({ data }) => {
         if (data?.content) {
           setHandoff(data.content as HandoffDoc);
-          setEditHandoff(data.content as HandoffDoc);
           if (data.approved_at) { setApproved(true); setStep("generate"); }
           else if (data.content) setStep("generate");
         }
@@ -301,7 +299,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
 
   async function generate() {
     if (!hubspotData && !combinedTranscript) { setGenError("Need HubSpot data or a transcript."); return; }
-    setGenerating(true); setGenError(""); setHandoff(null); setEditHandoff(null);
+    setGenerating(true); setGenError(""); setHandoff(null);
     const msgs = ["Reading CRM data…", "Pulling deal context…", "Structuring handoff doc…", "Scoring fit…"];
     let mi = 0; setGenMsg(msgs[mi]);
     const iv = setInterval(() => { mi = (mi + 1) % msgs.length; setGenMsg(msgs[mi]); }, 3500);
@@ -323,14 +321,13 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
       const data = await res.json();
       if (data.error) { setGenError(data.error); return; }
       setHandoff(data.handoff);
-      setEditHandoff(data.handoff);
     } catch (e: any) { setGenError(e.message); } finally { clearInterval(iv); setGenerating(false); setGenMsg(""); }
   }
 
   async function approveHandoff() {
-    if (!supabase || !editHandoff) return;
+    if (!supabase || !handoff) return;
     const { data: latest } = await supabase.from("documents").select("id").eq("workspace_id", workspaceId).eq("type", "handoff").order("version", { ascending: false }).limit(1).maybeSingle();
-    if (latest?.id) await supabase.from("documents").update({ content: editHandoff, approved_at: new Date().toISOString(), approved_by: "CX Team" }).eq("id", latest.id);
+    if (latest?.id) await supabase.from("documents").update({ content: handoff, approved_at: new Date().toISOString(), approved_by: "CX Team" }).eq("id", latest.id);
     await supabase.from("workspaces").update({ stage: 2, stage_statuses: { "1": "approved" } }).eq("id", workspaceId);
     setApproved(true);
     onApprove?.();
@@ -646,92 +643,127 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
         </div>
       )}
 
-      {/* ── STEP 3: Generate + review ── */}
+      {/* ── STEP 3: Finalized handoff document ── */}
       {step === "generate" && (
         <div>
-          {/* Sources badge */}
-          {editHandoff?.sources && (
-            <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-              {editHandoff.sources.hubspot && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: C.green, fontFamily: mono, background: C.greenLo, border: `1px solid ${C.greenBorder}`, padding: "3px 8px", borderRadius: 4 }}>
-                  ✓ HUBSPOT
-                </span>
-              )}
-              {editHandoff.sources.transcript && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, fontFamily: mono, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 8px", borderRadius: 4 }}>
-                  ✓ TRANSCRIPT
-                </span>
-              )}
-            </div>
-          )}
-
           {generating && (
-            <div style={{ background: C.surface, borderRadius: 12, padding: 24, textAlign: "center", marginBottom: 20 }}>
+            <div style={{ background: C.surface, borderRadius: 12, padding: 32, textAlign: "center", marginBottom: 20 }}>
               <div style={{ fontSize: 13, color: C.muted, fontFamily: mono }}>{genMsg || "Generating…"}</div>
             </div>
           )}
           {genError && <div style={{ fontSize: 13, color: C.red, marginBottom: 16 }}>{genError}</div>}
 
-          {editHandoff && !generating && (
+          {handoff && !generating && (
             <>
-              {/* Fit score */}
-              {editHandoff.fitScore !== undefined && (
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, background: C.surface, borderRadius: 10, padding: "12px 16px" }}>
-                  <div style={{ fontSize: 28, fontWeight: 800, fontFamily: mono, color: editHandoff.fitScore >= 8 ? C.green : editHandoff.fitScore >= 5 ? C.amber : C.red }}>{editHandoff.fitScore}/10</div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: head }}>Fit Score</div>
-                    <div style={{ fontSize: 12, color: C.textSoft }}>{editHandoff.fitReason}</div>
+              {/* Header strip */}
+              <div style={{ background: C.surface, borderRadius: 12, padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                {handoff.fitScore !== undefined && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ fontSize: 26, fontWeight: 800, fontFamily: mono, color: handoff.fitScore >= 8 ? C.green : handoff.fitScore >= 5 ? C.amber : C.red, lineHeight: 1 }}>
+                      {handoff.fitScore}/10
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, fontFamily: mono }}>FIT SCORE</div>
+                      <div style={{ fontSize: 12, color: C.textSoft, maxWidth: 280 }}>{handoff.fitReason}</div>
+                    </div>
                   </div>
-                  {editHandoff.hubspotOwner && (
-                    <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                )}
+                <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  {handoff.sources?.hubspot && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, fontFamily: mono, background: C.greenLo, border: `1px solid ${C.greenBorder}`, padding: "3px 8px", borderRadius: 4 }}>✓ HUBSPOT</span>}
+                  {handoff.sources?.transcript && <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, fontFamily: mono, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 8px", borderRadius: 4 }}>✓ TRANSCRIPT</span>}
+                  {handoff.hubspotOwner && (
+                    <div style={{ textAlign: "right", marginLeft: 8 }}>
                       <div style={{ fontSize: 10, color: C.muted, fontFamily: mono }}>OWNER</div>
-                      <div style={{ fontSize: 12, color: C.text, fontFamily: head }}>{editHandoff.hubspotOwner}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: C.text, fontFamily: head }}>{handoff.hubspotOwner}</div>
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Call Summary */}
+              {handoff.callSummary && (
+                <DocSection label="Call Summary">
+                  <p style={{ margin: 0, fontSize: 13.5, color: C.text, lineHeight: 1.7 }}>{handoff.callSummary}</p>
+                </DocSection>
               )}
 
-              <Section title="Call Summary"><EditableText value={editHandoff.callSummary || ""} onChange={v => setEditHandoff(p => ({ ...p!, callSummary: v }))} multiline /></Section>
-              <Section title="Company Context"><EditableText value={editHandoff.companyContext || ""} onChange={v => setEditHandoff(p => ({ ...p!, companyContext: v }))} multiline /></Section>
-              <Section title="Pain Points"><EditableList items={editHandoff.painPoints || []} onChange={v => setEditHandoff(p => ({ ...p!, painPoints: v }))} /></Section>
-              <Section title="Use Case"><EditableText value={editHandoff.useCase || ""} onChange={v => setEditHandoff(p => ({ ...p!, useCase: v }))} multiline /></Section>
+              {/* Company Context */}
+              {handoff.companyContext && (
+                <DocSection label="Company Context">
+                  <p style={{ margin: 0, fontSize: 13.5, color: C.text, lineHeight: 1.7 }}>{handoff.companyContext}</p>
+                </DocSection>
+              )}
 
-              {/* Contacts */}
-              <Section title="Key Contacts">
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {(editHandoff.keyContacts || []).map((c, i) => (
-                    <div key={i} style={{ background: C.surface, borderRadius: 8, padding: "10px 14px" }}>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                        <ContactField label="Name" value={c.name} onChange={v => { const k = [...(editHandoff.keyContacts || [])]; k[i] = { ...k[i], name: v }; setEditHandoff(p => ({ ...p!, keyContacts: k })); }} />
-                        <ContactField label="Title" value={c.title} onChange={v => { const k = [...(editHandoff.keyContacts || [])]; k[i] = { ...k[i], title: v }; setEditHandoff(p => ({ ...p!, keyContacts: k })); }} />
-                        <ContactField label="Email" value={c.email || ""} onChange={v => { const k = [...(editHandoff.keyContacts || [])]; k[i] = { ...k[i], email: v }; setEditHandoff(p => ({ ...p!, keyContacts: k })); }} />
-                        {c.role && <div style={{ display: "flex", alignItems: "center" }}><span style={{ fontSize: 10, color: C.accent, fontFamily: mono, background: C.accentLo, padding: "2px 7px", borderRadius: 4, fontWeight: 700 }}>{c.role.toUpperCase()}</span></div>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Section>
+              {/* Pain Points */}
+              {(handoff.painPoints || []).length > 0 && (
+                <DocSection label="Pain Points">
+                  <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {(handoff.painPoints || []).map((pt, i) => (
+                      <li key={i} style={{ fontSize: 13.5, color: C.text, lineHeight: 1.6 }}>{pt}</li>
+                    ))}
+                  </ul>
+                </DocSection>
+              )}
 
-              {/* Deal details */}
-              {editHandoff.dealDetails && (
-                <Section title="Deal Details">
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {Object.entries(editHandoff.dealDetails).filter(([, v]) => v).map(([k, v]) => (
-                      <div key={k}>
-                        <div style={{ fontSize: 10, color: C.muted, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 4 }}>{k.replace(/([A-Z])/g, " $1").toUpperCase()}</div>
-                        <input value={v || ""} onChange={e => setEditHandoff(p => ({ ...p!, dealDetails: { ...p!.dealDetails!, [k]: e.target.value } }))}
-                          style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 10px", fontSize: 12.5, color: C.text, background: C.canvas, outline: "none", boxSizing: "border-box" as const }} />
+              {/* Use Case */}
+              {handoff.useCase && (
+                <DocSection label="Use Case">
+                  <p style={{ margin: 0, fontSize: 13.5, color: C.text, lineHeight: 1.7 }}>{handoff.useCase}</p>
+                </DocSection>
+              )}
+
+              {/* Key Contacts */}
+              {(handoff.keyContacts || []).length > 0 && (
+                <DocSection label="Key Contacts">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {(handoff.keyContacts || []).map((c, i) => (
+                      <div key={i} style={{ background: C.surface, borderRadius: 10, padding: "12px 16px", display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+                        <div style={{ flex: "1 1 160px" }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, fontFamily: head }}>{c.name}</div>
+                          {c.title && <div style={{ fontSize: 12, color: C.textSoft, marginTop: 2 }}>{c.title}</div>}
+                        </div>
+                        <div style={{ flex: "1 1 160px" }}>
+                          {c.email && <div style={{ fontSize: 12, color: C.muted, fontFamily: mono }}>{c.email}</div>}
+                          {c.phone && <div style={{ fontSize: 12, color: C.muted, fontFamily: mono }}>{c.phone}</div>}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 6, flexWrap: "wrap" }}>
+                          {c.role && <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, fontFamily: mono, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 8px", borderRadius: 4 }}>{c.role.toUpperCase()}</span>}
+                        </div>
+                        {c.notes && <div style={{ flex: "0 0 100%", fontSize: 12, color: C.textSoft, lineHeight: 1.5, marginTop: 4 }}>{c.notes}</div>}
                       </div>
                     ))}
                   </div>
-                </Section>
+                </DocSection>
               )}
 
-              <Section title="Agreed Next Steps"><EditableList items={editHandoff.nextSteps || []} onChange={v => setEditHandoff(p => ({ ...p!, nextSteps: v }))} /></Section>
+              {/* Deal Details */}
+              {handoff.dealDetails && Object.values(handoff.dealDetails).some(Boolean) && (
+                <DocSection label="Deal Details">
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px 24px" }}>
+                    {Object.entries(handoff.dealDetails).filter(([, v]) => v).map(([k, v]) => (
+                      <div key={k}>
+                        <div style={{ fontSize: 10, color: C.muted, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 3 }}>{k.replace(/([A-Z])/g, " $1").toUpperCase()}</div>
+                        <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </DocSection>
+              )}
+
+              {/* Next Steps */}
+              {(handoff.nextSteps || []).length > 0 && (
+                <DocSection label="Agreed Next Steps">
+                  <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {(handoff.nextSteps || []).map((step, i) => (
+                      <li key={i} style={{ fontSize: 13.5, color: C.text, lineHeight: 1.6 }}>{step}</li>
+                    ))}
+                  </ol>
+                </DocSection>
+              )}
 
               {!approved && (
-                <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
-                  <button onClick={() => { setHandoff(null); setEditHandoff(null); setStep("sync"); }}
+                <div style={{ display: "flex", gap: 10, marginTop: 28, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
+                  <button onClick={() => { setHandoff(null); setStep("sync"); }}
                     style={{ padding: "10px 18px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textSoft, fontSize: 12, fontWeight: 600, fontFamily: head, cursor: "pointer" }}>
                     Re-generate
                   </button>
@@ -769,45 +801,13 @@ function SyncCard({ icon, label, count, total, items }: { icon: string; label: s
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function DocSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ fontSize: 10, color: C.muted, fontFamily: mono, fontWeight: 700, letterSpacing: 0.5, marginBottom: 8 }}>{title.toUpperCase()}</div>
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 10, color: C.muted, fontFamily: mono, fontWeight: 700, letterSpacing: 0.6, marginBottom: 10, paddingBottom: 6, borderBottom: `1px solid ${C.border}` }}>
+        {label.toUpperCase()}
+      </div>
       {children}
-    </div>
-  );
-}
-
-function EditableText({ value, onChange, multiline }: { value: string; onChange: (v: string) => void; multiline?: boolean }) {
-  const st: React.CSSProperties = { width: "100%", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, color: C.text, background: C.canvas, outline: "none", fontFamily: body, lineHeight: 1.6, boxSizing: "border-box" };
-  return multiline ? <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} style={{ ...st, resize: "vertical" }} /> : <input value={value} onChange={e => onChange(e.target.value)} style={st} />;
-}
-
-function EditableList({ items, onChange }: { items: string[]; onChange: (v: string[]) => void }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {items.map((item, i) => (
-        <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: C.accent, minWidth: 14 }}>•</span>
-          <input value={item} onChange={e => { const n = [...items]; n[i] = e.target.value; onChange(n); }}
-            style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 10px", fontSize: 12.5, color: C.text, background: C.canvas, outline: "none" }} />
-          <button onClick={() => onChange(items.filter((_, j) => j !== i))} style={{ border: "none", background: "none", cursor: "pointer", color: C.muted, fontSize: 14, padding: "0 4px" }}>×</button>
-        </div>
-      ))}
-      <button onClick={() => onChange([...items, ""])}
-        style={{ alignSelf: "flex-start", fontSize: 11, color: C.accent, background: "none", border: `1px dashed ${C.accentBorder}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: head, fontWeight: 600 }}>
-        + Add
-      </button>
-    </div>
-  );
-}
-
-function ContactField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div style={{ flex: 1, minWidth: 120 }}>
-      <div style={{ fontSize: 10, color: C.muted, fontFamily: mono, letterSpacing: 0.4, marginBottom: 3 }}>{label.toUpperCase()}</div>
-      <input value={value} onChange={e => onChange(e.target.value)}
-        style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 9px", fontSize: 12, color: C.text, background: C.canvas, outline: "none", boxSizing: "border-box" as const }} />
     </div>
   );
 }
