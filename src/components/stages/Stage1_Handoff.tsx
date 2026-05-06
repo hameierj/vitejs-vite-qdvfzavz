@@ -683,16 +683,12 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
                     </div>
                   </div>
                 )}
-                {/* Row 2: badges + owner */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  {handoff.sources?.hubspot && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, fontFamily: mono, background: C.greenLo, border: `1px solid ${C.greenBorder}`, padding: "3px 8px", borderRadius: 4 }}>✓ HUBSPOT</span>}
-                  {handoff.sources?.transcript && <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, fontFamily: mono, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 8px", borderRadius: 4 }}>✓ TRANSCRIPT</span>}
-                  {handoff.hubspotOwner && !handoff.hubspotOwner.toLowerCase().includes("owner id") && (
-                    <span style={{ fontSize: 11, color: C.muted, marginLeft: 4 }}>
-                      Owner: <span style={{ color: C.text, fontWeight: 600 }}>{handoff.hubspotOwner}</span>
-                    </span>
-                  )}
-                </div>
+                {/* Row 2: owner */}
+                {handoff.hubspotOwner && !handoff.hubspotOwner.toLowerCase().includes("owner id") && (
+                  <div style={{ fontSize: 12, color: C.muted }}>
+                    Owner: <span style={{ color: C.text, fontWeight: 600 }}>{handoff.hubspotOwner}</span>
+                  </div>
+                )}
               </div>
 
               {/* Call Summary */}
@@ -818,11 +814,15 @@ function SyncCard({ icon, label, count, total, items }: { icon: string; label: s
 
 function DocSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 10, color: C.muted, fontFamily: mono, fontWeight: 700, letterSpacing: 0.6, marginBottom: 10, paddingBottom: 6, borderBottom: `1px solid ${C.border}` }}>
-        {label.toUpperCase()}
+    <div style={{ marginBottom: 14, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ padding: "9px 16px", background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: head, letterSpacing: 0.2 }}>
+          {label}
+        </span>
       </div>
-      {children}
+      <div style={{ padding: "16px 18px", background: C.canvas }}>
+        {children}
+      </div>
     </div>
   );
 }
