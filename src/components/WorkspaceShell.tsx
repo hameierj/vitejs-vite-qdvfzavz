@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { Stage1_Handoff } from "./stages/Stage1_Handoff";
 import { Stage5_Onboarding } from "./stages/Stage5_Onboarding";
+import { Stage6_CommLog } from "./stages/Stage6_CommLog";
+import { Stage7_Analytics } from "./stages/Stage7_Analytics";
 
 const C = {
   bg: "#F8F9FE", canvas: "#FFFFFF", surface: "#F3F4FB", border: "#EDF2F7",
@@ -191,8 +193,8 @@ export function WorkspaceShell() {
           {activeStage === 5 && (
             <Stage5_Onboarding workspaceId={ws.id} onApprove={() => { refreshWs(); setActiveStage(6); }} />
           )}
-          {activeStage === 6 && <ComingSoon stageNum={6} label="Communication Log" />}
-          {activeStage === 7 && <ComingSoon stageNum={7} label="Analytics & Optimization" />}
+          {activeStage === 6 && <Stage6_CommLog workspaceId={ws.id} />}
+          {activeStage === 7 && <Stage7_Analytics workspaceId={ws.id} />}
         </div>
       </div>
     </div>
