@@ -38,7 +38,7 @@ async function hsCall(path: string, method: "GET" | "POST" = "GET", body?: any):
 }
 
 // Pull all useful data for a company in parallel
-async function syncHubspotCompany(companyId: string): Promise<{ company: any; contacts: any[]; deals: any[]; activity: any[] }> {
+async function syncHubspotCompany(companyId: string): Promise<{ company: any; contacts: any[]; deals: any[]; activity: any[]; closedWonDate: string | null }> {
   const COMPANY_PROPS = "name,domain,industry,description,phone,city,state,country,numberofemployees,annualrevenue,hubspot_owner_id,createdate,hs_lastmodifieddate,lifecyclestage,website";
 
   const [companyRes, contactAssoc, dealAssoc] = await Promise.all([
@@ -49,14 +49,14 @@ async function syncHubspotCompany(companyId: string): Promise<{ company: any; co
 
   const company = companyRes?.properties || companyRes || {};
 
-  // Batch-read contacts
   const contactIds = (contactAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean).slice(0, 20);
   const dealsIds = (dealAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean).slice(0, 10);
 
   const CONTACT_PROPS = ["firstname", "lastname", "email", "phone", "jobtitle", "lifecyclestage", "hs_lead_status"];
-  const DEAL_PROPS = ["dealname", "dealstage", "amount", "closedate", "pipeline", "hubspot_owner_id", "description", "hs_deal_stage_probability"];
+  const DEAL_PROPS = ["dealname", "dealstage", "amount", "closedate", "pipeline", "hubspot_owner_id", "description", "hs_deal_stage_probability", "hs_is_closed_won"];
 
-  const [contactsRes, dealsRes, notesAssoc, emailsAssoc] = await Promise.all([
+  // Fetch contacts, deals, company notes/emails, and contact-level email associations all in parallel
+  const [contactsRes, dealsRes, notesAssoc, companyEmailsAssoc, contactEmailAssocs] = await Promise.all([
     contactIds.length ? hsCall("/crm/v3/objects/contacts/batch/read", "POST", {
       inputs: contactIds.map((id: string) => ({ id })),
       properties: CONTACT_PROPS,
@@ -67,6 +67,8 @@ async function syncHubspotCompany(companyId: string): Promise<{ company: any; co
     }) : Promise.resolve({ results: [] }),
     hsCall(`/crm/v3/objects/companies/${companyId}/associations/notes`),
     hsCall(`/crm/v3/objects/companies/${companyId}/associations/emails`),
+    // Pull email associations from each contact (first 8) to catch emails logged at contact level
+    Promise.all(contactIds.slice(0, 8).map((id: string) => hsCall(`/crm/v3/objects/contacts/${id}/associations/emails`))),
   ]);
 
   const contacts = (contactsRes?.results || []).map((c: any) => ({
@@ -88,20 +90,35 @@ async function syncHubspotCompany(companyId: string): Promise<{ company: any; co
     pipeline: d.properties?.pipeline,
     probability: d.properties?.hs_deal_stage_probability,
     description: d.properties?.description,
+    isClosedWon: d.properties?.hs_is_closed_won === "true",
   }));
 
-  // Batch-read recent notes + emails
-  const noteIds = (notesAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean).slice(0, 10);
-  const emailIds = (emailsAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean).slice(0, 10);
+  // Identify the most recent Closed Won deal — use its close date as the activity cutoff
+  const closedWonDeal = deals
+    .filter(d => d.isClosedWon || d.stage?.toLowerCase() === "closedwon")
+    .sort((a, b) => new Date(b.closeDate || 0).getTime() - new Date(a.closeDate || 0).getTime())[0];
+  const closedWonDate: string | null = closedWonDeal?.closeDate
+    ? new Date(closedWonDeal.closeDate).toISOString()
+    : null;
+  const cutoffMs = closedWonDate ? new Date(closedWonDate).getTime() : null;
+
+  // Collect all email IDs from company + all contacts, deduplicated
+  const companyEmailIds = (companyEmailsAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean);
+  const contactEmailIds = (contactEmailAssocs as any[]).flatMap(assoc =>
+    (assoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean)
+  );
+  const allEmailIds = [...new Set([...companyEmailIds, ...contactEmailIds])].slice(0, 30);
+
+  const noteIds = (notesAssoc?.results || []).map((r: any) => r.id || r.toObjectId).filter(Boolean).slice(0, 20);
 
   const [notesRes, emailsRes] = await Promise.all([
     noteIds.length ? hsCall("/crm/v3/objects/notes/batch/read", "POST", {
       inputs: noteIds.map((id: string) => ({ id })),
       properties: ["hs_note_body", "hs_timestamp"],
     }) : Promise.resolve({ results: [] }),
-    emailIds.length ? hsCall("/crm/v3/objects/emails/batch/read", "POST", {
-      inputs: emailIds.map((id: string) => ({ id })),
-      properties: ["hs_email_subject", "hs_email_text", "hs_timestamp", "hs_email_direction"],
+    allEmailIds.length ? hsCall("/crm/v3/objects/emails/batch/read", "POST", {
+      inputs: allEmailIds.map((id: string) => ({ id })),
+      properties: ["hs_email_subject", "hs_email_text", "hs_timestamp", "hs_email_direction", "hs_email_from_email", "hs_email_to_email"],
     }) : Promise.resolve({ results: [] }),
   ]);
 
@@ -116,11 +133,16 @@ async function syncHubspotCompany(companyId: string): Promise<{ company: any; co
       date: e.properties?.hs_timestamp,
       subject: e.properties?.hs_email_subject,
       direction: e.properties?.hs_email_direction,
-      body: e.properties?.hs_email_text?.slice(0, 300),
+      from: e.properties?.hs_email_from_email,
+      to: e.properties?.hs_email_to_email,
+      body: e.properties?.hs_email_text?.slice(0, 500),
     })),
-  ].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).slice(0, 15);
+  ]
+    .filter(a => !cutoffMs || new Date(a.date || 0).getTime() <= cutoffMs)
+    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+    .slice(0, 30);
 
-  return { company, contacts, deals, activity };
+  return { company, contacts, deals, activity, closedWonDate };
 }
 
 interface HubspotData {
@@ -130,6 +152,7 @@ interface HubspotData {
   contacts: any[];
   deals: any[];
   activity: any[];
+  closedWonDate: string | null;
 }
 
 interface HandoffDoc {
@@ -252,7 +275,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
     // Persist to workspace raw_data
     if (supabase) {
       await supabase.from("workspaces").update({
-        raw_data: { hubspot: { company: result.company, contacts: result.contacts, deals: result.deals, activity: result.activity } },
+        raw_data: { hubspot: { company: result.company, contacts: result.contacts, deals: result.deals, activity: result.activity, closedWonDate: result.closedWonDate } },
         hubspot_synced_at: new Date().toISOString(),
       }).eq("id", workspaceId);
     }
@@ -283,7 +306,7 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
           "x-anthropic-key": anthropicKey,
         },
         body: JSON.stringify({
-          hubspotData: hubspotData ? { company: hubspotData.company, contacts: hubspotData.contacts, deals: hubspotData.deals, activity: hubspotData.activity } : null,
+          hubspotData: hubspotData ? { company: hubspotData.company, contacts: hubspotData.contacts, deals: hubspotData.deals, activity: hubspotData.activity, closedWonDate: hubspotData.closedWonDate } : null,
           transcript: combinedTranscript || undefined,
           workspaceId,
         }),
@@ -446,14 +469,25 @@ export function Stage1_Handoff({ workspaceId, onApprove }: { workspaceId: string
 
           {/* Synced data preview */}
           {hubspotData && !syncing && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20 }}>
-              <SyncCard icon="👤" label="Contacts" count={hubspotData.contacts.length}
-                items={hubspotData.contacts.slice(0, 3).map(c => `${c.name}${c.title ? ` · ${c.title}` : ""}`)} />
-              <SyncCard icon="💼" label="Deals" count={hubspotData.deals.length}
-                items={hubspotData.deals.slice(0, 3).map(d => `${d.name}${d.stage ? ` · ${d.stage}` : ""}`)} />
-              <SyncCard icon="📋" label="Activity" count={hubspotData.activity.length}
-                items={hubspotData.activity.slice(0, 3).map(a => `${a.type === "email" ? a.subject || "Email" : "Note"} · ${a.date ? new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}`)} />
-            </div>
+            <>
+              {hubspotData.closedWonDate && (
+                <div style={{ background: "#00D68F0F", border: "1px solid #00D68F33", borderRadius: 8, padding: "8px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: C.green, fontSize: 13 }}>✓</span>
+                  <span style={{ fontSize: 12, color: C.green, fontWeight: 600, fontFamily: head }}>
+                    Closed Won — {new Date(hubspotData.closedWonDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  </span>
+                  <span style={{ fontSize: 11, color: C.muted, marginLeft: 4 }}>Activity filtered to pre-close</span>
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20 }}>
+                <SyncCard icon="👤" label="Contacts" count={hubspotData.contacts.length}
+                  items={hubspotData.contacts.slice(0, 3).map(c => `${c.name}${c.title ? ` · ${c.title}` : ""}`)} />
+                <SyncCard icon="💼" label="Deals" count={hubspotData.deals.length}
+                  items={hubspotData.deals.slice(0, 3).map(d => `${d.name}${d.stage ? ` · ${d.stage}` : ""}`)} />
+                <SyncCard icon="📧" label="Emails & Notes" count={hubspotData.activity.length}
+                  items={hubspotData.activity.slice(0, 3).map(a => `${a.type === "email" ? a.subject || "Email" : "Note"} · ${a.date ? new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}`)} />
+              </div>
+            </>
           )}
 
           {/* Optional transcript enrichment */}

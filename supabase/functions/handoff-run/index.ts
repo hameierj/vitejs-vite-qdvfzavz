@@ -67,8 +67,13 @@ serve(async (req) => {
     }
 
     // Build the prompt — HubSpot data is structured foundation, transcript is enrichment
+    const closedWonDate = hubspotData?.closedWonDate
+      ? new Date(hubspotData.closedWonDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+      : null;
+
     const hubspotSection = hubspotData ? `
 HUBSPOT CRM DATA (source of truth):
+${closedWonDate ? `IMPORTANT: This deal closed on ${closedWonDate}. All activity below is from the pre-sale period (before close). Use it to understand the sales cycle, pain points discussed, and what was promised during the sales process.` : ""}
 
 Company:
 ${JSON.stringify(hubspotData.company || {}, null, 2)}
@@ -79,8 +84,8 @@ ${JSON.stringify(hubspotData.contacts || [], null, 2).slice(0, 3000)}
 Deals (${(hubspotData.deals || []).length}):
 ${JSON.stringify(hubspotData.deals || [], null, 2).slice(0, 2000)}
 
-Recent Activity (emails, notes, calls):
-${JSON.stringify(hubspotData.activity || [], null, 2).slice(0, 3000)}
+Pre-Sale Activity — emails (company + contact level) and notes (${(hubspotData.activity || []).length} items):
+${JSON.stringify(hubspotData.activity || [], null, 2).slice(0, 4000)}
 ` : "";
 
     const transcriptSection = transcript?.trim() ? `
@@ -121,7 +126,8 @@ Return ONLY a JSON object with this exact structure (no markdown, no explanation
   "fitScore": 1-10 integer based on available data,
   "fitReason": "one sentence explaining the fit score",
   "hubspotOwner": "HubSpot deal/company owner name if available",
-  "lastActivity": "date and type of last CRM activity"
+  "lastActivity": "date and type of last pre-close CRM activity",
+  "closedWonDate": "the deal close date if known, else null"
 }`;
 
     const raw = await callAI(anthropicKey, prompt);
