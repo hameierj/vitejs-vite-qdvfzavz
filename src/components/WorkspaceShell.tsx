@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { Stage1_Handoff } from "./stages/Stage1_Handoff";
+import { Stage2_Research } from "./stages/Stage2_Research";
 import { Stage5_Onboarding } from "./stages/Stage5_Onboarding";
 import { Stage6_CommLog } from "./stages/Stage6_CommLog";
 import { Stage7_Analytics } from "./stages/Stage7_Analytics";
@@ -204,7 +205,9 @@ export function WorkspaceShell() {
           {activeStage === 1 && (
             <Stage1_Handoff workspaceId={ws.id} onApprove={() => { refreshWs(); setActiveStage(2); }} />
           )}
-          {activeStage === 2 && <LaunchPadStub stageNum={2} label="Client Research" workspaceId={ws.id} />}
+          {activeStage === 2 && (
+            <Stage2_Research workspaceId={ws.id} onApprove={() => { refreshWs(); setActiveStage(3); }} />
+          )}
           {activeStage === 3 && <LaunchPadStub stageNum={3} label="Domain Targeting" workspaceId={ws.id} />}
           {activeStage === 4 && <LaunchPadStub stageNum={4} label="Campaign Strategy & Content" workspaceId={ws.id} />}
           {activeStage === 5 && (

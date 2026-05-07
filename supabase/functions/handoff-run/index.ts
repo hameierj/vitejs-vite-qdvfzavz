@@ -18,33 +18,26 @@ const corsHeaders = {
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-async function callAI(key: string, prompt: string, sys = "", tokens = 2500, retries = 4): Promise<string> {
+async function callAI(key: string, prompt: string, sys = "", tokens = 2500): Promise<string> {
   const sysMsg = sys || "You are a senior B2B customer success strategist. Extract and structure information precisely. Return only valid JSON.";
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: tokens,
-          system: sysMsg,
-          messages: [{ role: "user", content: prompt }],
-        }),
-        signal: AbortSignal.timeout(55000),
-      });
-      if (r.status === 429 || r.status >= 500) {
-        if (attempt < retries) { await sleep(Math.min(1000 * Math.pow(2, attempt), 20000)); continue; }
-        return "";
-      }
-      const json = await r.json();
-      return json.content?.[0]?.text ?? "";
-    } catch {
-      if (attempt < retries) { await sleep(1000 * Math.pow(2, attempt)); continue; }
-      return "";
-    }
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: tokens,
+        system: sysMsg,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: AbortSignal.timeout(45000),
+    });
+    if (!r.ok) return "";
+    const json = await r.json();
+    return json.content?.[0]?.text ?? "";
+  } catch {
+    return "";
   }
-  return "";
 }
 
 serve(async (req) => {
@@ -79,18 +72,18 @@ Company:
 ${JSON.stringify(hubspotData.company || {}, null, 2)}
 
 Contacts (${(hubspotData.contacts || []).length}):
-${JSON.stringify(hubspotData.contacts || [], null, 2).slice(0, 3000)}
+${JSON.stringify(hubspotData.contacts || [], null, 2).slice(0, 2000)}
 
 Deals (${(hubspotData.deals || []).length}):
 ${JSON.stringify(hubspotData.deals || [], null, 2).slice(0, 2000)}
 
 Pre-Sale Activity — emails (company + contact level) and notes (${(hubspotData.activity || []).length} items):
-${JSON.stringify(hubspotData.activity || [], null, 2).slice(0, 4000)}
+${JSON.stringify(hubspotData.activity || [], null, 2).slice(0, 2500)}
 ` : "";
 
     const transcriptSection = transcript?.trim() ? `
 SALES CALL TRANSCRIPT (additional context — use to fill gaps in HubSpot data):
-${transcript.slice(0, 12000)}
+${transcript.slice(0, 6000)}
 ` : "";
 
     const prompt = `You are creating a structured sales-to-CS handoff document for the B2B Rocket customer success team.
@@ -142,7 +135,7 @@ Return ONLY a JSON object with this exact structure (no markdown, no explanation
   "closedWonDate": "the deal close date if known, else null"
 }`;
 
-    const raw = await callAI(anthropicKey, prompt, "", 4000);
+    const raw = await callAI(anthropicKey, prompt, "", 2500);
 
     let handoff: any;
     try {
@@ -170,7 +163,7 @@ Return ONLY a JSON object with this exact structure (no markdown, no explanation
           .eq("type", "handoff")
           .order("version", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         await sb.from("documents").insert({
           workspace_id: workspaceId,

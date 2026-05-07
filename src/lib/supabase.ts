@@ -6,7 +6,14 @@ export const SUPABASE_KEY =
 
 let _client: SupabaseClient | null = null;
 try {
-  _client = createClient(SUPABASE_URL, SUPABASE_KEY);
+  _client = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: "cx-v2-auth",
+    },
+  });
 } catch (e) {
   console.error("[supabase] init failed:", e);
 }

@@ -80,6 +80,54 @@ const PLAYBOOKS: Record<string, any> = {
     voice: ["Board-room brevity.", "P&L language.", "Outcome-first."],
     strategy: "Open with the business impact → state the risk of inaction → one ask.", opening: "State the business outcome in the first sentence.", proof: "Revenue/cost/risk numbers only.", cta: "One ask. No options.", linkedin: "Even shorter. One sentence each.", avoid: "No feature lists. No pleasantries.",
   },
+  trust_patient: {
+    key: "trust_patient", label: "Trust-Led Analyst", figure: "Warren Buffett",
+    voice: ["Folksy but precise. Plain words with exact numbers.", "Analogies grounded in everyday life.", "Understatement over overstatement.", "Patience signaled every sentence — 'over time', 'when it makes sense'."],
+    strategy: "Establish credibility → name a specific risk they face → offer to talk when it fits → zero pressure.",
+    opening: "A plainspoken observation about their industry's current dynamics. One number.", proof: "Named comparable firm + track record of time.", cta: "Permission-based, patient ('whenever it's useful, I'd welcome 15 minutes').", linkedin: "Short, formal-warm. Cites a shared peer or signal, not a pitch.", avoid: "Don't perform folksiness. Don't quote Buffett-isms.",
+  },
+  tactical_negotiator: {
+    key: "tactical_negotiator", label: "Tactical Negotiator", figure: "Chris Voss",
+    voice: ["Open with calibrated questions: 'How would you...?'", "Use labels to acknowledge emotion — 'It seems like timing matters here.'", "No-oriented openers: 'Would it be ridiculous to...?'", "Slow, deliberate pacing. No rush."],
+    strategy: "Open a no-pressure door → label their situation → ask a calibrated question → let them pull.",
+    opening: "A no-oriented question that invites a 'no' (which feels safe and opens conversation).", proof: "Case framed as a negotiation lesson, not a metric win.", cta: "Pull, don't push. 'Would it be crazy to grab 15 minutes?'", linkedin: "Calibrated question in the connection note — no pitch, all curiosity.", avoid: "Don't weaponize the technique. Stay genuinely curious, never manipulative.",
+  },
+  craft_copywriter: {
+    key: "craft_copywriter", label: "Classic Craft Copywriter", figure: "David Ogilvy",
+    voice: ["Concrete facts over adjectives.", "Short opener, substantial middle, short close — classic ad rhythm.", "One specific anecdote per message.", "No jargon, no hype words, no emojis."],
+    strategy: "Earn the read with a fact → deliver one substantial idea → invite a considered reply.",
+    opening: "A surprising, verifiable fact about their market.", proof: "Named client + the specific outcome + one small detail that proves it's real.", cta: "Considered ask ('If this is worth exploring, I can send a short memo.').", linkedin: "Same craft adapted to 500 chars. Still a fact, still concrete.", avoid: "Don't get florid. Ogilvy was rigorous, not ornate.",
+  },
+  concise_idea: {
+    key: "concise_idea", label: "Idea-Forward Minimalist", figure: "Seth Godin",
+    voice: ["Paragraphs of 1–3 sentences.", "One idea per message. Never two.", "No hype, no superlatives.", "Permission framing — 'if this is for you...'"],
+    strategy: "Plant one idea → let it breathe → ask permission to continue.",
+    opening: "An idea, stated. Not a pain, not a pitch. An idea.", proof: "One sentence. 'X did this, Y happened.' Nothing more.", cta: "'Want the rest?' / 'Should I send more?' — permission, not pressure.", linkedin: "One idea. Two lines.", avoid: "Don't preach.",
+  },
+  data_story: {
+    key: "data_story", label: "Data Storyteller", figure: "Andrew Chen",
+    voice: ["Structure: 'we saw X → we hypothesized Y → result.'", "Name the metric explicitly.", "Crisp frameworks with 2–4 labeled parts.", "Growth vocab: retention, activation, north-star, cohort."],
+    strategy: "Lead with a metric they probably track → hypothesis → a peer result → framework offer.",
+    opening: "'We looked at [metric] across 12 [company type]s — here's the pattern.'", proof: "A single peer cohort result with the exact metric moved.", cta: "Offer the framework/teardown ('I can share the breakdown — 15 min?').", linkedin: "Metric + pattern + 'want the teardown?' — max 2 lines.", avoid: "Don't invent metrics.",
+  },
+  permission_challenger: {
+    key: "permission_challenger", label: "Permission Challenger", figure: "Josh Braun",
+    voice: ["Pattern-interrupt openers: 'This is probably not a fit, but...'", "Takeaway selling: state why it might NOT work for them.", "Permission before pitch.", "Short, human, slightly self-deprecating."],
+    strategy: "Pattern interrupt → mirror their likely objection → one permission-based ask → honest breakup.",
+    opening: "'Maybe totally off-base — [specific pain-guess about their role]?'", proof: "'Two teams that had the same issue solved it by [X]. Happy to share how.'", cta: "Permission-based ('Worth me sending a 2-line version?').", linkedin: "Pattern interrupt, 1–2 lines, no pitch.", avoid: "Don't overdo 'probably not a fit' — once per sequence max.",
+  },
+  technical_founder: {
+    key: "technical_founder", label: "Technical Founder Essayist", figure: "Paul Graham",
+    voice: ["Short declarative sentences. No hedging.", "First principles — say what's actually true.", "No jargon. If a term is needed, define it.", "Intellectual honesty — admit what you don't know."],
+    strategy: "State a clear claim → one concrete example → invite a technical conversation.",
+    opening: "A crisp claim about their stack/problem space. One sentence.", proof: "A specific technical detail from a comparable team.", cta: "'Worth 20 minutes to compare notes?' — peer-to-peer framing.", linkedin: "One technical claim. One line.", avoid: "Don't LARP as a founder if you aren't.",
+  },
+  plainspoken_trade: {
+    key: "plainspoken_trade", label: "Plainspoken Trade Voice", figure: "Mike Rowe",
+    voice: ["Plain English. Short sentences. No corporate filler.", "Respect the reader's expertise and time.", "Dignity-of-work framing.", "Concrete scenarios from the job site, not the conference room."],
+    strategy: "Acknowledge the job → name a specific headache on the ground → offer a concrete help.",
+    opening: "A job-site-level observation ('end of month, the paperwork always piles up').", proof: "Named peer contractor/operator and the concrete outcome.", cta: "'Want me to send the one-pager?' or 'Got 10 minutes between jobs?'", linkedin: "Plain line, no jargon, same respect. Under 2 sentences.", avoid: "Don't patronize. Don't use rural clichés.",
+  },
 };
 
 // Product field IDs (subset used for EMPTY_PRODUCT)
@@ -187,7 +235,9 @@ async function callAI(
   prompt: string,
   sys = "",
   tokens = 800,
-  retries = 5,
+  retries = 1,
+  timeoutMs = 20000,
+  model = "claude-haiku-4-5-20251001",
 ): Promise<string> {
   const sysMsg = sys || "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.";
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -200,23 +250,22 @@ async function callAI(
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model,
           max_tokens: tokens,
           system: sysMsg,
           messages: [{ role: "user", content: prompt }],
         }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
-        const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
-        if (attempt < retries) { await sleep(delay); continue; }
-        return `Error: Rate limited after ${retries} retries`;
+        if (attempt < retries) { await sleep(2000); continue; }
+        return "";
       }
       const json = await r.json();
-      if (json.error) return `Error: ${json.error.message}`;
+      if (json.error) return "";
       return json.content?.[0]?.text ?? "";
     } catch (e) {
-      if (attempt < retries) { await sleep(1000 * Math.pow(2, attempt)); continue; }
+      if (attempt < retries) { await sleep(2000); continue; }
       console.error("callAI failed:", e);
       return "";
     }
@@ -363,7 +412,10 @@ co_proof: proof points, metrics, case studies
 co_prod_breakdown: per-product buyer, pains, gains, triggers, objections
 Raw JSON only.`,
     coSys,
-    5000,
+    3000,
+    0,        // no retries — budget is tight
+    38000,    // 38s
+    "claude-sonnet-4-6",
   );
   let coFields: any = {};
   try {
@@ -386,14 +438,14 @@ Raw JSON only.`,
 
 COMPANY: ${JSON.stringify(coFields)}
 ${salesBlock}
-${structureContext ? `DOM-EXTRACTED STRUCTURE (authoritative for product taxonomy):\n${structureContext.slice(0, 8000)}\n──────────────────────────────────\n\n` : ""}SOURCES (${context.length} chars — body text):
-${context.slice(0, 30000)}
+${structureContext ? `DOM-EXTRACTED STRUCTURE (authoritative for product taxonomy):\n${structureContext.slice(0, 4000)}\n──────────────────────────────────\n\n` : ""}SOURCES (body text):
+${context.slice(0, 12000)}
 
 CRITICAL GROUNDING RULES:
 - ONLY identify offerings explicitly named in the SOURCES. Do not infer from industry norms.
 - Use exact names from the site — no renaming or generalizing.
-- The DOM-EXTRACTED STRUCTURE is authoritative for product taxonomy.
 - Only include personas that represent DISTINCT buyer segments with different pains/motivations.
+- Max 4 products, max 4 personas.
 
 ${NAMING_RULES.product}
 ${NAMING_RULES.persona}
@@ -405,38 +457,43 @@ For the MATRIX: for each product×persona combo include priority (high/medium/lo
 Return ONLY valid JSON:
 {"products":[{"name":"","description":"","reasoning":"","dealSize":"","category":"","sourceUrl":""}],"personas":[{"name":"","buyerTitles":"","industries":"","primaryPain":"","reasoning":""}],"matrix":[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":""}]}`,
       "Return only valid JSON. Be thorough and specific.",
-      12000,
+      4000,
+      0,        // no retries — budget is tight
+      40000,    // 40s
+      "claude-sonnet-4-6",
     );
+    if (!briefRaw) throw new Error("empty response from Claude");
     brief = JSON.parse(briefRaw.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+    if (!Array.isArray(brief.products) || brief.products.length === 0) throw new Error("no products in brief");
   } catch (e) {
-    console.error("Research brief failed:", e);
+    const msg = String(e);
+    console.error("Research brief failed:", msg);
+    await writeProgress(supabase, jobKey, { briefError: msg });
   }
 
-  // ── STEP 4: Product Profiles (sequential, lean prompt, no retries) ──
+  // ── STEP 4: Product Profiles (parallel) ──
   await upd(4, LP_STEPS[3]);
   const selProds = (brief.products || []).map((_: any, i: number) => i);
-  const newProducts: any[] = [];
-  for (const i of selProds) {
-    const p = brief.products[i];
-    let result: any = null;
-    try {
-      const prodRaw = await callAI(
-        anthropicKey,
-        `Product profile for "${p.name}" — ${coFields.co_name || ""} (${coFields.co_industry || ""}).\nDescription: ${p.description || ""}\nDeal size: ${p.dealSize || ""}\n\nReturn ONLY compact JSON (no nulls, no empty strings):\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","idealCustomer":"","competitors":"","dealType":"Recurring|One-Time|Both","avgDealSize":"","elevatorPitch":"","messagingDos":"","messagingDonts":""}`,
-        "Return only valid JSON. Be specific and concise.",
-        1500,
-        1,
-      );
-      const parsed = JSON.parse(prodRaw.replace(/```json|```/g, "").trim());
-      result = { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
-    } catch {
-      result = { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: p.category || "Other", sourceUrl: p.sourceUrl || "" };
-    }
-    if (result?.name) newProducts.push(result);
-    await upd(4, `${LP_STEPS[3]} (${newProducts.length}/${selProds.length})`);
-  }
+  const newProducts: any[] = (await Promise.all(
+    selProds.map(async (i: number) => {
+      const p = brief.products[i];
+      try {
+        const prodRaw = await callAI(
+          anthropicKey,
+          `Product profile for "${p.name}" — ${coFields.co_name || ""} (${coFields.co_industry || ""}).\nDescription: ${p.description || ""}\nDeal size: ${p.dealSize || ""}\n\nReturn ONLY compact JSON (no nulls, no empty strings):\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","idealCustomer":"","competitors":"","dealType":"Recurring|One-Time|Both","avgDealSize":"","elevatorPitch":"","messagingDos":"","messagingDonts":""}`,
+          "Return only valid JSON. Be specific and concise.",
+          1500,
+          0,
+        );
+        const parsed = JSON.parse(prodRaw.replace(/```json|```/g, "").trim());
+        return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
+      } catch {
+        return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: p.category || "Other", sourceUrl: p.sourceUrl || "" };
+      }
+    })
+  )).filter((r: any) => r?.name);
 
-  // ── STEP 5: Persona Profiles (sequential, lean prompt, no retries) ──
+  // ── STEP 5: Persona Profiles (parallel) ──
   await upd(5, LP_STEPS[4]);
   const selPers = (brief.personas || []).map((_: any, i: number) => i);
   const allBriefPersonas = selPers.map((i: number) => brief.personas[i]);
@@ -456,37 +513,37 @@ Return ONLY valid JSON:
     }
     return { fit, reason };
   };
-  const newPersonas: any[] = [];
-  for (const [idx, pe] of allBriefPersonas.entries()) {
-    let parsed: any = null;
-    try {
-      const raw = await callAI(
-        anthropicKey,
-        `B2B persona for "${pe.name}" (${pe.buyerTitles || ""}) — selling ${coFields.co_name || ""} to ${pe.industries || ""}.\nPrimary pain: ${pe.primaryPain || ""}\nOther personas: ${personaDedup}\n\nReturn ONLY compact JSON:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1-50","Mid-Market 51-500"],"geo":"","buyer":"","champ":"","goals":"","fears":"","pain1":"","pain2":"","objections":"","tone":"Consultative & Educational|Direct & Punchy|Casual & Conversational|Formal & Executive|Data-driven & Analytical|Blue Collar & Human|Blunt & Edgy|Confrontational","hook":"","cta":"15-min call ask|Soft permission ('worth a chat?')|Video/resource share|Direct demo ask|Open-ended question|Easy yes/no reply|Direct callback ask","best_channel":"","seq_strategy":"","why_client_wins":""},"confidence":{}}`,
-        "Return only valid JSON. Be specific and concise.",
-        1500,
-        1,
-      );
-      parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-    } catch {
-      parsed = null;
-    }
-    if (parsed) {
-      const persona = newICP(idx, parsed.fields || {}, parsed.name || pe.name, parsed.confidence || {});
-      persona.linkedProductIds = newProducts.map((p: any) => p.id);
-      const { fit, reason } = buildFitMaps(idx);
-      persona.linkedProductFit = fit;
-      persona.linkedProductFitReason = reason;
-      newPersonas.push(persona);
-    } else {
-      const fallback = newICP(idx, { industries: pe.industries, buyer: pe.buyerTitles, pain1: pe.primaryPain }, pe.name, {});
-      const { fit, reason } = buildFitMaps(idx);
-      fallback.linkedProductFit = fit;
-      fallback.linkedProductFitReason = reason;
-      newPersonas.push(fallback);
-    }
-    await upd(5, `${LP_STEPS[4]} (${newPersonas.length}/${allBriefPersonas.length})`);
-  }
+  const newPersonas: any[] = await Promise.all(
+    allBriefPersonas.map(async (pe: any, idx: number) => {
+      let parsed: any = null;
+      try {
+        const raw = await callAI(
+          anthropicKey,
+          `B2B persona for "${pe.name}" (${pe.buyerTitles || ""}) — selling ${coFields.co_name || ""} to ${pe.industries || ""}.\nPrimary pain: ${pe.primaryPain || ""}\nOther personas: ${personaDedup}\n\nReturn ONLY compact JSON:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1-50","Mid-Market 51-500"],"geo":"","buyer":"","champ":"","goals":"","fears":"","pain1":"","pain2":"","objections":"","tone":"Consultative & Educational|Direct & Punchy|Casual & Conversational|Formal & Executive|Data-driven & Analytical|Blue Collar & Human|Blunt & Edgy|Confrontational","hook":"","cta":"15-min call ask|Soft permission ('worth a chat?')|Video/resource share|Direct demo ask|Open-ended question|Easy yes/no reply|Direct callback ask","best_channel":"","seq_strategy":"","why_client_wins":""},"confidence":{}}`,
+          "Return only valid JSON. Be specific and concise.",
+          1500,
+          0,
+        );
+        parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      } catch {
+        parsed = null;
+      }
+      if (parsed) {
+        const persona = newICP(idx, parsed.fields || {}, parsed.name || pe.name, parsed.confidence || {});
+        persona.linkedProductIds = newProducts.map((p: any) => p.id);
+        const { fit, reason } = buildFitMaps(idx);
+        persona.linkedProductFit = fit;
+        persona.linkedProductFitReason = reason;
+        return persona;
+      } else {
+        const fallback = newICP(idx, { industries: pe.industries, buyer: pe.buyerTitles, pain1: pe.primaryPain }, pe.name, {});
+        const { fit, reason } = buildFitMaps(idx);
+        fallback.linkedProductFit = fit;
+        fallback.linkedProductFitReason = reason;
+        return fallback;
+      }
+    })
+  );
 
   // ── STEP 6: Intelligence & Offers ──
   await upd(6, LP_STEPS[5]);
@@ -515,7 +572,9 @@ Return ONLY valid JSON:
           anthropicKey,
           `Generate competitive intelligence and per-combo sales playbooks.\n\nCOMPANY: ${coFields.co_name || ""} (${coFields.co_industry || ""})\nVALUE PROP: ${coFields.co_pitch || ""}\nCOMPETITORS: ${coFields.co_competitors || ""}\nCOMBOS:\n${combos.map((c: any, i: number) => `${i}: ${c.prodName} × ${c.persName} (buyer: ${c.buyer}, pain: ${c.pain})`).join("\n")}\n\nReturn ONLY valid JSON:\n{"battlecards":[{"competitorName":"","overview":"","strengths":"","weaknesses":"","pricing":"","landmines":"","displacementAngles":""}],"playbooks":[{"comboIndex":0,"discoveryQuestions":"","demoTalkingPoints":"","objections":[{"objection":"","category":"pricing","severity":"common","rebuttal":""}]}]}\n\nbattlecards 2-4, playbooks ONE per combo (${combos.length}).`,
           "",
-          5000,
+          3000,
+          0,
+          30000,
         );
         return JSON.parse(intelRaw.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
       } catch { return null; }
@@ -625,11 +684,9 @@ Return ONLY JSON array of stems: ["name1","name2",...]`,
   const pb = PLAYBOOKS[params.playbookKey] || PLAYBOOKS.auto;
   const pbBlock = pb.key === "auto" ? "" : `\nVOICE & STRATEGY PROFILE — ${pb.label} (write like ${pb.figure}):\n- Style: ${(pb.voice || []).join(" | ")}\n- Strategy: ${pb.strategy || ""}\n- Opening: ${pb.opening || ""}\n- Proof: ${pb.proof || ""}\n- CTA: ${pb.cta || ""}\n- Avoid: ${pb.avoid || ""}\nStay in this voice throughout.\n`;
 
-  const allNewCampaigns: any[] = [];
-  const lpGroups: any[] = [];
+  await upd(8, `Generating ${matrixCombos.length} campaign strategies in parallel...`);
 
-  for (let gi = 0; gi < matrixCombos.length; gi++) {
-    const { product, persona, priority, rationale } = matrixCombos[gi];
+  const campaignResults = await Promise.all(matrixCombos.map(async ({ product, persona, priority, rationale }) => {
     const pd = persona?.data || {};
     const ctx = {
       company: coFields,
@@ -637,8 +694,6 @@ Return ONLY JSON array of stems: ["name1","name2",...]`,
       product: { name: product.name, description: product.description, valueProposition: product.valueProposition, keyFeatures: product.keyFeatures, problemsSolved: product.problemsSolved, elevatorPitch: product.elevatorPitch },
     };
     const ctxStr = JSON.stringify(ctx).slice(0, 4000);
-
-    await upd(8, `Campaign ${gi + 1}/${matrixCombos.length}: strategies...`);
 
     // Email + LinkedIn strategies in parallel
     const [emailStrategy, linkedinStrategy] = await Promise.all([
@@ -700,8 +755,6 @@ Touch 5 (Day 17 — breakup): [angle]
         700,
       ),
     ]);
-
-    await upd(9, `Campaign ${gi + 1}/${matrixCombos.length}: sequences...`);
 
     // Email + LinkedIn sequences in parallel
     const [emailSeqRaw, liSeqRaw] = await Promise.all([
@@ -783,16 +836,23 @@ Return ONLY valid JSON:
     lc.source = "quickstart"; lc.playbook = params.playbookKey; lc.targeting = { ...ec.targeting };
     lc.sequence = liSeq;
 
-    allNewCampaigns.push(ec, lc);
-    lpGroups.push({
-      id: uid(), productId: product.id, personaId: persona.id,
-      productName: product.name, personaName: persona.name,
-      priority, rationale,
-      emailCampaignId: ec.id, linkedinCampaignId: lc.id,
-      emailStrategy, linkedinStrategy,
-      emailSequence: emailSeq, linkedinSequence: liSeq,
-    });
-  }
+    return {
+      campaigns: [ec, lc],
+      group: {
+        id: uid(), productId: product.id, personaId: persona.id,
+        productName: product.name, personaName: persona.name,
+        priority, rationale,
+        emailCampaignId: ec.id, linkedinCampaignId: lc.id,
+        emailStrategy, linkedinStrategy,
+        emailSequence: emailSeq, linkedinSequence: liSeq,
+      },
+    };
+  }));
+
+  await upd(9, `Sequences complete — finalizing...`);
+
+  const allNewCampaigns: any[] = campaignResults.flatMap(r => r.campaigns);
+  const lpGroups: any[] = campaignResults.map(r => r.group);
 
   // Strategy (North Star)
   let strategy: any = null;

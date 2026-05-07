@@ -6,6 +6,7 @@ import { Routes, Route, useParams, HashRouter, useNavigate } from "react-router-
 import { ClientPortal } from "./components/portal/ClientPortal";
 import { WorkspaceShell } from "./components/WorkspaceShell";
 import { WorkspaceList } from "./components/WorkspaceList";
+import { ChurnAnalyzer } from "./components/ChurnAnalyzer";
 import { PRODUCT_SECTIONS, ICP_SECTIONS } from "./lib/schemas";
 import {
   Upload, Sparkles, Mail, Search, ShieldCheck, Users,
@@ -258,20 +259,45 @@ async function syncFromCloud() {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    // Sync clients
-    const clients = await dbGet("app_data", "clients");
+    // Sync clients — merge with local to preserve any just-created records not yet in Supabase
+    const cloudClients = await dbGet("app_data", "clients");
     if (controller.signal.aborted) throw new Error("timeout");
-    if (clients) localStorage.setItem("b2br_clients", JSON.stringify(clients));
-    // Sync users (admin-created)
-    const users = await dbGet("app_data", "users");
+    if (cloudClients) {
+      const local: any[] = (() => { try { return JSON.parse(localStorage.getItem("b2br_clients") || "[]"); } catch { return []; } })();
+      const cloudIds = new Set(cloudClients.map((c: any) => c.id));
+      const localOnly = local.filter((c: any) => !cloudIds.has(c.id));
+      const merged = [...cloudClients, ...localOnly];
+      localStorage.setItem("b2br_clients", JSON.stringify(merged));
+      // Push any locally-created clients that haven't reached Supabase yet
+      if (localOnly.length > 0) dbPut("app_data", "clients", merged).catch(() => {});
+    }
+    // Sync users — same merge strategy
+    const cloudUsers = await dbGet("app_data", "users");
     if (controller.signal.aborted) throw new Error("timeout");
-    if (users) localStorage.setItem("b2br_users", JSON.stringify(users));
+    if (cloudUsers) {
+      const localU: any[] = (() => { try { return JSON.parse(localStorage.getItem("b2br_users") || "[]"); } catch { return []; } })();
+      const cloudUIds = new Set(cloudUsers.map((u: any) => u.id));
+      const localUOnly = localU.filter((u: any) => !cloudUIds.has(u.id));
+      const mergedU = [...cloudUsers, ...localUOnly];
+      localStorage.setItem("b2br_users", JSON.stringify(mergedU));
+      if (localUOnly.length > 0) dbPut("app_data", "users", mergedU).catch(() => {});
+    }
     // Sync all workspaces
     const workspaces = await dbGetAll("app_data", "ws_");
     if (controller.signal.aborted) throw new Error("timeout");
     for (const ws of workspaces) {
       const clientId = ws.key.replace("ws_", "");
       localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(ws.value));
+    }
+    // Sync API keys
+    if (!controller.signal.aborted) {
+      const cloudKeys = await dbGet("app_data", "api_keys");
+      if (cloudKeys?.anthropic) {
+        try { localStorage.setItem("b2br_api_key", cloudKeys.anthropic); } catch {}
+        window.__B2BR_API_KEY__ = cloudKeys.anthropic;
+      }
+      if (cloudKeys?.openai) { try { localStorage.setItem("b2br_openai_key", cloudKeys.openai); } catch {} }
+      if (cloudKeys?.gemini) { try { localStorage.setItem("b2br_gemini_key", cloudKeys.gemini); } catch {} }
     }
     // Sync API logs from all users
     if (!controller.signal.aborted) {
@@ -16267,7 +16293,7 @@ const loadUsers = (): UserRecord[] => {
 };
 const saveUsers = (u: UserRecord[]) => {
   try { localStorage.setItem("b2br_users", JSON.stringify(u)); } catch {}
-  syncToCloud("users", u);
+  dbPut("app_data", "users", u).catch(e => console.error("[DB] User save failed:", e));
 };
 
 const EMPTY_USER: Omit<UserRecord, "id"|"createdAt"> = { name:"", email:"", password:"", role:"team", status:"active" };
@@ -16286,7 +16312,8 @@ const loadClients = (): ClientRecord[] => {
 };
 const saveClients = (c: ClientRecord[]) => {
   try { localStorage.setItem("b2br_clients", JSON.stringify(c)); } catch {}
-  syncToCloud("clients", c);
+  // Bypass debounce — clients are critical and rarely change, write immediately
+  dbPut("app_data", "clients", c).catch(e => console.error("[DB] Client save failed:", e));
 };
 
 // Export entire workspace (client + all data + files) as downloadable JSON
@@ -16445,53 +16472,62 @@ const idbKeys = async (): Promise<string[]> => {
 };
 
 const saveWorkspaceData = (clientId: string, data: object) => {
+  const d = data as any;
+  const allFiles = d.wsFiles || [];
+  const allFileMeta = allFiles.filter((f:any) => !f._failed);
+  // Strip lpResult from localStorage payload — it's large and synced to cloud separately
+  const { lpResult: _lpResult, ...dataForStorage } = d;
+  const dataWithoutFiles = { ...dataForStorage, wsFiles: allFileMeta.map((f:any) => {
+    const { b64:_, _loading:__, _failed:___, ...meta } = f;
+    return { ...meta, b64:"__IDB__" };
+  })};
+  // Always sync to cloud first — this must run even if localStorage is full
+  syncToCloud(`ws_${clientId}`, dataWithoutFiles);
+  // Sync lpResult separately so strategy is visible across users/devices
+  if (_lpResult) syncToCloud(`lp_${clientId}`, _lpResult);
+  // localStorage is a local cache — best-effort, never block cloud sync
   try {
-    const d = data as any;
-    const allFiles = d.wsFiles || [];
-    // Save metadata for ALL non-failed files (without b64 and internal flags)
-    const allFileMeta = allFiles.filter((f:any) => !f._failed);
-    const dataWithoutFiles = { ...d, wsFiles: allFileMeta.map((f:any) => {
-      const { b64:_, _loading:__, _failed:___, ...meta } = f;
-      return { ...meta, b64:"__IDB__" };
-    })};
     localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(dataWithoutFiles));
-    // Only save blobs that are currently in memory (newly uploaded files)
-    // Don't touch files that are already in IDB (b64 was loaded from IDB and is in memory)
-    const filesToSave = allFiles.filter((f:any) => f.b64 && f.b64 !== "__IDB__" && f.b64 !== "__REF__" && f.b64 !== "" && !f._loading && !f._failed);
-    if (filesToSave.length > 0) {
-      for (const f of filesToSave) {
-        idbPut(`${clientId}_${f.id}`, f.b64).catch(e => console.warn(`Failed to save file ${f.name}:`, e));
-      }
-    }
-    // Clean up orphaned files — use ALL file IDs (not just ones with b64 in memory)
-    const allFileIds = new Set(allFileMeta.map((f:any) => f.id));
-    idbKeys().then(keys => {
-      for (const key of keys) {
-        if (key.startsWith(`${clientId}_`)) {
-          const fid = key.replace(`${clientId}_`, "");
-          if (!allFileIds.has(fid)) idbDelete(key);
+  } catch (e) {
+    // Quota exceeded — clear stale workspace entries for other clients and retry
+    if ((e as any)?.name === "QuotaExceededError") {
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k?.startsWith("b2br_ws_") && k !== `b2br_ws_${clientId}`) localStorage.removeItem(k);
         }
-      }
-    });
-    // Migrate old localStorage file keys to IndexedDB
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(`b2br_file_${clientId}_`)) {
-        const val = localStorage.getItem(key);
-        const fid = key.replace(`b2br_file_${clientId}_`, "");
-        if (val && fileIds.has(fid)) idbPut(`${clientId}_${fid}`, val);
-        localStorage.removeItem(key);
+        localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(dataWithoutFiles));
+      } catch { /* rely on cloud sync */ }
+    }
+  }
+  // File blobs
+  const filesToSave = allFiles.filter((f:any) => f.b64 && f.b64 !== "__IDB__" && f.b64 !== "__REF__" && f.b64 !== "" && !f._loading && !f._failed);
+  if (filesToSave.length > 0) {
+    for (const f of filesToSave) {
+      idbPut(`${clientId}_${f.id}`, f.b64).catch(e => console.warn(`Failed to save file ${f.name}:`, e));
+      syncToCloud(`${clientId}_${f.id}`, f.b64, "file_blobs");
+    }
+  }
+  // Clean up orphaned IDB files
+  const allFileIds = new Set(allFileMeta.map((f:any) => f.id));
+  idbKeys().then(keys => {
+    for (const key of keys) {
+      if (key.startsWith(`${clientId}_`)) {
+        const fid = key.replace(`${clientId}_`, "");
+        if (!allFileIds.has(fid)) idbDelete(key);
       }
     }
-    // Sync workspace to cloud
-    syncToCloud(`ws_${clientId}`, dataWithoutFiles);
-    // Sync file blobs to cloud
-    if (filesToSave.length > 0) {
-      for (const f of filesToSave) {
-        syncToCloud(`${clientId}_${f.id}`, f.b64, "file_blobs");
-      }
+  });
+  // Migrate old localStorage file keys to IndexedDB
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(`b2br_file_${clientId}_`)) {
+      const val = localStorage.getItem(key);
+      const fid = key.replace(`b2br_file_${clientId}_`, "");
+      if (val && fileIds.has(fid)) idbPut(`${clientId}_${fid}`, val);
+      localStorage.removeItem(key);
     }
-  } catch (e) { console.error("Failed to save workspace data:", e); }
+  }
 };
 
 const EMPTY_CLIENT: Omit<ClientRecord, "id"|"createdAt"> = { name:"", industry:"", status:"active", assignedUserId:null };
@@ -19003,6 +19039,7 @@ export default function App() {
         <Route path="/portal/:token" element={<PortalRoute />} />
         <Route path="/workspace/:id" element={<WorkspaceShell />} />
         <Route path="/workspaces" element={<WorkspaceList />} />
+        <Route path="/churn-analyzer" element={<ChurnAnalyzer />} />
         <Route path="/*" element={<AppMain />} />
       </Routes>
     </HashRouter>
@@ -19302,7 +19339,15 @@ function AppMain() {
   const [cloudSynced, setCloudSynced] = useState(false);
   useEffect(() => {
     if (DB_ENABLED && !cloudSynced) {
-      syncFromCloud().then(() => { setCloudSynced(true); console.log("[DB] Initial sync done"); });
+      syncFromCloud().then(() => {
+        setCloudSynced(true);
+        console.log("[DB] Initial sync done");
+        // Pick up API keys that syncFromCloud wrote to localStorage/window
+        const savedKey = window.__B2BR_API_KEY__ || (() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } })();
+        if (savedKey) setApiKey(savedKey);
+        const savedOpenai = (() => { try { return localStorage.getItem("b2br_openai_key") || ""; } catch { return ""; } })();
+        if (savedOpenai) setOpenaiKey(savedOpenai);
+      });
     }
   }, []);
 
@@ -19379,11 +19424,16 @@ function AppMain() {
         const lpKey = `lp_result_${(activeWorkspace as any).id}`;
         const lpSaved = localStorage.getItem(lpKey);
         const lpParsed = lpSaved ? (() => { try { return JSON.parse(lpSaved); } catch { return null; } })() : null;
+        // Fall back to cloud-synced lpResult when localStorage doesn't have it (different browser/user)
+        const cloudLp = saved?.lpResult ?? null;
 
-        // ── Priority 1: fresh LP result in localStorage ──
-        const isStale = lpParsed && (lpParsed._synthetic === true || ((lpParsed.campaignGroups?.length || 0) === 0 && (lpParsed.domains?.length || 0) === 0 && ((saved?.products?.length || 0) > 0 || (saved?.icps?.length || 0) > 0)));
-        if (lpParsed && !isStale) {
-          setLpResult(lpParsed); setLpState("done");
+        // ── Priority 1: fresh LP result in localStorage, then cloud-synced copy ──
+        const bestLp = lpParsed || cloudLp;
+        const isStale = bestLp && (bestLp._synthetic === true || ((bestLp.campaignGroups?.length || 0) === 0 && (bestLp.domains?.length || 0) === 0 && ((saved?.products?.length || 0) > 0 || (saved?.icps?.length || 0) > 0)));
+        if (bestLp && !isStale) {
+          setLpResult(bestLp); setLpState("done");
+          // Backfill localStorage if we loaded from cloud
+          if (!lpParsed && cloudLp) { try { localStorage.setItem(lpKey, JSON.stringify(cloudLp)); } catch {} }
         } else if ((saved?.campaigns?.length || 0) > 0 || (saved?.icps?.length || 0) > 0) {
           // Workspace has data from a prior LP run — reconstruct campaignGroups from saved campaigns
           // Prefer fresh domains from lpParsed (written at step 7) over dfySetup reconstruction
@@ -19469,7 +19519,7 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, rtsLists, playbooks, contentAssets, battlecards, dfySetup, callRecords, slackComms, aiAnalyses });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, rtsLists, playbooks, contentAssets, battlecards, dfySetup, callRecords, slackComms, aiAnalyses, lpResult });
     // Build the global full-context snapshot — every AI generator calling with useFullContext:true reads this.
     (window as any).__workspaceCtx = buildFullContext({
       companyData, products, personas: icps, campaigns, strategy, offers, rtsLists, playbooks, battlecards, contentAssets, dfySetup, roiConfig, perfLogs, callRecords, slackComms, wsFiles, wsLinks,
@@ -19493,10 +19543,11 @@ function AppMain() {
     }
   }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, rtsLists, playbooks, contentAssets, battlecards, dfySetup, callRecords, aiAnalyses]);
 
-  // sync keys into global + localStorage
+  // sync keys into global + localStorage + Supabase
   useEffect(() => {
     window.__B2BR_API_KEY__ = apiKey;
     try { if (apiKey) localStorage.setItem("b2br_api_key", apiKey); } catch {}
+    if (apiKey) dbPut("app_data", "api_keys", { anthropic: apiKey, openai: openaiKey, gemini: geminiKey }).catch(() => {});
   }, [apiKey]);
   useEffect(() => { try { localStorage.setItem("b2br_openai_key", openaiKey); } catch {} }, [openaiKey]);
   useEffect(() => { try { localStorage.setItem("b2br_gemini_key", geminiKey); } catch {} }, [geminiKey]);
@@ -22900,6 +22951,20 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                       onMouseLeave={e=>{ (e.currentTarget as HTMLAnchorElement).style.background="transparent"; }}>
                       <span style={{ fontSize:13, width:18, textAlign:"center", color:C.accent }}>◈</span>
                       <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:C.accent }}>CX Workspaces</span>
+                    </a>
+                  )}
+
+                  {/* Churned VIP Analyzer */}
+                  {currentRole === "team" && (
+                    <a href="/#/churn-analyzer"
+                      onClick={()=>setProfileMenuOpen(false)}
+                      style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
+                        borderRadius:7, border:"none", background:"transparent", cursor:"pointer", textAlign:"left",
+                        textDecoration:"none", transition:"background .12s" }}
+                      onMouseEnter={e=>{ (e.currentTarget as HTMLAnchorElement).style.background=C.faint; }}
+                      onMouseLeave={e=>{ (e.currentTarget as HTMLAnchorElement).style.background="transparent"; }}>
+                      <span style={{ fontSize:13, width:18, textAlign:"center", color:C.muted }}>↩</span>
+                      <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:C.textSoft }}>Churned VIP Analyzer</span>
                     </a>
                   )}
 
