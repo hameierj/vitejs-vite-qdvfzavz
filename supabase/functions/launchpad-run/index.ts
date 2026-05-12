@@ -477,19 +477,19 @@ Return ONLY valid JSON:
   const newProducts: any[] = (await Promise.all(
     selProds.map(async (i: number) => {
       const p = brief.products[i];
-      try {
-        const prodRaw = await callAI(
-          anthropicKey,
-          `Product profile for "${p.name}" — ${coFields.co_name || ""} (${coFields.co_industry || ""}).\nDescription: ${p.description || ""}\nDeal size: ${p.dealSize || ""}\n\nReturn ONLY compact JSON (no nulls, no empty strings):\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","idealCustomer":"","competitors":"","dealType":"Recurring|One-Time|Both","avgDealSize":"","elevatorPitch":"","messagingDos":"","messagingDonts":""}`,
-          "Return only valid JSON. Be specific and concise.",
-          1500,
-          0,
-        );
-        const parsed = JSON.parse(prodRaw.replace(/```json|```/g, "").trim());
-        return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
-      } catch {
-        return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: p.category || "Other", sourceUrl: p.sourceUrl || "" };
+      const productPrompt = `Create a COMPLETE product profile. Fill EVERY field — no empty values. Be specific and actionable.\n\n${NAMING_RULES.product}\n\nProduct: ${p.name}\nDescription: ${p.description || ""}\nReasoning: ${p.reasoning || ""}\nDeal size hint: ${p.dealSize || ""}\nCompany: ${coFields.co_name || ""} (${coFields.co_industry || ""})\n\nReturn ONLY JSON:\n{"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"Established category — buyers know what this is|Emerging category — some education needed|New category — significant education required|Replacing an existing behavior (not a tool)","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both — recurring and one-time options","acv":"","mrr":"","contractLength":"Month-to-month|Quarterly|6 months|Annual|Multi-year|Custom","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}\n\nunsolvedImpact: what happens if the customer does nothing — lost revenue, competitive disadvantage, scaling limits.\n\nIMPORTANT for dealType: Infer from context whether this is recurring (SaaS, subscription, retainer) or one-time (project, purchase, implementation). Fill the relevant commercial fields accordingly — leave recurring fields empty for one-time deals and vice versa. Fill shared fields (avgDaysToClose, closeRateByStage, etc.) for both types.`;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        let prodRaw = "";
+        try {
+          prodRaw = await callAI(anthropicKey, productPrompt, "Return only valid JSON. Be specific and actionable.", attempt === 1 ? 6000 : 8000, 0, 90000, "claude-sonnet-4-6");
+          const parsed = JSON.parse(prodRaw.replace(/```json|```/g, "").trim());
+          return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
+        } catch (err) {
+          console.error(`[LP] Product "${p.name}" parse failed (attempt ${attempt}/2):`, err);
+          if (attempt === 2) return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: p.category || "Other", sourceUrl: p.sourceUrl || "" };
+        }
       }
+      return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: p.category || "Other", sourceUrl: p.sourceUrl || "" };
     })
   )).filter((r: any) => r?.name);
 
@@ -497,7 +497,7 @@ Return ONLY valid JSON:
   await upd(5, LP_STEPS[4]);
   const selPers = (brief.personas || []).map((_: any, i: number) => i);
   const allBriefPersonas = selPers.map((i: number) => brief.personas[i]);
-  const personaDedup = allBriefPersonas.map((pe: any) => `${pe.name}: ${pe.buyerTitles || ""}, pain=${pe.primaryPain || ""}`).join("\n");
+  const personaDedup = allBriefPersonas.map((pe: any) => `${pe.name}: ${pe.buyerTitles || ""}, ${pe.industries || ""}, pain=${pe.primaryPain || ""}`).join("\n");
   const briefMatrix: any[] = Array.isArray(brief?.matrix) ? brief.matrix : [];
   const productIdByBriefIdx: Record<number, string> = {};
   selProds.forEach((brIdx: number, k: number) => { productIdByBriefIdx[brIdx] = newProducts[k]?.id || ""; });
@@ -515,18 +515,17 @@ Return ONLY valid JSON:
   };
   const newPersonas: any[] = await Promise.all(
     allBriefPersonas.map(async (pe: any, idx: number) => {
+      const personaPrompt = `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name || ""} (${coFields.co_industry || ""})\nValue Prop: ${coFields.co_pitch || ""}\nCompetitors: ${coFields.co_competitors || ""}\nPersona: ${pe.name} — ${pe.buyerTitles || ""}\nIndustries: ${pe.industries || ""}\nPrimary pain: ${pe.primaryPain || ""}\n\nALL PERSONAS being created (ensure yours is DISTINCT from each — different industries, titles, pains, messaging):\n${personaDedup}\n\nReturn ONLY JSON with ALL these fields filled:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}\nco_sizes: array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]\ntone: one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"\ncta: one of "15-min call ask"|"Soft permission (\'worth a chat?\')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"\nbest_channel: one of "Email"|"LinkedIn"|"Phone"|"Multi-channel (Email + LinkedIn)"|"Multi-channel (All)"\nlinkedin_activity: one of "Very Active (posts/comments weekly)"|"Moderate (engages occasionally)"|"Low (profile exists, rarely active)"\nphone_accessibility: one of "Direct dial available"|"Gatekeeper (assistant)"|"Voicemail only"\nemail_preference: one of "Responds to short punchy emails"|"Prefers detailed/professional"|"Responds to personalization"|"Responds to data/stats"`;
       let parsed: any = null;
-      try {
-        const raw = await callAI(
-          anthropicKey,
-          `B2B persona for "${pe.name}" (${pe.buyerTitles || ""}) — selling ${coFields.co_name || ""} to ${pe.industries || ""}.\nPrimary pain: ${pe.primaryPain || ""}\nOther personas: ${personaDedup}\n\nReturn ONLY compact JSON:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1-50","Mid-Market 51-500"],"geo":"","buyer":"","champ":"","goals":"","fears":"","pain1":"","pain2":"","objections":"","tone":"Consultative & Educational|Direct & Punchy|Casual & Conversational|Formal & Executive|Data-driven & Analytical|Blue Collar & Human|Blunt & Edgy|Confrontational","hook":"","cta":"15-min call ask|Soft permission ('worth a chat?')|Video/resource share|Direct demo ask|Open-ended question|Easy yes/no reply|Direct callback ask","best_channel":"","seq_strategy":"","why_client_wins":""},"confidence":{}}`,
-          "Return only valid JSON. Be specific and concise.",
-          1500,
-          0,
-        );
-        parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-      } catch {
-        parsed = null;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        let raw = "";
+        try {
+          raw = await callAI(anthropicKey, personaPrompt, "Return only valid JSON. Be specific and actionable.", attempt === 1 ? 4000 : 6000, 0, 90000, "claude-sonnet-4-6");
+          parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+          break;
+        } catch (err) {
+          console.error(`[LP] Persona "${pe.name}" parse failed (attempt ${attempt}/2):`, err);
+        }
       }
       if (parsed) {
         const persona = newICP(idx, parsed.fields || {}, parsed.name || pe.name, parsed.confidence || {});

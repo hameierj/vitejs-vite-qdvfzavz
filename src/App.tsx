@@ -7,6 +7,7 @@ import { ClientPortal } from "./components/portal/ClientPortal";
 import { WorkspaceShell } from "./components/WorkspaceShell";
 import { WorkspaceList } from "./components/WorkspaceList";
 import { ChurnAnalyzer } from "./components/ChurnAnalyzer";
+import AppV2 from "./components/AppV2";
 import { PRODUCT_SECTIONS, ICP_SECTIONS } from "./lib/schemas";
 import {
   Upload, Sparkles, Mail, Search, ShieldCheck, Users,
@@ -267,7 +268,7 @@ async function syncFromCloud() {
       const cloudIds = new Set(cloudClients.map((c: any) => c.id));
       const localOnly = local.filter((c: any) => !cloudIds.has(c.id));
       const merged = [...cloudClients, ...localOnly];
-      localStorage.setItem("b2br_clients", JSON.stringify(merged));
+      try { localStorage.setItem("b2br_clients", JSON.stringify(merged)); } catch {}
       // Push any locally-created clients that haven't reached Supabase yet
       if (localOnly.length > 0) dbPut("app_data", "clients", merged).catch(() => {});
     }
@@ -279,31 +280,21 @@ async function syncFromCloud() {
       const cloudUIds = new Set(cloudUsers.map((u: any) => u.id));
       const localUOnly = localU.filter((u: any) => !cloudUIds.has(u.id));
       const mergedU = [...cloudUsers, ...localUOnly];
-      localStorage.setItem("b2br_users", JSON.stringify(mergedU));
+      try { localStorage.setItem("b2br_users", JSON.stringify(mergedU)); } catch {}
       if (localUOnly.length > 0) dbPut("app_data", "users", mergedU).catch(() => {});
     }
-    // Sync all workspaces
+    // Sync all workspaces — wrap each write individually so one quota failure doesn't abort the rest
     const workspaces = await dbGetAll("app_data", "ws_");
     if (controller.signal.aborted) throw new Error("timeout");
     for (const ws of workspaces) {
       const clientId = ws.key.replace("ws_", "");
-      localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(ws.value));
-    }
-    // Sync API keys
-    if (!controller.signal.aborted) {
-      const cloudKeys = await dbGet("app_data", "api_keys");
-      if (cloudKeys?.anthropic) {
-        try { localStorage.setItem("b2br_api_key", cloudKeys.anthropic); } catch {}
-        window.__B2BR_API_KEY__ = cloudKeys.anthropic;
-      }
-      if (cloudKeys?.openai) { try { localStorage.setItem("b2br_openai_key", cloudKeys.openai); } catch {} }
-      if (cloudKeys?.gemini) { try { localStorage.setItem("b2br_gemini_key", cloudKeys.gemini); } catch {} }
+      try { localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(ws.value)); } catch {}
     }
     // Sync API logs from all users
     if (!controller.signal.aborted) {
       const allLogEntries = await dbGetAll("app_data", "api_logs");
       for (const entry of allLogEntries) {
-        localStorage.setItem(`b2br_${entry.key}`, JSON.stringify(entry.value));
+        try { localStorage.setItem(`b2br_${entry.key}`, JSON.stringify(entry.value)); } catch {}
       }
     }
     // Sync file blobs (skip if already timed out)
@@ -1182,7 +1173,7 @@ const CALL_TYPE_LABELS: Record<string,string> = {
 const callTypeLabel = (t: string) => CALL_TYPE_LABELS[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Call");
 
 function getApiKey() {
-  return window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || import.meta.env.VITE_API_KEY || "";
+  return (window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || import.meta.env.VITE_API_KEY || "").trim();
 }
 
 // ─── SLACK INTEGRATION ──────────────────────────────────────────────────────
@@ -4420,7 +4411,7 @@ best_channel: one of "Email"|"LinkedIn"|"Phone"|"Multi-channel (Email + LinkedIn
 linkedin_activity: one of "Very Active (posts/comments weekly)"|"Moderate (engages occasionally)"|"Low (profile exists, rarely active)"
 phone_accessibility: one of "Direct dial available"|"Gatekeeper (assistant)"|"Voicemail only"
 email_preference: one of "Responds to short punchy emails"|"Prefers detailed/professional"|"Responds to personalization"|"Responds to data/stats"
-Raw JSON only.`, "", 2000);
+Raw JSON only.`, "", 4000);
       try {
         const p = JSON.parse(raw.replace(/```json|```/g,"").trim());
         const fields = p.fields ?? {};
@@ -6213,28 +6204,38 @@ function ICPEditorModal({ icp, companyData, onUpdate, onClose, addToast, updateT
   const [refiningEmail,  setRefiningEmail] = useState<number | null>(null);
   const [splitView,      setSplitView]    = useState(false);
   const [bulkFilling,    setBulkFilling]  = useState(false);
+  const [showFillPrompt, setShowFillPrompt] = useState(false);
+  const [personaHint,    setPersonaHint]   = useState("");
   const origRef = useRef<Record<string,any>>({});
 
   // Fill ALL ICP fields at once using AI
-  const handleBulkFill = async () => {
+  const handleBulkFill = async (hint = "") => {
+    setShowFillPrompt(false);
     setBulkFilling(true);
     const toastId = addToast({ title:`Filling all fields: ${icp.name}`, status:"loading", message:"AI is generating a complete profile" });
+    const productList = products.length > 0
+      ? products.map((p: any) => `- ID: ${p.id} | Name: ${p.name || "Unnamed"} | Description: ${p.description || ""}${p.idealCustomer ? ` | Ideal customer: ${p.idealCustomer}` : ""}`).join("\n")
+      : "";
+
     const prompt = `Fill ALL fields for this B2B persona. Every field must be populated with specific, actionable content.
 
 COMPANY: ${JSON.stringify(companyData)}
 PERSONA NAME: ${icp.name || "Unnamed persona"}
 EXISTING FIELDS (preserve unless clearly wrong):
 ${JSON.stringify(data)}
-
+${hint ? `\nPERSONA DIRECTION (user-specified — follow this closely):\n${hint}\n` : ""}
+${productList ? `\nPRODUCTS/SERVICES (rate fit for this persona):\n${productList}\n` : ""}
 ${NAMING_RULES.persona}
 
 CRITICAL RULES:
 - Every single field MUST be filled. Never leave any field empty.
 - Preserve existing filled fields unless they contradict the persona. Fill any empty fields.
 - Be specific and actionable — a real GTM team should be able to run campaigns from this.
+${hint ? "- The user specified a persona direction above — make sure the filled fields reflect that target audience." : ""}
+${productList ? "- For each product, rate how well it fits this persona: high (strong match, should actively sell), medium (relevant but secondary), low (weak fit), or skip (wrong fit entirely). Give a 1-sentence reason." : ""}
 
-Return ONLY JSON with ALL fields filled:
-{"name":"${icp.name||""}","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""}}
+Return ONLY JSON:
+{"name":"${icp.name||""}","fields":{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""}${productList ? `,"linkedProductFit":{},"linkedProductFitReason":{}` : ""}}
 
 tone: one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"
 cta: one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
@@ -6242,6 +6243,7 @@ best_channel: one of "Email"|"LinkedIn"|"Phone"|"Multi-channel (Email + LinkedIn
 linkedin_activity: one of "Very Active (posts/comments weekly)"|"Moderate (engages occasionally)"|"Low (profile exists, rarely active)"
 phone_accessibility: one of "Direct dial available"|"Gatekeeper (assistant)"|"Voicemail only"
 email_preference: one of "Responds to short punchy emails"|"Prefers detailed/professional"|"Responds to personalization"|"Responds to data/stats"
+linkedProductFit values: "high"|"medium"|"low"|"skip" keyed by product ID
 Raw JSON only.`;
 
     let success = false;
@@ -6253,8 +6255,16 @@ Raw JSON only.`;
         const p = JSON.parse(lastRaw.replace(/```json|```/g,"").trim());
         const fields = p.fields || {};
         setData((prev: any) => ({ ...prev, ...fields }));
-        // Mark all as locked so they appear saved
         setLocalConfLocked(prev => ({ ...prev, ...Object.fromEntries(Object.keys(fields).map(k => [k, true])) }));
+        // Apply product fit ratings if returned
+        if (p.linkedProductFit && typeof p.linkedProductFit === "object") {
+          const fitMap = p.linkedProductFit as Record<string,string>;
+          const reasonMap = (p.linkedProductFitReason || {}) as Record<string,string>;
+          const linkedIds = Object.entries(fitMap)
+            .filter(([,v]) => v !== "skip")
+            .map(([k]) => k);
+          onUpdate({ ...icp, linkedProductFit: fitMap, linkedProductFitReason: reasonMap, linkedProductIds: linkedIds });
+        }
         success = true;
         break;
       } catch (err:any) {
@@ -6857,11 +6867,46 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
               {allApproved && <span style={{ fontSize:10, color:_C.green, fontFamily:mono, fontWeight:700 }}>✓ All approved</span>}
             </div>
           </div>
-          <button onClick={handleBulkFill} disabled={bulkFilling}
-            style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.accent}`, background:bulkFilling?_C.faint:`${_C.accent}0E`,
-              color:_C.accent, fontSize:11, fontFamily:head, fontWeight:700, cursor:bulkFilling?"wait":"pointer", opacity:bulkFilling?0.7:1, flexShrink:0 }}>
-            {bulkFilling ? "◌ Filling..." : "◎ Fill All with AI"}
-          </button>
+          <div style={{ position:"relative", flexShrink:0 }}>
+            <button onClick={() => { if (!bulkFilling) setShowFillPrompt(p => !p); }} disabled={bulkFilling}
+              style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${_C.accent}`, background:bulkFilling?_C.faint:showFillPrompt?`${_C.accent}22`:`${_C.accent}0E`,
+                color:_C.accent, fontSize:11, fontFamily:head, fontWeight:700, cursor:bulkFilling?"wait":"pointer", opacity:bulkFilling?0.7:1 }}>
+              {bulkFilling ? "◌ Filling..." : "◎ Fill All with AI"}
+            </button>
+            {showFillPrompt && !bulkFilling && (
+              <div style={{ position:"absolute", top:"calc(100% + 8px)", right:0, zIndex:999, width:320,
+                background:_C.canvas, border:`1px solid ${_C.borderHi}`, borderRadius:10, padding:14,
+                boxShadow:"0 8px 32px rgba(0,0,0,0.14)" }}>
+                <div style={{ fontSize:11, fontFamily:head, fontWeight:700, color:_C.text, marginBottom:6 }}>Describe the persona (optional)</div>
+                <div style={{ fontSize:11, fontFamily:head, color:_C.muted, marginBottom:8, lineHeight:1.5 }}>
+                  Tell the AI what type of persona to generate. Leave blank and it will decide based on the company.
+                </div>
+                <textarea
+                  autoFocus
+                  value={personaHint}
+                  onChange={e => setPersonaHint(e.target.value)}
+                  placeholder="e.g. VP of Sales at mid-market SaaS companies, focused on revenue growth and pipeline..."
+                  rows={4}
+                  style={{ width:"100%", boxSizing:"border-box", padding:"8px 10px", borderRadius:7,
+                    border:`1px solid ${_C.border}`, background:_C.surface, color:_C.text,
+                    fontSize:12, fontFamily:head, resize:"vertical", outline:"none",
+                    lineHeight:1.5, marginBottom:10 }}
+                />
+                <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+                  <button onClick={() => { setShowFillPrompt(false); setPersonaHint(""); }}
+                    style={{ padding:"6px 12px", borderRadius:7, border:`1px solid ${_C.border}`,
+                      background:"transparent", color:_C.muted, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                    Cancel
+                  </button>
+                  <button onClick={() => { handleBulkFill(personaHint); setPersonaHint(""); }}
+                    style={{ padding:"6px 14px", borderRadius:7, border:"none",
+                      background:_C.accent, color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                    Generate
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           {/* Workflow stepper */}
           <div style={{ display:"flex", alignItems:"center", gap:0 }}>
             {[
@@ -6968,29 +7013,75 @@ total=10 only if you'd send this today without any edits. is_10=true only with e
                   </div>
                 )}
                 {/* Linked Products */}
-                {secTab === Object.keys(ICP_SECTIONS)[0] && products.length > 0 && (
-                  <div style={{ padding:"10px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, marginBottom:4 }}>
-                    <div style={{ fontSize:10, fontWeight:700, fontFamily:mono, color:_C.muted, letterSpacing:.4, marginBottom:8 }}>LINKED PRODUCTS</div>
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                      {products.map((p: any) => {
-                        const linked = (icp.linkedProductIds || []).includes(p.id);
-                        return (
-                          <button key={p.id} onClick={()=>{
-                            const ids = icp.linkedProductIds || [];
-                            const next = linked ? ids.filter((x:string)=>x!==p.id) : [...ids, p.id];
-                            onUpdate({ ...icp, linkedProductIds: next });
-                          }}
-                            style={{ padding:"5px 12px", borderRadius:8, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer",
-                              border:`1.5px solid ${linked?_C.accent+"55":_C.border}`,
-                              background:linked?`${_C.accent}12`:"transparent",
-                              color:linked?_C.accent:_C.muted, transition:"all .15s" }}>
-                            {linked?"✓ ":""}{p.name || "Unnamed"}
-                          </button>
-                        );
-                      })}
+                {secTab === Object.keys(ICP_SECTIONS)[0] && products.length > 0 && (() => {
+                  const FIT_OPTS: {value:string; label:string; color:string; bg:string}[] = [
+                    { value:"high",   label:"High",   color:"#00D68F", bg:"#00D68F18" },
+                    { value:"medium", label:"Medium", color:"#FFC048", bg:"#FFC04818" },
+                    { value:"low",    label:"Low",    color:"#8E94A7", bg:"#8E94A718" },
+                    { value:"skip",   label:"Skip",   color:"#FF6B6B", bg:"#FF6B6B18" },
+                  ];
+                  return (
+                    <div style={{ padding:"10px 14px", borderRadius:10, border:`1px solid ${_C.border}`, background:_C.faint, marginBottom:4 }}>
+                      <div style={{ fontSize:10, fontWeight:700, fontFamily:mono, color:_C.muted, letterSpacing:.4, marginBottom:8 }}>LINKED PRODUCTS / FIT</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {products.map((p: any) => {
+                          const fitRaw = String(icp.linkedProductFit?.[p.id] || "").toLowerCase();
+                          const fit = ["high","medium","low","skip"].includes(fitRaw) ? fitRaw : "";
+                          const fitMeta = FIT_OPTS.find(o => o.value === fit);
+                          const reason = icp.linkedProductFitReason?.[p.id] || "";
+                          return (
+                            <div key={p.id} style={{ display:"flex", flexDirection:"column", gap:4,
+                              padding:"8px 10px", borderRadius:8, border:`1.5px solid ${fitMeta ? fitMeta.color+"44" : _C.border}`,
+                              background:fitMeta ? fitMeta.bg : "transparent", transition:"all .15s" }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:_C.text, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                  {p.name || "Unnamed"}
+                                </span>
+                                <div style={{ display:"flex", gap:3 }}>
+                                  {FIT_OPTS.map(o => (
+                                    <button key={o.value} onClick={() => {
+                                      const newFit = { ...(icp.linkedProductFit || {}), [p.id]: o.value };
+                                      const newIds = o.value === "skip"
+                                        ? (icp.linkedProductIds || []).filter((x:string) => x !== p.id)
+                                        : [...new Set([...(icp.linkedProductIds || []), p.id])];
+                                      onUpdate({ ...icp, linkedProductFit: newFit, linkedProductIds: newIds });
+                                    }}
+                                      style={{ padding:"2px 8px", borderRadius:5, fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer",
+                                        border:`1.5px solid ${fit === o.value ? o.color : _C.border}`,
+                                        background:fit === o.value ? o.bg : "transparent",
+                                        color:fit === o.value ? o.color : _C.muted, transition:"all .1s" }}>
+                                      {o.label}
+                                    </button>
+                                  ))}
+                                  {fit && (
+                                    <button onClick={() => {
+                                      const newFit = { ...(icp.linkedProductFit || {}) };
+                                      delete newFit[p.id];
+                                      const newIds = (icp.linkedProductIds || []).filter((x:string) => x !== p.id);
+                                      onUpdate({ ...icp, linkedProductFit: newFit, linkedProductIds: newIds });
+                                    }}
+                                      style={{ padding:"2px 6px", borderRadius:5, fontSize:10, fontFamily:mono, cursor:"pointer",
+                                        border:`1.5px solid ${_C.border}`, background:"transparent", color:_C.muted }}>✕</button>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Fit reason — editable */}
+                              {fit && fit !== "skip" && (
+                                <input
+                                  placeholder="Why? (optional)"
+                                  value={reason}
+                                  onChange={e => onUpdate({ ...icp, linkedProductFitReason: { ...(icp.linkedProductFitReason || {}), [p.id]: e.target.value } })}
+                                  style={{ fontSize:11, fontFamily:head, color:_C.textSoft, background:"transparent",
+                                    border:"none", outline:"none", width:"100%", padding:0 }}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
                   <div style={{ fontSize:13, fontWeight:600, color:_C.text, fontFamily:head }}>{sec.label}</div>
@@ -19141,7 +19232,7 @@ function AppMain() {
   const [showReview,     setShowReview]     = useState(false);
   const currentRole = "team"; // Internal tool only — no client view
   const [activeWorkspace,setActiveWorkspace]= useState(null);
-  const [appMode,        setAppMode]        = useState<"app"|"admin">("app");
+  const [appMode,        setAppMode]        = useState<"app"|"admin"|"v2">("app");
   const [apiKey,         setApiKey]         = useState(() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } });
   const [openaiKey,      setOpenaiKey]      = useState(() => { try { return localStorage.getItem("b2br_openai_key") || ""; } catch { return ""; } });
   const [geminiKey,      setGeminiKey]      = useState(() => { try { return localStorage.getItem("b2br_gemini_key") || ""; } catch { return ""; } });
@@ -19337,16 +19428,38 @@ function AppMain() {
 
   // ── Cloud sync on mount ──
   const [cloudSynced, setCloudSynced] = useState(false);
+  // When true, apiKey useEffect should NOT write back to Supabase (key came from cloud, not user)
+  const apiKeyFromCloud = useRef(false);
+
+  // Load API keys immediately and independently — never tied to the main sync timeout
+  useEffect(() => {
+    if (!DB_ENABLED) return;
+    dbGet("app_data", "api_keys").then((cloudKeys: any) => {
+      if (cloudKeys?.anthropic) {
+        const k = cloudKeys.anthropic.trim();
+        window.__B2BR_API_KEY__ = k;
+        try { localStorage.setItem("b2br_api_key", k); } catch {}
+        apiKeyFromCloud.current = true;
+        setApiKey(k);
+      }
+      if (cloudKeys?.openai) {
+        const ok = cloudKeys.openai.trim();
+        try { localStorage.setItem("b2br_openai_key", ok); } catch {}
+        setOpenaiKey(ok);
+      }
+      if (cloudKeys?.gemini) {
+        const gk = cloudKeys.gemini.trim();
+        try { localStorage.setItem("b2br_gemini_key", gk); } catch {}
+        setGeminiKey(gk);
+      }
+    }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (DB_ENABLED && !cloudSynced) {
       syncFromCloud().then(() => {
         setCloudSynced(true);
         console.log("[DB] Initial sync done");
-        // Pick up API keys that syncFromCloud wrote to localStorage/window
-        const savedKey = window.__B2BR_API_KEY__ || (() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } })();
-        if (savedKey) setApiKey(savedKey);
-        const savedOpenai = (() => { try { return localStorage.getItem("b2br_openai_key") || ""; } catch { return ""; } })();
-        if (savedOpenai) setOpenaiKey(savedOpenai);
       });
     }
   }, []);
@@ -19543,11 +19656,15 @@ function AppMain() {
     }
   }, [companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, rtsLists, playbooks, contentAssets, battlecards, dfySetup, callRecords, aiAnalyses]);
 
-  // sync keys into global + localStorage + Supabase
+  // sync keys into global + localStorage; only write to Supabase when user explicitly sets the key
   useEffect(() => {
-    window.__B2BR_API_KEY__ = apiKey;
-    try { if (apiKey) localStorage.setItem("b2br_api_key", apiKey); } catch {}
-    if (apiKey) dbPut("app_data", "api_keys", { anthropic: apiKey, openai: openaiKey, gemini: geminiKey }).catch(() => {});
+    const k = apiKey.trim();
+    window.__B2BR_API_KEY__ = k;
+    try { if (k) localStorage.setItem("b2br_api_key", k); } catch {}
+    if (k && !apiKeyFromCloud.current) {
+      dbPut("app_data", "api_keys", { anthropic: k, openai: openaiKey.trim(), gemini: geminiKey.trim() }).catch(() => {});
+    }
+    apiKeyFromCloud.current = false;
   }, [apiKey]);
   useEffect(() => { try { localStorage.setItem("b2br_openai_key", openaiKey); } catch {} }, [openaiKey]);
   useEffect(() => { try { localStorage.setItem("b2br_gemini_key", geminiKey); } catch {} }, [geminiKey]);
@@ -20720,6 +20837,7 @@ RULES:
   // Persists on companyData._handoffBrief so it survives reloads.
   const [handoffGenerating, setHandoffGenerating] = useState(false);
   const [handoffBriefOpen, setHandoffBriefOpen] = useState(false);
+  const [salesHandoffTab, setSalesHandoffTab] = useState<"inputs"|"doc">("inputs");
   const generateHandoffBrief = async () => {
     const cd = companyData as Record<string,any>;
     const handoffDate = cd.co_handoff_date || "";
@@ -22444,6 +22562,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
   if (!loggedInUser) return <UserLoginGate onLogin={handleUserLogin} />;
 
   if (appMode === "admin") return <AdminPanel onClose={() => setAppMode("app")} />; // localhost dev shortcut
+  if (appMode === "v2") return <AppV2 onExit={() => setAppMode("app")} clients={loadClients()} users={loadUsers()} loggedInUser={loggedInUser} />;
 
   return (
     <>
@@ -22700,7 +22819,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                     onMouseEnter={e=>{ if(view!=="salesInputs")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
                     onMouseLeave={e=>{ if(view!=="salesInputs")(e.currentTarget as HTMLButtonElement).style.background=view==="salesInputs"?`${C2.accent}14`:"transparent"; }}>
                     <span style={{ fontSize:13, width:18, textAlign:"center", color:view==="salesInputs"?C2.accent:C2.muted }}>📥</span>
-                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="salesInputs"?700:500, color:view==="salesInputs"?C2.text:C2.textSoft }}>Sales Inputs</span>
+                    <span style={{ fontSize:12.5, fontFamily:head, fontWeight:view==="salesInputs"?700:500, color:view==="salesInputs"?C2.text:C2.textSoft }}>Sales Handoff</span>
                   </button>
 
                   {/* Profile — read surface: synthesized brief, sentiment, pitch, gaps, stakeholders */}
@@ -22967,6 +23086,16 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                       <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:C.textSoft }}>Churned VIP Analyzer</span>
                     </a>
                   )}
+
+                  {/* Version 2 */}
+                  <button onClick={()=>{ setProfileMenuOpen(false); setAppMode("v2"); }}
+                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
+                      borderRadius:7, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
+                    onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
+                    onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                    <span style={{ fontSize:11, width:18, textAlign:"center", color:C.accent, fontWeight:700, fontFamily:"monospace" }}>V2</span>
+                    <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C.accent }}>Version 2</span>
+                  </button>
 
                   {/* Admin Panel — admin only */}
                   {currentRole === "team" && loggedInUser?.email?.toLowerCase() === (import.meta.env.VITE_ADMIN_USER || "").toLowerCase() && (
@@ -25072,12 +25201,22 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
               <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column", overflow:"hidden",
                 animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
                 <div style={{ padding:"20px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
-                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Sales Inputs</h2>
-                  <p style={{ fontSize:12, color:C2.muted, fontFamily:body, margin:0 }}>
-                    Everything sales hands off to CX. Connect HubSpot, verify the deal mapping, paste playbooks, add notes.
-                  </p>
+                  <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 4px" }}>Sales Handoff</h2>
+                  {/* Subtab switcher */}
+                  <div style={{ display:"flex", gap:4, marginTop:14, borderBottom:`1px solid ${C2.border}` }}>
+                    {([["inputs","Sales Inputs"],["doc","Sales Handoff Doc"]] as const).map(([tab, label]) => (
+                      <button key={tab} onClick={()=>setSalesHandoffTab(tab)}
+                        style={{ padding:"7px 16px", border:"none", background:"transparent", cursor:"pointer",
+                          fontFamily:head, fontSize:13, fontWeight:salesHandoffTab===tab?700:500,
+                          color:salesHandoffTab===tab?C2.accent:C2.textSoft,
+                          borderBottom:`2px solid ${salesHandoffTab===tab?C2.accent:"transparent"}`,
+                          marginBottom:-1 }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ flex:1, minHeight:0, overflow:"auto", padding:"16px clamp(20px, 3vw, 48px) 28px",
+                {salesHandoffTab==="inputs" && <div style={{ flex:1, minHeight:0, overflow:"auto", padding:"16px clamp(20px, 3vw, 48px) 28px",
                   display:"flex", flexDirection:"column" as const, gap:14, maxWidth:880, width:"100%", boxSizing:"border-box" as const }}>
 
                   {/* ── HubSpot (top) ── */}
@@ -25490,7 +25629,106 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       {handoffGenerating ? "Generating…" : (hb ? "Regenerate brief →" : "Generate brief →")}
                     </button>
                   </div>
-                </div>
+                </div>}
+                {salesHandoffTab==="doc" && (() => {
+                  const b = hb?.content || {};
+                  return (
+                  <div style={{ flex:1, minHeight:0, overflow:"auto", padding:"20px clamp(20px,3vw,48px) 28px",
+                    maxWidth:880, width:"100%", boxSizing:"border-box" as const }}>
+                    {!hb ? (
+                      <div style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center",
+                        height:"100%", gap:14, textAlign:"center" as const }}>
+                        <div style={{ fontSize:32, opacity:0.2 }}>📄</div>
+                        <div style={{ fontSize:16, fontWeight:700, color:C2.text, fontFamily:head }}>No handoff brief yet</div>
+                        <div style={{ fontSize:12, color:C2.muted, fontFamily:body, maxWidth:360, lineHeight:1.6 }}>
+                          Fill in the Sales Inputs tab and generate the brief. It synthesizes HubSpot data, playbooks, and conversations into a CX-ready document.
+                        </div>
+                        <button onClick={()=>setSalesHandoffTab("inputs")}
+                          style={{ padding:"9px 20px", borderRadius:8, border:"none", background:C2.accent,
+                            color:"#fff", fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                          Go to Sales Inputs →
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
+                        {/* Header row */}
+                        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12, flexWrap:"wrap" as const }}>
+                          <div>
+                            <div style={{ fontSize:18, fontWeight:800, color:C2.text, fontFamily:head }}>{b.oneLiner || "Sales → CX Handoff Brief"}</div>
+                            {hb.generatedAt && <div style={{ fontSize:11, color:C2.muted, fontFamily:body, marginTop:3 }}>Generated {new Date(hb.generatedAt).toLocaleString()}</div>}
+                          </div>
+                          <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+                            <button onClick={()=>{
+                              const sections = [
+                                `# ${b.oneLiner||"Sales → CX Handoff Brief"}`,
+                                b.clientOverview&&`## Client Overview\n${b.clientOverview}`,
+                                b.salesJourney&&`## Sales Journey\n${b.salesJourney}`,
+                                b.whatTheyCareAbout&&`## What They Care About\n${b.whatTheyCareAbout}`,
+                                b.expectationsSet&&`## Expectations Set\n${b.expectationsSet}`,
+                                b.stakeholders?.length&&`## Stakeholders\n${b.stakeholders.map((s:any)=>`- **${s.name}** (${s.role||"?"}) — ${s.signal||""}`).join("\n")}`,
+                                b.concerns&&`## Concerns / Objections\n${b.concerns}`,
+                                b.watchouts?.length&&`## Watch-outs\n${b.watchouts.map((w:string)=>`- ⚠ ${w}`).join("\n")}`,
+                              ].filter(Boolean).join("\n\n");
+                              navigator.clipboard.writeText(sections);
+                              addToast({ title:"Copied", status:"success", message:"Brief copied to clipboard" });
+                            }} style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas,
+                              color:C2.textSoft, fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer" }}>Copy</button>
+                            <button onClick={generateHandoffBrief} disabled={handoffGenerating}
+                              style={{ padding:"7px 14px", borderRadius:8, border:"none", background:C2.accent,
+                                color:"#fff", fontSize:11, fontFamily:head, fontWeight:700, cursor: handoffGenerating?"wait":"pointer" }}>
+                              {handoffGenerating?"Regenerating…":"Regenerate"}
+                            </button>
+                          </div>
+                        </div>
+                        {/* Brief sections */}
+                        {[
+                          ["Client Overview", b.clientOverview],
+                          ["Sales Journey", b.salesJourney],
+                          ["What They Care About", b.whatTheyCareAbout],
+                          ["Expectations Set", b.expectationsSet],
+                          ["Alignment", b.alignment],
+                          ["Concerns / Objections", b.concerns],
+                        ].filter(([,v])=>v).map(([title, content]:any) => (
+                          <div key={title} style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"16px 20px" }}>
+                            <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>{title}</div>
+                            <div style={{ fontSize:13, color:C2.text, fontFamily:body, lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{content}</div>
+                          </div>
+                        ))}
+                        {b.stakeholders?.length>0 && (
+                          <div style={{ background:C2.canvas, border:`1px solid ${C2.border}`, borderRadius:10, padding:"16px 20px" }}>
+                            <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:10 }}>Stakeholders</div>
+                            <div style={{ display:"flex", flexDirection:"column" as const, gap:8 }}>
+                              {b.stakeholders.map((s:any, i:number) => (
+                                <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                                  <div style={{ width:30, height:30, borderRadius:8, background:`${C2.accent}18`, flexShrink:0,
+                                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:C2.accent }}>
+                                    {(s.name||"?")[0].toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize:13, fontWeight:600, color:C2.text, fontFamily:head }}>{s.name} <span style={{ fontWeight:400, color:C2.muted }}>· {s.role}</span></div>
+                                    {s.signal && <div style={{ fontSize:12, color:C2.textSoft, fontFamily:body, marginTop:2 }}>{s.signal}</div>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {b.watchouts?.length>0 && (
+                          <div style={{ background:"#FEF3C710", border:`1px solid #F59E0B30`, borderRadius:10, padding:"16px 20px" }}>
+                            <div style={{ fontSize:11, fontFamily:mono, fontWeight:700, color:"#D97706", letterSpacing:.4, textTransform:"uppercase" as const, marginBottom:8 }}>Watch-outs</div>
+                            <div style={{ display:"flex", flexDirection:"column" as const, gap:6 }}>
+                              {b.watchouts.map((w:string,i:number)=>(
+                                <div key={i} style={{ fontSize:13, color:C2.text, fontFamily:body, display:"flex", gap:8 }}>
+                                  <span style={{ color:"#D97706", flexShrink:0 }}>⚠</span><span>{w}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>);
+                })()}
               </div>);
             })()}
 
