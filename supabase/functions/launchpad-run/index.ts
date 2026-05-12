@@ -239,6 +239,19 @@ async function callAI(
   timeoutMs = 20000,
   model = "claude-haiku-4-5-20251001",
 ): Promise<string> {
+  const { text } = await callAIFull(anthropicKey, prompt, sys, tokens, retries, timeoutMs, model);
+  return text;
+}
+
+async function callAIFull(
+  anthropicKey: string,
+  prompt: string,
+  sys = "",
+  tokens = 800,
+  retries = 1,
+  timeoutMs = 20000,
+  model = "claude-haiku-4-5-20251001",
+): Promise<{ text: string; stopReason: string }> {
   const sysMsg = sys || "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.";
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -259,18 +272,18 @@ async function callAI(
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
         if (attempt < retries) { await sleep(2000); continue; }
-        return "";
+        return { text: "", stopReason: "error" };
       }
       const json = await r.json();
-      if (json.error) return "";
-      return json.content?.[0]?.text ?? "";
+      if (json.error) return { text: "", stopReason: "error" };
+      return { text: json.content?.[0]?.text ?? "", stopReason: json.stop_reason ?? "end_turn" };
     } catch (e) {
       if (attempt < retries) { await sleep(2000); continue; }
       console.error("callAI failed:", e);
-      return "";
+      return { text: "", stopReason: "error" };
     }
   }
-  return "";
+  return { text: "", stopReason: "error" };
 }
 
 function sleep(ms: number) {
@@ -520,7 +533,13 @@ Return ONLY valid JSON:
       for (let attempt = 1; attempt <= 2; attempt++) {
         let raw = "";
         try {
-          raw = await callAI(anthropicKey, personaPrompt, "Return only valid JSON. Be specific and actionable.", attempt === 1 ? 4000 : 6000, 0, 90000, "claude-sonnet-4-6");
+          const tokenLimit = attempt === 1 ? 6000 : 8000;
+          const { text, stopReason } = await callAIFull(anthropicKey, personaPrompt, "Return only valid JSON. Be specific and actionable.", tokenLimit, 0, 120000, "claude-sonnet-4-6");
+          raw = text;
+          if (stopReason === "max_tokens") {
+            console.warn(`[LP] Persona "${pe.name}" hit token limit (${tokenLimit}) on attempt ${attempt} — retrying with more tokens`);
+            if (attempt < 2) continue;
+          }
           parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
           break;
         } catch (err) {
