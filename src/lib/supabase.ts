@@ -1,15 +1,14 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-export const SUPABASE_URL = "https://ndiunvmjwpwvoyrqnmls.supabase.co";
-export const SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kaXVudm1qd3B3dm95cnFubWxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2Mjg4OTksImV4cCI6MjA5MDIwNDg5OX0.bu-qwXsDDqmTJEAn5KAuriTXgEFwlqxf_eIXBVF-6-Q";
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+export const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
 let _client: SupabaseClient | null = null;
 try {
   _client = createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: {
-      persistSession: false,
-      autoRefreshToken: false,
+      persistSession: true,
+      autoRefreshToken: true,
       detectSessionInUrl: false,
       storageKey: "cx-v2-auth",
     },

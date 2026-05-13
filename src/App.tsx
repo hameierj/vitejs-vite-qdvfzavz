@@ -214,8 +214,8 @@ function WelcomeScreen({ companyName, onManual, onImport, onPasteForm, onLaunchP
 }
 
 // ─── SUPABASE SYNC LAYER ─────────────────────────────────────────────────────
-const SUPABASE_URL = "https://ndiunvmjwpwvoyrqnmls.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kaXVudm1qd3B3dm95cnFubWxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2Mjg4OTksImV4cCI6MjA5MDIwNDg5OX0.bu-qwXsDDqmTJEAn5KAuriTXgEFwlqxf_eIXBVF-6-Q";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 let supabase: SupabaseClient | null = null;
 try {
   supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -1172,7 +1172,7 @@ const CALL_TYPE_LABELS: Record<string,string> = {
 const callTypeLabel = (t: string) => CALL_TYPE_LABELS[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Call");
 
 function getApiKey() {
-  return (window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || import.meta.env.VITE_API_KEY || "").trim();
+  return (window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || "").trim();
 }
 
 // ─── SLACK INTEGRATION ──────────────────────────────────────────────────────
@@ -15136,47 +15136,7 @@ type UserRecord = {
   createdAt: string;
 };
 
-const ENV_USERS: UserRecord[] = (() => {
-  const users: UserRecord[] = [];
-  // Support both VITE_USERS (JSON array) and VITE_USER_1, VITE_USER_2, etc (individual)
-  // Individual format: email:password:name:role (pipe or colon separated)
-  for (let i = 1; i <= 20; i++) {
-    const raw = import.meta.env[`VITE_USER_${i}`];
-    if (!raw) continue;
-    const clean = raw.replace(/[\x00-\x1F\x7F]/g, "").trim();
-    const parts = clean.includes("|") ? clean.split("|") : clean.split(":");
-    if (parts.length >= 2) {
-      users.push({
-        id: `env-${i}`, email: parts[0].replace(/\s/g, "").trim(),
-        password: parts[1].replace(/\s/g, "").trim(),
-        name: (parts[2] || parts[0].split("@")[0] || "User").trim(),
-        role: (parts[3]?.trim() as any) || "team",
-        status: "active", createdAt: "2026-01-01",
-      });
-    }
-  }
-  // Also support VITE_USERS JSON array (fallback)
-  try {
-    const raw = import.meta.env.VITE_USERS;
-    if (raw) {
-      const cleaned = raw.replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim();
-      const parsed = JSON.parse(cleaned);
-      for (const u of parsed) {
-        const email = (u.email||"").replace(/\s/g, "");
-        const password = (u.password||"").replace(/\s/g, "");
-        if (!email) continue;
-        if (users.some(x => x.email.toLowerCase() === email.toLowerCase())) continue;
-        users.push({
-          id: `env-json-${users.length}`, name: (u.name||email.split("@")[0]||"User").trim(),
-          email, password, role: u.role || "team",
-          status: "active", createdAt: "2026-01-01",
-        });
-      }
-    }
-  } catch {}
-  if (users.length) console.log("[Auth]", users.length, "env users:", users.map(u => u.email));
-  return users;
-})();
+const ENV_USERS: UserRecord[] = [];
 
 const loadUsers = (): UserRecord[] => {
   try {
@@ -16584,46 +16544,30 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState(false);
   const [loading,  setLoading]  = useState(false);
-  const [cloudReady, setCloudReady] = useState(false);
-
-  // Sync users from Supabase before first login attempt so admin-created users are available
-  useEffect(() => {
-    if (DB_ENABLED) {
-      // Race: sync from cloud OR timeout after 3s — whichever comes first
-      Promise.race([
-        syncFromCloud(),
-        new Promise(r => setTimeout(r, 3000)),
-      ]).then(() => { setCloudReady(true); console.log("[Auth] Cloud sync ready (or timed out)"); });
-    } else {
-      setCloudReady(true);
-    }
-  }, []);
 
   const handleLogin = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!email.trim() || !password.trim()) return;
     setLoading(true); setError(false);
-    // If cloud hasn't synced yet, wait max 3s then proceed with local data
-    if (!cloudReady && DB_ENABLED) {
-      try {
-        await Promise.race([
-          syncFromCloud(),
-          new Promise(r => setTimeout(r, 3000)),
-        ]);
-      } catch {}
-    }
-    const users = loadUsers();
-    console.log("[Auth] Login attempt:", email.trim(), "| Available users:", users.map(u => u.email));
-    const match = users.find(u =>
-      u.email && u.password &&
-      u.email.toLowerCase() === email.trim().toLowerCase() &&
-      u.password === password.trim() &&
-      u.status === "active"
-    );
-    if (match) {
-      try { sessionStorage.setItem(USER_SESSION_KEY, match.id); } catch {}
-      onLogin(match);
-    } else {
+    try {
+      if (!supabase) throw new Error("Supabase not configured");
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
+      if (authError || !data.user) throw new Error(authError?.message || "Login failed");
+      const meta = data.user.user_metadata || {};
+      const userRecord: UserRecord = {
+        id: data.user.id,
+        email: data.user.email || email.trim(),
+        password: "",
+        name: meta.name || data.user.email?.split("@")[0] || "User",
+        role: (meta.role as any) || "team",
+        status: "active",
+        createdAt: data.user.created_at || new Date().toISOString(),
+      };
+      onLogin(userRecord);
+    } catch {
       setError(true);
     }
     setLoading(false);
@@ -16706,6 +16650,7 @@ function AdminGate() {
   const [loading,  setLoading]  = useState(false);
 
   const signOut = () => {
+    supabase?.auth.signOut();
     try { sessionStorage.removeItem(ADMIN_SESSION_KEY); } catch {}
     setAuthed(false);
     setUsername(""); setPassword(""); setError(false);
@@ -16716,13 +16661,17 @@ function AdminGate() {
     if (!username.trim() || !password.trim()) return;
     setLoading(true); setError(false);
     await new Promise(r => setTimeout(r, 350)); // subtle brute-force delay
-const ok =
-      username.trim().toLowerCase() === import.meta.env.VITE_ADMIN_USER?.trim().toLowerCase() &&
-      password.trim() === import.meta.env.VITE_ADMIN_PASS?.trim();
-    if (ok) {
+    try {
+      if (!supabase) throw new Error("no supabase");
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: username.trim(),
+        password: password.trim(),
+      });
+      const role = data.user?.user_metadata?.role;
+      if (authError || !data.user || role !== "admin") throw new Error("not admin");
       try { sessionStorage.setItem(ADMIN_SESSION_KEY, "1"); } catch {}
       setAuthed(true);
-    } else {
+    } catch {
       setError(true);
     }
     setLoading(false);
@@ -17943,17 +17892,31 @@ export default function App() {
 }
 
 function AppMain() {
-  const [loggedInUser,   setLoggedInUser]   = useState<UserRecord|null>(() => {
-    try {
-      const id = sessionStorage.getItem(USER_SESSION_KEY);
-      if (!id) return null;
-      const user = loadUsers().find(u => u.id === id) ?? null;
-      if (user) setApiLogUser(user.id, user.email);
-      return user;
-    } catch { return null; }
-  });
+  const [loggedInUser,   setLoggedInUser]   = useState<UserRecord|null>(null);
   const useV2 = true;
   const T = C2;
+
+  // Restore session from Supabase Auth on mount
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const meta = session.user.user_metadata || {};
+        const userRecord: UserRecord = {
+          id: session.user.id,
+          email: session.user.email || "",
+          password: "",
+          name: meta.name || session.user.email?.split("@")[0] || "User",
+          role: (meta.role as any) || "team",
+          status: "active",
+          createdAt: session.user.created_at || new Date().toISOString(),
+        };
+        setLoggedInUser(userRecord);
+        setApiLogUser(userRecord.id, userRecord.email);
+      }
+    });
+  }, []);
+
   const [view,           setView]           = useState("accounts");
   const [showCopilot,    setShowCopilot]    = useState(false);
   const [showSearch,     setShowSearch]     = useState(false);
@@ -18199,7 +18162,7 @@ function AppMain() {
   };
 
   const handleUserSignOut = () => {
-    try { sessionStorage.removeItem(USER_SESSION_KEY); } catch {}
+    supabase?.auth.signOut();
     setLoggedInUser(null);
   };
 
@@ -21830,7 +21793,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                   </button>
 
                   {/* Admin Panel — admin only */}
-                  {currentRole === "team" && loggedInUser?.email?.toLowerCase() === (import.meta.env.VITE_ADMIN_USER || "").toLowerCase() && (
+                  {loggedInUser?.role === "admin" && (
                     <button onClick={()=>{ setProfileMenuOpen(false); setAppMode("admin"); }}
                       style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
                         borderRadius:7, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
