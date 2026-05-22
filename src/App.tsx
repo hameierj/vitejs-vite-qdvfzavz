@@ -3,11 +3,7 @@ import { createPortal } from "react-dom";
 import mammoth from "mammoth";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Routes, Route, useParams, HashRouter, useNavigate } from "react-router-dom";
-import { ClientPortal } from "./components/portal/ClientPortal";
-import { WorkspaceShell } from "./components/WorkspaceShell";
-import { WorkspaceList } from "./components/WorkspaceList";
-import { ChurnAnalyzer } from "./components/ChurnAnalyzer";
-import AppV2 from "./components/AppV2";
+import { ICPTreeGenerator } from "./components/stages/ICPTreeGenerator";
 import { PRODUCT_SECTIONS, ICP_SECTIONS } from "./lib/schemas";
 import {
   Upload, Sparkles, Mail, Search, ShieldCheck, Users,
@@ -270,6 +266,12 @@ async function syncFromCloud() {
       try { localStorage.setItem("b2br_clients", JSON.stringify(merged)); } catch {}
       // Push any locally-created clients that haven't reached Supabase yet
       if (localOnly.length > 0) dbPut("app_data", "clients", merged).catch(() => {});
+    } else {
+      // Cloud has no clients — wipe stale local cache so deleted data doesn't persist
+      try { localStorage.setItem("b2br_clients", "[]"); } catch {}
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith("b2br_ws_")) localStorage.removeItem(k);
+      }
     }
     // Sync users — same merge strategy
     const cloudUsers = await dbGet("app_data", "users");
@@ -16536,14 +16538,124 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
   );
 }
 
+// ─── RESET PASSWORD SCREEN ───────────────────────────────────────────────────
+function ResetPasswordScreen() {
+  const [password,     setPassword]     = useState("");
+  const [confirm,      setConfirm]      = useState("");
+  const [status,       setStatus]       = useState<"idle"|"loading"|"done"|"error">("idle");
+  const [sessionReady, setSessionReady] = useState(false);
+  const [errMsg,       setErrMsg]       = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const at = params.get("access_token") || "";
+    const rt = params.get("refresh_token") || "";
+    if (!supabase || !at) { setErrMsg("Invalid or expired reset link. Please request a new one."); return; }
+    supabase.auth.setSession({ access_token: at, refresh_token: rt })
+      .then(({ error }) => {
+        if (error) setErrMsg(error.message);
+        else setSessionReady(true);
+      });
+  }, []);
+
+  const mismatch = confirm.length > 0 && password !== confirm;
+  const tooShort = password.length > 0 && password.length < 8;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !sessionReady) return;
+    if (password !== confirm) { setErrMsg("Passwords do not match."); return; }
+    if (password.length < 8) { setErrMsg("Password must be at least 8 characters."); return; }
+    setStatus("loading"); setErrMsg("");
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) { setErrMsg(error.message); setStatus("idle"); return; }
+    setStatus("done");
+    setTimeout(() => { window.location.hash = "/"; window.location.reload(); }, 2500);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+        body{background:${C.bg};-webkit-font-smoothing:antialiased;}
+        @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+      `}</style>
+      <div style={{ width:380, animation:"slideUp .3s ease" }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <img src="/logo.svg" alt="B2B Rocket" style={{ maxWidth:140, height:"auto" }} />
+        </div>
+        <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+          padding:"32px 32px 28px", boxShadow:"0 4px 24px rgba(13,15,26,.08)" }}>
+
+          {status === "done" ? (
+            <>
+              <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:C.text, marginBottom:8 }}>Password updated</div>
+              <div style={{ fontSize:13, color:C.muted, fontFamily:body, lineHeight:1.6 }}>
+                Your password has been changed. Redirecting you to sign in…
+              </div>
+            </>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:C.text, marginBottom:4 }}>Set new password</div>
+              <div style={{ fontSize:13, color:C.muted, fontFamily:body, marginBottom:24 }}>Choose a strong password for your account.</div>
+
+              {errMsg && (
+                <div style={{ fontSize:12, color:C.red, fontFamily:body, marginBottom:14,
+                  background:C.red+"11", padding:"8px 12px", borderRadius:7, border:`1px solid ${C.red}22` }}>
+                  {errMsg}
+                </div>
+              )}
+
+              <div style={{ marginBottom:14 }}>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>NEW PASSWORD</label>
+                <input type="password" value={password} autoFocus autoComplete="new-password"
+                  onChange={e => { setPassword(e.target.value); setErrMsg(""); }}
+                  style={{ width:"100%", padding:"10px 12px", borderRadius:8,
+                    border:`1px solid ${tooShort ? C.red+"88" : C.border}`,
+                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
+                {tooShort && <div style={{ fontSize:11, color:C.red, fontFamily:body, marginTop:4 }}>At least 8 characters required</div>}
+              </div>
+
+              <div style={{ marginBottom:20 }}>
+                <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>CONFIRM PASSWORD</label>
+                <input type="password" value={confirm} autoComplete="new-password"
+                  onChange={e => { setConfirm(e.target.value); setErrMsg(""); }}
+                  style={{ width:"100%", padding:"10px 12px", borderRadius:8,
+                    border:`1px solid ${mismatch ? C.red+"88" : C.border}`,
+                    background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
+                {mismatch && <div style={{ fontSize:11, color:C.red, fontFamily:body, marginTop:4 }}>Passwords do not match</div>}
+              </div>
+
+              <button type="submit"
+                disabled={!sessionReady || status === "loading" || !password || !confirm || mismatch || tooShort}
+                style={{ width:"100%", padding:"12px 0", borderRadius:8, border:"none",
+                  background: (!sessionReady || status === "loading" || !password || !confirm || mismatch || tooShort) ? C.border : C.accent,
+                  color: (!sessionReady || status === "loading" || !password || !confirm || mismatch || tooShort) ? C.muted : "#fff",
+                  fontSize:13, fontFamily:head, fontWeight:700,
+                  cursor: (!sessionReady || status === "loading" || !password || !confirm || mismatch || tooShort) ? "default" : "pointer",
+                  transition:"all .15s" }}>
+                {status === "loading" ? "Updating…" : "Set Password"}
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── USER LOGIN GATE ──────────────────────────────────────────────────────────
 const USER_SESSION_KEY = "b2br_user_session";
 
 function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [error,    setError]    = useState(false);
-  const [loading,  setLoading]  = useState(false);
+  const [view,        setView]        = useState<"login"|"forgot"|"sent">("login");
+  const [email,       setEmail]       = useState("");
+  const [password,    setPassword]    = useState("");
+  const [resetEmail,  setResetEmail]  = useState("");
+  const [error,       setError]       = useState(false);
+  const [resetError,  setResetError]  = useState("");
+  const [loading,     setLoading]     = useState(false);
 
   const handleLogin = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -16573,15 +16685,102 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
     setLoading(false);
   };
 
+  const handleForgot = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!resetEmail.trim() || !supabase) return;
+    setLoading(true); setResetError("");
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+      redirectTo: window.location.origin,
+    });
+    setLoading(false);
+    if (resetErr) { setResetError(resetErr.message); return; }
+    setView("sent");
+  };
+
+  const sharedStyles = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{background:${C.bg};-webkit-font-smoothing:antialiased;}
+    @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+  `;
+
+  if (view === "forgot") return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <style>{sharedStyles}</style>
+      <div style={{ width:380, animation:"slideUp .3s ease" }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <img src="/logo.svg" alt="B2B Rocket" style={{ maxWidth:140, height:"auto" }} />
+        </div>
+        <form onSubmit={handleForgot}
+          style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+            padding:"32px 32px 28px", boxShadow:"0 4px 24px rgba(13,15,26,.08)" }}>
+          <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:C.text, marginBottom:4 }}>Reset password</div>
+          <div style={{ fontSize:13, color:C.muted, fontFamily:body, marginBottom:24, lineHeight:1.6 }}>
+            Enter your email and we'll send you a link to set a new password.
+          </div>
+          {resetError && (
+            <div style={{ fontSize:12, color:C.red, fontFamily:body, marginBottom:14,
+              background:C.red+"11", padding:"8px 12px", borderRadius:7, border:`1px solid ${C.red}22` }}>
+              {resetError}
+            </div>
+          )}
+          <div style={{ marginBottom:20 }}>
+            <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>EMAIL</label>
+            <input type="email" value={resetEmail} autoFocus autoComplete="email"
+              onChange={e=>{ setResetEmail(e.target.value); setResetError(""); }}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:8,
+                border:`1px solid ${C.border}`, background:C.bg, color:C.text,
+                fontSize:13, fontFamily:body, outline:"none" }} />
+          </div>
+          <button type="submit" disabled={loading || !resetEmail.trim()}
+            style={{ width:"100%", padding:"12px 0", borderRadius:8, border:"none",
+              background: loading || !resetEmail.trim() ? C.border : C.accent,
+              color: loading || !resetEmail.trim() ? C.muted : "#fff",
+              fontSize:13, fontFamily:head, fontWeight:700,
+              cursor: loading || !resetEmail.trim() ? "default" : "pointer",
+              transition:"all .15s",
+              boxShadow: !loading && resetEmail.trim() ? `0 2px 12px ${C.accent}40` : "none",
+              marginBottom:14 }}>
+            {loading ? "Sending…" : "Send Reset Link"}
+          </button>
+          <button type="button" onClick={()=>{ setView("login"); setResetError(""); }}
+            style={{ width:"100%", padding:"10px 0", borderRadius:8, border:"none",
+              background:"transparent", color:C.muted, fontSize:13, fontFamily:body, cursor:"pointer" }}>
+            Back to sign in
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+
+  if (view === "sent") return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <style>{sharedStyles}</style>
+      <div style={{ width:380, animation:"slideUp .3s ease" }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <img src="/logo.svg" alt="B2B Rocket" style={{ maxWidth:140, height:"auto" }} />
+        </div>
+        <div style={{ background:C.canvas, borderRadius:14, border:`1px solid ${C.border}`,
+          padding:"32px 32px 28px", boxShadow:"0 4px 24px rgba(13,15,26,.08)" }}>
+          <div style={{ fontSize:18, fontWeight:700, fontFamily:head, color:C.text, marginBottom:8 }}>Check your email</div>
+          <div style={{ fontSize:13, color:C.muted, fontFamily:body, marginBottom:24, lineHeight:1.6 }}>
+            If <strong style={{ color:C.text }}>{resetEmail}</strong> has an account, you'll receive a password reset link shortly.
+          </div>
+          <button type="button" onClick={()=>{ setView("login"); setResetEmail(""); }}
+            style={{ width:"100%", padding:"12px 0", borderRadius:8, border:"none",
+              background:C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700,
+              cursor:"pointer", boxShadow:`0 2px 12px ${C.accent}40` }}>
+            Back to Sign In
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
-        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-        body{background:${C.bg};-webkit-font-smoothing:antialiased;}
-        @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
-      `}</style>
+      <style>{sharedStyles}</style>
 
       <div style={{ width:380, animation:"slideUp .3s ease" }}>
         <div style={{ textAlign:"center", marginBottom:32 }}>
@@ -16605,8 +16804,15 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
                 background:C.bg, color:C.text, fontSize:13, fontFamily:body, outline:"none" }} />
           </div>
 
-          <div style={{ marginBottom:20 }}>
-            <label style={{ display:"block", fontSize:11, fontFamily:mono, color:C.muted, marginBottom:5 }}>PASSWORD</label>
+          <div style={{ marginBottom:8 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+              <label style={{ fontSize:11, fontFamily:mono, color:C.muted }}>PASSWORD</label>
+              <button type="button" onClick={()=>{ setView("forgot"); setResetEmail(email); setResetError(""); }}
+                style={{ fontSize:11, fontFamily:body, color:C.accent, background:"none",
+                  border:"none", cursor:"pointer", padding:0 }}>
+                Forgot password?
+              </button>
+            </div>
             <input type="password" value={password} autoComplete="current-password"
               onChange={e=>{ setPassword(e.target.value); setError(false); }}
               style={{ width:"100%", padding:"10px 12px", borderRadius:8,
@@ -16616,10 +16822,12 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
 
           {error && (
             <div style={{ fontSize:12, color:C.red, fontFamily:body, marginBottom:14,
-              background:C.red+"11", padding:"8px 12px", borderRadius:7, border:`1px solid ${C.red}22` }}>
+              background:C.red+"11", padding:"8px 12px", borderRadius:7, border:`1px solid ${C.red}22`, marginTop:8 }}>
               Incorrect email or password, or account is inactive.
             </div>
           )}
+
+          <div style={{ height: error ? 0 : 12 }} />
 
           <button type="submit" disabled={loading || !email.trim() || !password.trim()}
             style={{ width:"100%", padding:"12px 0", borderRadius:8, border:"none",
@@ -17863,28 +18071,18 @@ const IS_ADMIN_DOMAIN = window.location.hostname.startsWith("admin.") ||
   new URLSearchParams(window.location.search).get("admin") === "1";
 const IS_LOCALHOST    = ["localhost","127.0.0.1","app.local"].includes(window.location.hostname);
 
-function PortalRoute() {
-  const { token } = useParams<{ token: string }>();
-  return <ClientPortal id={token!} />;
-}
-
 export default function App() {
   if (IS_ADMIN_DOMAIN) return <AdminGate />;
 
-  // Legacy ?export=<id> links — redirect to hash route so old shared links still work
-  const exportId = new URLSearchParams(window.location.search).get("export");
-  if (exportId) {
-    window.location.replace(`${window.location.pathname}#/portal/${exportId}`);
-    return null;
+  // Supabase password-recovery redirect — tokens land in the URL hash
+  const _hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  if (_hashParams.get("type") === "recovery" && _hashParams.get("access_token")) {
+    return <ResetPasswordScreen />;
   }
 
   return (
     <HashRouter>
       <Routes>
-        <Route path="/portal/:token" element={<PortalRoute />} />
-        <Route path="/workspace/:id" element={<WorkspaceShell />} />
-        <Route path="/workspaces" element={<WorkspaceList />} />
-        <Route path="/churn-analyzer" element={<ChurnAnalyzer />} />
         <Route path="/*" element={<AppMain />} />
       </Routes>
     </HashRouter>
@@ -17972,7 +18170,7 @@ function AppMain() {
   const [showReview,     setShowReview]     = useState(false);
   const currentRole = "team"; // Internal tool only — no client view
   const [activeWorkspace,setActiveWorkspace]= useState(null);
-  const [appMode,        setAppMode]        = useState<"app"|"admin"|"v2">("app");
+  const [appMode,        setAppMode]        = useState<"app"|"admin">("app");
   const [apiKey,         setApiKey]         = useState(() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } });
   const [openaiKey,      setOpenaiKey]      = useState(() => { try { return localStorage.getItem("b2br_openai_key") || ""; } catch { return ""; } });
   const [geminiKey,      setGeminiKey]      = useState(() => { try { return localStorage.getItem("b2br_gemini_key") || ""; } catch { return ""; } });
@@ -18046,6 +18244,7 @@ function AppMain() {
   const [lpResult,   setLpResult]   = useState<any>(null);
   const [lpTab,      setLpTab]      = useState<"research"|"infrastructure"|"campaigns"|"onboarding"|"export">("research");
   const [navExpanded, setNavExpanded] = useState(false);
+  const [icpTree,     setIcpTree]     = useState<any>(null);
 
 
   // Toast policy: ruthlessly trim. Only *true emergencies* surface as a popup:
@@ -18229,6 +18428,7 @@ function AppMain() {
     setBattlecards(saved?.battlecards ?? []);
     setDfySetup(saved?.dfySetup ?? { tlds:[".com"], domainCount:67, mailboxCount:201, customAmount:false, forwardingDomain:"", forwardingVerified:null, mailboxNames:[], suggestedDomains:[], approvedDomains:[] });
     setCallRecords(saved?.callRecords ?? []);
+    setIcpTree(saved?.icpTree ?? null);
     // Migrate legacy hubspot_email → type:email + source:hubspot so they show in filters
     const rawComms = saved?.slackComms ?? [];
     const migratedComms = rawComms.map((c:any) => c.type === "hubspot_email" ? { ...c, type: "email", source: "hubspot" } : c);
@@ -18372,7 +18572,7 @@ function AppMain() {
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
     if (!activeWorkspace || loadingRef.current) return;
-    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, rtsLists, playbooks, contentAssets, battlecards, dfySetup, callRecords, slackComms, aiAnalyses, lpResult });
+    saveWorkspaceData(activeWorkspace.id, { companyData, companyConf, icps, chats, perfLogs, roiConfig, wsFiles, wsLinks, products, offers, strategy, campaigns, rtsLists, playbooks, contentAssets, battlecards, dfySetup, callRecords, slackComms, aiAnalyses, lpResult, icpTree });
     // Build the global full-context snapshot — every AI generator calling with useFullContext:true reads this.
     (window as any).__workspaceCtx = buildFullContext({
       companyData, products, personas: icps, campaigns, strategy, offers, rtsLists, playbooks, battlecards, contentAssets, dfySetup, roiConfig, perfLogs, callRecords, slackComms, wsFiles, wsLinks,
@@ -20756,7 +20956,7 @@ Return ONLY valid JSON:
           let raw = "";
           try {
             raw = await callAI(
-              `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\n\nALL PERSONAS (ensure yours is DISTINCT):\n${personaDedup}\n\nReturn ONLY JSON with ALL fields:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1-50","Mid-Market 51-500"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","best_channel":"","best_time":""},"confidence":{}}`,
+              `Draft a COMPLETE B2B persona for cold outreach. Fill EVERY field — no empty values.\n\n${NAMING_RULES.persona}\n\nCompany: ${coFields.co_name||""} (${coFields.co_industry||""})\nValue Prop: ${coFields.co_pitch||""}\nPersona: ${pe.name} — ${pe.buyerTitles||""}\nIndustries: ${pe.industries||""}\nPrimary pain: ${pe.primaryPain||""}\n\nALL PERSONAS (ensure yours is DISTINCT):\n${personaDedup}\n\nReturn ONLY JSON with ALL fields:\n{"name":"","fields":{"industries":"","co_sizes":["SMB 1-50","Mid-Market 51-500"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""},"confidence":{}}\n\ntone: one of "Consultative & Educational"|"Direct & Punchy"|"Casual & Conversational"|"Formal & Executive"|"Data-driven & Analytical"|"Blue Collar & Human"|"Blunt & Edgy"|"Confrontational"\ncta: one of "15-min call ask"|"Soft permission (\'worth a chat?\')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"\nbest_channel: one of "Email"|"LinkedIn"|"Phone"|"Multi-channel (Email + LinkedIn)"|"Multi-channel (All)"\nlinkedin_activity: one of "Very Active (posts/comments weekly)"|"Moderate (engages occasionally)"|"Low (profile exists, rarely active)"|"Inactive / No profile"\nphone_accessibility: one of "Direct dial available"|"Mobile available"|"Gatekeeper (assistant)"|"Voicemail only"|"Not available / don\'t call"\nRaw JSON only.`,
               "", attempt === 1 ? 6000 : 8000, { useFullContext: true }
             );
             const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
@@ -21272,7 +21472,6 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
   if (!loggedInUser) return <UserLoginGate onLogin={handleUserLogin} />;
 
   if (appMode === "admin") return <AdminPanel onClose={() => setAppMode("app")} />; // localhost dev shortcut
-  if (appMode === "v2") return <AppV2 onExit={() => setAppMode("app")} clients={loadClients()} users={loadUsers()} loggedInUser={loggedInUser} />;
 
   return (
     <>
@@ -21379,6 +21578,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                 { id:"icps",     label:"Personas",       icon:"◑", sub:`${icps.length} persona${icps.length!==1?"s":""}` },
                 { id:"strategy",  label:"Strategy",          icon:"◎", sub:strategy?.phases?.length?`${strategy.phases.length} phases`:"not started" },
                 { id:"campaigns", label:"Campaigns",         icon:"⊕", sub:`${campaigns.length} campaign${campaigns.length!==1?"s":""}` },
+                { id:"icp-tree",  label:"ICP Tree",          icon:"⎇", sub:icpTree ? `${icpTree.stats?.total_plays_authored||0} plays` : "not generated" },
                 { id:"analytics",label:"Analytics",          icon:"⊙", sub:`${perfLogs.length} entr${perfLogs.length!==1?"ies":"y"}` },
                 { id:"files",    label:"My Files",           icon:"◇", sub:`${wsFiles.length} file${wsFiles.length!==1?"s":""}` },
               ];
@@ -21642,6 +21842,20 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                     </button>
                   )}
 
+                  {/* ICP Tree */}
+                  {currentRole !== "client" && (
+                    <button onClick={()=>guardedNav(()=>setView("icp-tree"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: view==="icp-tree" ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(view!=="icp-tree")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(view!=="icp-tree")(e.currentTarget as HTMLButtonElement).style.background=view==="icp-tree"?`${C2.accent}14`:"transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="icp-tree"?C2.accent:C2.muted }}>⎇</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="icp-tree"?700:500, color:view==="icp-tree"?C2.text:C2.textSoft }}>ICP Tree</span>
+                    </button>
+                  )}
+
                   {/* ── RESOURCES ── */}
                   <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
@@ -21753,44 +21967,6 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                       <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:C.textSoft }}>Client Accounts</span>
                     </button>
                   )}
-
-                  {/* CX Workspaces */}
-                  {currentRole === "team" && (
-                    <a href="/#/workspaces"
-                      onClick={()=>setProfileMenuOpen(false)}
-                      style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
-                        borderRadius:7, border:"none", background:"transparent", cursor:"pointer", textAlign:"left",
-                        textDecoration:"none", transition:"background .12s" }}
-                      onMouseEnter={e=>{ (e.currentTarget as HTMLAnchorElement).style.background=C.faint; }}
-                      onMouseLeave={e=>{ (e.currentTarget as HTMLAnchorElement).style.background="transparent"; }}>
-                      <span style={{ fontSize:13, width:18, textAlign:"center", color:C.accent }}>◈</span>
-                      <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:C.accent }}>CX Workspaces</span>
-                    </a>
-                  )}
-
-                  {/* Churned VIP Analyzer */}
-                  {currentRole === "team" && (
-                    <a href="/#/churn-analyzer"
-                      onClick={()=>setProfileMenuOpen(false)}
-                      style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
-                        borderRadius:7, border:"none", background:"transparent", cursor:"pointer", textAlign:"left",
-                        textDecoration:"none", transition:"background .12s" }}
-                      onMouseEnter={e=>{ (e.currentTarget as HTMLAnchorElement).style.background=C.faint; }}
-                      onMouseLeave={e=>{ (e.currentTarget as HTMLAnchorElement).style.background="transparent"; }}>
-                      <span style={{ fontSize:13, width:18, textAlign:"center", color:C.muted }}>↩</span>
-                      <span style={{ fontSize:12, fontFamily:head, fontWeight:500, color:C.textSoft }}>Churned VIP Analyzer</span>
-                    </a>
-                  )}
-
-                  {/* Version 2 */}
-                  <button onClick={()=>{ setProfileMenuOpen(false); setAppMode("v2"); }}
-                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"8px 10px",
-                      borderRadius:7, border:"none", background:"transparent", cursor:"pointer", textAlign:"left", transition:"background .12s" }}
-                    onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.background=C.faint; }}
-                    onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                    <span style={{ fontSize:11, width:18, textAlign:"center", color:C.accent, fontWeight:700, fontFamily:"monospace" }}>V2</span>
-                    <span style={{ fontSize:12, fontFamily:head, fontWeight:600, color:C.accent }}>Version 2</span>
-                  </button>
 
                   {/* Admin Panel — admin only */}
                   {loggedInUser?.role === "admin" && (
@@ -26752,6 +26928,17 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
             {view==="files" && (
               <div style={{ animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)", willChange:"opacity, filter" }}>
               <FilesPanel files={wsFiles} onFilesChange={setWsFiles} links={wsLinks} onLinksChange={setWsLinks} onUploadFiles={handleUploadFiles} />
+              </div>
+            )}
+
+            {view==="icp-tree" && (
+              <div style={{ position:"absolute" as const, inset:0, animation:"pageFade .7s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <ICPTreeGenerator
+                  ws={{ companyData, icps, products, icpTree }}
+                  onSave={(updates) => {
+                    if (updates.icpTree !== undefined) setIcpTree(updates.icpTree);
+                  }}
+                />
               </div>
             )}
 
