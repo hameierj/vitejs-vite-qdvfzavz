@@ -15136,6 +15136,7 @@ type UserRecord = {
   role: "team" | "client";
   status: "active" | "inactive";
   createdAt: string;
+  lastLogin?: string;
 };
 
 const ENV_USERS: UserRecord[] = [];
@@ -15702,11 +15703,11 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
           {/* Table */}
           <div style={{ background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`, overflow:"hidden" }}>
             {/* Table header */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 90px",
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 140px 90px",
               padding:"10px 20px", borderBottom:`1px solid ${_C.border}`, gap:12 }}>
-              {["Name","Email","Role","Status",""].map((h,i) => (
+              {["Name","Email","Role","Status","Last Login",""].map((h,i) => (
                 <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
-                  color:_C.muted, letterSpacing:.5, textAlign: i===4?"right":"left" }}>{h}</div>
+                  color:_C.muted, letterSpacing:.5, textAlign: i===5?"right":"left" }}>{h}</div>
               ))}
             </div>
 
@@ -15721,8 +15722,11 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
               const sc = statusColor(u.status);
               const initials = u.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
               const av = avatarColor(u.name);
+              const lastLoginStr = u.lastLogin
+                ? new Date(u.lastLogin).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})
+                : "—";
               return (
-                <div key={u.id} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 90px",
+                <div key={u.id} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 140px 90px",
                   padding:"13px 20px", gap:12, alignItems:"center",
                   borderBottom: idx < filtered.length-1 ? `1px solid ${_C.border}` : "none",
                   transition:"background .12s" }}
@@ -15762,6 +15766,8 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
                       {u.status === "active" ? "Active" : "Inactive"}
                     </span>
                   </div>
+                  {/* Last Login */}
+                  <div style={{ fontSize:11, color:_C.muted, fontFamily:mono }}>{lastLoginStr}</div>
                   {/* Actions */}
                   <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
                     <button onClick={()=>openEdit(u)} title="Edit"
@@ -18355,9 +18361,14 @@ function AppMain() {
   }, [activeWorkspace]);
 
   const handleUserLogin = (user: UserRecord) => {
-    setLoggedInUser(user);
+    const now = new Date().toISOString();
+    const updated = { ...user, lastLogin: now };
+    setLoggedInUser(updated);
     setCurrentRole(user.role);
     setApiLogUser(user.id, user.email);
+    const allUsers = loadUsers();
+    const idx = allUsers.findIndex(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
+    if (idx !== -1) { allUsers[idx] = { ...allUsers[idx], lastLogin: now }; saveUsers(allUsers); }
   };
 
   const handleUserSignOut = () => {
