@@ -15380,7 +15380,7 @@ const saveWorkspaceData = (clientId: string, data: object) => {
 
 const EMPTY_CLIENT: Omit<ClientRecord, "id"|"createdAt"> = { name:"", industry:"", status:"active", assignedUserId:null };
 
-function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () => void }) {
+function AdminPanel({ onClose, signOut, cloudSynced }: { onClose: () => void; signOut?: () => void; cloudSynced?: boolean }) {
   const _v2 = (() => { try { return localStorage.getItem("b2br_v2") === "1"; } catch { return false; } })();
   const _C = _v2 ? C2 : C;
   const [section,   setSection]   = useState<"users"|"clients"|"logs">("users");
@@ -15396,6 +15396,11 @@ function AdminPanel({ onClose, signOut }: { onClose: () => void; signOut?: () =>
   const persistUsers = (next: UserRecord[]) => { setUsers(next); saveUsers(next); };
   const openAddUser = () => { setUserForm({...EMPTY_USER}); setEditingUser(null); setUserModal("add"); };
   const openEditUser = (u: UserRecord) => { setUserForm({ name:u.name, email:u.email, password:"", role:u.role, status:u.status }); setEditingUser(u); setUserModal("edit"); };
+
+  // Reload clients and users from localStorage once cloud sync completes
+  useEffect(() => {
+    if (cloudSynced) { setUsers(loadUsers()); setClients(loadClients()); }
+  }, [cloudSynced]);
 
   // ── Clients state ──
   const [clients,      setClients]     = useState<ClientRecord[]>(loadClients);
@@ -21471,7 +21476,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
 
   if (!loggedInUser) return <UserLoginGate onLogin={handleUserLogin} />;
 
-  if (appMode === "admin") return <AdminPanel onClose={() => setAppMode("app")} />; // localhost dev shortcut
+  if (appMode === "admin") return <AdminPanel onClose={() => setAppMode("app")} cloudSynced={cloudSynced} />; // localhost dev shortcut
 
   return (
     <>
