@@ -21572,9 +21572,9 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
 
         {/* ── SIDEBAR ── */}
         {(() => {
-          const allAcctClients = loadClients().filter(c => c.status === "active" && (
-            currentRole !== "team" || !loggedInUser || c.assignedUserId === loggedInUser.id
-          ));
+          const allAcctClients = cloudSynced
+            ? loadClients().filter(c => c.status === "active" && (currentRole !== "team" || !loggedInUser || c.assignedUserId === loggedInUser.id))
+            : [];
           const wsNavItems = currentRole === "client"
             ? [{ id:"icps", label:"Personas", icon:"◑", sub:`${icpsWithOutputs} ready` }]
             : [
@@ -22083,10 +22083,10 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
-            const allClts = loadClients().filter(c => c.status === "active");
+            const allClts = (cloudSynced ? loadClients() : []).filter(c => c.status === "active");
             const allUsrs = loadUsers();
             const myClts  = loggedInUser
-              ? allClts.filter(c => !loggedInUser || c.assignedUserId === loggedInUser.id || allClts.length > 0)
+              ? allClts.filter(c => c.assignedUserId === loggedInUser.id)
               : allClts;
             const filteredAccts = myClts.filter(c =>
               c.name.toLowerCase().includes(acctSearch.toLowerCase()) ||
