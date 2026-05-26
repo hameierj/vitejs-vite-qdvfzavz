@@ -273,16 +273,11 @@ async function syncFromCloud() {
         if (k.startsWith("b2br_ws_")) localStorage.removeItem(k);
       }
     }
-    // Sync users — same merge strategy
+    // Sync users — cloud is source of truth (supports deletions)
     const cloudUsers = await dbGet("app_data", "users");
     if (controller.signal.aborted) throw new Error("timeout");
     if (cloudUsers) {
-      const localU: any[] = (() => { try { return JSON.parse(localStorage.getItem("b2br_users") || "[]"); } catch { return []; } })();
-      const cloudUIds = new Set(cloudUsers.map((u: any) => u.id));
-      const localUOnly = localU.filter((u: any) => !cloudUIds.has(u.id));
-      const mergedU = [...cloudUsers, ...localUOnly];
-      try { localStorage.setItem("b2br_users", JSON.stringify(mergedU)); } catch {}
-      if (localUOnly.length > 0) dbPut("app_data", "users", mergedU).catch(() => {});
+      try { localStorage.setItem("b2br_users", JSON.stringify(cloudUsers)); } catch {}
     }
     // Sync all workspaces — wrap each write individually so one quota failure doesn't abort the rest
     const workspaces = await dbGetAll("app_data", "ws_");
