@@ -255,17 +255,11 @@ async function syncFromCloud() {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    // Sync clients — merge with local to preserve any just-created records not yet in Supabase
+    // Sync clients — cloud is source of truth (supports deletions)
     const cloudClients = await dbGet("app_data", "clients");
     if (controller.signal.aborted) throw new Error("timeout");
     if (cloudClients) {
-      const local: any[] = (() => { try { return JSON.parse(localStorage.getItem("b2br_clients") || "[]"); } catch { return []; } })();
-      const cloudIds = new Set(cloudClients.map((c: any) => c.id));
-      const localOnly = local.filter((c: any) => !cloudIds.has(c.id));
-      const merged = [...cloudClients, ...localOnly];
-      try { localStorage.setItem("b2br_clients", JSON.stringify(merged)); } catch {}
-      // Push any locally-created clients that haven't reached Supabase yet
-      if (localOnly.length > 0) dbPut("app_data", "clients", merged).catch(() => {});
+      try { localStorage.setItem("b2br_clients", JSON.stringify(cloudClients)); } catch {}
     } else {
       // Cloud has no clients — wipe stale local cache so deleted data doesn't persist
       try { localStorage.setItem("b2br_clients", "[]"); } catch {}
