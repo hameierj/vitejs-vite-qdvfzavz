@@ -21579,7 +21579,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
         {/* ── SIDEBAR ── */}
         {(() => {
           const allAcctClients = loadClients().filter(c => c.status === "active" && (
-            currentRole !== "team" || !loggedInUser || loadClients().find(x=>x.id===c.id)
+            currentRole !== "team" || !loggedInUser || c.assignedUserId === loggedInUser.id
           ));
           const wsNavItems = currentRole === "client"
             ? [{ id:"icps", label:"Personas", icon:"◑", sub:`${icpsWithOutputs} ready` }]
