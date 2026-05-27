@@ -4,6 +4,11 @@ import mammoth from "mammoth";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Routes, Route, useParams, HashRouter, useNavigate } from "react-router-dom";
 import { ICPTreeGenerator } from "./components/stages/ICPTreeGenerator";
+import { OnboardingChecklist } from "./components/onboarding/OnboardingChecklist";
+import { InitialResearchBrief } from "./components/onboarding/InitialResearchBrief";
+import { ICPScoringMatrix } from "./components/onboarding/ICPScoringMatrix";
+import { CampaignPlanningBoard } from "./components/onboarding/CampaignPlanningBoard";
+import { ClientIntakeFormPage } from "./components/onboarding/ClientIntakeForm";
 import { PRODUCT_SECTIONS, ICP_SECTIONS } from "./lib/schemas";
 import {
   Upload, Sparkles, Mail, Search, ShieldCheck, Users,
@@ -1137,6 +1142,7 @@ function getWorkspaceStage(data: any, extra: { campaigns?: any[]; strategy?: any
   const hasHandoff = !!data?._handoffBrief;
   const hasOnboardingTranscript = false; // callers pass extra if they want to detect this; keep simple
   const hasAnyCoreResearch = !!(data?.co_name || data?.co_pitch || data?.co_industry);
+  const hasInitialResearch = !!(data?._initialResearchBrief);
 
   if (hasLiveCampaign) {
     // Count iteration activity to distinguish live from optimizing
@@ -1147,7 +1153,7 @@ function getWorkspaceStage(data: any, extra: { campaigns?: any[]; strategy?: any
   if (isWarmupDone) return { stage: "launching", source: "inferred" };
   if (purchasedAt) return { stage: "warming_up", source: "inferred" };
   if (hasStrategy) return { stage: "onboarding", source: "inferred" };
-  if (hasHandoff || hasAnyCoreResearch) return { stage: "pre_onboarding", source: "inferred" };
+  if (hasHandoff || hasAnyCoreResearch || hasInitialResearch) return { stage: "pre_onboarding", source: "inferred" };
   return { stage: "new", source: "inferred" };
 }
 
@@ -18083,6 +18089,7 @@ export default function App() {
   return (
     <HashRouter>
       <Routes>
+        <Route path="/intake/:token" element={<ClientIntakeFormPage />} />
         <Route path="/*" element={<AppMain />} />
       </Routes>
     </HashRouter>
@@ -18245,6 +18252,12 @@ function AppMain() {
   const [lpTab,      setLpTab]      = useState<"research"|"infrastructure"|"campaigns"|"onboarding"|"export">("research");
   const [navExpanded, setNavExpanded] = useState(false);
   const [icpTree,     setIcpTree]     = useState<any>(null);
+  const [wsShareToken, setWsShareToken] = useState<string|null>(null);
+  const [researchState, setResearchState] = useState<"idle"|"running"|"done">("idle");
+  const [researchLog,   setResearchLog]   = useState<string[]>([]);
+  const [icpScoringState, setIcpScoringState] = useState<"idle"|"scoring"|"done">("idle");
+  const [campaignPlanIcp, setCampaignPlanIcp] = useState<any>(null);
+  const [campaignPlanScore, setCampaignPlanScore] = useState<any>(null);
 
 
   // Toast policy: ruthlessly trim. Only *true emergencies* surface as a popup:
@@ -18573,6 +18586,14 @@ function AppMain() {
     // Allow save effects to fire after state settles
     requestAnimationFrame(() => { loadingRef.current = false; });
   }, [activeWorkspace?.id]);
+
+  // Fetch share_token for intake form link whenever active workspace changes
+  useEffect(() => {
+    if (!activeWorkspace || !supabase) { setWsShareToken(null); return; }
+    supabase.from("workspaces").select("share_token").eq("id", (activeWorkspace as any).id).single()
+      .then(({ data }) => { if (data?.share_token) setWsShareToken(data.share_token); })
+      .catch(() => {});
+  }, [(activeWorkspace as any)?.id]);
 
   // ── Workspace data: save whenever data changes ──
   useEffect(() => {
@@ -20722,6 +20743,138 @@ Return ONLY valid JSON:
     return `${window.location.origin}${window.location.pathname}?export=${id}`;
   };
 
+  const handleStartResearch = async (inputDomain: string) => {
+    setResearchState("running");
+    setResearchLog([]);
+    const log: string[] = [];
+    const addLog = (m: string) => { log.push(m); setResearchLog([...log]); };
+
+    try {
+      let normUrl = inputDomain.trim();
+      if (normUrl && !/^https?:\/\//i.test(normUrl)) normUrl = `https://${normUrl}`;
+      const domain = normUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+
+      addLog("Fetching homepage...");
+      let pageContent = "";
+      try {
+        const jinaResp = await fetch(`https://r.jina.ai/${normUrl}`, { signal: AbortSignal.timeout(20000) });
+        if (jinaResp.ok) {
+          pageContent = (await jinaResp.text()).slice(0, 12000);
+          addLog(`Fetched homepage (${Math.round(pageContent.length / 100) / 10}k chars)`);
+        }
+      } catch { addLog("Warning: could not fetch homepage — proceeding with limited data"); }
+
+      // Try to fetch one product/about page for more context
+      const extraPaths = ["/products", "/services", "/solutions", "/about", "/platform"];
+      for (const path of extraPaths) {
+        try {
+          const r = await fetch(`https://r.jina.ai/${normUrl}${path}`, { signal: AbortSignal.timeout(10000) });
+          if (r.ok) {
+            const t = (await r.text()).slice(0, 6000);
+            if (t.length > 500) { pageContent += `\n\n${path.toUpperCase()} PAGE:\n${t}`; addLog(`Fetched ${path}`); break; }
+          }
+        } catch { /* skip */ }
+      }
+
+      addLog("Analyzing with Claude...");
+      const apiKey = (() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } })();
+      if (!apiKey) throw new Error("No Anthropic API key. Add it in API Keys settings.");
+
+      const prompt = `Analyze the following website content for ${domain} and produce a comprehensive pre-onboarding research brief for a B2B outreach team.
+
+WEBSITE CONTENT:
+${pageContent || "(no content fetched — use domain knowledge about " + domain + ")"}
+
+DOMAIN: ${domain}
+
+Return a JSON object:
+{
+  "generatedAt": "${new Date().toISOString()}",
+  "domain": "${domain}",
+  "sources": ["${normUrl}"],
+  "companyOverview": {
+    "name": "company name",
+    "size": "estimated employee count or range",
+    "stage": "startup/growth/established/enterprise",
+    "businessModel": "B2B SaaS / agency / services / marketplace / etc."
+  },
+  "productsServices": [
+    { "name": "product name", "description": "what it does in 1-2 sentences", "targetBuyer": "who buys this", "differentiator": "what makes it different" }
+  ],
+  "valuePropositions": [
+    { "claim": "specific value claim", "evidence": "supporting evidence if any", "quantified": true/false }
+  ],
+  "targetMarketEvidence": {
+    "industries": ["industry1", "industry2"],
+    "companySizes": ["size range"],
+    "knownCustomers": ["customer1 if mentioned"]
+  },
+  "competitivePositioning": {
+    "category": "market category",
+    "mainCompetitors": ["competitor1"],
+    "differentiators": ["differentiator1", "differentiator2"]
+  },
+  "icpHypotheses": [
+    { "name": "ICP name e.g. 'Mid-Market SaaS — VP Sales'", "rationale": "why this is likely an ICP", "confidence": "high/medium/low", "signals": ["signal1", "signal2"] }
+  ],
+  "recommendedAngles": [
+    { "angle": "outbound angle name", "why": "why this angle works for this company", "bestChannel": "email/linkedin", "suggestedHook": "a concrete hook sentence to test" }
+  ],
+  "callPrepNotes": "A bulleted list of 5-8 things the CSM should confirm, ask, or validate during the onboarding call. Focus on gaps in the research and hypotheses that need validation.",
+  "confidenceNotes": "1 sentence about the quality/completeness of the research — what was unclear or missing"
+}
+
+Return only valid JSON. Be specific and concrete — no vague marketing language.`;
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 4000,
+          system: "You are a senior B2B go-to-market researcher. Return only valid JSON.",
+          messages: [{ role: "user", content: prompt }],
+        }),
+        signal: AbortSignal.timeout(55000),
+      });
+
+      if (!resp.ok) throw new Error(`Claude error ${resp.status}`);
+      const data = await resp.json();
+      const raw = data.content?.[0]?.text || "";
+
+      // Parse JSON from response
+      let brief: any = null;
+      try {
+        const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/s);
+        brief = JSON.parse(match ? match[1] : raw);
+      } catch { brief = { generatedAt: new Date().toISOString(), domain, sources: [normUrl], callPrepNotes: raw, confidenceNotes: "Parse error — raw output shown in call prep notes." }; }
+
+      addLog("Brief generated");
+
+      setCompanyData((prev: any) => ({ ...prev, _initialResearchBrief: brief }));
+      setResearchState("done");
+
+    } catch (e: any) {
+      addLog(`Error: ${e.message || e}`);
+      setResearchState("idle");
+    }
+  };
+
+  const handleCopyIntakeLink = () => {
+    const token = wsShareToken;
+    if (!token) { addToast({ title:"No intake link available", status:"error", message:"Workspace not found in database. Re-open this account and try again." }); return; }
+    const url = `${window.location.origin}${window.location.pathname}#/intake/${token}`;
+    try { navigator.clipboard.writeText(url); } catch {
+      const el = document.createElement("input");
+      el.value = url; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
+    }
+  };
+
   const runLaunchPad = async (inputUrl: string, extraText: string, linkedinUrl: string = "", extraUrlsText: string = "", offeringsOverride: string = "", playbookKey: PlaybookKey = "auto", salesContext: string = "") => {
     const wsId = activeWorkspace ? (activeWorkspace as any).id : null;
     setLpState("running");
@@ -21861,6 +22014,20 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                     </button>
                   )}
 
+                  {/* Onboarding Hub */}
+                  {currentRole !== "client" && (
+                    <button onClick={()=>guardedNav(()=>setView("onboarding-hub"))}
+                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                        borderRadius:12, border:"none",
+                        background: ["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view) ? `${C2.accent}14` : "transparent",
+                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                      onMouseEnter={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view))(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view)?C2.accent:C2.muted }}>◉</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view)?700:500, color:["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view)?C2.text:C2.textSoft }}>Onboarding Hub</span>
+                    </button>
+                  )}
+
                   {/* ── RESOURCES ── */}
                   <div style={{ height:1, background:C2.border, margin:"8px 4px 10px" }} />
                   <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.6,
@@ -22079,7 +22246,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -22618,11 +22785,14 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                         onClick: () => hasHandoff ? setView("profile") : setView("integrations"),
                       };
                     } else if (stage === "pre_onboarding") {
+                      const hasResearch = !!(companyData as any)._initialResearchBrief;
                       nextAction = {
-                        title: "Prep for the onboarding call",
-                        desc: "Review the handoff brief + skim Business Profile. After the call, upload the transcript and implementation doc to sync fields across the platform.",
-                        cta: "Open Client Intel",
-                        onClick: () => setView("calls"),
+                        title: hasResearch ? "Review research brief and prep for onboarding call" : "Run AI research on this client",
+                        desc: hasResearch
+                          ? "AI research brief is ready — review it before the onboarding call, then share the intake form with your client."
+                          : "Enter the client's website URL to generate a deep pre-call research brief automatically.",
+                        cta: "Open Onboarding Hub",
+                        onClick: () => setView("onboarding-hub"),
                       };
                     } else if (stage === "onboarding") {
                       nextAction = hasStrategyPhases ? {
@@ -26943,6 +27113,62 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   onSave={(updates) => {
                     if (updates.icpTree !== undefined) setIcpTree(updates.icpTree);
                   }}
+                />
+              </div>
+            )}
+
+            {view==="onboarding-hub" && (
+              <div style={{ overflow:"auto", height:"100%", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <OnboardingChecklist
+                  companyData={companyData}
+                  icpTree={icpTree}
+                  campaigns={campaigns}
+                  callRecords={callRecords}
+                  onNavigate={(v) => setView(v)}
+                  onStartResearch={() => { setView("research-brief"); }}
+                  onCopyIntakeLink={handleCopyIntakeLink}
+                  onOpenIcpScoring={() => { setCampaignPlanIcp(null); setView("icp-scoring"); }}
+                />
+              </div>
+            )}
+
+            {view==="research-brief" && (
+              <div style={{ overflow:"auto", height:"100%", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <InitialResearchBrief
+                  brief={(companyData as any)?._initialResearchBrief ?? null}
+                  generating={researchState === "running"}
+                  genLog={researchLog}
+                  onGenerate={(domain) => handleStartResearch(domain)}
+                  onMarkReviewed={() => setCompanyData((prev:any) => ({ ...prev, _researchBriefReviewed: true }))}
+                  reviewed={!!(companyData as any)?._researchBriefReviewed}
+                />
+              </div>
+            )}
+
+            {view==="icp-scoring" && !campaignPlanIcp && (
+              <div style={{ position:"absolute" as const, inset:0, overflow:"auto", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <ICPScoringMatrix
+                  ws={{ companyData, icps, products, icpTree }}
+                  scoringResult={(companyData as any)?._icpScoringResult ?? null}
+                  onSave={(updates) => { setCompanyData((prev:any) => ({ ...prev, ...(updates.companyData || {}) })); }}
+                  onPlanCampaign={(icp, scoreRow) => { setCampaignPlanIcp(icp); setCampaignPlanScore(scoreRow); setView("campaign-plan"); }}
+                />
+              </div>
+            )}
+
+            {view==="campaign-plan" && campaignPlanIcp && (
+              <div style={{ position:"absolute" as const, inset:0, overflow:"auto", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <CampaignPlanningBoard
+                  icp={campaignPlanIcp}
+                  scoreRow={campaignPlanScore}
+                  companyData={companyData}
+                  products={products}
+                  campaigns={campaigns}
+                  onSave={(updates) => {
+                    if (updates.companyData) setCompanyData((prev:any) => ({ ...prev, ...updates.companyData }));
+                    if (updates.campaigns) setCampaigns(updates.campaigns);
+                  }}
+                  onClose={() => { setCampaignPlanIcp(null); setView("icp-scoring"); }}
                 />
               </div>
             )}
