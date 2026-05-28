@@ -17252,6 +17252,39 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
   const [salesTranscript, setSalesTranscript] = useState("");
   const [expandedGroup, setExpandedGroup] = useState<string|null>(null);
   const [seqTab, setSeqTab] = useState<Record<string,"strategy"|"email"|"linkedin">>({});
+  const [copiedGroup, setCopiedGroup] = useState<string|null>(null);
+
+  const copyGroup = (g: any) => {
+    const lines: string[] = [];
+    lines.push(`CAMPAIGN — ${g.productName} × ${g.personaName}`);
+    lines.push("=".repeat(60));
+    if (g.rationale) lines.push(`\nRATIONALE\n${g.rationale}`);
+    if (g.emailStrategy) { lines.push("\n" + "=".repeat(60)); lines.push("EMAIL STRATEGY BRIEF"); lines.push("=".repeat(60)); lines.push(g.emailStrategy); }
+    if (g.linkedinStrategy) { lines.push("\n" + "=".repeat(60)); lines.push("LINKEDIN STRATEGY BRIEF"); lines.push("=".repeat(60)); lines.push(g.linkedinStrategy); }
+    if ((g.emailSequence||[]).length) {
+      lines.push("\n" + "=".repeat(60));
+      lines.push("EMAIL SEQUENCE");
+      lines.push("=".repeat(60));
+      (g.emailSequence as any[]).forEach((s: any) => {
+        lines.push(`\nStep ${s.stepNumber??""} — Day +${s.dayOffset??0}${s.role ? ` [${s.role}]` : ""}`);
+        if (s.subject) lines.push(`Subject: ${s.subject}`);
+        lines.push(s.body || "");
+      });
+    }
+    if ((g.linkedinSequence||[]).length) {
+      lines.push("\n" + "=".repeat(60));
+      lines.push("LINKEDIN SEQUENCE");
+      lines.push("=".repeat(60));
+      (g.linkedinSequence as any[]).forEach((s: any) => {
+        lines.push(`\nStep ${s.stepNumber??""} — Day +${s.dayOffset??0}${s.role ? ` [${s.role}]` : ""}`);
+        lines.push(s.body || "");
+      });
+    }
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopiedGroup(g.id);
+      setTimeout(() => setCopiedGroup(null), 2000);
+    });
+  };
   const [obTranscript, setObTranscript] = useState<string>(lpResult?.onboarding?.transcript || "");
   const [obImplForm, setObImplForm] = useState<string>(lpResult?.onboarding?.implementationForm || "");
   const [obDirection, setObDirection] = useState<string>(lpResult?.onboarding?.additionalContext || "");
@@ -17867,7 +17900,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
 
                       {isOpen && (
                         <div>
-                          {/* Channel tabs: Strategy | divider | Email | LinkedIn */}
+                          {/* Channel tabs: Strategy | divider | Email | LinkedIn | Copy All */}
                           <div style={{ display:"flex", alignItems:"center", padding:"0 20px", borderBottom:`1px solid ${C2.border}` }}>
                             {(["strategy","email","linkedin"] as const).map((t, ti) => (
                               <>
@@ -17884,6 +17917,16 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
                                 </button>
                               </>
                             ))}
+                            <div style={{ flex:1 }} />
+                            <button onClick={e=>{ e.stopPropagation(); copyGroup(g); }}
+                              style={{ padding:"5px 12px", borderRadius:6, marginBottom:-1,
+                                border:`1px solid ${copiedGroup===g.id ? C2.green+"66" : C2.border}`,
+                                background: copiedGroup===g.id ? C2.green+"14" : "transparent",
+                                color: copiedGroup===g.id ? C2.green : C2.muted,
+                                fontSize:11, fontFamily:head, fontWeight:700, cursor:"pointer",
+                                transition:"all .15s", whiteSpace:"nowrap" as const }}>
+                              {copiedGroup===g.id ? "✓ Copied!" : "Copy All"}
+                            </button>
                           </div>
 
                           <div style={{ padding:"20px", display:"flex", flexDirection:"column", gap:16 }}>
