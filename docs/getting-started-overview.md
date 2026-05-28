@@ -6,6 +6,8 @@ The Getting Started flow is a guided, 8-step onboarding process that takes a bra
 
 Each step builds on the previous one. Some steps can happen at the same time; others must wait for earlier steps to finish first.
 
+> **Current state note:** Steps 1–8 produce a campaign *plan*. Getting that plan into market requires additional work (list building, sender infrastructure, compliance, approval) that is not yet part of the guided flow. See [What's Missing](#whats-missing) below.
+
 ---
 
 ## The 8 Steps at a Glance
@@ -43,6 +45,8 @@ Each step builds on the previous one. Some steps can happen at the same time; ot
 **Output:** A structured research brief saved to the client record.  
 **Time:** A few minutes. Progress messages appear while it runs ("Fetching homepage...", "Analyzing with Claude...").
 
+> **Gap:** The system only reads the client's public website. It has no access to their CRM data, historical outreach performance, or closed-won deal patterns — which are often the strongest signals for ICP accuracy. If the client has this data, it should be provided via the intake form or uploaded separately before Step 5.
+
 ---
 
 ### Step 2 — Review Research Brief
@@ -71,6 +75,10 @@ Each step builds on the previous one. Some steps can happen at the same time; ot
 4. When the client submits the form, it's automatically saved to their record with a timestamp.
 
 **Note:** This can happen at the same time as Steps 1, 2, and 4. You don't need to wait for the research brief before sending the intake form.
+
+> **Gap:** The intake form asks "what's worked in past outreach" as a free-text field. A much stronger input would be actual past sequences with their reply rates or positive reply rates. If the client has this data, ask them to include it in the Optional Materials section or paste it into the Notes field. The AI in Step 8 will produce better copy if it has concrete performance data to learn from rather than a general description.
+
+> **Gap:** The form does not ask about the specific ask the client wants to make in outreach — the offer, the call-to-action (e.g., "15-minute intro call," "free audit," "demo," "teardown"). The offer is often more important than the copy in cold outreach. This should be captured here and used in Step 8 to anchor every touch's CTA.
 
 ---
 
@@ -110,6 +118,8 @@ The AI takes the company profile and builds a hierarchical "ICP Tree" — a stru
 
 **Output:** A structured ICP tree that feeds directly into scoring.
 
+> **Gap:** The trigger events in the ICP tree (funding rounds, hiring spikes, leadership changes, tech-stack changes, etc.) are documented but not operationalized. Nothing in the current flow connects these triggers to a live monitoring or signal layer — so the campaigns built in Step 8 are static rather than signal-driven. This is a significant gap for modern cold outreach, where timeliness and relevance to a real-world event are major drivers of reply rate.
+
 ---
 
 ### Step 7 — Score & Prioritize ICPs
@@ -132,6 +142,10 @@ Each ICP gets:
 - A summary of top strengths, gaps, and the best outreach angle
 
 **Output:** A ranked list of ICPs with actionable prioritization guidance.
+
+> **Gap:** All scoring is done by the AI based solely on the synthesized text. There is no human approval gate before campaigns are written. If the AI mis-scores an ICP — for example, because the client forgot to mention three relevant case studies in the intake form — campaigns get written against the wrong ICP first, and you only discover the error later. A lightweight human review of the ranked ICPs before Step 8 begins would catch this.
+
+> **Gap:** The rubric does not account for **sales cycle length** or **willingness/ability to pay**. An ICP can score well on all five dimensions but have a 9-month sales cycle, making it a poor choice for "Launch First" if the client needs revenue this quarter. These factors should either be added as dimensions or surfaced as caveats alongside each ICP's recommendation.
 
 ---
 
@@ -166,6 +180,12 @@ For every single touch, across both channels, the AI writes:
 
 **Output:** A complete, ready-to-use campaign plan saved to the client's account.
 
+> **Gap:** The sequence is linear — every prospect goes through the same 5 touches in the same order regardless of how they respond. There is no branching logic: if someone opens the email but doesn't reply, the sequence doesn't adapt; if someone responds negatively, there's no alternative path; if someone engages on LinkedIn, it doesn't accelerate the email cadence. Real-world sequences need at least basic branching rules.
+
+> **Gap:** Only one version of each touch is generated. For any serious outbound program, at least two variants per touch should be created from the start so that A/B testing can begin on day one. Waiting to create variants later means weeks of performance data collected on a single version before you can start learning.
+
+> **Gap:** The channel mix is email + LinkedIn only. For high-ACV ICPs (enterprise deals, $50k–$100k+), a 5-email/5-LinkedIn sequence is typically undermatched. Phone, warm introductions, direct mail, and paid retargeting are all valid supplements that the current plan does not account for.
+
 ---
 
 ## What Can Happen in Parallel
@@ -182,6 +202,7 @@ Step 4 (Upload Transcript) ─────────────────�
                                                          Step 6 (Generate ICP Tree)
                                                                │
                                                          Step 7 (Score ICPs)
+                                         [Human review recommended here]
                                                                │
                                                          Step 8 (Plan Campaigns)
 ```
@@ -215,6 +236,98 @@ The fastest path through onboarding:
 3. **Within Minutes of Profile Completion:**
    - Generate ICP Tree (Step 6) — click to trigger
    - Score ICPs (Step 7) — click to trigger
+   - **Review the ranked ICPs manually before proceeding** — check that the scoring matches your understanding from the call and intake form
    - Select top ICP(s) and plan campaigns (Step 8)
 
 In a typical scenario, the entire process from Step 5 through Step 8 can complete in under 10 minutes once the input data is in.
+
+---
+
+## What's Missing {#whats-missing}
+
+Steps 1–8 produce a campaign **plan**. A plan is not a campaign in market. The following pieces are required before a single email sends, and none of them are currently part of the guided flow.
+
+### Step 9 — Define Success Metrics & Offer
+
+Before any outreach goes out, two things need to be locked:
+
+1. **The offer / CTA.** What specific action does every touch ask the prospect to take? (15-minute call, free audit, demo, teardown, report, etc.) The ICP scoring generates a "best outreach angle" but doesn't force a commitment to a specific ask. Without a defined offer, the AI-written sequences may hedge or vary the ask across touches, which hurts conversion.
+
+2. **Success benchmarks.** What reply rate, positive reply rate, and meeting-booked rate should this ICP and offer combination hit? Without a baseline expectation going in, there's no way to know whether week-2 performance means the ICP hypothesis is wrong or just that the sequence needs tuning.
+
+These should be decided collaboratively with the client before list building begins.
+
+---
+
+### Step 10 — Build Lead Lists
+
+The campaigns in Step 8 are written for specific personas within specific ICP segments. Those sequences have no leads to run against until lists are built. This involves:
+
+- Identifying which tools will be used for prospecting (Apollo, Clay, LinkedIn Sales Nav, ZoomInfo, etc.)
+- Filtering by the ICP criteria from Step 7: industry, company size, tech stack, geography, growth signals
+- Enriching records with verified email addresses and LinkedIn URLs
+- Applying suppression lists (existing customers, competitors, contacts already in CRM, previous bounces, unsubscribes)
+- Estimating list size to validate whether the market is big enough to sustain the campaign
+
+This step can be parallelized with Step 11 once the ICP criteria are confirmed.
+
+---
+
+### Step 11 — Set Up Sender Infrastructure
+
+Cold email deliverability is infrastructure, not copy. A campaign with perfect sequences and no warmed-up sending infrastructure will land in spam from day one. This step covers:
+
+- **Domain setup.** Secondary sending domains purchased and configured (SPF, DKIM, DMARC records set correctly)
+- **Mailbox warming.** New mailboxes need 2–4 weeks of warm-up activity before cold volume begins
+- **Sending limits.** Per-mailbox daily send limits defined and enforced (typically 30–50 emails/mailbox/day for new domains)
+- **LinkedIn account health.** Connection request rates kept within safe limits; accounts not flagged or restricted
+- **Unsubscribe handling.** One-click unsubscribe in all emails; mechanism to suppress unsubscribers from future sends
+- **Compliance check.** CAN-SPAM, GDPR, and CASL requirements confirmed based on where prospects are located
+
+This takes 2–4 weeks if starting from scratch. It should begin as soon as the ICP is selected in Step 7, not after campaigns are written.
+
+---
+
+### Step 12 — Review, Approve & Launch
+
+A final human gate before anything sends:
+
+- **Copy review.** Account manager and client review all touches across both channels; edits made as needed
+- **A/B variants created.** At minimum, two subject line variants and two body variants per touch so testing can begin on day one
+- **Sequencer configured.** Sequences loaded into the sending tool (Instantly, Smartlead, HubSpot Sequences, Outreach, etc.) with correct timing, personalization variables, and branching rules
+- **Test sends.** Sample emails sent to internal addresses and checked in Gmail, Outlook, and on mobile for rendering, deliverability, and link tracking
+- **Launch approved.** Client signs off before volume begins
+
+---
+
+## The Feedback Loop (What Doesn't Exist Yet)
+
+Once a campaign is live, the current flow has no mechanism to bring learnings back into the system. What's needed:
+
+- **Reply data feeding ICP scores.** If an ICP that scored "Launch First" gets a 0.4% positive reply rate after 500 sends, that should automatically flag the score as potentially wrong and surface a re-evaluation prompt.
+- **Signal-based routing.** The trigger events identified in Step 6 (funding rounds, hiring spikes, leadership changes) should eventually feed a live signal layer that routes high-signal prospects to the top of the sequence queue.
+- **Sequence branching.** Prospects who open but don't reply, reply negatively, or engage on LinkedIn should be routed to different follow-up paths rather than continuing the same linear 5-touch sequence.
+- **ICP re-ranking.** After 4–6 weeks of real performance data, the ICP tree should be revisited and re-ranked based on actual results, not just AI inference from text.
+
+---
+
+## Summary: Where the Flow Stands Today
+
+| Area | Status |
+|------|--------|
+| Company research | ✅ Automated |
+| Client intake collection | ✅ Automated |
+| Profile synthesis | ✅ Automated |
+| ICP mapping | ✅ Automated |
+| ICP scoring | ✅ Automated (AI-only, no human gate) |
+| Campaign copy generation | ✅ Automated |
+| Offer / CTA definition | ❌ Not in flow |
+| Success metric definition | ❌ Not in flow |
+| Lead list building | ❌ Not in flow |
+| Sender infrastructure | ❌ Not in flow |
+| Compliance check | ❌ Not in flow |
+| A/B variant generation | ❌ Not in flow |
+| Human approval gate | ❌ Not in flow |
+| Signal/trigger operationalization | ❌ Not in flow |
+| Reply data feedback loop | ❌ Not in flow |
+| Sequence branching logic | ❌ Not in flow |
