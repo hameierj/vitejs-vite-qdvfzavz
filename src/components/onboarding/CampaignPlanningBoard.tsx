@@ -86,6 +86,47 @@ export function CampaignPlanningBoard({ icp, scoreRow, companyData, products, ca
   const [log, setLog] = useState<string[]>([]);
   const [plan, setPlan] = useState<CampaignPlan | null>(null);
   const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyAll = () => {
+    if (!plan) return;
+    const lines: string[] = [];
+
+    lines.push(`CAMPAIGN PLAN — ${plan.icpName}`);
+    lines.push("=".repeat(60));
+
+    if (plan.sequenceArc) {
+      lines.push(`\nSEQUENCE ARC\n${plan.sequenceArc}`);
+    }
+    if (plan.strategyRationale) {
+      lines.push(`\nSTRATEGY RATIONALE\n${plan.strategyRationale}`);
+    }
+    if (plan.selectedStrategies?.length) {
+      lines.push(`\nSTRATEGIES USED\n${plan.selectedStrategies.join(", ")}`);
+    }
+
+    lines.push("\n" + "=".repeat(60));
+    lines.push("EMAIL SEQUENCE");
+    lines.push("=".repeat(60));
+    (plan.emailSequence || []).forEach(t => {
+      lines.push(`\nTouch ${t.touch} — Day ${t.dayOffset} [${t.gtmStrategy}]`);
+      if (t.subject) lines.push(`Subject: ${t.subject}`);
+      lines.push(t.body);
+    });
+
+    lines.push("\n" + "=".repeat(60));
+    lines.push("LINKEDIN SEQUENCE");
+    lines.push("=".repeat(60));
+    (plan.linkedinSequence || []).forEach(t => {
+      lines.push(`\nTouch ${t.touch} — Day ${t.dayOffset} [${t.gtmStrategy}]`);
+      lines.push(t.body);
+    });
+
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const cd = companyData as any;
 
@@ -313,6 +354,14 @@ Return valid JSON:
           {saved && (
             <div style={{ padding: "9px 18px", borderRadius: 8, background: C.greenLo, border: `1px solid ${C.greenBorder}`,
               color: C.green, fontSize: 13, fontWeight: 700 }}>✓ Saved</div>
+          )}
+          {plan && (
+            <button onClick={copyAll}
+              style={{ padding: "9px 18px", borderRadius: 8, border: `1px solid ${copied ? C.greenBorder : C.border}`,
+                background: copied ? C.greenLo : "transparent", color: copied ? C.green : C.textSoft,
+                fontSize: 13, fontWeight: 700, fontFamily: head, cursor: "pointer", transition: "all .15s" }}>
+              {copied ? "✓ Copied!" : "Copy All"}
+            </button>
           )}
           <button onClick={generate} disabled={generating}
             style={{ padding: "9px 18px", borderRadius: 8, border: "none",
