@@ -17087,142 +17087,6 @@ const LP_STEPS = [
   "Building 12-month strategy",
 ];
 
-function ExportTab({ lpResult, onGenerateExport }: { lpResult: any; onGenerateExport: () => Promise<string> }) {
-  const [generating, setGenerating] = useState(false);
-  const [exportUrl, setExportUrl] = useState<string|null>(null);
-  const [copied, setCopied] = useState(false);
-  const [err, setErr] = useState<string|null>(null);
-
-  const hasResult = !!lpResult;
-
-  const handleGenerate = async () => {
-    setGenerating(true);
-    setErr(null);
-    try {
-      const url = await onGenerateExport();
-      setExportUrl(url);
-    } catch (e: any) {
-      setErr(e?.message || "Failed to generate export");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleCopy = () => {
-    if (!exportUrl) return;
-    navigator.clipboard.writeText(exportUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  return (
-    <div style={{ maxWidth:760, display:"flex", flexDirection:"column", gap:28 }}>
-
-      {/* Header */}
-      <div>
-        <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:4 }}>
-          Client-Facing Export
-        </div>
-        <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6 }}>
-          Generate a shareable landing page you can send directly to the client. It includes their products, target personas, outbound sequences, and domain setup — formatted for a non-technical audience.
-        </div>
-      </div>
-
-      {!hasResult && (
-        <div style={{ padding:"20px 24px", borderRadius:12, border:`1px dashed ${C2.border}`,
-          background:C2.faint, color:C2.muted, fontFamily:body, fontSize:13, lineHeight:1.6 }}>
-          Run Getting Started first to generate research, campaigns, and domains. The export pulls from all of that data.
-        </div>
-      )}
-
-      {hasResult && (
-        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-
-          {/* What's included */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            {[
-              { icon:"🏢", label:"Company Overview", desc:"Pitch, industry, key selling points" },
-              { icon:"📦", label:"Products & Services", desc:"All products with value props and deal info" },
-              { icon:"🎯", label:"Target Personas", desc:"Who you're targeting, their pains and goals" },
-              { icon:"✉️", label:"Outbound Sequences", desc:"Email + LinkedIn sequences per campaign" },
-              { icon:"🌐", label:"Domain Infrastructure", desc:"Domains, mailboxes, daily send capacity" },
-            ].map(({ icon, label, desc }) => (
-              <div key={label} style={{ display:"flex", gap:12, alignItems:"flex-start", padding:"14px 16px",
-                borderRadius:10, border:`1px solid ${C2.border}`, background:C2.faint }}>
-                <span style={{ fontSize:20, lineHeight:1 }}>{icon}</span>
-                <div>
-                  <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:2 }}>{label}</div>
-                  <div style={{ fontSize:12, fontFamily:body, color:C2.muted, lineHeight:1.5 }}>{desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Generate button */}
-          {!exportUrl && (
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <button
-                disabled={generating}
-                onClick={handleGenerate}
-                style={{ padding:"12px 32px", borderRadius:10, border:"none",
-                  background: generating ? C2.muted : C2.accent, color:"#fff",
-                  fontSize:14, fontFamily:head, fontWeight:700, cursor: generating ? "default" : "pointer",
-                  opacity: generating ? 0.7 : 1,
-                  boxShadow: generating ? "none" : `0 2px 16px ${C2.accent}40` }}>
-                {generating ? "Generating…" : "Generate Shareable Link"}
-              </button>
-              {err && <span style={{ fontSize:12, fontFamily:body, color:"#e05252" }}>{err}</span>}
-            </div>
-          )}
-
-          {/* URL display */}
-          {exportUrl && (
-            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-              <div style={{ padding:"14px 18px", borderRadius:10, border:`1px solid ${C2.green}44`,
-                background:`${C2.green}0a`, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" as const }}>
-                <span style={{ fontSize:16 }}>✅</span>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:C2.green, letterSpacing:.7,
-                    textTransform:"uppercase" as const, marginBottom:4 }}>Your shareable link is ready</div>
-                  <div style={{ fontSize:12, fontFamily:"monospace", color:C2.text, wordBreak:"break-all" as const,
-                    background:C2.faint, padding:"6px 10px", borderRadius:6, border:`1px solid ${C2.border}` }}>
-                    {exportUrl}
-                  </div>
-                </div>
-                <button onClick={handleCopy}
-                  style={{ padding:"8px 18px", borderRadius:8, border:`1px solid ${C2.border}`,
-                    background: copied ? `${C2.green}22` : C2.canvas, color: copied ? C2.green : C2.text,
-                    fontSize:12, fontFamily:head, fontWeight:700, cursor:"pointer", flexShrink:0,
-                    transition:"all 0.15s" }}>
-                  {copied ? "Copied!" : "Copy Link"}
-                </button>
-                <a href={exportUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ padding:"8px 18px", borderRadius:8, border:`1px solid ${C2.accent}`,
-                    background:"none", color:C2.accent, fontSize:12, fontFamily:head, fontWeight:700,
-                    cursor:"pointer", textDecoration:"none", flexShrink:0 }}>
-                  Preview →
-                </a>
-              </div>
-
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <button onClick={handleGenerate} disabled={generating}
-                  style={{ padding:"8px 18px", borderRadius:8, border:`1px solid ${C2.border}`,
-                    background:"none", color:C2.muted, fontSize:12, fontFamily:head, fontWeight:600,
-                    cursor: generating ? "default" : "pointer", opacity: generating ? 0.6 : 1 }}>
-                  {generating ? "Regenerating…" : "Regenerate Link"}
-                </button>
-                <span style={{ fontSize:12, fontFamily:body, color:C2.muted }}>
-                  Regenerating creates a new URL — the old link still works.
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChange, onLaunch, onContinue, onReset, onRegenDomains, onProcessOnboarding, onGenerateExport, salesContext, companyName }: {
   lpState: "idle"|"running"|"done";
@@ -17784,67 +17648,6 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
         ))}
       </div>
 
-      {/* Gamma Presentations strip */}
-      {(() => {
-        const GAMMA_DECKS: { key: GammaDeckKey; label: string; icon: string }[] = [
-          { key:"company",        label:"Company Profile", icon:"🏢" },
-          { key:"personas",       label:"Personas",        icon:"🎯" },
-          { key:"infrastructure", label:"Infrastructure",  icon:"🌐" },
-          { key:"campaigns",      label:"Campaigns",       icon:"📣" },
-        ];
-        const anyLoading = GAMMA_DECKS.some(d => gammaDecks[d.key].loading);
-        return (
-          <div style={{ padding:"10px 24px", borderBottom:`1px solid ${C2.border}`, background:"#faf5ff",
-            display:"flex", alignItems:"center", gap:10, flexShrink:0, flexWrap:"wrap" as const }}>
-            <span style={{ fontSize:10, fontWeight:700, fontFamily:head, color:"#7c3aed",
-              letterSpacing:.8, textTransform:"uppercase" as const, flexShrink:0 }}>✦ Gamma Decks</span>
-            <div style={{ width:1, height:14, background:"#7c3aed30", flexShrink:0 }} />
-            {GAMMA_DECKS.map(({ key, label, icon }) => {
-              const d = gammaDecks[key];
-              const spin = d.loading;
-              return (
-                <div key={key} style={{ display:"flex", alignItems:"center", gap:4 }}>
-                  <button
-                    onClick={() => createGammaDeck(key, company, prods, personas, domains, groups)}
-                    disabled={d.loading}
-                    title={d.error || undefined}
-                    style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 11px", borderRadius:7,
-                      border:`1px solid ${d.url ? "#7c3aed55" : d.error ? "#dc262655" : "#7c3aed33"}`,
-                      background: d.url ? "#7c3aed12" : d.error ? "#fef2f2" : "#fff",
-                      color: d.url ? "#7c3aed" : d.error ? "#dc2626" : "#7c3aed",
-                      fontSize:11, fontFamily:head, fontWeight:700, cursor:d.loading?"default":"pointer",
-                      opacity:d.loading?0.7:1, transition:"all .15s", whiteSpace:"nowrap" as const }}>
-                    {spin ? (
-                      <span style={{ display:"inline-block", width:10, height:10, border:"2px solid #7c3aed44",
-                        borderTop:"2px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
-                    ) : d.url ? "↺" : d.error ? "!" : icon}
-                    {spin ? "Creating…" : d.url ? label : d.error ? "Retry" : label}
-                  </button>
-                  {d.url && !d.loading && (
-                    <a href={d.url} target="_blank" rel="noopener noreferrer"
-                      style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #7c3aed66",
-                        background:"#7c3aed", color:"#fff", fontSize:11, fontFamily:head, fontWeight:700,
-                        textDecoration:"none", whiteSpace:"nowrap" as const }}>
-                      Open →
-                    </a>
-                  )}
-                </div>
-              );
-            })}
-            <div style={{ width:1, height:14, background:"#7c3aed30", flexShrink:0 }} />
-            <button
-              onClick={() => createAllGammaDecks(company, prods, personas, domains, groups)}
-              disabled={anyLoading}
-              style={{ padding:"5px 12px", borderRadius:7, border:"1px solid #7c3aed55",
-                background: anyLoading ? "#7c3aed08" : "#7c3aed", color:anyLoading?"#7c3aed":"#fff",
-                fontSize:11, fontFamily:head, fontWeight:700, cursor:anyLoading?"default":"pointer",
-                opacity:anyLoading?0.6:1, transition:"all .15s", whiteSpace:"nowrap" as const }}>
-              {anyLoading ? "Creating all…" : "Create All"}
-            </button>
-          </div>
-        );
-      })()}
-
       {/* Tab content */}
       <div style={{ flex:1, overflow:"auto", padding:24 }}>
 
@@ -18248,9 +18051,136 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
           </div>
         )}
 
-        {/* EXPORT */}
+        {/* EXPORT — Gamma Presentations */}
         {lpTab === "export" && (() => {
-          return <ExportTab lpResult={lpResult} onGenerateExport={onGenerateExport} />;
+          const DECK_META: { key: GammaDeckKey; icon: string; label: string; desc: string; what: string[] }[] = [
+            {
+              key: "company",
+              icon: "🏢",
+              label: "Company Profile",
+              desc: "A deck covering your company overview and full product/service catalogue.",
+              what: ["Company pitch & overview", "Key selling points", "Differentiation & proof", "Products with value props, features, and deal info"],
+            },
+            {
+              key: "personas",
+              icon: "🎯",
+              label: "Personas & ICPs",
+              desc: "One slide per ICP with job titles, pains, triggers, objections, and ICP scores.",
+              what: ["Job titles & industries", "Primary pains & gains", "Buying triggers & tone", "Objections & rebuttals"],
+            },
+            {
+              key: "infrastructure",
+              icon: "🌐",
+              label: "Infrastructure",
+              desc: "Your cold outreach domain infrastructure with warmup timeline.",
+              what: [`${domains.length} cold email domains`, "Mailbox & capacity overview", "6–9 week warmup plan", "Full domain list"],
+            },
+            {
+              key: "campaigns",
+              icon: "📣",
+              label: "Campaigns",
+              desc: "Strategy briefs and full email + LinkedIn sequences for every campaign group.",
+              what: ["Email & LinkedIn strategy briefs", "5-touch email sequences", "5-touch LinkedIn sequences", "Per-campaign rationale"],
+            },
+          ];
+          const anyLoading = DECK_META.some(d => gammaDecks[d.key].loading);
+          const allDone = DECK_META.every(d => !!gammaDecks[d.key].url);
+          return (
+            <div style={{ maxWidth:820 }}>
+              {/* Header */}
+              <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28, gap:16 }}>
+                <div>
+                  <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:4 }}>
+                    Gamma Presentations
+                  </div>
+                  <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6 }}>
+                    Generate a Gamma slide deck for each section of your Getting Started output.
+                    Each deck is tailored for that audience — share Company Profile with stakeholders,
+                    Campaigns with the sales team, Infrastructure with ops.
+                  </div>
+                </div>
+                <button
+                  onClick={() => createAllGammaDecks(company, prods, personas, domains, groups)}
+                  disabled={anyLoading}
+                  style={{ flexShrink:0, padding:"10px 22px", borderRadius:9, border:"none",
+                    background: anyLoading ? "#7c3aed44" : "#7c3aed",
+                    color:"#fff", fontSize:13, fontFamily:head, fontWeight:700,
+                    cursor:anyLoading?"default":"pointer", opacity:anyLoading?0.7:1,
+                    boxShadow: anyLoading?"none":"0 2px 14px #7c3aed40",
+                    whiteSpace:"nowrap" as const, transition:"all .15s" }}>
+                  {anyLoading ? "Creating…" : allDone ? "↺ Recreate All" : "✦ Create All"}
+                </button>
+              </div>
+
+              {/* Deck cards */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                {DECK_META.map(({ key, icon, label, desc, what }) => {
+                  const d = gammaDecks[key];
+                  return (
+                    <div key={key} style={{ background:C2.canvas, border:`1px solid ${d.url ? "#7c3aed33" : d.error ? "#dc262633" : C2.border}`,
+                      borderRadius:14, overflow:"hidden", display:"flex", flexDirection:"column",
+                      transition:"border-color .15s" }}>
+                      {/* Card header */}
+                      <div style={{ padding:"18px 20px 14px", borderBottom:`1px solid ${C2.border}` }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                          <span style={{ fontSize:22 }}>{icon}</span>
+                          <div style={{ fontSize:14, fontWeight:800, fontFamily:head, color:C2.text }}>{label}</div>
+                          {d.url && !d.loading && (
+                            <span style={{ marginLeft:"auto", fontSize:10, padding:"2px 8px", borderRadius:10,
+                              background:"#7c3aed14", color:"#7c3aed", fontFamily:head, fontWeight:700 }}>READY</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize:12, color:C2.muted, fontFamily:body, lineHeight:1.6 }}>{desc}</div>
+                      </div>
+                      {/* What's included */}
+                      <div style={{ padding:"14px 20px", flex:1 }}>
+                        <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:C2.muted,
+                          letterSpacing:.7, textTransform:"uppercase" as const, marginBottom:8 }}>What's included</div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                          {what.map((item, i) => (
+                            <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:7, fontSize:12, fontFamily:body, color:C2.textSoft }}>
+                              <span style={{ color:"#7c3aed", fontWeight:700, flexShrink:0, marginTop:1 }}>·</span>
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Actions */}
+                      <div style={{ padding:"14px 20px", borderTop:`1px solid ${C2.border}`,
+                        display:"flex", alignItems:"center", gap:10 }}>
+                        <button
+                          onClick={() => createGammaDeck(key, company, prods, personas, domains, groups)}
+                          disabled={d.loading}
+                          style={{ display:"flex", alignItems:"center", gap:7, padding:"8px 16px", borderRadius:8,
+                            border:`1px solid ${d.error ? "#dc262655" : "#7c3aed44"}`,
+                            background: d.error ? "#fef2f2" : "#7c3aed12",
+                            color: d.error ? "#dc2626" : "#7c3aed",
+                            fontSize:12, fontFamily:head, fontWeight:700, cursor:d.loading?"default":"pointer",
+                            opacity:d.loading?0.7:1, transition:"all .15s", whiteSpace:"nowrap" as const }}>
+                          {d.loading ? (
+                            <span style={{ display:"inline-block", width:11, height:11, border:"2px solid #7c3aed44",
+                              borderTop:"2px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
+                          ) : null}
+                          {d.loading ? "Creating deck…" : d.url ? "↺ Recreate" : d.error ? "Retry" : "Create Deck"}
+                        </button>
+                        {d.url && !d.loading && (
+                          <a href={d.url} target="_blank" rel="noopener noreferrer"
+                            style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:8,
+                              background:"#7c3aed", color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
+                              textDecoration:"none", whiteSpace:"nowrap" as const }}>
+                            Open in Gamma →
+                          </a>
+                        )}
+                        {d.error && !d.loading && (
+                          <span style={{ fontSize:11, color:"#dc2626", fontFamily:body, lineHeight:1.4 }}>{d.error}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
         })()}
 
         {/* ONBOARDING */}
