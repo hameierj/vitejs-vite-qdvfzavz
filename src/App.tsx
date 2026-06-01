@@ -17294,22 +17294,18 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
   };
 
   const gammaCallApi = async (inputText: string, title: string, numCards: number): Promise<string> => {
-    const apiKey = import.meta.env.VITE_GAMMA_API_KEY || "";
-    if (!apiKey) throw new Error("Add VITE_GAMMA_API_KEY to use this feature");
-    const res = await fetch("https://public-api.gamma.app/v1.0/generations", {
+    const res = await fetch("/api/gamma", {
       method: "POST",
-      headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ inputText, textMode: "generate", format: "presentation", numCards, title }),
     });
     if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      throw new Error(`Gamma API ${res.status}${msg ? `: ${msg}` : ""}`);
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Server error ${res.status}`);
     }
     const { generationId } = await res.json();
     const poll = async (): Promise<string> => {
-      const pr = await fetch(`https://public-api.gamma.app/v1.0/generations/${generationId}`, {
-        headers: { "X-API-KEY": apiKey },
-      });
+      const pr = await fetch(`/api/gamma?id=${generationId}`);
       const data = await pr.json();
       if (data.status === "completed") return data.gammaUrl;
       if (data.status === "failed") throw new Error("Gamma generation failed");
