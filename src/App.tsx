@@ -17253,9 +17253,13 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
   const [expandedGroup, setExpandedGroup] = useState<string|null>(null);
   const [seqTab, setSeqTab] = useState<Record<string,"strategy"|"email"|"linkedin">>({});
   const [copiedGroup, setCopiedGroup] = useState<string|null>(null);
-  const [gammaLoading, setGammaLoading] = useState(false);
-  const [gammaUrl, setGammaUrl] = useState<string|null>(null);
-  const [gammaError, setGammaError] = useState<string|null>(null);
+  type GammaDeckKey = "company" | "personas" | "infrastructure" | "campaigns";
+  const [gammaDecks, setGammaDecks] = useState<Record<GammaDeckKey, { loading: boolean; url: string|null; error: string|null }>>({
+    company:        { loading: false, url: null, error: null },
+    personas:       { loading: false, url: null, error: null },
+    infrastructure: { loading: false, url: null, error: null },
+    campaigns:      { loading: false, url: null, error: null },
+  });
 
   const copyGroup = (g: any) => {
     const lines: string[] = [];
@@ -17289,136 +17293,185 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
     });
   };
 
-  const buildGammaContent = (co: any, prods: any[], personas: any[], groups: any[]) => {
-    const lines: string[] = [];
-    lines.push(`# ${co.co_name || "Company"} — Getting Started GTM Deck\n`);
-    if (co.co_pitch) lines.push(`${co.co_pitch}\n`);
-
-    lines.push(`## Company Overview`);
-    if (co.co_industry) lines.push(`**Industry:** ${co.co_industry}`);
-    if (co.co_size) lines.push(`**Company size:** ${co.co_size}`);
-    if (co.co_diff) lines.push(`\n**Differentiation:** ${co.co_diff}`);
-    if (co.co_proof) lines.push(`\n**Proof points:** ${co.co_proof}`);
-    if (co.co_ksp) {
-      lines.push(`\n**Key Selling Points:**`);
-      co.co_ksp.split(/\n|;\s*|\d+\)\s*/).map((s: string) => s.replace(/^[•\-*]\s*/,"").trim()).filter(Boolean)
-        .forEach((ksp: string) => lines.push(`- ${ksp}`));
-    }
-    if (co.co_customers) lines.push(`\n**Notable customers:** ${co.co_customers}`);
-    lines.push("");
-
-    if (prods.length) {
-      lines.push(`## Products & Services\n`);
-      prods.forEach(p => {
-        lines.push(`### ${p.name}`);
-        if (p.description) lines.push(p.description);
-        if (p.problemsSolved) lines.push(`\n**Problems solved:** ${p.problemsSolved}`);
-        if (p.valueProposition) lines.push(`**Value proposition:** ${p.valueProposition}`);
-        if (p.keyFeatures) lines.push(`**Key features:** ${p.keyFeatures}`);
-        lines.push("");
-      });
-    }
-
-    if (personas.length) {
-      lines.push(`## Target Personas\n`);
-      personas.forEach(p => {
-        const d = p.data || {};
-        lines.push(`### ${p.name}`);
-        if (d.buyer) lines.push(`**Job titles:** ${d.buyer}`);
-        if (d.industries) lines.push(`**Industries:** ${Array.isArray(d.industries) ? d.industries.join(", ") : d.industries}`);
-        if (d.co_sizes) lines.push(`**Company size:** ${Array.isArray(d.co_sizes) ? d.co_sizes.join(", ") : d.co_sizes}`);
-        if (d.pain1) lines.push(`**Primary pain:** ${d.pain1}`);
-        if (d.gain) lines.push(`**Key gain:** ${d.gain}`);
-        if (d.trigger) lines.push(`**Buying trigger:** ${d.trigger}`);
-        lines.push("");
-      });
-    }
-
-    lines.push(`## Campaign Strategy Overview`);
-    lines.push(`${groups.length} campaign group${groups.length !== 1 ? "s" : ""} targeting top ICPs across email and LinkedIn.\n`);
-
-    groups.forEach((g, i) => {
-      lines.push(`## Campaign ${i + 1}: ${g.productName} × ${g.personaName}`);
-      lines.push(`**Priority:** ${(g.priority || "medium").charAt(0).toUpperCase() + (g.priority || "medium").slice(1)} fit`);
-      if (g.rationale) lines.push(`\n${g.rationale}`);
-      lines.push("");
-
-      if (g.emailStrategy) {
-        lines.push(`### Email Strategy`);
-        lines.push(g.emailStrategy);
-        lines.push("");
-      }
-      if ((g.emailSequence || []).length) {
-        lines.push(`### Email Sequence (${g.emailSequence.length} touches)`);
-        g.emailSequence.forEach((s: any) => {
-          lines.push(`\n**Step ${s.stepNumber} — Day +${s.dayOffset}${s.role ? ` [${s.role}]` : ""}**`);
-          if (s.subject) lines.push(`Subject: ${s.subject}`);
-          lines.push(s.body || "");
-        });
-        lines.push("");
-      }
-      if (g.linkedinStrategy) {
-        lines.push(`### LinkedIn Strategy`);
-        lines.push(g.linkedinStrategy);
-        lines.push("");
-      }
-      if ((g.linkedinSequence || []).length) {
-        lines.push(`### LinkedIn Sequence (${g.linkedinSequence.length} touches)`);
-        g.linkedinSequence.forEach((s: any) => {
-          lines.push(`\n**Step ${s.stepNumber} — Day +${s.dayOffset}${s.role ? ` [${s.role}]` : ""}**`);
-          lines.push(s.body || "");
-        });
-        lines.push("");
-      }
+  const gammaCallApi = async (inputText: string, title: string, numCards: number): Promise<string> => {
+    const apiKey = import.meta.env.VITE_GAMMA_API_KEY || "";
+    if (!apiKey) throw new Error("Add VITE_GAMMA_API_KEY to use this feature");
+    const res = await fetch("https://public-api.gamma.app/v1.0/generations", {
+      method: "POST",
+      headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ inputText, textMode: "generate", format: "presentation", numCards, title }),
     });
-
-    return lines.join("\n");
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(`Gamma API ${res.status}${msg ? `: ${msg}` : ""}`);
+    }
+    const { generationId } = await res.json();
+    const poll = async (): Promise<string> => {
+      const pr = await fetch(`https://public-api.gamma.app/v1.0/generations/${generationId}`, {
+        headers: { "X-API-KEY": apiKey },
+      });
+      const data = await pr.json();
+      if (data.status === "completed") return data.gammaUrl;
+      if (data.status === "failed") throw new Error("Gamma generation failed");
+      await new Promise(r => setTimeout(r, 5000));
+      return poll();
+    };
+    return poll();
   };
 
-  const createGammaDeck = async (co: any, prods: any[], personas: any[], grps: any[]) => {
-    const apiKey = import.meta.env.VITE_GAMMA_API_KEY || "";
-    if (!apiKey) {
-      setGammaError("Add your Gamma API key to VITE_GAMMA_API_KEY to use this feature.");
-      return;
+  const gammaBuildCompany = (co: any, prods: any[]) => {
+    const L: string[] = [];
+    L.push(`# ${co.co_name || "Company"} — Company Profile & Products\n`);
+    if (co.co_pitch) L.push(`${co.co_pitch}\n`);
+    L.push(`## Company Overview`);
+    if (co.co_industry) L.push(`**Industry:** ${co.co_industry}`);
+    if (co.co_size)     L.push(`**Size:** ${co.co_size}`);
+    if (co.co_revenue)  L.push(`**Revenue:** ${co.co_revenue}`);
+    if (co.co_website)  L.push(`**Website:** ${co.co_website}`);
+    if (co.co_diff)     L.push(`\n## Differentiation\n${co.co_diff}`);
+    if (co.co_proof)    L.push(`\n## Proof Points\n${co.co_proof}`);
+    if (co.co_customers) L.push(`\n## Notable Customers\n${co.co_customers}`);
+    if (co.co_ksp) {
+      L.push(`\n## Key Selling Points`);
+      co.co_ksp.split(/\n|;\s*|\d+\)\s*/).map((s: string) => s.replace(/^[•\-*]\s*/,"").trim()).filter(Boolean)
+        .forEach((k: string) => L.push(`- ${k}`));
     }
-    setGammaLoading(true);
-    setGammaError(null);
-    setGammaUrl(null);
-    try {
-      const inputText = buildGammaContent(co, prods, personas, grps);
-      const res = await fetch("https://public-api.gamma.app/v1.0/generations", {
-        method: "POST",
-        headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inputText,
-          textMode: "generate",
-          format: "presentation",
-          numCards: Math.min(40, 4 + grps.length * 3),
-          title: `${co.co_name || "GTM Strategy"} — Getting Started`,
-        }),
+    if (co.co_competitors)    L.push(`\n## Competitive Landscape\n${co.co_competitors}`);
+    if (co.co_buying_motion)  L.push(`\n## Buying Motion\n${co.co_buying_motion}`);
+    if (co.co_deal || co.co_cycle) {
+      L.push(`\n## Deal Profile`);
+      if (co.co_deal)  L.push(`**ACV:** ${co.co_deal}`);
+      if (co.co_cycle) L.push(`**Sales cycle:** ${co.co_cycle}`);
+    }
+    if (prods.length) {
+      L.push(`\n## Products & Services`);
+      prods.forEach(p => {
+        L.push(`\n### ${p.name}`);
+        if (p.description)      L.push(p.description);
+        if (p.problemsSolved)   L.push(`\n**Problems solved:** ${p.problemsSolved}`);
+        if (p.valueProposition) L.push(`**Value proposition:** ${p.valueProposition}`);
+        if (p.keyFeatures)      L.push(`**Key features:** ${p.keyFeatures}`);
+        if (p.useCases)         L.push(`**Use cases:** ${p.useCases}`);
+        if (p.idealCustomer)    L.push(`**Ideal customer:** ${p.idealCustomer}`);
+        if (p.acv || p.dealType) L.push(`**Deal:** ${[p.dealType, p.acv].filter(Boolean).join(" · ")}`);
+        if (p.proofPoints)      L.push(`**Proof:** ${p.proofPoints}`);
       });
-      if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        throw new Error(`Gamma API error ${res.status}${msg ? `: ${msg}` : ""}`);
-      }
-      const { generationId } = await res.json();
-      const poll = async (): Promise<string> => {
-        const pr = await fetch(`https://public-api.gamma.app/v1.0/generations/${generationId}`, {
-          headers: { "X-API-KEY": apiKey },
-        });
-        const data = await pr.json();
-        if (data.status === "completed") return data.gammaUrl;
-        if (data.status === "failed") throw new Error("Gamma generation failed");
-        await new Promise(r => setTimeout(r, 5000));
-        return poll();
-      };
-      const deckUrl = await poll();
-      setGammaUrl(deckUrl);
-    } catch (e: any) {
-      setGammaError(e.message || "Failed to create deck");
-    } finally {
-      setGammaLoading(false);
     }
+    return L.join("\n");
+  };
+
+  const gammaBuildPersonas = (co: any, pers: any[]) => {
+    const L: string[] = [];
+    L.push(`# ${co.co_name || "Company"} — Target Personas & ICPs\n`);
+    L.push(`${pers.length} ideal customer profile${pers.length !== 1 ? "s" : ""} identified and scored.\n`);
+    pers.forEach((p, i) => {
+      const d = p.data || {};
+      L.push(`## Persona ${i + 1}: ${p.name}`);
+      if (d.buyer)      L.push(`**Job titles:** ${d.buyer}`);
+      if (d.industries) L.push(`**Industries:** ${Array.isArray(d.industries) ? d.industries.join(", ") : d.industries}`);
+      if (d.co_sizes)   L.push(`**Company size:** ${Array.isArray(d.co_sizes) ? d.co_sizes.join(", ") : d.co_sizes}`);
+      if (d.geo)        L.push(`**Geography:** ${Array.isArray(d.geo) ? d.geo.join(", ") : d.geo}`);
+      if (d.pain1)      L.push(`\n**Primary pain:** ${d.pain1}`);
+      if (d.gain)       L.push(`**Key gain:** ${d.gain}`);
+      if (d.trigger)    L.push(`**Buying trigger:** ${d.trigger}`);
+      if (d.tone)       L.push(`**Preferred tone:** ${d.tone}`);
+      if (d.best_channel)       L.push(`**Best channel:** ${d.best_channel}`);
+      if (d.current_solutions)  L.push(`**Current solutions:** ${d.current_solutions}`);
+      if (d.objection)  L.push(`\n**Main objection:** ${d.objection}`);
+      if (d.rebuttal)   L.push(`**Rebuttal:** ${d.rebuttal}`);
+      if (p.score !== undefined) L.push(`\n**ICP score:** ${p.score}/100`);
+      L.push("");
+    });
+    return L.join("\n");
+  };
+
+  const gammaBuildInfrastructure = (co: any, doms: any[]) => {
+    const mailboxes = doms.length * 3;
+    const L: string[] = [];
+    L.push(`# ${co.co_name || "Company"} — Cold Outreach Infrastructure\n`);
+    L.push(`## Infrastructure Overview`);
+    L.push(`- **Domains:** ${doms.length}`);
+    L.push(`- **Mailboxes:** ${mailboxes} (3 per domain)`);
+    L.push(`- **Daily send capacity:** ${mailboxes}–${mailboxes * 20} emails/day (week 1 → fully ramped)`);
+    L.push(`- **Ramp timeline:** 6–9 weeks to full capacity`);
+    L.push(`\n## Domain Strategy`);
+    L.push(`Each domain is a brand variation used to protect deliverability and maximize inbox placement. Domains rotate sends across mailboxes to stay within provider limits and build sender reputation over time.`);
+    L.push(`\n## Warmup Plan`);
+    L.push(`- **Weeks 1–2:** 1–5 emails/mailbox/day, high-engagement seed list`);
+    L.push(`- **Weeks 3–4:** 5–15 emails/mailbox/day, mix in real prospects`);
+    L.push(`- **Weeks 5–6:** 15–30 emails/mailbox/day, full campaign traffic`);
+    L.push(`- **Week 7+:** 30–50 emails/mailbox/day, fully ramped`);
+    L.push(`\n## Domain List (${doms.length} domains)`);
+    doms.forEach((d: any) => L.push(`- ${d.full || (d.domain + (d.tld || ".com"))}`));
+    return L.join("\n");
+  };
+
+  const gammaBuildCampaigns = (co: any, grps: any[]) => {
+    const L: string[] = [];
+    L.push(`# ${co.co_name || "Company"} — Campaign Strategy & Sequences\n`);
+    L.push(`${grps.length} campaign group${grps.length !== 1 ? "s" : ""} across email and LinkedIn, targeting top-priority ICPs.\n`);
+    grps.forEach((g, i) => {
+      L.push(`## Campaign ${i + 1}: ${g.productName} × ${g.personaName}`);
+      L.push(`**Priority:** ${(g.priority || "medium").charAt(0).toUpperCase() + (g.priority || "medium").slice(1)} fit`);
+      if (g.rationale) L.push(`\n${g.rationale}`);
+      L.push("");
+      if (g.emailStrategy)  L.push(`### Email Strategy\n${g.emailStrategy}\n`);
+      if ((g.emailSequence || []).length) {
+        L.push(`### Email Sequence (${g.emailSequence.length} touches)`);
+        g.emailSequence.forEach((s: any) => {
+          L.push(`\n**Step ${s.stepNumber} — Day +${s.dayOffset}${s.role ? ` [${s.role}]` : ""}**`);
+          if (s.subject) L.push(`Subject: ${s.subject}`);
+          L.push(s.body || "");
+        });
+        L.push("");
+      }
+      if (g.linkedinStrategy) L.push(`### LinkedIn Strategy\n${g.linkedinStrategy}\n`);
+      if ((g.linkedinSequence || []).length) {
+        L.push(`### LinkedIn Sequence (${g.linkedinSequence.length} touches)`);
+        g.linkedinSequence.forEach((s: any) => {
+          L.push(`\n**Step ${s.stepNumber} — Day +${s.dayOffset}${s.role ? ` [${s.role}]` : ""}**`);
+          L.push(s.body || "");
+        });
+        L.push("");
+      }
+    });
+    return L.join("\n");
+  };
+
+  const createGammaDeck = async (deckKey: GammaDeckKey, co: any, prods: any[], pers: any[], doms: any[], grps: any[]) => {
+    setGammaDecks(prev => ({ ...prev, [deckKey]: { loading: true, url: null, error: null } }));
+    try {
+      let inputText = "";
+      let title = "";
+      let numCards = 10;
+      if (deckKey === "company") {
+        inputText = gammaBuildCompany(co, prods);
+        title = `${co.co_name || "Company"} — Company Profile & Products`;
+        numCards = Math.min(40, 5 + prods.length * 2);
+      } else if (deckKey === "personas") {
+        inputText = gammaBuildPersonas(co, pers);
+        title = `${co.co_name || "Company"} — Target Personas`;
+        numCards = Math.min(40, 2 + pers.length * 2);
+      } else if (deckKey === "infrastructure") {
+        inputText = gammaBuildInfrastructure(co, doms);
+        title = `${co.co_name || "Company"} — Cold Outreach Infrastructure`;
+        numCards = Math.min(20, 5 + Math.ceil(doms.length / 8));
+      } else {
+        inputText = gammaBuildCampaigns(co, grps);
+        title = `${co.co_name || "Company"} — Campaign Strategy & Sequences`;
+        numCards = Math.min(75, 2 + grps.length * 4);
+      }
+      const url = await gammaCallApi(inputText, title, numCards);
+      setGammaDecks(prev => ({ ...prev, [deckKey]: { loading: false, url, error: null } }));
+    } catch (e: any) {
+      setGammaDecks(prev => ({ ...prev, [deckKey]: { loading: false, url: null, error: e.message || "Failed" } }));
+    }
+  };
+
+  const createAllGammaDecks = (co: any, prods: any[], pers: any[], doms: any[], grps: any[]) => {
+    (["company","personas","infrastructure","campaigns"] as GammaDeckKey[]).forEach(k =>
+      createGammaDeck(k, co, prods, pers, doms, grps)
+    );
   };
 
   const [obTranscript, setObTranscript] = useState<string>(lpResult?.onboarding?.transcript || "");
@@ -17735,6 +17788,67 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
         ))}
       </div>
 
+      {/* Gamma Presentations strip */}
+      {(() => {
+        const GAMMA_DECKS: { key: GammaDeckKey; label: string; icon: string }[] = [
+          { key:"company",        label:"Company Profile", icon:"🏢" },
+          { key:"personas",       label:"Personas",        icon:"🎯" },
+          { key:"infrastructure", label:"Infrastructure",  icon:"🌐" },
+          { key:"campaigns",      label:"Campaigns",       icon:"📣" },
+        ];
+        const anyLoading = GAMMA_DECKS.some(d => gammaDecks[d.key].loading);
+        return (
+          <div style={{ padding:"10px 24px", borderBottom:`1px solid ${C2.border}`, background:"#faf5ff",
+            display:"flex", alignItems:"center", gap:10, flexShrink:0, flexWrap:"wrap" as const }}>
+            <span style={{ fontSize:10, fontWeight:700, fontFamily:head, color:"#7c3aed",
+              letterSpacing:.8, textTransform:"uppercase" as const, flexShrink:0 }}>✦ Gamma Decks</span>
+            <div style={{ width:1, height:14, background:"#7c3aed30", flexShrink:0 }} />
+            {GAMMA_DECKS.map(({ key, label, icon }) => {
+              const d = gammaDecks[key];
+              const spin = d.loading;
+              return (
+                <div key={key} style={{ display:"flex", alignItems:"center", gap:4 }}>
+                  <button
+                    onClick={() => createGammaDeck(key, company, prods, personas, domains, groups)}
+                    disabled={d.loading}
+                    title={d.error || undefined}
+                    style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 11px", borderRadius:7,
+                      border:`1px solid ${d.url ? "#7c3aed55" : d.error ? "#dc262655" : "#7c3aed33"}`,
+                      background: d.url ? "#7c3aed12" : d.error ? "#fef2f2" : "#fff",
+                      color: d.url ? "#7c3aed" : d.error ? "#dc2626" : "#7c3aed",
+                      fontSize:11, fontFamily:head, fontWeight:700, cursor:d.loading?"default":"pointer",
+                      opacity:d.loading?0.7:1, transition:"all .15s", whiteSpace:"nowrap" as const }}>
+                    {spin ? (
+                      <span style={{ display:"inline-block", width:10, height:10, border:"2px solid #7c3aed44",
+                        borderTop:"2px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
+                    ) : d.url ? "↺" : d.error ? "!" : icon}
+                    {spin ? "Creating…" : d.url ? label : d.error ? "Retry" : label}
+                  </button>
+                  {d.url && !d.loading && (
+                    <a href={d.url} target="_blank" rel="noopener noreferrer"
+                      style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #7c3aed66",
+                        background:"#7c3aed", color:"#fff", fontSize:11, fontFamily:head, fontWeight:700,
+                        textDecoration:"none", whiteSpace:"nowrap" as const }}>
+                      Open →
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+            <div style={{ width:1, height:14, background:"#7c3aed30", flexShrink:0 }} />
+            <button
+              onClick={() => createAllGammaDecks(company, prods, personas, domains, groups)}
+              disabled={anyLoading}
+              style={{ padding:"5px 12px", borderRadius:7, border:"1px solid #7c3aed55",
+                background: anyLoading ? "#7c3aed08" : "#7c3aed", color:anyLoading?"#7c3aed":"#fff",
+                fontSize:11, fontFamily:head, fontWeight:700, cursor:anyLoading?"default":"pointer",
+                opacity:anyLoading?0.6:1, transition:"all .15s", whiteSpace:"nowrap" as const }}>
+              {anyLoading ? "Creating all…" : "Create All"}
+            </button>
+          </div>
+        );
+      })()}
+
       {/* Tab content */}
       <div style={{ flex:1, overflow:"auto", padding:24 }}>
 
@@ -17972,41 +18086,6 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
                 </div>
               ) : null;
             })()}
-            {/* Gamma deck creation */}
-            {groups.length > 0 && (
-              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:6 }}>
-                <button
-                  onClick={() => createGammaDeck(company, prods, personas, groups)}
-                  disabled={gammaLoading}
-                  style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 16px", borderRadius:8,
-                    border:"1px solid #7c3aed44", background: gammaLoading ? "#7c3aed0a" : "#7c3aed12",
-                    color:"#7c3aed", fontSize:12, fontFamily:head, fontWeight:700, cursor:gammaLoading?"default":"pointer",
-                    opacity:gammaLoading?0.7:1, transition:"all .15s", whiteSpace:"nowrap" as const }}>
-                  {gammaLoading ? (
-                    <>
-                      <span style={{ display:"inline-block", width:12, height:12, border:"2px solid #7c3aed44",
-                        borderTop:"2px solid #7c3aed", borderRadius:"50%",
-                        animation:"spin 0.8s linear infinite" }} />
-                      Creating deck…
-                    </>
-                  ) : (
-                    <>{gammaUrl ? "↺ Recreate Deck" : "✦ Create Gamma Deck"}</>
-                  )}
-                </button>
-                {gammaUrl && !gammaLoading && (
-                  <a href={gammaUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:8,
-                      border:"1px solid #7c3aed66", background:"#7c3aed", color:"#fff",
-                      fontSize:12, fontFamily:head, fontWeight:700, textDecoration:"none",
-                      whiteSpace:"nowrap" as const }}>
-                    Open Deck →
-                  </a>
-                )}
-                {gammaError && (
-                  <span style={{ fontSize:11, color:"#dc2626", fontFamily:body }}>{gammaError}</span>
-                )}
-              </div>
-            )}
             {groups.length===0 ? (
               <div style={{ textAlign:"center", color:C2.muted, fontFamily:body, padding:48 }}>No campaigns generated</div>
             ) : (
