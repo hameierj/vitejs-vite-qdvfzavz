@@ -17088,7 +17088,7 @@ const LP_STEPS = [
 ];
 
 
-function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChange, onLaunch, onContinue, onReset, onRegenDomains, onProcessOnboarding, onGenerateExport, salesContext, companyName }: {
+function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChange, onLaunch, onContinue, onReset, onRegenDomains, onProcessOnboarding, onGenerateExport, salesContext, companyName, clientId }: {
   lpState: "idle"|"running"|"done";
   lpProgress: { step:number; phase:string; total:number };
   lpLog: string[];
@@ -17103,6 +17103,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
   onGenerateExport: () => Promise<string>;
   salesContext: { count: number; snippet: string; full: string };
   companyName?: string;
+  clientId?: string;
 }) {
   const [regenningDomains, setRegenningDomains] = useState(false);
   const [url, setUrl] = useState("");
@@ -17124,6 +17125,21 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
     infrastructure: { loading: false, url: null, error: null },
     campaigns:      { loading: false, url: null, error: null },
   });
+
+  // Load saved Gamma URLs for this client on mount / client switch
+  useEffect(() => {
+    if (!clientId) return;
+    dbGet("app_data", `gamma_urls_${clientId}`).then((saved: any) => {
+      if (!saved || typeof saved !== "object") return;
+      setGammaDecks(prev => {
+        const next = { ...prev };
+        (["company","personas","infrastructure","campaigns"] as GammaDeckKey[]).forEach(k => {
+          if (saved[k]) next[k] = { loading: false, url: saved[k], error: null };
+        });
+        return next;
+      });
+    });
+  }, [clientId]);
 
   const copyGroup = (g: any) => {
     const lines: string[] = [];
@@ -17322,7 +17338,18 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
         numCards = Math.min(75, 2 + grps.length * 4);
       }
       const url = await gammaCallApi(inputText, title, numCards);
-      setGammaDecks(prev => ({ ...prev, [deckKey]: { loading: false, url, error: null } }));
+      setGammaDecks(prev => {
+        const next = { ...prev, [deckKey]: { loading: false, url, error: null } };
+        if (clientId) {
+          const toSave = Object.fromEntries(
+            (Object.entries(next) as [GammaDeckKey, typeof next[GammaDeckKey]][])
+              .filter(([, v]) => v.url)
+              .map(([k, v]) => [k, v.url])
+          );
+          dbPut("app_data", `gamma_urls_${clientId}`, toSave);
+        }
+        return next;
+      });
     } catch (e: any) {
       setGammaDecks(prev => ({ ...prev, [deckKey]: { loading: false, url: null, error: e.message || "Failed" } }));
     }
@@ -22787,6 +22814,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                 onGenerateExport={generateExport}
                 salesContext={buildLpSalesContext()}
                 companyName={activeWorkspace?.name}
+                clientId={(activeWorkspace as any)?.id}
               />
             )}
 
