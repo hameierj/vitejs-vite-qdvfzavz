@@ -17189,7 +17189,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `Server error ${res.status}`);
+      throw new Error(data.message || data.error || JSON.stringify(data) || `Server error ${res.status}`);
     }
     const { generationId } = await res.json();
     const poll = async (): Promise<string> => {

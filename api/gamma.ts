@@ -16,6 +16,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify(req.body),
     });
     const data = await upstream.json();
+    if (!upstream.ok) {
+      console.error("Gamma API error", upstream.status, JSON.stringify(data));
+    }
     return res.status(upstream.status).json(data);
   }
 
