@@ -17182,7 +17182,8 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
         cardOptions: { dimensions: "16x9" },
         imageOptions: {
           source: "aiGenerated",
-          style: "Dreamy pastel holographic style, soft iridescent gradients, pearlescent glow, translucent textures, airy and ethereal mood, glossy surreal atmosphere, smooth flowing forms, futuristic yet gentle aesthetic, graphic illustration",
+          model: "recraft-v4",
+          style: "Dreamy pastel holographic style, soft iridescent gradients, pearlescent glow, translucent textures, airy and ethereal mood, glossy surreal atmosphere, smooth flowing forms, futuristic yet gentle aesthetic, graphic illustration, no photography, no people",
         },
       }),
     });
