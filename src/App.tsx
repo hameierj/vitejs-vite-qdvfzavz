@@ -17178,7 +17178,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        inputText, textMode: "generate", format: "presentation", numCards, title, theme: "dopc0p2lu6c8k7i",
+        inputText, textMode: "preserve", format: "presentation", numCards, title, theme: "dopc0p2lu6c8k7i",
         cardOptions: { dimensions: "16x9" },
         imageOptions: {
           source: "aiGenerated",
