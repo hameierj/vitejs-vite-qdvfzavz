@@ -18584,6 +18584,7 @@ function AppMain() {
   const [wsShareToken, setWsShareToken] = useState<string|null>(null);
   const [researchState, setResearchState] = useState<"idle"|"running"|"done">("idle");
   const [researchLog,   setResearchLog]   = useState<string[]>([]);
+  const researchPollKickRef = useRef<() => void>(() => {});
   const [icpScoringState, setIcpScoringState] = useState<"idle"|"scoring"|"done">("idle");
   const [campaignPlanIcp, setCampaignPlanIcp] = useState<any>(null);
   const [campaignPlanScore, setCampaignPlanScore] = useState<any>(null);
@@ -18922,6 +18923,78 @@ function AppMain() {
     supabase.from("workspaces").select("share_token").eq("id", (activeWorkspace as any).id).single()
       .then(({ data }) => { if (data?.share_token) setWsShareToken(data.share_token); })
       .catch(() => {});
+  }, [(activeWorkspace as any)?.id]);
+
+  // ── Getting Started research job: poll job state for the active workspace.
+  // The job runs server-side (supabase function gs-research-run) so it
+  // survives refresh, navigation, and switching between accounts. On every
+  // workspace change we resume polling from the persisted job state.
+  useEffect(() => {
+    if (!activeWorkspace || !supabase) { setResearchState("idle"); setResearchLog([]); return; }
+    const wsId = (activeWorkspace as any).id;
+    let cancelled = false;
+    let timerId: any = null;
+    let appliedBriefForJob: string | null = null;
+    let lastSeenJobId: string | null = null;
+
+    const schedule = (ms: number) => {
+      if (cancelled) return;
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(poll, ms);
+    };
+
+    const poll = async () => {
+      if (cancelled || !supabase) return;
+      try {
+        const { data } = await supabase
+          .from("app_data")
+          .select("value")
+          .eq("key", `gs_research_job_${wsId}`)
+          .maybeSingle();
+        if (cancelled) return;
+        const job = data?.value ? (() => { try { return JSON.parse(data.value as string); } catch { return null; } })() : null;
+
+        if (!job) {
+          // Heartbeat slowly so a newly-started job (e.g. from handleStartResearch) is picked up.
+          schedule(4000);
+          return;
+        }
+
+        if (Array.isArray(job.log)) setResearchLog(job.log);
+
+        if (job.status === "running") {
+          setResearchState("running");
+          schedule(3000);
+        } else if (job.status === "done") {
+          setResearchState("done");
+          if (job.result && appliedBriefForJob !== (job.jobId || "_one_")) {
+            appliedBriefForJob = job.jobId || "_one_";
+            setCompanyData((prev: any) => ({ ...prev, _initialResearchBrief: job.result }));
+          }
+          // Once done, slow down to a heartbeat so we still notice a re-run.
+          schedule(8000);
+        } else if (job.status === "error") {
+          if (lastSeenJobId !== job.jobId) {
+            setResearchLog((prev) => [...(Array.isArray(prev) ? prev : []), `Error: ${job.error || "unknown"}`]);
+          }
+          setResearchState("idle");
+          schedule(8000);
+        } else {
+          schedule(4000);
+        }
+        lastSeenJobId = job.jobId || lastSeenJobId;
+      } catch {
+        if (cancelled) return;
+        schedule(6000);
+      }
+    };
+
+    setResearchState("idle");
+    setResearchLog([]);
+    researchPollKickRef.current = () => { if (!cancelled) poll(); };
+    poll();
+
+    return () => { cancelled = true; if (timerId) clearTimeout(timerId); researchPollKickRef.current = () => {}; };
   }, [(activeWorkspace as any)?.id]);
 
   // ── Workspace data: save whenever data changes ──
@@ -21094,124 +21167,29 @@ Return ONLY valid JSON:
   };
 
   const handleStartResearch = async (inputDomain: string) => {
+    const wsId = activeWorkspace ? (activeWorkspace as any).id : null;
+    if (!wsId || !supabase) {
+      addToast({ title: "No active workspace", status: "error", message: "Open a client account before running research." });
+      return;
+    }
+
     setResearchState("running");
-    setResearchLog([]);
-    const log: string[] = [];
-    const addLog = (m: string) => { log.push(m); setResearchLog([...log]); };
+    setResearchLog(["Starting research..."]);
 
     try {
-      let normUrl = inputDomain.trim();
-      if (normUrl && !/^https?:\/\//i.test(normUrl)) normUrl = `https://${normUrl}`;
-      const domain = normUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-
-      addLog("Fetching homepage...");
-      let pageContent = "";
-      try {
-        const jinaResp = await fetch(`https://r.jina.ai/${normUrl}`, { signal: AbortSignal.timeout(20000) });
-        if (jinaResp.ok) {
-          pageContent = (await jinaResp.text()).slice(0, 12000);
-          addLog(`Fetched homepage (${Math.round(pageContent.length / 100) / 10}k chars)`);
-        }
-      } catch { addLog("Warning: could not fetch homepage — proceeding with limited data"); }
-
-      // Try to fetch one product/about page for more context
-      const extraPaths = ["/products", "/services", "/solutions", "/about", "/platform"];
-      for (const path of extraPaths) {
-        try {
-          const r = await fetch(`https://r.jina.ai/${normUrl}${path}`, { signal: AbortSignal.timeout(10000) });
-          if (r.ok) {
-            const t = (await r.text()).slice(0, 6000);
-            if (t.length > 500) { pageContent += `\n\n${path.toUpperCase()} PAGE:\n${t}`; addLog(`Fetched ${path}`); break; }
-          }
-        } catch { /* skip */ }
-      }
-
-      addLog("Analyzing with Claude...");
-      const apiKey = (() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } })();
-      if (!apiKey) throw new Error("No Anthropic API key. Add it in API Keys settings.");
-
-      const prompt = `Analyze the following website content for ${domain} and produce a comprehensive pre-onboarding research brief for a B2B outreach team.
-
-WEBSITE CONTENT:
-${pageContent || "(no content fetched — use domain knowledge about " + domain + ")"}
-
-DOMAIN: ${domain}
-
-Return a JSON object:
-{
-  "generatedAt": "${new Date().toISOString()}",
-  "domain": "${domain}",
-  "sources": ["${normUrl}"],
-  "companyOverview": {
-    "name": "company name",
-    "size": "estimated employee count or range",
-    "stage": "startup/growth/established/enterprise",
-    "businessModel": "B2B SaaS / agency / services / marketplace / etc."
-  },
-  "productsServices": [
-    { "name": "product name", "description": "what it does in 1-2 sentences", "targetBuyer": "who buys this", "differentiator": "what makes it different" }
-  ],
-  "valuePropositions": [
-    { "claim": "specific value claim", "evidence": "supporting evidence if any", "quantified": true/false }
-  ],
-  "targetMarketEvidence": {
-    "industries": ["industry1", "industry2"],
-    "companySizes": ["size range"],
-    "knownCustomers": ["customer1 if mentioned"]
-  },
-  "competitivePositioning": {
-    "category": "market category",
-    "mainCompetitors": ["competitor1"],
-    "differentiators": ["differentiator1", "differentiator2"]
-  },
-  "icpHypotheses": [
-    { "name": "ICP name e.g. 'Mid-Market SaaS — VP Sales'", "rationale": "why this is likely an ICP", "confidence": "high/medium/low", "signals": ["signal1", "signal2"] }
-  ],
-  "recommendedAngles": [
-    { "angle": "outbound angle name", "why": "why this angle works for this company", "bestChannel": "email/linkedin", "suggestedHook": "a concrete hook sentence to test" }
-  ],
-  "callPrepNotes": "A bulleted list of 5-8 things the CSM should confirm, ask, or validate during the onboarding call. Focus on gaps in the research and hypotheses that need validation.",
-  "confidenceNotes": "1 sentence about the quality/completeness of the research — what was unclear or missing"
-}
-
-Return only valid JSON. Be specific and concrete — no vague marketing language.`;
-
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 4000,
-          system: "You are a senior B2B go-to-market researcher. Return only valid JSON.",
-          messages: [{ role: "user", content: prompt }],
-        }),
-        signal: AbortSignal.timeout(55000),
+      const { error } = await supabase.functions.invoke("gs-research-run", {
+        body: { workspaceId: wsId, domain: inputDomain },
       });
-
-      if (!resp.ok) throw new Error(`Claude error ${resp.status}`);
-      const data = await resp.json();
-      const raw = data.content?.[0]?.text || "";
-
-      // Parse JSON from response
-      let brief: any = null;
-      try {
-        const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/s);
-        brief = JSON.parse(match ? match[1] : raw);
-      } catch { brief = { generatedAt: new Date().toISOString(), domain, sources: [normUrl], callPrepNotes: raw, confidenceNotes: "Parse error — raw output shown in call prep notes." }; }
-
-      addLog("Brief generated");
-
-      setCompanyData((prev: any) => ({ ...prev, _initialResearchBrief: brief }));
-      setResearchState("done");
-
+      if (error) throw error;
+      // The job runs server-side under EdgeRuntime.waitUntil. Progress and the
+      // final brief are written to app_data[gs_research_job_<wsId>]; the
+      // workspace-scoped polling effect picks them up from here on, including
+      // after refresh, navigation, or switching to another account.
+      researchPollKickRef.current();
     } catch (e: any) {
-      addLog(`Error: ${e.message || e}`);
       setResearchState("idle");
+      setResearchLog((prev) => [...prev, `Error: ${e?.message || e}`]);
+      addToast({ title: "Research failed to start", status: "error", message: e?.message || String(e) });
     }
   };
 
