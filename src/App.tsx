@@ -16707,12 +16707,13 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
       });
       if (authError || !data.user) throw new Error(authError?.message || "Login failed");
       const meta = data.user.user_metadata || {};
+      const resolvedEmail = data.user.email || email.trim();
       const userRecord: UserRecord = {
         id: data.user.id,
-        email: data.user.email || email.trim(),
+        email: resolvedEmail,
         password: "",
         name: meta.name || data.user.email?.split("@")[0] || "User",
-        role: (meta.role as any) || "team",
+        role: isAdminEmail(resolvedEmail) ? "admin" : ((meta.role as any) || "team"),
         status: "active",
         createdAt: data.user.created_at || new Date().toISOString(),
       };
@@ -16885,6 +16886,12 @@ function UserLoginGate({ onLogin }: { onLogin: (user: UserRecord) => void }) {
 
 // ─── ADMIN AUTH GATE ──────────────────────────────────────────────────────────
 const ADMIN_SESSION_KEY = "b2br_admin_auth";
+// Single source of truth for who has admin access. Email is checked rather
+// than user_metadata.role so the entitlement can't drift if metadata is
+// missing or accidentally overwritten on the Supabase user record.
+const ADMIN_EMAIL = "joshua.hameier@b2brocket.ai";
+const isAdminEmail = (email: string | undefined | null): boolean =>
+  !!email && email.trim().toLowerCase() === ADMIN_EMAIL;
 
 function AdminGate() {
   const [authed,  setAuthed]  = useState(() => {
@@ -16913,8 +16920,7 @@ function AdminGate() {
         email: username.trim(),
         password: password.trim(),
       });
-      const role = data.user?.user_metadata?.role;
-      if (authError || !data.user || role !== "admin") throw new Error("not admin");
+      if (authError || !data.user || !isAdminEmail(data.user.email)) throw new Error("not admin");
       try { sessionStorage.setItem(ADMIN_SESSION_KEY, "1"); } catch {}
       setAuthed(true);
     } catch {
@@ -18436,12 +18442,13 @@ function AppMain() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         const meta = session.user.user_metadata || {};
+        const resolvedEmail = session.user.email || "";
         const userRecord: UserRecord = {
           id: session.user.id,
-          email: session.user.email || "",
+          email: resolvedEmail,
           password: "",
           name: meta.name || session.user.email?.split("@")[0] || "User",
-          role: (meta.role as any) || "team",
+          role: isAdminEmail(resolvedEmail) ? "admin" : ((meta.role as any) || "team"),
           status: "active",
           createdAt: session.user.created_at || new Date().toISOString(),
         };
