@@ -17118,6 +17118,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
   const [expandedGroup, setExpandedGroup] = useState<string|null>(null);
   const [seqTab, setSeqTab] = useState<Record<string,"strategy"|"email"|"linkedin">>({});
   const [copiedGroup, setCopiedGroup] = useState<string|null>(null);
+  const [emailSubTab, setEmailSubTab] = useState<Record<string,number>>({});
   type GammaDeckKey = "company" | "personas" | "infrastructure" | "campaigns";
   const [gammaDecks, setGammaDecks] = useState<Record<GammaDeckKey, { loading: boolean; url: string|null; error: string|null }>>({
     company:        { loading: false, url: null, error: null },
@@ -17149,16 +17150,19 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
     if (g.rationale) lines.push(`\nRATIONALE\n${g.rationale}`);
     if (g.emailStrategy) { lines.push("\n" + "=".repeat(60)); lines.push("EMAIL STRATEGY BRIEF"); lines.push("=".repeat(60)); lines.push(g.emailStrategy); }
     if (g.linkedinStrategy) { lines.push("\n" + "=".repeat(60)); lines.push("LINKEDIN STRATEGY BRIEF"); lines.push("=".repeat(60)); lines.push(g.linkedinStrategy); }
-    if ((g.emailSequence||[]).length) {
+    const allEmailSeqsCopy: any[][] = g.emailSequences || [(g.emailSequence||[])];
+    const emailSeqCopyLabels = ["Email 1 — Conversation Starter", "Email 2 — Meeting CTA", "Email 3 — Value-Based CTA"];
+    allEmailSeqsCopy.forEach((seq, si) => {
+      if (!seq?.length) return;
       lines.push("\n" + "=".repeat(60));
-      lines.push("EMAIL SEQUENCE");
+      lines.push(emailSeqCopyLabels[si] || `EMAIL SEQUENCE ${si+1}`);
       lines.push("=".repeat(60));
-      (g.emailSequence as any[]).forEach((s: any) => {
+      (seq as any[]).forEach((s: any) => {
         lines.push(`\nStep ${s.stepNumber??""} — Day +${s.dayOffset??0}${s.role ? ` [${s.role}]` : ""}`);
         if (s.subject) lines.push(`Subject: ${s.subject}`);
         lines.push(s.body || "");
       });
-    }
+    });
     if ((g.linkedinSequence||[]).length) {
       lines.push("\n" + "=".repeat(60));
       lines.push("LINKEDIN SEQUENCE");
@@ -17298,15 +17302,18 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
       if (g.rationale) L.push(`\n${g.rationale}`);
       L.push("");
       if (g.emailStrategy)  L.push(`### Email Strategy\n${g.emailStrategy}\n`);
-      if ((g.emailSequence || []).length) {
-        L.push(`### Email Sequence (${g.emailSequence.length} touches)`);
-        g.emailSequence.forEach((s: any) => {
+      const gEmailSeqs: any[][] = g.emailSequences || [(g.emailSequence||[])];
+      const gEmailLabels = ["Email 1 — Conversation Starter", "Email 2 — Meeting CTA", "Email 3 — Value-Based CTA"];
+      gEmailSeqs.forEach((seq, si) => {
+        if (!seq?.length) return;
+        L.push(`### ${gEmailLabels[si] || `Email Sequence ${si+1}`} (${seq.length} touches)`);
+        seq.forEach((s: any) => {
           L.push(`\n**Step ${s.stepNumber} — Day +${s.dayOffset}${s.role ? ` [${s.role}]` : ""}**`);
           if (s.subject) L.push(`Subject: ${s.subject}`);
           L.push(s.body || "");
         });
         L.push("");
-      }
+      });
       if (g.linkedinStrategy) L.push(`### LinkedIn Strategy\n${g.linkedinStrategy}\n`);
       if ((g.linkedinSequence || []).length) {
         L.push(`### LinkedIn Sequence (${g.linkedinSequence.length} touches)`);
@@ -17897,7 +17904,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
         {lpTab === "campaigns" && (
           <div style={{ maxWidth:880 }}>
             {(() => {
-              const hasSequences = groups.some((g:any) => (g.emailSequence||[]).length > 0 || (g.linkedinSequence||[]).length > 0);
+              const hasSequences = groups.some((g:any) => (g.emailSequences?.[0]||g.emailSequence||[]).length > 0 || (g.linkedinSequence||[]).length > 0);
               const isPlaceholder = groups.length > 0 && !hasSequences;
               return isPlaceholder ? (
                 <div style={{ background:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:12, padding:"20px 24px", marginBottom:16, display:"flex", alignItems:"flex-start", gap:14 }}>
@@ -17925,7 +17932,9 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
                 {groups.map((g:any, gi:number) => {
                   const isOpen = expandedGroup===g.id;
                   const ct = seqTab[g.id]||"strategy";
-                  const seq = ct==="email" ? (g.emailSequence||[]) : (g.linkedinSequence||[]);
+                  const emailIdx = emailSubTab[g.id]??0;
+                  const allEmailSeqs = g.emailSequences || [g.emailSequence||[]];
+                  const seq = ct==="email" ? (allEmailSeqs[emailIdx]||[]) : (g.linkedinSequence||[]);
                   const priorityColor = g.priority==="high" ? "#16a34a" : "#ca8a04";
                   const priorityBg   = g.priority==="high" ? "#16a34a14" : "#ca8a0414";
                   return (
@@ -17964,7 +17973,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
                             <span style={{ fontSize:10, padding:"2px 7px", borderRadius:4,
                               background:"#0077B514", color:"#0077B5", fontFamily:head, fontWeight:700 }}>💼 LINKEDIN</span>
                             <span style={{ fontSize:11, color:C2.muted, fontFamily:body }}>
-                              {(g.emailSequence||[]).length} email steps · {(g.linkedinSequence||[]).length} LinkedIn touches
+                              {allEmailSeqs.filter((s:any[])=>s.length>0).length > 1 ? `${allEmailSeqs.filter((s:any[])=>s.length>0).length} email campaigns` : `${(g.emailSequences?.[0]||g.emailSequence||[]).length} email steps`} · {(g.linkedinSequence||[]).length} LinkedIn touches
                             </span>
                           </div>
                           {/* Rationale */}
@@ -18033,6 +18042,19 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
 
                             {/* Sequence steps (email or linkedin tab) */}
                             {ct !== "strategy" && <div>
+                              {ct === "email" && allEmailSeqs.length > 1 && (
+                                <div style={{ display:"flex", gap:4, marginBottom:12, flexWrap:"wrap" as const }}>
+                                  {["Conversation Starter","Meeting CTA","Value-Based CTA"].slice(0, allEmailSeqs.length).map((label, ei) => (
+                                    <button key={ei} onClick={() => setEmailSubTab(p=>({...p,[g.id]:ei}))}
+                                      style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${emailIdx===ei ? C2.accent+"80" : C2.border}`,
+                                        background: emailIdx===ei ? `${C2.accent}12` : "transparent",
+                                        color: emailIdx===ei ? C2.accent : C2.muted,
+                                        fontSize:11, fontFamily:head, fontWeight:emailIdx===ei?700:500, cursor:"pointer" }}>
+                                      Email {ei+1} — {label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                               <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:C2.muted,
                                 textTransform:"uppercase" as const, letterSpacing:.8, marginBottom:10 }}>
                                 {ct==="email"?"Email Sequence":"LinkedIn Sequence"}
@@ -20783,18 +20805,27 @@ changes = 5-8 short bullet points summarising the most important decisions from 
       };
       const ctxStr = JSON.stringify(ctx).slice(0, 4000);
 
-      const ec: any = EMPTY_CAMPAIGN();
-      ec.channel="email"; ec.type="cold_email";
-      ec.productId=product.id; ec.personaIds=[persona.id];
-      ec.name=`${persona.name} × ${product.name} — Email`;
-      ec.source="onboarding"; ec.playbook=playbookKey;
-      ec.targeting={ titles:pd.buyer||"", industries:pd.industries||"", companySizes:Array.isArray(pd.co_sizes)?pd.co_sizes.join(", "):(pd.co_sizes||""), personLocation:pd.geo||"", companyLocation:pd.geo||"", keywords:pd.keywords||"", intentTopics:pd.intent_topics||"", excludedDomains:pd.neg||"" };
+      const obTargeting = { titles:pd.buyer||"", industries:pd.industries||"", companySizes:Array.isArray(pd.co_sizes)?pd.co_sizes.join(", "):(pd.co_sizes||""), personLocation:pd.geo||"", companyLocation:pd.geo||"", keywords:pd.keywords||"", intentTopics:pd.intent_topics||"", excludedDomains:pd.neg||"" };
+      const obEmailDefs = [
+        { suffix:"Email 1 — Conversation Starter", ctaInstr:"Lead with value (free audit, consultation, or industry insight). No hard ask. Soft CTA only — e.g. 'Worth a quick look?', 'Thoughts?'. Never ask for a meeting." },
+        { suffix:"Email 2 — Meeting CTA", ctaInstr:"Direct ask for a meeting or demo. Short, confident, clear. CTA must directly ask for a meeting — e.g. 'Open to a 15-min call?', 'Worth 20 minutes?'. No soft hedging." },
+        { suffix:"Email 3 — Value-Based CTA", ctaInstr:"Offer clear value before asking for the meeting. Works well on colder or larger audiences. Structure: problem → outcome → offer → CTA. e.g. 'Worth seeing how we'd approach this for you?'." },
+      ];
+      const obEmailCampaigns: any[] = obEmailDefs.map(def => {
+        const c: any = EMPTY_CAMPAIGN();
+        c.channel="email"; c.type="cold_email";
+        c.productId=product.id; c.personaIds=[persona.id];
+        c.name=`${persona.name} × ${product.name} — ${def.suffix}`;
+        c.source="onboarding"; c.playbook=playbookKey;
+        c.targeting=obTargeting;
+        return c;
+      });
 
       const lc: any = EMPTY_CAMPAIGN();
       lc.channel="linkedin"; lc.type="linkedin_message";
       lc.productId=product.id; lc.personaIds=[persona.id];
       lc.name=`${persona.name} × ${product.name} — LinkedIn`;
-      lc.source="onboarding"; lc.playbook=playbookKey; lc.targeting={...ec.targeting};
+      lc.source="onboarding"; lc.playbook=playbookKey; lc.targeting={...obTargeting};
 
       let emailStrategy = "";
       try {
@@ -20855,15 +20886,20 @@ Touch 5 (Day 17 — breakup): [angle]
         );
       } catch {}
 
-      let emailSeq: any[] = [];
-      try {
-        const er = await callAI(
-          `Write a 5-email cold outreach sequence. Real emails, not templates. Max 100 words each body.
+      const obEmailSequences: any[][] = [];
+      for (let ei = 0; ei < obEmailDefs.length; ei++) {
+        const def = obEmailDefs[ei];
+        let emailSeqN: any[] = [];
+        try {
+          const er = await callAI(
+            `Write a 5-email cold outreach sequence. Real emails, not templates. Max 100 words each body.
 
 Context: ${ctxStr}
 ${pbBlock}${onboardingBlock}
 EMAIL STRATEGY (follow this exactly):
 ${emailStrategy.slice(0, 1200)}
+
+CTA STYLE FOR THIS CAMPAIGN: ${def.ctaInstr}
 
 Rules:
 - Email 1 (Day 0): lead with the LEAD PAIN — hook, short, personal
@@ -20871,18 +20907,22 @@ Rules:
 - Email 3 (Day 7): proof/social proof + objection addressed
 - Email 4 (Day 14): gain angle
 - Email 5 (Day 21): breakup — direct, human, low-friction
+- ALL CTAs must strictly follow the CTA STYLE above.
 - ZERO links or URLs in any email. CTAs must be reply-based only.
 
 Return ONLY valid JSON:
 {"steps":[{"stepNumber":1,"role":"hook","dayOffset":0,"subject":"...","body":"..."},{"stepNumber":2,"role":"proof","dayOffset":3,"subject":"...","body":"..."},{"stepNumber":3,"role":"value","dayOffset":7,"subject":"...","body":"..."},{"stepNumber":4,"role":"urgency","dayOffset":14,"subject":"...","body":"..."},{"stepNumber":5,"role":"breakup","dayOffset":21,"subject":"...","body":"..."}]}`, "", 1400
-        );
-        const ep = JSON.parse(er.replace(/```json|```/g,"").trim());
-        emailSeq = (ep.steps||[]).map((s:any,i:number) => ({
-          id:uid(), stepNumber:s.stepNumber||i+1, role:s.role||"hook",
-          dayOffset:s.dayOffset??[0,3,7,14,21][i]??i*7, subject:s.subject||"", body:s.body||"", variants:[],
-        }));
-        ec.sequence = emailSeq;
-      } catch {}
+          );
+          const ep = JSON.parse(er.replace(/```json|```/g,"").trim());
+          emailSeqN = (ep.steps||[]).map((s:any,i:number) => ({
+            id:uid(), stepNumber:s.stepNumber||i+1, role:s.role||"hook",
+            dayOffset:s.dayOffset??[0,3,7,14,21][i]??i*7, subject:s.subject||"", body:s.body||"", variants:[],
+          }));
+        } catch {}
+        obEmailCampaigns[ei].sequence = emailSeqN;
+        obEmailSequences.push(emailSeqN);
+      }
+      const emailSeq = obEmailSequences[0] || [];
 
       let liSeq: any[] = [];
       try {
@@ -20910,14 +20950,17 @@ Return ONLY valid JSON:
         lc.sequence = liSeq;
       } catch {}
 
-      allNewCampaigns.push(ec, lc);
+      allNewCampaigns.push(...obEmailCampaigns, lc);
       newLpGroups.push({
         id:uid(), productId:product.id, personaId:persona.id,
         productName:product.name, personaName:persona.name,
         priority:"high", rationale:"From onboarding",
-        emailCampaignId:ec.id, linkedinCampaignId:lc.id,
+        emailCampaignId:obEmailCampaigns[0]?.id||"",
+        emailCampaignIds:obEmailCampaigns.map((c:any)=>c.id),
+        linkedinCampaignId:lc.id,
         emailStrategy, linkedinStrategy,
-        emailSequence:emailSeq, linkedinSequence:liSeq,
+        emailSequence:emailSeq, emailSequences:obEmailSequences,
+        linkedinSequence:liSeq,
       });
     }
 
@@ -21588,20 +21631,28 @@ Return ONLY JSON array of stems: ["name1","name2",...]`, "", 1000
         };
         const ctxStr = JSON.stringify(ctx).slice(0,4000);
 
-        // Email campaign object
-        const ec: any = EMPTY_CAMPAIGN();
-        ec.channel="email"; ec.type="cold_email";
-        ec.productId=product.id; ec.personaIds=[persona.id];
-        ec.name=`${persona.name} × ${product.name} — Email`;
-        ec.source="quickstart"; ec.playbook=playbookKey;
-        ec.targeting={ titles:pd.buyer||"", industries:pd.industries||"", companySizes:Array.isArray(pd.co_sizes)?pd.co_sizes.join(", "):(pd.co_sizes||""), personLocation:pd.geo||"", companyLocation:pd.geo||"", keywords:pd.keywords||"", intentTopics:pd.intent_topics||"", excludedDomains:pd.neg||"" };
+        const targeting = { titles:pd.buyer||"", industries:pd.industries||"", companySizes:Array.isArray(pd.co_sizes)?pd.co_sizes.join(", "):(pd.co_sizes||""), personLocation:pd.geo||"", companyLocation:pd.geo||"", keywords:pd.keywords||"", intentTopics:pd.intent_topics||"", excludedDomains:pd.neg||"" };
+        const emailCampaignDefs = [
+          { suffix:"Email 1 — Conversation Starter", ctaInstr:"Lead with value (free audit, consultation, or industry insight). No hard ask. Soft CTA only — e.g. 'Worth a quick look?', 'Thoughts?'. Never ask for a meeting." },
+          { suffix:"Email 2 — Meeting CTA", ctaInstr:"Direct ask for a meeting or demo. Short, confident, clear. CTA must directly ask for a meeting — e.g. 'Open to a 15-min call?', 'Worth 20 minutes?'. No soft hedging." },
+          { suffix:"Email 3 — Value-Based CTA", ctaInstr:"Offer clear value before asking for the meeting. Works well on colder or larger audiences. Structure: problem → outcome → offer → CTA. e.g. 'Worth seeing how we'd approach this for you?'." },
+        ];
+        const emailCampaigns: any[] = emailCampaignDefs.map(def => {
+          const c: any = EMPTY_CAMPAIGN();
+          c.channel="email"; c.type="cold_email";
+          c.productId=product.id; c.personaIds=[persona.id];
+          c.name=`${persona.name} × ${product.name} — ${def.suffix}`;
+          c.source="quickstart"; c.playbook=playbookKey;
+          c.targeting=targeting;
+          return c;
+        });
 
         // LinkedIn campaign object
         const lc: any = EMPTY_CAMPAIGN();
         lc.channel="linkedin"; lc.type="linkedin_message";
         lc.productId=product.id; lc.personaIds=[persona.id];
         lc.name=`${persona.name} × ${product.name} — LinkedIn`;
-        lc.source="quickstart"; lc.playbook=playbookKey; lc.targeting={...ec.targeting};
+        lc.source="quickstart"; lc.playbook=playbookKey; lc.targeting={...targeting};
 
         upd(8, `Campaign ${gi+1}/${matrixCombos.length}: email strategy...`);
         addLog(`Campaign ${gi+1}/${matrixCombos.length}: ${product.name} × ${persona.name}`);
@@ -21670,17 +21721,22 @@ Touch 5 (Day 17 — breakup): [angle]
           );
         } catch { addLog(`Warning: LinkedIn strategy ${gi+1} failed`); }
 
-        // ── 9a: Email Sequence (based on email strategy) ──
-        upd(9, `Campaign ${gi+1}/${matrixCombos.length}: email sequence...`);
-        let emailSeq: any[] = [];
-        try {
-          const er = await callAI(
-            `Write a 5-email cold outreach sequence. Real emails, not templates. Max 100 words each body.
+        // ── 9a: Email Sequences (3 campaigns with different CTA styles) ──
+        upd(9, `Campaign ${gi+1}/${matrixCombos.length}: email sequences...`);
+        const emailSequences: any[][] = [];
+        for (let ei = 0; ei < emailCampaignDefs.length; ei++) {
+          const def = emailCampaignDefs[ei];
+          let emailSeqN: any[] = [];
+          try {
+            const er = await callAI(
+              `Write a 5-email cold outreach sequence. Real emails, not templates. Max 100 words each body.
 
 Context: ${ctxStr}
 ${pbBlock}${salesBlock}
 EMAIL STRATEGY (follow this exactly — angles, arc, and personalization):
 ${emailStrategy.slice(0,1200)}
+
+CTA STYLE FOR THIS CAMPAIGN: ${def.ctaInstr}
 
 Rules:
 - Email 1 (Day 0): lead with the LEAD PAIN from strategy — hook, short, personal
@@ -21688,19 +21744,23 @@ Rules:
 - Email 3 (Day 7): proof/social proof + objection addressed
 - Email 4 (Day 14): gain angle from strategy
 - Email 5 (Day 21): breakup — direct, human, low-friction
-- ZERO links or URLs in any email — no website links, no calendar links, no "click here", no hyperlinks of any kind. CTAs must be reply-based only (e.g. "Worth a quick chat?", "Open to a 15-min call?").
+- ALL CTAs must strictly follow the CTA STYLE above. No deviations.
+- ZERO links or URLs in any email — no website links, no calendar links, no "click here", no hyperlinks of any kind. CTAs must be reply-based only.
 
 Return ONLY valid JSON:
 {"steps":[{"stepNumber":1,"role":"hook","dayOffset":0,"subject":"...","body":"..."},{"stepNumber":2,"role":"proof","dayOffset":3,"subject":"...","body":"..."},{"stepNumber":3,"role":"value","dayOffset":7,"subject":"...","body":"..."},{"stepNumber":4,"role":"urgency","dayOffset":14,"subject":"...","body":"..."},{"stepNumber":5,"role":"breakup","dayOffset":21,"subject":"...","body":"..."}]}`,
-            "", 1400
-          );
-          const ep = JSON.parse(er.replace(/```json|```/g,"").trim());
-          emailSeq = (ep.steps||[]).map((s:any,i:number) => ({
-            id:uid(), stepNumber:s.stepNumber||i+1, role:s.role||"hook",
-            dayOffset:s.dayOffset??[0,3,7,14,21][i]??i*7, subject:s.subject||"", body:s.body||"", variants:[],
-          }));
-          ec.sequence = emailSeq;
-        } catch { addLog(`Warning: email sequence ${gi+1} failed`); }
+              "", 1400
+            );
+            const ep = JSON.parse(er.replace(/```json|```/g,"").trim());
+            emailSeqN = (ep.steps||[]).map((s:any,i:number) => ({
+              id:uid(), stepNumber:s.stepNumber||i+1, role:s.role||"hook",
+              dayOffset:s.dayOffset??[0,3,7,14,21][i]??i*7, subject:s.subject||"", body:s.body||"", variants:[],
+            }));
+          } catch { addLog(`Warning: email sequence ${gi+1}.${ei+1} failed`); }
+          emailCampaigns[ei].sequence = emailSeqN;
+          emailSequences.push(emailSeqN);
+        }
+        const emailSeq = emailSequences[0] || [];
 
         // ── 9b: LinkedIn Sequence (based on linkedin strategy) ──
         upd(9, `Campaign ${gi+1}/${matrixCombos.length}: LinkedIn sequence...`);
@@ -21731,14 +21791,17 @@ Return ONLY valid JSON:
           lc.sequence = liSeq;
         } catch { addLog(`Warning: LinkedIn sequence ${gi+1} failed`); }
 
-        allNewCampaigns.push(ec, lc);
+        allNewCampaigns.push(...emailCampaigns, lc);
         lpGroups.push({
           id:uid(), productId:product.id, personaId:persona.id,
           productName:product.name, personaName:persona.name,
           priority, rationale,
-          emailCampaignId:ec.id, linkedinCampaignId:lc.id,
+          emailCampaignId:emailCampaigns[0]?.id||"",
+          emailCampaignIds:emailCampaigns.map((c:any)=>c.id),
+          linkedinCampaignId:lc.id,
           emailStrategy, linkedinStrategy,
-          emailSequence:emailSeq, linkedinSequence:liSeq,
+          emailSequence:emailSeq, emailSequences,
+          linkedinSequence:liSeq,
         });
       }
 
