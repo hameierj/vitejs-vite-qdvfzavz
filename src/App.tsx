@@ -18822,9 +18822,18 @@ function AppMain() {
     setEditingId(null);
     // Detect an in-flight LaunchPad job for this workspace synchronously so
     // the page shows the running state instead of flashing the empty form
-    // before the polling effect catches up.
+    // before the polling effect catches up. Ignore the flag if a finished
+    // result already exists — that flag is left over from a prior
+    // in-browser run and the polling effect will clean it up.
     const lpRunningFlag = activeWorkspace
-      ? (() => { try { return !!localStorage.getItem(`lp_running_${(activeWorkspace as any).id}`); } catch { return false; } })()
+      ? (() => {
+          try {
+            const wsId = (activeWorkspace as any).id;
+            const running = !!localStorage.getItem(`lp_running_${wsId}`);
+            const hasResult = !!localStorage.getItem(`lp_result_${wsId}`);
+            return running && !hasResult;
+          } catch { return false; }
+        })()
       : false;
     if (lpRunningFlag) {
       setLpState("running");
@@ -19105,7 +19114,23 @@ function AppMain() {
           .maybeSingle();
         if (cancelled) return;
         const job = data?.value ? (() => { try { return JSON.parse(data.value as string); } catch { return null; } })() : null;
-        if (!job) { schedule(5000); return; }
+        if (!job) {
+          // No job row in Supabase. If the client thinks one is running
+          // (stale localStorage flag from an old in-browser run), clear it.
+          try {
+            if (localStorage.getItem(`lp_running_${wsId}`)) {
+              localStorage.removeItem(`lp_running_${wsId}`);
+              setLpState((s) => {
+                if (s !== "running") return s;
+                try { return localStorage.getItem(`lp_result_${wsId}`) ? "done" : "idle"; } catch { return "idle"; }
+              });
+              setLpLog([]);
+              setLpProgress({ step: 0, phase: "", total: LP_STEPS.length });
+            }
+          } catch {}
+          schedule(5000);
+          return;
+        }
 
         const phase = typeof job.phase === "string" ? job.phase : "";
         if (phase && !phasesSeen.has(phase)) {
