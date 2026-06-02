@@ -15132,6 +15132,7 @@ type UserRecord = {
   status: "active" | "inactive";
   createdAt: string;
   lastLogin?: string;
+  authId?: string;
 };
 
 const ENV_USERS: UserRecord[] = [];
@@ -15551,22 +15552,53 @@ function AdminPanel({ onClose, signOut, cloudSynced }: { onClose: () => void; si
   const persist = persistUsers;
   const openAdd = openAddUser; const openEdit = openEditUser;
 
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     if (!userForm.name.trim() || !userForm.email.trim()) return;
     if (userModal === "add") {
       if (!userForm.password.trim()) return;
       const next: UserRecord = { ...userForm, id: uid(), createdAt: new Date().toISOString() };
+      try {
+        const r = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: userForm.email.trim(), password: userForm.password.trim(), name: userForm.name.trim(), role: userForm.role }),
+        });
+        const data = await r.json();
+        if (data.id) next.authId = data.id;
+        else console.error("[admin] create auth user failed:", data.error);
+      } catch (e) { console.error("[admin] create auth user failed:", e); }
       persistUsers([...users, next]);
     } else if (userModal === "edit" && editingUser) {
       const updated = { ...editingUser, ...userForm };
       if (!userForm.password.trim()) updated.password = editingUser.password;
+      if (editingUser.authId) {
+        try {
+          await fetch("/api/users", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: editingUser.authId, password: userForm.password.trim() || undefined, name: userForm.name.trim(), role: userForm.role }),
+          });
+        } catch (e) { console.error("[admin] update auth user failed:", e); }
+      }
       persistUsers(users.map(u => u.id === editingUser.id ? updated : u));
     }
     setUserModal(null);
   };
 
-  const handleDeleteUser = () => {
-    if (deleteUserId) { persistUsers(users.filter(u => u.id !== deleteUserId)); setDeleteUserId(null); }
+  const handleDeleteUser = async () => {
+    if (!deleteUserId) return;
+    const user = users.find(u => u.id === deleteUserId);
+    if (user?.authId) {
+      try {
+        await fetch("/api/users", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: user.authId }),
+        });
+      } catch (e) { console.error("[admin] delete auth user failed:", e); }
+    }
+    persistUsers(users.filter(u => u.id !== deleteUserId));
+    setDeleteUserId(null);
   };
 
   const handleSaveClient = () => {
