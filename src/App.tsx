@@ -17177,7 +17177,13 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
     const res = await fetch("/api/gamma", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ inputText, textMode: "generate", format: "document", numCards, title, theme: "dopc0p2lu6c8k7i" }),
+      body: JSON.stringify({
+        inputText, textMode: "generate", format: "document", numCards, title, theme: "dopc0p2lu6c8k7i",
+        imageOptions: {
+          source: "aiGenerated",
+          style: "Dreamy pastel holographic style, soft iridescent gradients, pearlescent glow, translucent textures, airy and ethereal mood, glossy surreal atmosphere, smooth flowing forms, futuristic yet gentle aesthetic, graphic illustration",
+        },
+      }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
