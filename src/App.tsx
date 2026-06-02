@@ -17181,6 +17181,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
         inputText, textMode: "preserve", format: "presentation", numCards, title, themeId: "dopc0p2lu6c8k7i",
         cardOptions: { dimensions: "16x9" },
         imageOptions: { source: "noImages" },
+        additionalInstructions: "Do not include any images, photos, or illustrations on any slides. Text only.",
       }),
     });
     if (!res.ok) {
