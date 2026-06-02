@@ -17125,6 +17125,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
     infrastructure: { loading: false, url: null, error: null },
     campaigns:      { loading: false, url: null, error: null },
   });
+  const [gammaCopied, setGammaCopied] = useState<GammaDeckKey | null>(null);
 
   // Load saved Gamma URLs for this client on mount / client switch
   useEffect(() => {
@@ -18203,10 +18204,33 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
                             Open in Gamma →
                           </a>
                         )}
+                        {d.url && !d.loading && (
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(d.url!);
+                              setGammaCopied(key);
+                              setTimeout(() => setGammaCopied(k => k === key ? null : k), 2000);
+                            }}
+                            style={{ display:"flex", alignItems:"center", gap:5, padding:"8px 14px", borderRadius:8,
+                              border:`1px solid ${C2.border}`, background:C2.surface, color:gammaCopied === key ? "#16a34a" : C2.textSoft,
+                              fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" as const,
+                              transition:"color .15s" }}>
+                            {gammaCopied === key ? "✓ Copied!" : "Copy link"}
+                          </button>
+                        )}
                         {d.error && !d.loading && (
                           <span style={{ fontSize:11, color:"#dc2626", fontFamily:body, lineHeight:1.4 }}>{d.error}</span>
                         )}
                       </div>
+                      {d.url && !d.loading && (
+                        <div style={{ padding:"0 20px 14px" }}>
+                          <div style={{ fontSize:11, fontFamily:"monospace", color:C2.muted, background:C2.surface,
+                            border:`1px solid ${C2.border}`, borderRadius:7, padding:"7px 10px",
+                            overflowX:"auto", whiteSpace:"nowrap" as const, userSelect:"all" as const }}>
+                            {d.url}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
