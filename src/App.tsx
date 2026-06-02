@@ -17180,10 +17180,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
       body: JSON.stringify({
         inputText, textMode: "preserve", format: "presentation", numCards, title, themeId: "dopc0p2lu6c8k7i",
         cardOptions: { dimensions: "16x9" },
-        imageOptions: {
-          source: "aiGenerated",
-          style: "Dreamy pastel holographic style, soft iridescent gradients, pearlescent glow, translucent textures, airy and ethereal mood, glossy surreal atmosphere, smooth flowing forms, futuristic yet gentle aesthetic, graphic illustration, no photography, no people",
-        },
+        imageOptions: { source: "noImages" },
       }),
     });
     if (!res.ok) {
