@@ -17178,7 +17178,8 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        inputText, textMode: "generate", format: "document", numCards, title, theme: "dopc0p2lu6c8k7i",
+        inputText, textMode: "generate", format: "presentation", numCards, title, theme: "dopc0p2lu6c8k7i",
+        cardOptions: { dimensions: "16x9" },
         imageOptions: {
           source: "aiGenerated",
           style: "Dreamy pastel holographic style, soft iridescent gradients, pearlescent glow, translucent textures, airy and ethereal mood, glossy surreal atmosphere, smooth flowing forms, futuristic yet gentle aesthetic, graphic illustration",
