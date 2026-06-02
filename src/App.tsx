@@ -22588,7 +22588,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
-            const allClts = (cloudSynced ? loadClients() : []).filter(c => c.status === "active");
+            const allClts = loadClients().filter(c => c.status === "active");
             const allUsrs = loadUsers();
             const filteredAccts = allClts.filter(c =>
               c.name.toLowerCase().includes(acctSearch.toLowerCase()) ||
