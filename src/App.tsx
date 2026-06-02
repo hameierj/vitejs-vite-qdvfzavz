@@ -17636,7 +17636,7 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
           <div style={{ background:C2.faint, border:`1px solid ${C2.border}`, borderRadius:10,
             padding:"10px 16px", marginBottom:20, textAlign:"center" }}>
             <div style={{ fontSize:12, fontFamily:body, color:C2.muted, lineHeight:1.6 }}>
-              Keep this window open while it runs. You can open other accounts in separate windows to run them in parallel.
+              Running in the background — you can navigate away, refresh, or switch to another account. It'll keep going and pick up where it left off when you come back.
             </div>
           </div>
 
@@ -18585,6 +18585,7 @@ function AppMain() {
   const [researchState, setResearchState] = useState<"idle"|"running"|"done">("idle");
   const [researchLog,   setResearchLog]   = useState<string[]>([]);
   const researchPollKickRef = useRef<() => void>(() => {});
+  const lpPollKickRef = useRef<() => void>(() => {});
   const [icpScoringState, setIcpScoringState] = useState<"idle"|"scoring"|"done">("idle");
   const [campaignPlanIcp, setCampaignPlanIcp] = useState<any>(null);
   const [campaignPlanScore, setCampaignPlanScore] = useState<any>(null);
@@ -18819,6 +18820,17 @@ function AppMain() {
     // Don't override onboarding view — it was intentionally set for new/empty workspaces
     setView(prev => prev === "onboarding" || prev === "welcome" || prev === "launchpad" ? prev : "company");
     setEditingId(null);
+    // Detect an in-flight LaunchPad job for this workspace synchronously so
+    // the page shows the running state instead of flashing the empty form
+    // before the polling effect catches up.
+    const lpRunningFlag = activeWorkspace
+      ? (() => { try { return !!localStorage.getItem(`lp_running_${(activeWorkspace as any).id}`); } catch { return false; } })()
+      : false;
+    if (lpRunningFlag) {
+      setLpState("running");
+      setLpProgress({ step: 0, phase: "Resuming...", total: LP_STEPS.length });
+      setLpLog(["Resuming background LaunchPad run..."]);
+    }
     // Load persisted LP result synchronously so LaunchPadPage sees it on first render
     if (activeWorkspace) {
       try {
@@ -18832,7 +18844,8 @@ function AppMain() {
         const bestLp = lpParsed || cloudLp;
         const isStale = bestLp && (bestLp._synthetic === true || ((bestLp.campaignGroups?.length || 0) === 0 && (bestLp.domains?.length || 0) === 0 && ((saved?.products?.length || 0) > 0 || (saved?.icps?.length || 0) > 0)));
         if (bestLp && !isStale) {
-          setLpResult(bestLp); setLpState("done");
+          setLpResult(bestLp);
+          if (!lpRunningFlag) setLpState("done");
           // Backfill localStorage if we loaded from cloud
           if (!lpParsed && cloudLp) { try { localStorage.setItem(lpKey, JSON.stringify(cloudLp)); } catch {} }
         } else if ((saved?.campaigns?.length || 0) > 0 || (saved?.icps?.length || 0) > 0) {
@@ -18906,12 +18919,17 @@ function AppMain() {
             domains: reconDomains,
             campaignGroups: reconGroups,
           };
-          setLpResult(syntheticResult); setLpState("done");
+          setLpResult(syntheticResult);
+          if (!lpRunningFlag) setLpState("done");
           try { localStorage.setItem(lpKey, JSON.stringify(syntheticResult)); } catch {}
         } else {
-          setLpResult(null); setLpState("idle");
+          setLpResult(null);
+          if (!lpRunningFlag) setLpState("idle");
         }
-      } catch { setLpResult(null); setLpState("idle"); }
+      } catch {
+        setLpResult(null);
+        if (!lpRunningFlag) setLpState("idle");
+      }
     }
     // Allow save effects to fire after state settles
     requestAnimationFrame(() => { loadingRef.current = false; });
@@ -18995,6 +19013,135 @@ function AppMain() {
     poll();
 
     return () => { cancelled = true; if (timerId) clearTimeout(timerId); researchPollKickRef.current = () => {}; };
+  }, [(activeWorkspace as any)?.id]);
+
+  // ── LaunchPad job: poll job state for the active workspace. The
+  // launchpad-run edge function executes under EdgeRuntime.waitUntil so it
+  // survives client navigation/refresh. The polling effect mirrors the
+  // gs-research one and applies the final result once per jobId
+  // (de-duplicated via localStorage lp_applied_job_<wsId>).
+  useEffect(() => {
+    if (!activeWorkspace || !supabase) return;
+    const wsId = (activeWorkspace as any).id;
+    let cancelled = false;
+    let timerId: any = null;
+    const phasesSeen = new Set<string>();
+
+    const schedule = (ms: number) => {
+      if (cancelled) return;
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(poll, ms);
+    };
+
+    const applyResult = (result: any, jobId: string) => {
+      if (!result) return;
+      const appliedKey = `lp_applied_job_${wsId}`;
+      try { if (localStorage.getItem(appliedKey) === jobId) return; } catch {}
+
+      // Merge company fields
+      if (result.company) {
+        setCompanyData((prev: any) => {
+          const merged = { ...prev };
+          for (const [k, v] of Object.entries(result.company)) {
+            if (v && String(v).trim()) merged[k] = v;
+          }
+          return merged;
+        });
+      }
+      // Append products / personas / campaigns / offers / battlecards / playbooks
+      if (Array.isArray(result.products) && result.products.length) {
+        setProducts((prev: any[]) => {
+          const ids = new Set(prev.map((p: any) => p.id));
+          return [...prev, ...result.products.filter((p: any) => !ids.has(p.id))];
+        });
+      }
+      if (Array.isArray(result.personas) && result.personas.length) {
+        setIcps((prev: any[]) => {
+          const ids = new Set(prev.map((p: any) => p.id));
+          return [...prev, ...result.personas.filter((p: any) => !ids.has(p.id))];
+        });
+      }
+      if (Array.isArray(result.campaigns) && result.campaigns.length) {
+        setCampaigns((prev: any[]) => {
+          const ids = new Set(prev.map((c: any) => c.id));
+          return [...prev, ...result.campaigns.filter((c: any) => !ids.has(c.id))];
+        });
+      }
+      if (Array.isArray(result.offers) && result.offers.length) {
+        setOffers((prev: any[]) => {
+          const ids = new Set(prev.map((o: any) => o.id));
+          return [...prev, ...result.offers.filter((o: any) => !ids.has(o.id))];
+        });
+      }
+      if (Array.isArray(result.battlecards) && result.battlecards.length) {
+        setBattlecards((prev: any[]) => [...prev, ...result.battlecards]);
+      }
+      if (Array.isArray(result.playbooks) && result.playbooks.length) {
+        setPlaybooks((prev: any[]) => [...prev, ...result.playbooks]);
+      }
+      if (result.strategy) setStrategy(result.strategy);
+
+      const lpFinal = {
+        company: result.company || {},
+        products: result.products || [],
+        personas: result.personas || [],
+        domains: result.domains || [],
+        campaignGroups: result.campaignGroups || [],
+      };
+      setLpResult(lpFinal);
+      setLpState("done");
+      try { localStorage.setItem(`lp_result_${wsId}`, JSON.stringify(lpFinal)); } catch {}
+      try { localStorage.removeItem(`lp_running_${wsId}`); } catch {}
+      try { localStorage.setItem(appliedKey, jobId); } catch {}
+    };
+
+    const poll = async () => {
+      if (cancelled || !supabase) return;
+      try {
+        const { data } = await supabase
+          .from("app_data")
+          .select("value")
+          .eq("key", `lp_job_${wsId}`)
+          .maybeSingle();
+        if (cancelled) return;
+        const job = data?.value ? (() => { try { return JSON.parse(data.value as string); } catch { return null; } })() : null;
+        if (!job) { schedule(5000); return; }
+
+        const phase = typeof job.phase === "string" ? job.phase : "";
+        if (phase && !phasesSeen.has(phase)) {
+          phasesSeen.add(phase);
+          setLpLog((prev) => [...(Array.isArray(prev) ? prev : []), phase]);
+        }
+        if (typeof job.step === "number") {
+          setLpProgress({ step: job.step, phase, total: LP_STEPS.length });
+        }
+
+        if (job.status === "running") {
+          setLpState((s) => s === "done" ? "done" : "running");
+          try { localStorage.setItem(`lp_running_${wsId}`, "1"); } catch {}
+          schedule(3000);
+        } else if (job.status === "done") {
+          applyResult(job.result, job.jobId || "_lp_");
+          schedule(15000);
+        } else if (job.status === "error") {
+          setLpState("idle");
+          setLpLog((prev) => [...(Array.isArray(prev) ? prev : []), `Error: ${job.error || "unknown"}`]);
+          try { localStorage.removeItem(`lp_running_${wsId}`); } catch {}
+          addToast({ title: "Launch pad failed", status: "error", message: job.error || "Background job reported an error" });
+          schedule(15000);
+        } else {
+          schedule(5000);
+        }
+      } catch {
+        if (cancelled) return;
+        schedule(6000);
+      }
+    };
+
+    lpPollKickRef.current = () => { if (!cancelled) poll(); };
+    poll();
+
+    return () => { cancelled = true; if (timerId) clearTimeout(timerId); lpPollKickRef.current = () => {}; };
   }, [(activeWorkspace as any)?.id]);
 
   // ── Workspace data: save whenever data changes ──
@@ -21205,11 +21352,53 @@ Return ONLY valid JSON:
 
   const runLaunchPad = async (inputUrl: string, extraText: string, linkedinUrl: string = "", extraUrlsText: string = "", offeringsOverride: string = "", playbookKey: PlaybookKey = "auto", salesContext: string = "") => {
     const wsId = activeWorkspace ? (activeWorkspace as any).id : null;
+    if (!wsId || !supabase) {
+      addToast({ title: "No active workspace", status: "error", message: "Open a client account before running LaunchPad." });
+      return;
+    }
+
     setLpState("running");
-    setLpLog([]);
-    if (wsId) { try { localStorage.setItem(`lp_running_${wsId}`, "1"); } catch {} }
+    setLpLog(["Starting LaunchPad..."]);
+    setLpProgress({ step: 0, phase: "Starting...", total: LP_STEPS.length });
+    try { localStorage.setItem(`lp_running_${wsId}`, "1"); } catch {}
+    try { localStorage.removeItem(`lp_applied_job_${wsId}`); } catch {}
+
+    try {
+      const { error } = await supabase.functions.invoke("launchpad-run", {
+        body: {
+          workspaceId: wsId,
+          params: {
+            url: inputUrl,
+            extraText,
+            linkedin: linkedinUrl,
+            extraUrls: extraUrlsText,
+            offerings: offeringsOverride,
+            playbookKey,
+            salesContext,
+          },
+          appUrl: window.location.origin + window.location.pathname,
+          userEmail: (loggedInUser as any)?.email || "",
+        },
+      });
+      if (error) throw error;
+      lpPollKickRef.current();
+    } catch (err: any) {
+      setLpState("idle");
+      setLpLog((prev) => [...prev, `Error: ${err?.message || err}`]);
+      try { localStorage.removeItem(`lp_running_${wsId}`); } catch {}
+      addToast({ title: "Launch pad failed", status: "error", message: err?.message || "Could not start LaunchPad" });
+    }
+    return;
+
+    // ── Legacy in-browser pipeline below (unreachable after the return
+    //    above). Kept in source for reference; remove once the edge
+    //    function flow has soaked in production.
+    /* eslint-disable @typescript-eslint/no-unreachable, no-unreachable */
+    // @ts-ignore — unreachable code after the return above
     const log: string[] = [];
+    // @ts-ignore — unreachable
     const addLog = (msg: string) => { log.push(msg); setLpLog([...log]); };
+    // @ts-ignore — unreachable
     const upd = (step: number, phase: string) => setLpProgress({ step, phase, total: LP_STEPS.length });
 
     try {
