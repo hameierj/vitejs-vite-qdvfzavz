@@ -20808,9 +20808,9 @@ changes = 5-8 short bullet points summarising the most important decisions from 
 
     const combos: {product:any;persona:any}[] = [];
     for (const prod of sortedProds) {
-      if (combos.length >= 5) break;
+      if (combos.length >= 3) break;
       for (const persona of sortedPersonas) {
-        if (combos.length >= 5) break;
+        if (combos.length >= 3) break;
         if (combos.some((c:any)=>c.product.id===prod.id&&c.persona.id===persona.id)) continue;
         combos.push({ product:prod, persona });
       }
@@ -21617,13 +21617,13 @@ Return ONLY JSON array of stems: ["name1","name2",...]`, "", 1000
       // Select combos from the brief matrix — high priority first, max 5
       upd(8, LP_STEPS[7]);
       addLog("Planning campaigns from matrix...");
-      // Pick combos: high priority first, then medium. Cap at 5.
+      // Pick combos: high priority first, then medium. Cap at 3.
       const priorityOrder = ["high","medium","low"];
       const matrixCombos: {product:any;persona:any;priority:string;rationale:string}[] = [];
       for (const pri of priorityOrder) {
-        if (matrixCombos.length>=5) break;
+        if (matrixCombos.length>=3) break;
         for (const m of briefMatrix) {
-          if (matrixCombos.length>=5) break;
+          if (matrixCombos.length>=3) break;
           if ((m.priority||"").toLowerCase()!==pri) continue;
           if ((m.priority||"").toLowerCase()==="skip") continue;
           const prod = newProducts[selProds.indexOf(m.productIdx)];
@@ -21636,8 +21636,8 @@ Return ONLY JSON array of stems: ["name1","name2",...]`, "", 1000
       }
       // Fallback: if matrix empty, create 1 combo per product matched to best persona
       if (matrixCombos.length===0) {
-        for (const prod of newProducts.slice(0,5)) {
-          if (matrixCombos.length>=5) break;
+        for (const prod of newProducts.slice(0,3)) {
+          if (matrixCombos.length>=3) break;
           const persona = newPersonas[matrixCombos.length%Math.max(newPersonas.length,1)]||newPersonas[0];
           if (!persona) break;
           matrixCombos.push({product:prod,persona,priority:"medium",rationale:""});
