@@ -27,6 +27,21 @@ const LP_STEPS = [
 
 const ICP_COLORS = ["#6C5CE7","#00D68F","#FF6B6B","#54A0FF","#9B59B6","#FFC048","#E84393","#00CEC9"];
 
+// B2B Rocket platform approved merge tags. Every generated email, LinkedIn
+// message, and voice script must personalize using ONLY these — anything
+// else won't be substituted at send time.
+const MERGE_TAG_RULES = `B2B ROCKET MERGE TAG RULES (strict — these are platform-substituted at send time):
+- Personalize using ONLY these approved merge tags, with EXACTLY this format (double curly braces, snake_case):
+  {{prospect_first_name}}  {{prospect_last_name}}  {{prospect_title}}
+  {{phone}}  {{email}}
+  {{sender_name}}  {{sender_title}}  {{sender_company_name}}
+  {{sender_company_location}}  {{sender_signature}}
+- Greet with {{prospect_first_name}} — never "Hi there", "[Name]", "{first_name}", or a hardcoded name.
+- Sign off with {{sender_signature}} (preferred) or {{sender_name}} — never a hardcoded human name.
+- Refer to the sending company as {{sender_company_name}} — never write out the literal company name.
+- DO NOT invent merge tags. No {{first_name}}, {{company}}, {{prospect_company}}, [Name], <NAME>, {{First Name}}, %FirstName%, or any other variant.
+- If a value isn't in the approved list, write it out literally in plain prose — never use a placeholder.`;
+
 const NAMING_RULES = {
   persona: `PERSONA NAMING RULES (strict):
 - Format: "[Industry/Vertical] — [Buyer Role]"
@@ -818,6 +833,8 @@ ${pbBlock}${salesBlock}
 EMAIL STRATEGY (follow this exactly — angles, arc, and personalization):
 ${emailStrategy.slice(0, 1200)}
 
+${MERGE_TAG_RULES}
+
 Rules:
 - Email 1 (Day 0): lead with the LEAD PAIN — hook, short, personal
 - Email 2 (Day 3): different angle + trigger event
@@ -839,6 +856,8 @@ Context: ${ctxStr}
 ${pb.key !== "auto" ? `LinkedIn voice: ${pb.linkedin || ""}` : ""}${salesBlock}
 LINKEDIN STRATEGY:
 ${linkedinStrategy.slice(0, 1000)}
+
+${MERGE_TAG_RULES}
 
 Rules:
 - Touch 1 (Day 0): connection request only — personal reason to connect, NO pitch
