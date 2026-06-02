@@ -229,14 +229,25 @@ function extractMarkdownLinks(md: string, _baseUrl: string): string[] {
 }
 
 // ─── AI call ─────────────────────────────────────────────────────────────────
+// lastAIError captures the most recent transient/permanent failure across all
+// callAI invocations so the pipeline can surface a useful message instead of
+// silently producing empty results.
+let lastAIError: string | null = null;
+
+const TRANSIENT_ERROR_TYPES = new Set([
+  "overloaded_error",
+  "rate_limit_error",
+  "api_error",
+  "timeout_error",
+]);
 
 async function callAI(
   anthropicKey: string,
   prompt: string,
   sys = "",
   tokens = 800,
-  retries = 1,
-  timeoutMs = 20000,
+  retries = 2,
+  timeoutMs = 60000,
   model = "claude-haiku-4-5-20251001",
 ): Promise<string> {
   const { text } = await callAIFull(anthropicKey, prompt, sys, tokens, retries, timeoutMs, model);
@@ -248,8 +259,8 @@ async function callAIFull(
   prompt: string,
   sys = "",
   tokens = 800,
-  retries = 1,
-  timeoutMs = 20000,
+  retries = 2,
+  timeoutMs = 60000,
   model = "claude-haiku-4-5-20251001",
 ): Promise<{ text: string; stopReason: string }> {
   const sysMsg = sys || "You are a senior B2B cold outreach strategist. Be direct, specific, no filler.";
@@ -271,15 +282,30 @@ async function callAIFull(
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
-        if (attempt < retries) { await sleep(2000); continue; }
+        const detail = `HTTP ${r.status}`;
+        if (attempt < retries) { await sleep(Math.min(2000 * (attempt + 1), 8000)); continue; }
+        lastAIError = `Anthropic ${detail} after ${retries + 1} attempts (${model})`;
+        console.error("[callAI]", lastAIError);
         return { text: "", stopReason: "error" };
       }
-      const json = await r.json();
-      if (json.error) return { text: "", stopReason: "error" };
+      const json = await r.json().catch(() => ({} as any));
+      if (json.error) {
+        const errType = String(json.error.type || "");
+        const errMsg = String(json.error.message || "");
+        if (TRANSIENT_ERROR_TYPES.has(errType) && attempt < retries) {
+          await sleep(Math.min(2000 * (attempt + 1), 8000));
+          continue;
+        }
+        lastAIError = `${errType || "anthropic_error"}: ${errMsg}`;
+        console.error("[callAI]", lastAIError);
+        return { text: "", stopReason: "error" };
+      }
       return { text: json.content?.[0]?.text ?? "", stopReason: json.stop_reason ?? "end_turn" };
     } catch (e) {
-      if (attempt < retries) { await sleep(2000); continue; }
-      console.error("callAI failed:", e);
+      const isAbort = (e as Error)?.name === "TimeoutError" || /timeout/i.test(String(e));
+      if (attempt < retries) { await sleep(Math.min(2000 * (attempt + 1), 8000)); continue; }
+      lastAIError = `${isAbort ? "timeout" : "network_error"}: ${String((e as Error)?.message || e)} (${model}, ${timeoutMs}ms)`;
+      console.error("[callAI]", lastAIError);
       return { text: "", stopReason: "error" };
     }
   }
@@ -426,19 +452,26 @@ co_prod_breakdown: per-product buyer, pains, gains, triggers, objections
 Raw JSON only.`,
     coSys,
     3000,
-    0,        // no retries — budget is tight
-    38000,    // 38s
+    2,        // 2 retries on transient errors
+    90000,    // 90s — Sonnet on big prompts can be slow
     "claude-sonnet-4-6",
   );
   let coFields: any = {};
+  let coParsedOK = false;
   try {
+    if (!coRaw) throw new Error("empty response from Claude");
     const p = JSON.parse((coRaw || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim());
     coFields = p.fields ?? {};
     for (const [k, v] of Object.entries(coFields)) {
       if (typeof v === "string") coFields[k] = normalizeIntake(v);
     }
-  } catch {
+    coParsedOK = !!(coFields.co_name || coFields.co_industry);
+  } catch (e) {
+    console.error("[LP] Company profile parse failed:", e, "aiError:", lastAIError);
     coFields = { co_name: normUrl ? new URL(normUrl).hostname.replace(/^www\./, "") : "Unknown", co_website: normUrl };
+  }
+  if (!coParsedOK) {
+    await writeProgress(supabase, jobKey, { companyProfileError: lastAIError || "parse_failed" });
   }
 
   // ── STEP 3: Research Brief ──
@@ -471,16 +504,16 @@ Return ONLY valid JSON:
 {"products":[{"name":"","description":"","reasoning":"","dealSize":"","category":"","sourceUrl":""}],"personas":[{"name":"","buyerTitles":"","industries":"","primaryPain":"","reasoning":""}],"matrix":[{"productIdx":0,"personaIdx":0,"priority":"high","rationale":""}]}`,
       "Return only valid JSON. Be thorough and specific.",
       4000,
-      0,        // no retries — budget is tight
-      40000,    // 40s
+      2,        // 2 retries on transient errors
+      90000,    // 90s — Sonnet on big prompts
       "claude-sonnet-4-6",
     );
-    if (!briefRaw) throw new Error("empty response from Claude");
+    if (!briefRaw) throw new Error(`empty response from Claude (${lastAIError || "no detail"})`);
     brief = JSON.parse(briefRaw.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
     if (!Array.isArray(brief.products) || brief.products.length === 0) throw new Error("no products in brief");
   } catch (e) {
     const msg = String(e);
-    console.error("Research brief failed:", msg);
+    console.error("[LP] Research brief failed:", msg, "aiError:", lastAIError);
     await writeProgress(supabase, jobKey, { briefError: msg });
   }
 
@@ -1010,7 +1043,26 @@ serve(async (req: Request) => {
     // @ts-ignore — EdgeRuntime is available in Supabase Deno runtime
     EdgeRuntime.waitUntil((async () => {
       try {
+        lastAIError = null;
         const result = await runPipeline(params, anthropicKey, supabase, jobKey);
+
+        // Treat a run that produced no products as a failure — usually
+        // means the company-profile or research-brief AI call failed.
+        // Surface lastAIError so the user knows what to retry.
+        if (!Array.isArray(result.products) || result.products.length === 0) {
+          await supabase.from("app_data").upsert(
+            { key: jobKey, value: JSON.stringify({
+              jobId,
+              status: "error",
+              step: LP_STEPS.length,
+              phase: "Failed — no products generated",
+              error: lastAIError || "AI calls returned empty results — check Anthropic API key and credit balance",
+              completedAt: new Date().toISOString(),
+            }) },
+            { onConflict: "key" },
+          );
+          return;
+        }
 
         // Save completed job with full result
         await supabase.from("app_data").upsert(
