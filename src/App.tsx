@@ -19164,6 +19164,27 @@ function AppMain() {
         }
 
         if (job.status === "running") {
+          // Detect stuck jobs: if the edge function got killed by the
+          // Supabase background execution cap mid-pipeline, the row stays
+          // "running" forever. A stale heartbeat (>8 min without any
+          // progress write) means the function is no longer alive.
+          const heartbeatIso = typeof job.lastHeartbeat === "string" ? job.lastHeartbeat : job.startedAt;
+          const heartbeatMs = heartbeatIso ? Date.parse(heartbeatIso) : NaN;
+          const stale = Number.isFinite(heartbeatMs) && (Date.now() - heartbeatMs) > 8 * 60 * 1000;
+          if (stale) {
+            setLpState("idle");
+            setLpLog((prev) => [...(Array.isArray(prev) ? prev : []), `Stuck (no heartbeat for ${Math.round((Date.now() - heartbeatMs) / 60000)} min) — marking failed. You can retry.`]);
+            try { localStorage.removeItem(`lp_running_${wsId}`); } catch {}
+            // Clear the orphaned job row so the UI doesn't loop on it.
+            try {
+              await supabase
+                .from("app_data")
+                .upsert({ key: `lp_job_${wsId}`, value: JSON.stringify({ ...job, status: "error", error: "stuck — background function exceeded execution limit", completedAt: new Date().toISOString() }) }, { onConflict: "key" });
+            } catch {}
+            addToast({ title: "Launch pad stalled", status: "error", message: "Background run timed out. Hit Reset and try again." });
+            schedule(15000);
+            return;
+          }
           setLpState((s) => s === "done" ? "done" : "running");
           try { localStorage.setItem(`lp_running_${wsId}`, "1"); } catch {}
           schedule(3000);

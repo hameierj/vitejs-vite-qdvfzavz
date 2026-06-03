@@ -341,7 +341,7 @@ async function writeProgress(
   try {
     const { data } = await supabase.from("app_data").select("value").eq("key", jobKey).single();
     const current = data?.value ? JSON.parse(data.value as string) : {};
-    const updated = { ...current, ...patch };
+    const updated = { ...current, ...patch, lastHeartbeat: new Date().toISOString() };
     await supabase.from("app_data").upsert({ key: jobKey, value: JSON.stringify(updated) }, { onConflict: "key" });
   } catch (e) {
     console.error("writeProgress failed:", e);
@@ -722,13 +722,18 @@ Return ONLY JSON array of stems: ["name1","name2",...]`,
   });
 
   // ── STEPS 8+9: Campaign Strategies + Sequences ──
+  // Cap at 3 combos to keep wall-clock under the edge function's background
+  // execution limit. Each combo fires 4 AI calls (email strategy, LinkedIn
+  // strategy, email sequence, LinkedIn sequence) so 3 × 4 = 12 calls is
+  // already the upper bound we can afford before risking a timeout kill.
+  const MAX_COMBOS = 3;
   await upd(8, LP_STEPS[7]);
   const priorityOrder = ["high", "medium", "low"];
   const matrixCombos: { product: any; persona: any; priority: string; rationale: string }[] = [];
   for (const pri of priorityOrder) {
-    if (matrixCombos.length >= 5) break;
+    if (matrixCombos.length >= MAX_COMBOS) break;
     for (const m of briefMatrix) {
-      if (matrixCombos.length >= 5) break;
+      if (matrixCombos.length >= MAX_COMBOS) break;
       if ((m.priority || "").toLowerCase() !== pri) continue;
       if ((m.priority || "").toLowerCase() === "skip") continue;
       const prod = newProducts[selProds.indexOf(m.productIdx)];
@@ -739,8 +744,8 @@ Return ONLY JSON array of stems: ["name1","name2",...]`,
     }
   }
   if (matrixCombos.length === 0) {
-    for (const prod of newProducts.slice(0, 5)) {
-      if (matrixCombos.length >= 5) break;
+    for (const prod of newProducts.slice(0, MAX_COMBOS)) {
+      if (matrixCombos.length >= MAX_COMBOS) break;
       const persona = newPersonas[matrixCombos.length % Math.max(newPersonas.length, 1)] || newPersonas[0];
       if (!persona) break;
       matrixCombos.push({ product: prod, persona, priority: "medium", rationale: "" });
@@ -750,9 +755,14 @@ Return ONLY JSON array of stems: ["name1","name2",...]`,
   const pb = PLAYBOOKS[params.playbookKey] || PLAYBOOKS.auto;
   const pbBlock = pb.key === "auto" ? "" : `\nVOICE & STRATEGY PROFILE — ${pb.label} (write like ${pb.figure}):\n- Style: ${(pb.voice || []).join(" | ")}\n- Strategy: ${pb.strategy || ""}\n- Opening: ${pb.opening || ""}\n- Proof: ${pb.proof || ""}\n- CTA: ${pb.cta || ""}\n- Avoid: ${pb.avoid || ""}\nStay in this voice throughout.\n`;
 
-  await upd(8, `Generating ${matrixCombos.length} campaign strategies in parallel...`);
+  await upd(8, `Generating ${matrixCombos.length} campaign strategies...`);
 
-  const campaignResults = await Promise.all(matrixCombos.map(async ({ product, persona, priority, rationale }) => {
+  // Serialize combos: each combo still runs its 4 AI calls (2 strategies +
+  // 2 sequences) in parallel, but combos run one after another to keep peak
+  // parallelism at 4 and surface a clear "campaign N of N" heartbeat between
+  // combos. This trades wall-clock for resilience to Anthropic rate limits
+  // and Supabase background execution caps.
+  const runCombo = async ({ product, persona, priority, rationale }: { product: any; persona: any; priority: string; rationale: string }) => {
     const pd = persona?.data || {};
     const ctx = {
       company: coFields,
@@ -917,7 +927,19 @@ Return ONLY valid JSON:
         emailSequence: emailSeq, linkedinSequence: liSeq,
       },
     };
-  }));
+  };
+
+  const campaignResults: { campaigns: any[]; group: any }[] = [];
+  for (let i = 0; i < matrixCombos.length; i++) {
+    const combo = matrixCombos[i];
+    await upd(8, `Campaign ${i + 1} of ${matrixCombos.length} — ${combo.persona.name} × ${combo.product.name}`);
+    try {
+      const res = await runCombo(combo);
+      campaignResults.push(res);
+    } catch (e) {
+      console.error(`[LP] Combo ${i + 1} (${combo.persona.name} × ${combo.product.name}) failed:`, e);
+    }
+  }
 
   await upd(9, `Sequences complete — finalizing...`);
 
@@ -1054,7 +1076,7 @@ serve(async (req: Request) => {
 
     // Write initial job state
     await supabase.from("app_data").upsert(
-      { key: jobKey, value: JSON.stringify({ jobId, status: "running", step: 0, phase: "Starting...", startedAt: new Date().toISOString() }) },
+      { key: jobKey, value: JSON.stringify({ jobId, status: "running", step: 0, phase: "Starting...", startedAt: new Date().toISOString(), lastHeartbeat: new Date().toISOString() }) },
       { onConflict: "key" },
     );
 
