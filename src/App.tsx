@@ -15186,6 +15186,24 @@ const saveClients = (c: ClientRecord[]) => {
   dbPut("app_data", "clients", c).catch(e => console.error("[DB] Client save failed:", e));
 };
 
+// Recently-viewed account ids — keeps the workspace switcher's "Recent" section sorted by last-opened.
+const RECENT_ACCOUNTS_KEY = "b2br_recent_account_ids";
+const RECENT_ACCOUNTS_MAX = 5;
+const loadRecentAccountIds = (): string[] => {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_ACCOUNTS_KEY) || "[]");
+    return Array.isArray(v) ? v.filter(x => typeof x === "string") : [];
+  } catch { return []; }
+};
+const pushRecentAccountId = (id: string) => {
+  if (!id) return;
+  try {
+    const cur = loadRecentAccountIds().filter(x => x !== id);
+    cur.unshift(id);
+    localStorage.setItem(RECENT_ACCOUNTS_KEY, JSON.stringify(cur.slice(0, RECENT_ACCOUNTS_MAX)));
+  } catch {}
+};
+
 // Export entire workspace (client + all data + files) as downloadable JSON
 async function exportWorkspaceBundle(clientId: string, clientName: string) {
   const wsData = loadWorkspaceData(clientId);
@@ -18542,6 +18560,18 @@ function AppMain() {
   const [profileMenuPos,   setProfileMenuPos]  = useState<{bottom:number;left:number;width:number}|null>(null);
   const [menuApiOpen,      setMenuApiOpen]     = useState(false);
   const profileMenuBtnRef = useRef<HTMLButtonElement>(null);
+  // Workspace switcher popover — opens from the sidebar header. Lets the user jump between client
+  // accounts without going to the Accounts page. Tracks last-opened ids for a Recents section.
+  const [wsSwitcherOpen,    setWsSwitcherOpen]   = useState(false);
+  const [wsSwitcherPos,     setWsSwitcherPos]    = useState<{top:number;left:number;width:number}|null>(null);
+  const [wsSwitcherSearch,  setWsSwitcherSearch] = useState("");
+  const [recentAccountIds,  setRecentAccountIds] = useState<string[]>(() => loadRecentAccountIds());
+  const wsSwitcherBtnRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!activeWorkspace?.id) return;
+    pushRecentAccountId(activeWorkspace.id);
+    setRecentAccountIds(loadRecentAccountIds());
+  }, [activeWorkspace?.id]);
   const [companyConfLocked,setCompanyConfLocked]= useState<Record<string,boolean>>({});
   const [pendingNav,     setPendingNav]     = useState<(()=>void)|null>(null);
   const loadingRef = useRef(false);
@@ -22352,60 +22382,89 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
             display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden",
             boxShadow:"2px 0 12px rgba(108,92,231,.04)" }}>
 
-            {/* Client Name Header */}
-            <div style={{ padding:"14px 16px 12px", borderBottom:`1px solid ${C2.border}`, flexShrink:0 }}>
-              {activeWorkspace ? (
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:30, height:30, borderRadius:10,
-                    background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`, color:"#fff",
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:13, fontWeight:700, fontFamily:head, flexShrink:0 }}>
-                    {(activeWorkspace.name||"?").charAt(0).toUpperCase()}
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:14, fontWeight:700, fontFamily:head, color:C2.text,
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeWorkspace.name}</div>
-                    {/* Handoff-date pill — the cut line between SALES and CX activity for this client.
-                        Click to edit inline. Drives phase tagging on comms, calls, AI context split, and handoff brief scope. */}
-                    {(() => {
-                      const cd = companyData as Record<string,string>;
-                      const editing = (window as any).__handoffEditing || false;
-                      const setEditing = (v: boolean) => { (window as any).__handoffEditing = v; setCompanyData((p:any)=>({...p})); };
-                      const handoff = cd.co_handoff_date || "";
-                      const label = handoff
-                        ? `Handoff: ${new Date(handoff).toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" })}`
-                        : "Set handoff date";
-                      if (editing) {
-                        return (
-                          <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:3 }}>
-                            <input type="date" value={handoff} autoFocus
-                              onChange={e=>setCompanyData((p:any)=>({ ...p, co_handoff_date: e.target.value }))}
-                              onBlur={()=>setEditing(false)}
-                              onKeyDown={e=>{ if (e.key === "Enter" || e.key === "Escape") setEditing(false); }}
-                              style={{ padding:"2px 6px", borderRadius:5, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:10, fontFamily:mono, color:C2.text, outline:"none" }} />
-                            {handoff && (
-                              <button onClick={()=>{ setCompanyData((p:any)=>({ ...p, co_handoff_date: "" })); setEditing(false); }}
-                                style={{ padding:"2px 6px", border:"none", background:"transparent", color:C2.muted, fontSize:10, cursor:"pointer" }} title="Clear handoff date">×</button>
-                            )}
-                          </div>
-                        );
-                      }
-                      return (
-                        <button onClick={()=>setEditing(true)}
-                          title={handoff ? "Click to change the sales→CX handoff date" : "Set the date this client was handed from sales to CX"}
-                          style={{ marginTop:3, padding:"1px 7px", borderRadius:5, border:`1px dashed ${handoff ? C2.accent+"55" : C2.border}`,
-                            background: handoff ? `${C2.accent}0A` : "transparent",
-                            color: handoff ? C2.accent : C2.muted,
-                            fontSize:9, fontFamily:mono, fontWeight:600, cursor:"pointer", letterSpacing:.2 }}>
-                          {label}
-                        </button>
-                      );
-                    })()}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.muted }}>Select a client</div>
-              )}
+            {/* Workspace Switcher Header — click to open the account switcher popover */}
+            <div style={{ padding:"10px 10px 10px", borderBottom:`1px solid ${C2.border}`, flexShrink:0 }}>
+              <button ref={wsSwitcherBtnRef}
+                onClick={()=>{
+                  if (wsSwitcherOpen) { setWsSwitcherOpen(false); return; }
+                  const r = wsSwitcherBtnRef.current?.getBoundingClientRect();
+                  if (r) setWsSwitcherPos({ top: r.bottom + 6, left: r.left, width: Math.max(260, r.width) });
+                  setWsSwitcherSearch("");
+                  setWsSwitcherOpen(true);
+                }}
+                title={activeWorkspace ? "Switch client account" : "Select a client account"}
+                style={{ display:"flex", alignItems:"center", gap:10, width:"100%",
+                  padding:"6px 8px", borderRadius:9, border:`1px solid ${wsSwitcherOpen ? C2.accentBorder : "transparent"}`,
+                  background: wsSwitcherOpen ? C2.accentLo : "transparent",
+                  cursor:"pointer", textAlign:"left", transition:"background .12s, border-color .12s" }}
+                onMouseEnter={e=>{ if(!wsSwitcherOpen)(e.currentTarget as HTMLButtonElement).style.background = C2.faint; }}
+                onMouseLeave={e=>{ if(!wsSwitcherOpen)(e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+                {activeWorkspace ? (
+                  <>
+                    <div style={{ width:30, height:30, borderRadius:10,
+                      background:`linear-gradient(135deg, ${C2.accent}, ${C2.accentHi})`, color:"#fff",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:13, fontWeight:700, fontFamily:head, flexShrink:0 }}>
+                      {(activeWorkspace.name||"?").charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, lineHeight:1 }}>WORKSPACE</div>
+                      <div style={{ fontSize:13.5, fontWeight:700, fontFamily:head, color:C2.text, marginTop:2,
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeWorkspace.name}</div>
+                    </div>
+                    <span style={{ fontSize:10, color:C2.muted, flexShrink:0, transition:"transform .15s",
+                      transform: wsSwitcherOpen ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ width:30, height:30, borderRadius:10, border:`1px dashed ${C2.border}`,
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:14, color:C2.muted, flexShrink:0 }}>?</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C2.muted, letterSpacing:.5, lineHeight:1 }}>WORKSPACE</div>
+                      <div style={{ fontSize:13, fontWeight:700, fontFamily:head, color:C2.muted, marginTop:2 }}>Select a client</div>
+                    </div>
+                    <span style={{ fontSize:10, color:C2.muted, flexShrink:0 }}>▾</span>
+                  </>
+                )}
+              </button>
+
+              {/* Handoff-date pill — the cut line between SALES and CX activity for this client.
+                  Click to edit inline. Drives phase tagging on comms, calls, AI context split, and handoff brief scope. */}
+              {activeWorkspace && (() => {
+                const cd = companyData as Record<string,string>;
+                const editing = (window as any).__handoffEditing || false;
+                const setEditing = (v: boolean) => { (window as any).__handoffEditing = v; setCompanyData((p:any)=>({...p})); };
+                const handoff = cd.co_handoff_date || "";
+                const label = handoff
+                  ? `Handoff: ${new Date(handoff).toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" })}`
+                  : "Set handoff date";
+                if (editing) {
+                  return (
+                    <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:6, paddingLeft:8 }}>
+                      <input type="date" value={handoff} autoFocus
+                        onChange={e=>setCompanyData((p:any)=>({ ...p, co_handoff_date: e.target.value }))}
+                        onBlur={()=>setEditing(false)}
+                        onKeyDown={e=>{ if (e.key === "Enter" || e.key === "Escape") setEditing(false); }}
+                        style={{ padding:"2px 6px", borderRadius:5, border:`1px solid ${C2.border}`, background:C2.canvas, fontSize:10, fontFamily:mono, color:C2.text, outline:"none" }} />
+                      {handoff && (
+                        <button onClick={()=>{ setCompanyData((p:any)=>({ ...p, co_handoff_date: "" })); setEditing(false); }}
+                          style={{ padding:"2px 6px", border:"none", background:"transparent", color:C2.muted, fontSize:10, cursor:"pointer" }} title="Clear handoff date">×</button>
+                      )}
+                    </div>
+                  );
+                }
+                return (
+                  <button onClick={()=>setEditing(true)}
+                    title={handoff ? "Click to change the sales→CX handoff date" : "Set the date this client was handed from sales to CX"}
+                    style={{ marginTop:6, marginLeft:8, padding:"1px 7px", borderRadius:5, border:`1px dashed ${handoff ? C2.accent+"55" : C2.border}`,
+                      background: handoff ? `${C2.accent}0A` : "transparent",
+                      color: handoff ? C2.accent : C2.muted,
+                      fontSize:9, fontFamily:mono, fontWeight:600, cursor:"pointer", letterSpacing:.2 }}>
+                    {label}
+                  </button>
+                );
+              })()}
             </div>
 
             {/* Navigation */}
@@ -22717,6 +22776,151 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
           /* V1 SIDEBAR removed — useV2 is always true — dead code from here was deleted */
         })()}
 
+        {/* ── Workspace switcher popover ── */}
+        {wsSwitcherOpen && wsSwitcherPos && createPortal(
+          (() => {
+            const allClients = loadClients()
+              .filter(c => c.status === "active")
+              .filter(c => currentRole !== "team" || !loggedInUser || c.assignedUserId === loggedInUser.id);
+            const q = wsSwitcherSearch.trim().toLowerCase();
+            const matches = (c: ClientRecord) =>
+              !q || c.name.toLowerCase().includes(q) || (c.industry||"").toLowerCase().includes(q);
+            const recents = recentAccountIds
+              .map(id => allClients.find(c => c.id === id))
+              .filter((c): c is ClientRecord => !!c && matches(c) && c.id !== activeWorkspace?.id);
+            const recentSet = new Set(recents.map(c => c.id));
+            const others = allClients
+              .filter(c => !recentSet.has(c.id) && c.id !== activeWorkspace?.id && matches(c))
+              .sort((a,b) => a.name.localeCompare(b.name));
+            const closeAndSelect = (c: ClientRecord) => {
+              setWsSwitcherOpen(false);
+              if (c.id !== activeWorkspace?.id) setActiveWorkspace(c);
+            };
+            const renderRow = (c: ClientRecord, isActive = false) => {
+              const av = avatarColor(c.name);
+              return (
+                <button key={c.id} onClick={()=>closeAndSelect(c)}
+                  style={{ display:"flex", alignItems:"center", gap:9, width:"100%",
+                    padding:"7px 8px", borderRadius:7, border:"none",
+                    background: isActive ? C.accentLo : "transparent",
+                    cursor:"pointer", textAlign:"left", transition:"background .12s", marginBottom:1 }}
+                  onMouseEnter={e=>{ if(!isActive)(e.currentTarget as HTMLButtonElement).style.background = C.faint; }}
+                  onMouseLeave={e=>{ if(!isActive)(e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+                  <div style={{ width:24, height:24, borderRadius:6, flexShrink:0,
+                    background: isActive ? av : av+"22",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:10, fontWeight:800, color: isActive ? "#fff" : av, fontFamily:mono }}>
+                    {c.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontFamily:head, fontWeight:isActive?700:500,
+                      color: isActive ? C.text : C.textSoft,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.name}</div>
+                    {c.industry && (
+                      <div style={{ fontSize:9, color:C.muted, fontFamily:mono, marginTop:1,
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.industry}</div>
+                    )}
+                  </div>
+                  {isActive && <span style={{ fontSize:10, color:C.accent, fontFamily:mono }}>✓</span>}
+                </button>
+              );
+            };
+            const popW = Math.max(280, wsSwitcherPos.width);
+            return (
+              <>
+                <div onClick={()=>setWsSwitcherOpen(false)}
+                  style={{ position:"fixed", inset:0, zIndex:2147483646 }} />
+                <div style={{ position:"fixed", top:wsSwitcherPos.top, left:wsSwitcherPos.left,
+                  width:popW, maxHeight:"70vh", zIndex:2147483647,
+                  background:C.surface, border:`1px solid ${C.border}`, borderRadius:11,
+                  boxShadow:"0 12px 36px rgba(0,0,0,.18)", display:"flex", flexDirection:"column",
+                  animation:"fadeIn .12s ease" }}>
+
+                  {/* Search */}
+                  <div style={{ padding:"8px 8px 6px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+                    <div style={{ position:"relative" }}>
+                      <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)",
+                        fontSize:11, color:C.muted, pointerEvents:"none" }}>⌕</span>
+                      <input value={wsSwitcherSearch} onChange={e=>setWsSwitcherSearch(e.target.value)} autoFocus
+                        placeholder="Search accounts…"
+                        onKeyDown={e=>{
+                          if (e.key === "Escape") { setWsSwitcherOpen(false); return; }
+                          if (e.key === "Enter") {
+                            const first = recents[0] || others[0];
+                            if (first) closeAndSelect(first);
+                          }
+                        }}
+                        style={{ width:"100%", padding:"6px 8px 6px 26px", borderRadius:6,
+                          border:`1px solid ${C.border}`, background:C.faint, color:C.text,
+                          fontSize:11.5, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+                    </div>
+                  </div>
+
+                  {/* Lists */}
+                  <div style={{ overflowY:"auto", padding:"6px 6px 4px", flex:1 }}>
+                    {activeWorkspace && !q && (
+                      <>
+                        <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
+                          letterSpacing:.5, padding:"4px 6px 4px" }}>CURRENT</div>
+                        {renderRow(activeWorkspace, true)}
+                      </>
+                    )}
+                    {recents.length > 0 && (
+                      <>
+                        <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
+                          letterSpacing:.5, padding:"8px 6px 4px" }}>RECENT</div>
+                        {recents.map(c => renderRow(c))}
+                      </>
+                    )}
+                    {others.length > 0 && (
+                      <>
+                        <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
+                          letterSpacing:.5, padding:"8px 6px 4px" }}>{recents.length > 0 || activeWorkspace ? "ALL ACCOUNTS" : "ACCOUNTS"}</div>
+                        {others.map(c => renderRow(c))}
+                      </>
+                    )}
+                    {recents.length === 0 && others.length === 0 && !activeWorkspace && (
+                      <div style={{ fontSize:11, color:C.muted, fontFamily:mono, padding:"16px 10px", textAlign:"center" }}>
+                        {q ? "No matches" : "No accounts yet"}
+                      </div>
+                    )}
+                    {recents.length === 0 && others.length === 0 && activeWorkspace && q && (
+                      <div style={{ fontSize:11, color:C.muted, fontFamily:mono, padding:"12px 10px", textAlign:"center" }}>
+                        No matches
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer actions */}
+                  {currentRole === "team" && (
+                    <div style={{ borderTop:`1px solid ${C.border}`, padding:"6px", flexShrink:0, display:"flex", gap:4 }}>
+                      <button onClick={()=>{ setWsSwitcherOpen(false); setShowCreateAcct(true); }}
+                        style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                          padding:"8px 10px", borderRadius:7, border:"none",
+                          background:"transparent", color:C.accent,
+                          fontSize:11.5, fontFamily:head, fontWeight:700, cursor:"pointer", transition:"background .12s" }}
+                        onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.background = C.accentLo; }}
+                        onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+                        <span style={{ fontSize:13 }}>+</span> New account
+                      </button>
+                      <button onClick={()=>{ setWsSwitcherOpen(false); guardedNav(()=>{ setActiveWorkspace(null); setView("accounts"); }); }}
+                        title="Open the full Accounts page"
+                        style={{ padding:"8px 10px", borderRadius:7, border:"none",
+                          background:"transparent", color:C.muted,
+                          fontSize:11, fontFamily:head, fontWeight:600, cursor:"pointer", transition:"background .12s" }}
+                        onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.background = C.faint; }}
+                        onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}>
+                        Manage all
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })(),
+          document.body
+        )}
+
         {/* ── Profile menu portal (shared V1/V2) ── */}
         {profileMenuOpen && profileMenuPos && createPortal(
               <>
@@ -22849,6 +23053,63 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
 
           {/* Workspace health banner — removed */}
           {false && (() => { return null;
+          })()}
+
+          {/* Breadcrumb — persistent wayfinding so users always know which client + section they're in.
+              Hidden on views that have no workspace context or render their own primary header. */}
+          {activeWorkspace && !["welcome","accounts"].includes(view) && (() => {
+            const VIEW_LABELS: Record<string,string> = {
+              launchpad: "Getting Started",
+              home: "Home",
+              salesInputs: "Sales Handoff",
+              profile: "Client Profile",
+              calls: "Activity",
+              company: "Company Profile",
+              products: "Products & Services",
+              icps: "Personas",
+              strategy: "Strategy",
+              campaigns: "Campaigns",
+              matrix: "Coverage Matrix",
+              rtsleads: "RTS Leads",
+              analytics: "Analytics",
+              "icp-tree": "ICP Tree",
+              "onboarding-hub": "Onboarding Hub",
+              "research-brief": "Research Brief",
+              "icp-scoring": "ICP Scoring",
+              "campaign-plan": "Campaign Plan",
+              knowledge: "Knowledge Center",
+              dfySetup: "DFY Setup",
+              integrations: "Integrations",
+              clientintel: "Client Intel",
+              callAnalyzer: "Call Analyzer",
+              onboarding: "Onboarding",
+              files: "Files",
+              intake: "Intake Form",
+            };
+            const viewLabel = VIEW_LABELS[view] || view;
+            return (
+              <div style={{ flexShrink:0, padding:"10px clamp(20px, 3vw, 48px) 0",
+                display:"flex", alignItems:"center", gap:6, fontSize:11.5, fontFamily:body }}>
+                <button onClick={()=>{
+                    if (wsSwitcherOpen) { setWsSwitcherOpen(false); return; }
+                    const r = wsSwitcherBtnRef.current?.getBoundingClientRect();
+                    if (r) setWsSwitcherPos({ top: r.bottom + 6, left: r.left, width: Math.max(260, r.width) });
+                    setWsSwitcherSearch("");
+                    setWsSwitcherOpen(true);
+                  }}
+                  title="Switch client account"
+                  style={{ padding:"2px 7px", borderRadius:6, border:"none",
+                    background:"transparent", color:C.textSoft,
+                    fontSize:11.5, fontFamily:body, fontWeight:600, cursor:"pointer",
+                    transition:"background .12s, color .12s" }}
+                  onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.background = C.faint; (e.currentTarget as HTMLButtonElement).style.color = C.text; }}
+                  onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = C.textSoft; }}>
+                  {activeWorkspace.name}
+                </button>
+                <span style={{ color:C.muted, fontSize:11 }}>›</span>
+                <span style={{ padding:"2px 4px", color:C.text, fontSize:11.5, fontWeight:600 }}>{viewLabel}</span>
+              </div>
+            );
           })()}
 
           <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
