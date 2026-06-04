@@ -15438,6 +15438,42 @@ function AdminPanel({ onClose, signOut, cloudSynced }: { onClose: () => void; si
   const [deleteUserId, setDeleteUserId] = useState<string|null>(null);
   const [userSearch, setUserSearch] = useState("");
 
+  // ── Set-password modal state ──
+  const [pwUser, setPwUser] = useState<UserRecord|null>(null);
+  const [pwValue, setPwValue] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [pwDone, setPwDone] = useState(false);
+
+  const openSetPassword = (u: UserRecord) => {
+    setPwUser(u); setPwValue(""); setPwConfirm(""); setPwError(""); setPwDone(false);
+  };
+
+  const handleSetPassword = async () => {
+    if (!pwUser) return;
+    if (pwValue.length < 8) { setPwError("Password must be at least 8 characters."); return; }
+    if (pwValue !== pwConfirm) { setPwError("Passwords do not match."); return; }
+    if (!pwUser.authId) { setPwError("This user has no linked auth account, so the password can't be changed here. Re-create the user."); return; }
+    setPwSaving(true); setPwError("");
+    try {
+      const r = await fetch("/api/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: pwUser.authId, password: pwValue, name: pwUser.name, role: pwUser.role }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((data as any).error || `Update failed (${r.status})`);
+      // Keep the local record in sync so the edit form's "keep existing" stays coherent.
+      persistUsers(users.map(u => u.id === pwUser.id ? { ...u, password: pwValue } : u));
+      setPwDone(true);
+    } catch (e: any) {
+      setPwError(e?.message || String(e));
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
   const persistUsers = (next: UserRecord[]) => { setUsers(next); saveUsers(next); };
   const openAddUser = () => { setUserForm({...EMPTY_USER}); setEditingUser(null); setUserModal("add"); };
   const openEditUser = (u: UserRecord) => { setUserForm({ name:u.name, email:u.email, password:"", role:u.role, status:u.status }); setEditingUser(u); setUserModal("edit"); };
@@ -15773,7 +15809,7 @@ function AdminPanel({ onClose, signOut, cloudSynced }: { onClose: () => void; si
           {/* Table */}
           <div style={{ background:_C.canvas, borderRadius:12, border:`1px solid ${_C.border}`, overflow:"hidden" }}>
             {/* Table header */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 140px 90px",
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 140px 124px",
               padding:"10px 20px", borderBottom:`1px solid ${_C.border}`, gap:12 }}>
               {["Name","Email","Role","Status","Last Login",""].map((h,i) => (
                 <div key={i} style={{ fontSize:9, fontFamily:mono, fontWeight:700,
@@ -15796,7 +15832,7 @@ function AdminPanel({ onClose, signOut, cloudSynced }: { onClose: () => void; si
                 ? new Date(u.lastLogin).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})
                 : "—";
               return (
-                <div key={u.id} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 140px 90px",
+                <div key={u.id} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px 90px 140px 124px",
                   padding:"13px 20px", gap:12, alignItems:"center",
                   borderBottom: idx < filtered.length-1 ? `1px solid ${_C.border}` : "none",
                   transition:"background .12s" }}
@@ -15847,6 +15883,14 @@ function AdminPanel({ onClose, signOut, cloudSynced }: { onClose: () => void; si
                       onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=_C.accent;}}
                       onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.border;(e.currentTarget as HTMLButtonElement).style.color=_C.muted;}}>
                       ✎
+                    </button>
+                    <button onClick={()=>openSetPassword(u)} title="Set password"
+                      style={{ width:28, height:28, borderRadius:6, border:`1px solid ${_C.border}`,
+                        background:"transparent", color:_C.muted, fontSize:12, cursor:"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center" }}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.accent+"66";(e.currentTarget as HTMLButtonElement).style.color=_C.accent;}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=_C.border;(e.currentTarget as HTMLButtonElement).style.color=_C.muted;}}>
+                      🔑
                     </button>
                     <button onClick={()=>setDeleteId(u.id)} title="Delete"
                       style={{ width:28, height:28, borderRadius:6, border:`1px solid ${_C.border}`,
@@ -15998,6 +16042,78 @@ function AdminPanel({ onClose, signOut, cloudSynced }: { onClose: () => void; si
 
         </div>
       </div>
+
+      {/* ── Set Password Modal ── */}
+      {pwUser && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(13,15,26,.55)", backdropFilter:"blur(4px)",
+          display:"flex", alignItems:"center", justifyContent:"center", zIndex:200 }}
+          onClick={e=>{ if(e.target===e.currentTarget) setPwUser(null); }}>
+          <div style={{ background:_C.canvas, borderRadius:14, border:`1px solid ${_C.border}`,
+            padding:"28px 32px", width:420, boxShadow:"0 20px 60px rgba(0,0,0,.18)", animation:"slideUp .2s ease" }}>
+            <div style={{ fontSize:16, fontWeight:700, fontFamily:head, color:_C.text, marginBottom:6 }}>Set Password</div>
+            <div style={{ fontSize:12.5, color:_C.textSoft, fontFamily:body, marginBottom:20, lineHeight:1.6 }}>
+              Set a new login password for <strong>{pwUser.name}</strong> ({pwUser.email}). It takes effect immediately.
+            </div>
+
+            {pwDone ? (
+              <>
+                <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderRadius:8,
+                  background:_C.green+"12", border:`1px solid ${_C.green}33`, marginBottom:20 }}>
+                  <span style={{ fontSize:16, color:_C.green }}>✓</span>
+                  <div style={{ fontSize:13, color:_C.green, fontWeight:600, fontFamily:head }}>
+                    Password updated — share the new one with {pwUser.name.split(" ")[0] || "the user"}.
+                  </div>
+                </div>
+                <button onClick={()=>setPwUser(null)}
+                  style={{ width:"100%", padding:"11px 0", borderRadius:8, border:"none",
+                    background:_C.accent, color:"#fff", fontSize:13, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{ marginBottom:14 }}>
+                  <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>NEW PASSWORD</label>
+                  <input type="password" value={pwValue} autoFocus placeholder="At least 8 characters"
+                    onChange={e=>{ setPwValue(e.target.value); setPwError(""); }}
+                    onKeyDown={e=>{ if(e.key==="Enter" && !pwSaving) handleSetPassword(); }}
+                    style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                      background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+                </div>
+                <div style={{ marginBottom:16 }}>
+                  <label style={{ display:"block", fontSize:11, fontFamily:mono, color:_C.muted, marginBottom:5 }}>CONFIRM PASSWORD</label>
+                  <input type="password" value={pwConfirm} placeholder="Re-enter password"
+                    onChange={e=>{ setPwConfirm(e.target.value); setPwError(""); }}
+                    onKeyDown={e=>{ if(e.key==="Enter" && !pwSaving) handleSetPassword(); }}
+                    style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${_C.border}`,
+                      background:_C.bg, color:_C.text, fontSize:13, fontFamily:body, outline:"none", boxSizing:"border-box" as const }} />
+                </div>
+
+                {pwError && (
+                  <div style={{ fontSize:12, color:_C.red, fontFamily:body, marginBottom:16, lineHeight:1.5 }}>{pwError}</div>
+                )}
+
+                <div style={{ display:"flex", gap:10 }}>
+                  <button onClick={handleSetPassword}
+                    disabled={pwSaving || pwValue.length < 8 || pwValue !== pwConfirm}
+                    style={{ flex:1, padding:"11px 0", borderRadius:8, border:"none",
+                      background:(!pwSaving && pwValue.length>=8 && pwValue===pwConfirm)?_C.accent:_C.border,
+                      color:(!pwSaving && pwValue.length>=8 && pwValue===pwConfirm)?"#fff":_C.muted,
+                      fontSize:13, fontFamily:head, fontWeight:700,
+                      cursor:(!pwSaving && pwValue.length>=8 && pwValue===pwConfirm)?"pointer":"default" }}>
+                    {pwSaving ? "Saving…" : "Update Password"}
+                  </button>
+                  <button onClick={()=>setPwUser(null)}
+                    style={{ flex:1, padding:"11px 0", borderRadius:8, border:`1px solid ${_C.border}`,
+                      background:"transparent", color:_C.muted, fontSize:13, fontFamily:head, cursor:"pointer" }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Add / Edit Modal ── */}
       {modal && (
