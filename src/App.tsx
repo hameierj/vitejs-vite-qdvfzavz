@@ -22779,9 +22779,9 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
         {/* ── Workspace switcher popover ── */}
         {wsSwitcherOpen && wsSwitcherPos && createPortal(
           (() => {
-            const allClients = loadClients()
-              .filter(c => c.status === "active")
-              .filter(c => currentRole !== "team" || !loggedInUser || c.assignedUserId === loggedInUser.id);
+            // Show every active client — CSMs need to swap into any account from the sidebar,
+            // not just the ones assigned to the logged-in user.
+            const allClients = loadClients().filter(c => c.status === "active");
             const q = wsSwitcherSearch.trim().toLowerCase();
             const matches = (c: ClientRecord) =>
               !q || c.name.toLowerCase().includes(q) || (c.industry||"").toLowerCase().includes(q);
@@ -22831,7 +22831,8 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                 <div onClick={()=>setWsSwitcherOpen(false)}
                   style={{ position:"fixed", inset:0, zIndex:2147483646 }} />
                 <div style={{ position:"fixed", top:wsSwitcherPos.top, left:wsSwitcherPos.left,
-                  width:popW, maxHeight:"70vh", zIndex:2147483647,
+                  width:popW, maxHeight:`min(70vh, ${window.innerHeight - wsSwitcherPos.top - 16}px)`,
+                  zIndex:2147483647,
                   background:C.surface, border:`1px solid ${C.border}`, borderRadius:11,
                   boxShadow:"0 12px 36px rgba(0,0,0,.18)", display:"flex", flexDirection:"column",
                   animation:"fadeIn .12s ease" }}>
@@ -22857,7 +22858,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                   </div>
 
                   {/* Lists */}
-                  <div style={{ overflowY:"auto", padding:"6px 6px 4px", flex:1 }}>
+                  <div style={{ overflowY:"auto", padding:"6px 6px 4px", flex:1, minHeight:0 }}>
                     {activeWorkspace && !q && (
                       <>
                         <div style={{ fontSize:9, fontFamily:mono, fontWeight:700, color:C.muted,
