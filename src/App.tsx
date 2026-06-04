@@ -261,18 +261,22 @@ async function syncFromCloud() {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    // Sync clients — cloud is source of truth (supports deletions)
-    const cloudClients = await dbGet("app_data", "clients");
+    // Sync clients — cloud is source of truth (supports deletions).
+    // Query directly (not via dbGet) so we can distinguish a failed query from a genuinely empty result.
+    const { data: clientRow, error: clientErr } = await supabase.from("app_data").select("value").eq("key", "clients").maybeSingle();
     if (controller.signal.aborted) throw new Error("timeout");
-    if (cloudClients) {
-      try { localStorage.setItem("b2br_clients", JSON.stringify(cloudClients)); } catch {}
-    } else {
-      // Cloud has no clients — wipe stale local cache so deleted data doesn't persist
+    if (!clientErr && clientRow?.value) {
+      try { localStorage.setItem("b2br_clients", JSON.stringify(clientRow.value)); } catch {}
+    } else if (!clientErr && clientRow === null) {
+      // Row confirmed absent in cloud — wipe stale local cache so deletions propagate
       try { localStorage.setItem("b2br_clients", "[]"); } catch {}
       for (const k of Object.keys(localStorage)) {
         if (k.startsWith("b2br_ws_")) localStorage.removeItem(k);
       }
     }
+    // If clientErr, leave localStorage untouched so accounts survive a bad query
+    if (clientErr) console.warn("[DB] clients fetch error — keeping local cache:", clientErr.message);
+
     // Sync users — cloud is source of truth (supports deletions)
     const cloudUsers = await dbGet("app_data", "users");
     if (controller.signal.aborted) throw new Error("timeout");
