@@ -19126,6 +19126,8 @@ function AppMain() {
                 .from("app_data")
                 .upsert({ key: `lp_job_${wsId}`, value: JSON.stringify({ ...job, status: "error", error: "stuck — background function exceeded execution limit", completedAt: new Date().toISOString() }) }, { onConflict: "key" });
             } catch {}
+            // Release the queue slot so the queue doesn't get permanently blocked.
+            try { await supabase.rpc("lp_release_slot", { p_ws_id: wsId }); } catch {}
             addToast({ title: "Launch pad stalled", status: "error", message: "Background run timed out. Hit Reset and try again." });
             schedule(15000);
             return;

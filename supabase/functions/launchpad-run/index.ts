@@ -1041,6 +1041,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// Self-imposed deadline: write an error and release the queue slot 50s before
+// Supabase's hard 400s kill, so the finally block always gets to run.
+const PIPELINE_DEADLINE_MS = 350_000;
+
 // Run the full pipeline for a workspace and release its queue slot when done.
 // If the next queued job exists, self-invokes this function to start it.
 async function runJobAndRelease(
@@ -1058,7 +1062,16 @@ async function runJobAndRelease(
   const jobKey = `lp_job_${workspaceId}`;
   try {
     lastAIError = null;
-    const result = await runPipeline(params, anthropicKey, supabase, jobKey);
+
+    // Race the pipeline against a hard deadline so we always reach the finally
+    // block (and call lp_release_slot) before Supabase's 400s hard kill.
+    const deadlineSignal = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("deadline_exceeded")), PIPELINE_DEADLINE_MS)
+    );
+    const result = await Promise.race([
+      runPipeline(params, anthropicKey, supabase, jobKey),
+      deadlineSignal,
+    ]);
 
     if (!Array.isArray(result.products) || result.products.length === 0) {
       await supabase.from("app_data").upsert(
@@ -1100,13 +1113,20 @@ async function runJobAndRelease(
       }
     }
   } catch (err) {
-    console.error("Pipeline failed:", err);
+    const isDeadline = (err as Error)?.message === "deadline_exceeded";
+    console.error(isDeadline ? "Pipeline exceeded 350s deadline" : "Pipeline failed:", err);
     await supabase.from("app_data").upsert(
-      { key: jobKey, value: JSON.stringify({ jobId, status: "error", error: String(err), completedAt: new Date().toISOString() }) },
+      { key: jobKey, value: JSON.stringify({
+        jobId, status: "error", completedAt: new Date().toISOString(),
+        error: isDeadline
+          ? "Run exceeded time limit (350s) — please retry. If this keeps happening, the company may have too many products/personas."
+          : String(err),
+      }) },
       { onConflict: "key" },
     );
   } finally {
-    // Release slot and trigger next queued job (if any)
+    // Release slot and trigger next queued job (if any).
+    // This runs even after deadline — we have ~50s before Supabase's hard kill.
     try {
       const { data: nextJob } = await supabase.rpc("lp_release_slot", { p_ws_id: workspaceId });
       if (nextJob?.wsId) {
