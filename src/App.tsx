@@ -18398,6 +18398,7 @@ function AppMain() {
   const [wsShareToken, setWsShareToken] = useState<string|null>(null);
   const [researchState, setResearchState] = useState<"idle"|"running"|"done">("idle");
   const [researchLog,   setResearchLog]   = useState<string[]>([]);
+  const [researchStartedAt, setResearchStartedAt] = useState<number | null>(null);
   const researchPollKickRef = useRef<() => void>(() => {});
   const lpPollKickRef = useRef<() => void>(() => {});
   const [icpScoringState, setIcpScoringState] = useState<"idle"|"scoring"|"done">("idle");
@@ -18805,6 +18806,8 @@ function AppMain() {
 
         if (job.status === "running") {
           setResearchState("running");
+          const startMs = job.startedAt ? Date.parse(job.startedAt) : NaN;
+          setResearchStartedAt(Number.isNaN(startMs) ? null : startMs);
           schedule(3000);
         } else if (job.status === "done") {
           setResearchState("done");
@@ -27708,6 +27711,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   brief={(companyData as any)?._initialResearchBrief ?? null}
                   generating={researchState === "running"}
                   genLog={researchLog}
+                  startedAt={researchStartedAt}
                   onGenerate={(domain) => handleStartResearch(domain)}
                   onMarkReviewed={() => setCompanyData((prev:any) => ({ ...prev, _researchBriefReviewed: true }))}
                   reviewed={!!(companyData as any)?._researchBriefReviewed}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { callClaude, parseJSON } from "../../lib/callClaude";
+import { ElapsedTimer } from "./ElapsedTimer";
 
 const C = {
   bg: "#F8F9FE", canvas: "#FFFFFF", surface: "#F3F4FB", border: "#EDF2F7",
@@ -207,6 +208,7 @@ Score ALL ICPs provided.`;
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px 48px", fontFamily: head }}>
+      <ElapsedTimer running={scoring} label="SCORING" />
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.accent, letterSpacing: 0.8, marginBottom: 8, textTransform: "uppercase" as const }}>

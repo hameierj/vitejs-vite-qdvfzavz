@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ElapsedTimer } from "./ElapsedTimer";
 
 const C = {
   bg: "#F8F9FE", canvas: "#FFFFFF", surface: "#F3F4FB", border: "#EDF2F7",
@@ -18,13 +19,15 @@ interface Props {
   onGenerate: (domain: string) => void;
   onMarkReviewed: () => void;
   reviewed: boolean;
+  startedAt?: number | null;
 }
 
-export function InitialResearchBrief({ brief, generating, genLog, onGenerate, onMarkReviewed, reviewed }: Props) {
+export function InitialResearchBrief({ brief, generating, genLog, onGenerate, onMarkReviewed, reviewed, startedAt }: Props) {
   const [domain, setDomain] = useState("");
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px 48px", fontFamily: head }}>
+      <ElapsedTimer running={generating} startedAt={startedAt} label="RESEARCHING" />
       <div style={{ marginBottom: 28 }}>
         <div style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.accent, letterSpacing: 0.8, marginBottom: 8, textTransform: "uppercase" as const }}>
           STEP 1

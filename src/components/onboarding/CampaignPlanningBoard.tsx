@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { callClaude, parseJSON } from "../../lib/callClaude";
+import { ElapsedTimer } from "./ElapsedTimer";
 
 const C = {
   bg: "#F8F9FE", canvas: "#FFFFFF", surface: "#F3F4FB", border: "#EDF2F7",
@@ -335,6 +336,7 @@ ${JSON.stringify(context.icp, null, 2)}`;
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px 48px", fontFamily: head }}>
+      <ElapsedTimer running={generating} label="GENERATING" />
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
