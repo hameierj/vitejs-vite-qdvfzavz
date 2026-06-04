@@ -10,6 +10,7 @@ import { ICPScoringMatrix } from "./components/onboarding/ICPScoringMatrix";
 import { CampaignPlanningBoard } from "./components/onboarding/CampaignPlanningBoard";
 import { ClientIntakeFormPage } from "./components/onboarding/ClientIntakeForm";
 import { PRODUCT_SECTIONS, ICP_SECTIONS } from "./lib/schemas";
+import { callGammaApi, buildGammaDeck } from "./lib/gamma";
 import {
   Upload, Sparkles, Mail, Search, ShieldCheck, Users,
   FileText, BarChart3, Target, MessageCircle, Zap, Globe,
@@ -17190,27 +17191,14 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
   const [seqTab, setSeqTab] = useState<Record<string,"strategy"|"email"|"linkedin">>({});
   const [copiedGroup, setCopiedGroup] = useState<string|null>(null);
   const [emailSubTab, setEmailSubTab] = useState<Record<string,number>>({});
-  type GammaDeckKey = "company" | "personas" | "infrastructure" | "campaigns";
-  const [gammaDecks, setGammaDecks] = useState<Record<GammaDeckKey, { loading: boolean; url: string|null; error: string|null }>>({
-    company:        { loading: false, url: null, error: null },
-    personas:       { loading: false, url: null, error: null },
-    infrastructure: { loading: false, url: null, error: null },
-    campaigns:      { loading: false, url: null, error: null },
-  });
-  const [gammaCopied, setGammaCopied] = useState<GammaDeckKey | null>(null);
+  const [gammaDeck, setGammaDeck] = useState<{ loading: boolean; url: string|null; error: string|null }>({ loading: false, url: null, error: null });
+  const [gammaCopied, setGammaCopied] = useState(false);
 
-  // Load saved Gamma URLs for this client on mount / client switch
+  // Load saved Gamma URL for this client on mount / client switch
   useEffect(() => {
     if (!clientId) return;
-    dbGet("app_data", `gamma_urls_${clientId}`).then((saved: any) => {
-      if (!saved || typeof saved !== "object") return;
-      setGammaDecks(prev => {
-        const next = { ...prev };
-        (["company","personas","infrastructure","campaigns"] as GammaDeckKey[]).forEach(k => {
-          if (saved[k]) next[k] = { loading: false, url: saved[k], error: null };
-        });
-        return next;
-      });
+    dbGet("app_data", `gamma_url_${clientId}`).then((saved: any) => {
+      if (saved && typeof saved === "string") setGammaDeck({ loading: false, url: saved, error: null });
     });
   }, [clientId]);
 
@@ -17249,200 +17237,17 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
     });
   };
 
-  const gammaCallApi = async (inputText: string, title: string, numCards: number): Promise<string> => {
-    const res = await fetch("/api/gamma", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        inputText, textMode: "preserve", format: "presentation", numCards, title, themeId: "dopc0p2lu6c8k7i",
-        cardOptions: { dimensions: "16x9" },
-        imageOptions: { source: "noImages" },
-        additionalInstructions: "Do not include any images, photos, or illustrations on any slides. Text only.",
-      }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || data.error || JSON.stringify(data) || `Server error ${res.status}`);
-    }
-    const { generationId } = await res.json();
-    const poll = async (): Promise<string> => {
-      const pr = await fetch(`/api/gamma?id=${generationId}`);
-      const data = await pr.json();
-      if (data.status === "completed") return data.gammaUrl;
-      if (data.status === "failed") throw new Error("Gamma generation failed");
-      await new Promise(r => setTimeout(r, 5000));
-      return poll();
-    };
-    return poll();
-  };
-
-  const gammaBuildCompany = (co: any, prods: any[]) => {
-    const L: string[] = [];
-    L.push(`# ${co.co_name || "Company"} — Company Profile & Products\n`);
-    if (co.co_pitch) L.push(`${co.co_pitch}\n`);
-    L.push(`## Company Overview`);
-    if (co.co_industry) L.push(`**Industry:** ${co.co_industry}`);
-    if (co.co_size)     L.push(`**Size:** ${co.co_size}`);
-    if (co.co_revenue)  L.push(`**Revenue:** ${co.co_revenue}`);
-    if (co.co_website)  L.push(`**Website:** ${co.co_website}`);
-    if (co.co_diff)     L.push(`\n## Differentiation\n${co.co_diff}`);
-    if (co.co_proof)    L.push(`\n## Proof Points\n${co.co_proof}`);
-    if (co.co_customers) L.push(`\n## Notable Customers\n${co.co_customers}`);
-    if (co.co_ksp) {
-      L.push(`\n## Key Selling Points`);
-      co.co_ksp.split(/\n|;\s*|\d+\)\s*/).map((s: string) => s.replace(/^[•\-*]\s*/,"").trim()).filter(Boolean)
-        .forEach((k: string) => L.push(`- ${k}`));
-    }
-    if (co.co_competitors)    L.push(`\n## Competitive Landscape\n${co.co_competitors}`);
-    if (co.co_buying_motion)  L.push(`\n## Buying Motion\n${co.co_buying_motion}`);
-    if (co.co_deal || co.co_cycle) {
-      L.push(`\n## Deal Profile`);
-      if (co.co_deal)  L.push(`**ACV:** ${co.co_deal}`);
-      if (co.co_cycle) L.push(`**Sales cycle:** ${co.co_cycle}`);
-    }
-    if (prods.length) {
-      L.push(`\n## Products & Services`);
-      prods.forEach(p => {
-        L.push(`\n### ${p.name}`);
-        if (p.description)      L.push(p.description);
-        if (p.problemsSolved)   L.push(`\n**Problems solved:** ${p.problemsSolved}`);
-        if (p.valueProposition) L.push(`**Value proposition:** ${p.valueProposition}`);
-        if (p.keyFeatures)      L.push(`**Key features:** ${p.keyFeatures}`);
-        if (p.useCases)         L.push(`**Use cases:** ${p.useCases}`);
-        if (p.idealCustomer)    L.push(`**Ideal customer:** ${p.idealCustomer}`);
-        if (p.acv || p.dealType) L.push(`**Deal:** ${[p.dealType, p.acv].filter(Boolean).join(" · ")}`);
-        if (p.proofPoints)      L.push(`**Proof:** ${p.proofPoints}`);
-      });
-    }
-    return L.join("\n");
-  };
-
-  const gammaBuildPersonas = (co: any, pers: any[]) => {
-    const L: string[] = [];
-    L.push(`# ${co.co_name || "Company"} — Target Personas & ICPs\n`);
-    L.push(`${pers.length} ideal customer profile${pers.length !== 1 ? "s" : ""} identified and scored.\n`);
-    pers.forEach((p, i) => {
-      const d = p.data || {};
-      L.push(`## Persona ${i + 1}: ${p.name}`);
-      if (d.buyer)      L.push(`**Job titles:** ${d.buyer}`);
-      if (d.industries) L.push(`**Industries:** ${Array.isArray(d.industries) ? d.industries.join(", ") : d.industries}`);
-      if (d.co_sizes)   L.push(`**Company size:** ${Array.isArray(d.co_sizes) ? d.co_sizes.join(", ") : d.co_sizes}`);
-      if (d.geo)        L.push(`**Geography:** ${Array.isArray(d.geo) ? d.geo.join(", ") : d.geo}`);
-      if (d.pain1)      L.push(`\n**Primary pain:** ${d.pain1}`);
-      if (d.gain)       L.push(`**Key gain:** ${d.gain}`);
-      if (d.trigger)    L.push(`**Buying trigger:** ${d.trigger}`);
-      if (d.tone)       L.push(`**Preferred tone:** ${d.tone}`);
-      if (d.best_channel)       L.push(`**Best channel:** ${d.best_channel}`);
-      if (d.current_solutions)  L.push(`**Current solutions:** ${d.current_solutions}`);
-      if (d.objection)  L.push(`\n**Main objection:** ${d.objection}`);
-      if (d.rebuttal)   L.push(`**Rebuttal:** ${d.rebuttal}`);
-      if (p.score !== undefined) L.push(`\n**ICP score:** ${p.score}/100`);
-      L.push("");
-    });
-    return L.join("\n");
-  };
-
-  const gammaBuildInfrastructure = (co: any, doms: any[]) => {
-    const mailboxes = doms.length * 3;
-    const L: string[] = [];
-    L.push(`# ${co.co_name || "Company"} — Cold Outreach Infrastructure\n`);
-    L.push(`## Infrastructure Overview`);
-    L.push(`- **Domains:** ${doms.length}`);
-    L.push(`- **Mailboxes:** ${mailboxes} (3 per domain)`);
-    L.push(`- **Daily send capacity:** ${mailboxes}–${mailboxes * 20} emails/day (week 1 → fully ramped)`);
-    L.push(`- **Ramp timeline:** 6–9 weeks to full capacity`);
-    L.push(`\n## Domain Strategy`);
-    L.push(`Each domain is a brand variation used to protect deliverability and maximize inbox placement. Domains rotate sends across mailboxes to stay within provider limits and build sender reputation over time.`);
-    L.push(`\n## Warmup Plan`);
-    L.push(`- **Weeks 1–2:** 1–5 emails/mailbox/day, high-engagement seed list`);
-    L.push(`- **Weeks 3–4:** 5–15 emails/mailbox/day, mix in real prospects`);
-    L.push(`- **Weeks 5–6:** 15–30 emails/mailbox/day, full campaign traffic`);
-    L.push(`- **Week 7+:** 30–50 emails/mailbox/day, fully ramped`);
-    L.push(`\n## Domain List (${doms.length} domains)`);
-    doms.forEach((d: any) => L.push(`- ${d.full || (d.domain + (d.tld || ".com"))}`));
-    return L.join("\n");
-  };
-
-  const gammaBuildCampaigns = (co: any, grps: any[]) => {
-    const L: string[] = [];
-    L.push(`# ${co.co_name || "Company"} — Campaign Strategy & Sequences\n`);
-    L.push(`${grps.length} campaign group${grps.length !== 1 ? "s" : ""} across email and LinkedIn, targeting top-priority ICPs.\n`);
-    grps.forEach((g, i) => {
-      L.push(`## Campaign ${i + 1}: ${g.productName} × ${g.personaName}`);
-      L.push(`**Priority:** ${(g.priority || "medium").charAt(0).toUpperCase() + (g.priority || "medium").slice(1)} fit`);
-      if (g.rationale) L.push(`\n${g.rationale}`);
-      L.push("");
-      if (g.emailStrategy)  L.push(`### Email Strategy\n${g.emailStrategy}\n`);
-      const gEmailSeqs: any[][] = g.emailSequences || [(g.emailSequence||[])];
-      const gEmailLabels = ["Email 1 — Conversation Starter", "Email 2 — Meeting CTA", "Email 3 — Value-Based CTA"];
-      gEmailSeqs.forEach((seq, si) => {
-        if (!seq?.length) return;
-        L.push(`### ${gEmailLabels[si] || `Email Sequence ${si+1}`} (${seq.length} touches)`);
-        seq.forEach((s: any) => {
-          L.push(`\n**Step ${s.stepNumber} — Day +${s.dayOffset}${s.role ? ` [${s.role}]` : ""}**`);
-          if (s.subject) L.push(`Subject: ${s.subject}`);
-          L.push(s.body || "");
-        });
-        L.push("");
-      });
-      if (g.linkedinStrategy) L.push(`### LinkedIn Strategy\n${g.linkedinStrategy}\n`);
-      if ((g.linkedinSequence || []).length) {
-        L.push(`### LinkedIn Sequence (${g.linkedinSequence.length} touches)`);
-        g.linkedinSequence.forEach((s: any) => {
-          L.push(`\n**Step ${s.stepNumber} — Day +${s.dayOffset}${s.role ? ` [${s.role}]` : ""}**`);
-          L.push(s.body || "");
-        });
-        L.push("");
-      }
-    });
-    return L.join("\n");
-  };
-
-  const createGammaDeck = async (deckKey: GammaDeckKey, co: any, prods: any[], pers: any[], doms: any[], grps: any[]) => {
-    setGammaDecks(prev => ({ ...prev, [deckKey]: { loading: true, url: null, error: null } }));
+  const createGammaDeck = async (co: any, prods: any[], pers: any[], grps: any[]) => {
+    setGammaDeck({ loading: true, url: null, error: null });
     try {
-      let inputText = "";
-      let title = "";
-      let numCards = 10;
-      if (deckKey === "company") {
-        inputText = gammaBuildCompany(co, prods);
-        title = `${co.co_name || "Company"} — Company Profile & Products`;
-        numCards = Math.min(40, 5 + prods.length * 2);
-      } else if (deckKey === "personas") {
-        inputText = gammaBuildPersonas(co, pers);
-        title = `${co.co_name || "Company"} — Target Personas`;
-        numCards = Math.min(40, 2 + pers.length * 2);
-      } else if (deckKey === "infrastructure") {
-        inputText = gammaBuildInfrastructure(co, doms);
-        title = `${co.co_name || "Company"} — Cold Outreach Infrastructure`;
-        numCards = Math.min(20, 5 + Math.ceil(doms.length / 8));
-      } else {
-        inputText = gammaBuildCampaigns(co, grps);
-        title = `${co.co_name || "Company"} — Campaign Strategy & Sequences`;
-        numCards = Math.min(75, 2 + grps.length * 4);
-      }
-      const url = await gammaCallApi(inputText, title, numCards);
-      setGammaDecks(prev => {
-        const next = { ...prev, [deckKey]: { loading: false, url, error: null } };
-        if (clientId) {
-          const toSave = Object.fromEntries(
-            (Object.entries(next) as [GammaDeckKey, typeof next[GammaDeckKey]][])
-              .filter(([, v]) => v.url)
-              .map(([k, v]) => [k, v.url])
-          );
-          dbPut("app_data", `gamma_urls_${clientId}`, toSave);
-        }
-        return next;
-      });
+      const { text, numCards } = buildGammaDeck(co, prods, pers, grps);
+      const title = `${co.co_name || "Company"} — Campaign Deck`;
+      const url = await callGammaApi(text, title, numCards);
+      setGammaDeck({ loading: false, url, error: null });
+      if (clientId) dbPut("app_data", `gamma_url_${clientId}`, url);
     } catch (e: any) {
-      setGammaDecks(prev => ({ ...prev, [deckKey]: { loading: false, url: null, error: e.message || "Failed" } }));
+      setGammaDeck({ loading: false, url: null, error: e.message || "Failed" });
     }
-  };
-
-  const createAllGammaDecks = (co: any, prods: any[], pers: any[], doms: any[], grps: any[]) => {
-    (["company","personas","infrastructure","campaigns"] as GammaDeckKey[]).forEach(k =>
-      createGammaDeck(k, co, prods, pers, doms, grps)
-    );
   };
 
   const [obTranscript, setObTranscript] = useState<string>(lpResult?.onboarding?.transcript || "");
@@ -18177,156 +17982,109 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
           </div>
         )}
 
-        {/* EXPORT — Gamma Presentations */}
+        {/* EXPORT — Gamma Presentation */}
         {lpTab === "export" && (() => {
-          const DECK_META: { key: GammaDeckKey; icon: string; label: string; desc: string; what: string[] }[] = [
-            {
-              key: "company",
-              icon: "🏢",
-              label: "Company Profile",
-              desc: "A deck covering your company overview and full product/service catalogue.",
-              what: ["Company pitch & overview", "Key selling points", "Differentiation & proof", "Products with value props, features, and deal info"],
-            },
-            {
-              key: "personas",
-              icon: "🎯",
-              label: "Personas & ICPs",
-              desc: "One slide per ICP with job titles, pains, triggers, objections, and ICP scores.",
-              what: ["Job titles & industries", "Primary pains & gains", "Buying triggers & tone", "Objections & rebuttals"],
-            },
-            {
-              key: "infrastructure",
-              icon: "🌐",
-              label: "Infrastructure",
-              desc: "Your cold outreach domain infrastructure with warmup timeline.",
-              what: [`${domains.length} cold email domains`, "Mailbox & capacity overview", "6–9 week warmup plan", "Full domain list"],
-            },
-            {
-              key: "campaigns",
-              icon: "📣",
-              label: "Campaigns",
-              desc: "Strategy briefs and full email + LinkedIn sequences for every campaign group.",
-              what: ["Email & LinkedIn strategy briefs", "5-touch email sequences", "5-touch LinkedIn sequences", "Per-campaign rationale"],
-            },
+          const d = gammaDeck;
+          const what = [
+            "Cover slide with company name & tagline",
+            ...groups.map((g: any, i: number) => `Campaign ${i + 1}: ${g.productName} × ${g.personaName} — product snapshot, persona, strategy, full email & LinkedIn copy`),
           ];
-          const anyLoading = DECK_META.some(d => gammaDecks[d.key].loading);
-          const allDone = DECK_META.every(d => !!gammaDecks[d.key].url);
           return (
-            <div style={{ maxWidth:820 }}>
+            <div style={{ maxWidth:620 }}>
               {/* Header */}
-              <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28, gap:16 }}>
-                <div>
-                  <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:4 }}>
-                    Gamma Presentations
-                  </div>
-                  <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6 }}>
-                    Generate a Gamma slide deck for each section of your Getting Started output.
-                    Each deck is tailored for that audience — share Company Profile with stakeholders,
-                    Campaigns with the sales team, Infrastructure with ops.
-                  </div>
+              <div style={{ marginBottom:24 }}>
+                <div style={{ fontSize:18, fontWeight:800, fontFamily:head, color:C2.text, marginBottom:4 }}>
+                  Gamma Presentation
                 </div>
-                <button
-                  onClick={() => createAllGammaDecks(company, prods, personas, domains, groups)}
-                  disabled={anyLoading}
-                  style={{ flexShrink:0, padding:"10px 22px", borderRadius:9, border:"none",
-                    background: anyLoading ? "#7c3aed44" : "#7c3aed",
-                    color:"#fff", fontSize:13, fontFamily:head, fontWeight:700,
-                    cursor:anyLoading?"default":"pointer", opacity:anyLoading?0.7:1,
-                    boxShadow: anyLoading?"none":"0 2px 14px #7c3aed40",
-                    whiteSpace:"nowrap" as const, transition:"all .15s" }}>
-                  {anyLoading ? "Creating…" : allDone ? "↺ Recreate All" : "✦ Create All"}
-                </button>
+                <div style={{ fontSize:13, color:C2.muted, fontFamily:body, lineHeight:1.6 }}>
+                  Generate a single Gamma deck covering every campaign — one section per campaign with
+                  the product snapshot, persona, strategy, and full email + LinkedIn sequences.
+                </div>
               </div>
 
-              {/* Deck cards */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-                {DECK_META.map(({ key, icon, label, desc, what }) => {
-                  const d = gammaDecks[key];
-                  return (
-                    <div key={key} style={{ background:C2.canvas, border:`1px solid ${d.url ? "#7c3aed33" : d.error ? "#dc262633" : C2.border}`,
-                      borderRadius:14, overflow:"hidden", display:"flex", flexDirection:"column",
-                      transition:"border-color .15s" }}>
-                      {/* Card header */}
-                      <div style={{ padding:"18px 20px 14px", borderBottom:`1px solid ${C2.border}` }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
-                          <span style={{ fontSize:22 }}>{icon}</span>
-                          <div style={{ fontSize:14, fontWeight:800, fontFamily:head, color:C2.text }}>{label}</div>
-                          {d.url && !d.loading && (
-                            <span style={{ marginLeft:"auto", fontSize:10, padding:"2px 8px", borderRadius:10,
-                              background:"#7c3aed14", color:"#7c3aed", fontFamily:head, fontWeight:700 }}>READY</span>
-                          )}
-                        </div>
-                        <div style={{ fontSize:12, color:C2.muted, fontFamily:body, lineHeight:1.6 }}>{desc}</div>
+              {/* Single deck card */}
+              <div style={{ background:C2.canvas, border:`1px solid ${d.url ? "#7c3aed33" : d.error ? "#dc262633" : C2.border}`,
+                borderRadius:14, overflow:"hidden", display:"flex", flexDirection:"column", transition:"border-color .15s" }}>
+                {/* Card header */}
+                <div style={{ padding:"18px 20px 14px", borderBottom:`1px solid ${C2.border}` }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                    <span style={{ fontSize:22 }}>📣</span>
+                    <div style={{ fontSize:14, fontWeight:800, fontFamily:head, color:C2.text }}>Campaign Deck</div>
+                    {d.url && !d.loading && (
+                      <span style={{ marginLeft:"auto", fontSize:10, padding:"2px 8px", borderRadius:10,
+                        background:"#7c3aed14", color:"#7c3aed", fontFamily:head, fontWeight:700 }}>READY</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:12, color:C2.muted, fontFamily:body, lineHeight:1.6 }}>
+                    One deck, one section per campaign — product, persona, strategy, and full copy.
+                  </div>
+                </div>
+                {/* What's included */}
+                <div style={{ padding:"14px 20px", flex:1 }}>
+                  <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:C2.muted,
+                    letterSpacing:.7, textTransform:"uppercase" as const, marginBottom:8 }}>What's included</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                    {what.map((item, i) => (
+                      <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:7, fontSize:12, fontFamily:body, color:C2.textSoft }}>
+                        <span style={{ color:"#7c3aed", fontWeight:700, flexShrink:0, marginTop:1 }}>·</span>
+                        {item}
                       </div>
-                      {/* What's included */}
-                      <div style={{ padding:"14px 20px", flex:1 }}>
-                        <div style={{ fontSize:10, fontWeight:700, fontFamily:head, color:C2.muted,
-                          letterSpacing:.7, textTransform:"uppercase" as const, marginBottom:8 }}>What's included</div>
-                        <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-                          {what.map((item, i) => (
-                            <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:7, fontSize:12, fontFamily:body, color:C2.textSoft }}>
-                              <span style={{ color:"#7c3aed", fontWeight:700, flexShrink:0, marginTop:1 }}>·</span>
-                              {item}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      {/* Actions */}
-                      <div style={{ padding:"14px 20px", borderTop:`1px solid ${C2.border}`,
-                        display:"flex", alignItems:"center", gap:10 }}>
-                        <button
-                          onClick={() => createGammaDeck(key, company, prods, personas, domains, groups)}
-                          disabled={d.loading}
-                          style={{ display:"flex", alignItems:"center", gap:7, padding:"8px 16px", borderRadius:8,
-                            border:`1px solid ${d.error ? "#dc262655" : "#7c3aed44"}`,
-                            background: d.error ? "#fef2f2" : "#7c3aed12",
-                            color: d.error ? "#dc2626" : "#7c3aed",
-                            fontSize:12, fontFamily:head, fontWeight:700, cursor:d.loading?"default":"pointer",
-                            opacity:d.loading?0.7:1, transition:"all .15s", whiteSpace:"nowrap" as const }}>
-                          {d.loading ? (
-                            <span style={{ display:"inline-block", width:11, height:11, border:"2px solid #7c3aed44",
-                              borderTop:"2px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
-                          ) : null}
-                          {d.loading ? "Creating deck…" : d.url ? "↺ Recreate" : d.error ? "Retry" : "Create Deck"}
-                        </button>
-                        {d.url && !d.loading && (
-                          <a href={d.url} target="_blank" rel="noopener noreferrer"
-                            style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:8,
-                              background:"#7c3aed", color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
-                              textDecoration:"none", whiteSpace:"nowrap" as const }}>
-                            Open in Gamma →
-                          </a>
-                        )}
-                        {d.url && !d.loading && (
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(d.url!);
-                              setGammaCopied(key);
-                              setTimeout(() => setGammaCopied(k => k === key ? null : k), 2000);
-                            }}
-                            style={{ display:"flex", alignItems:"center", gap:5, padding:"8px 14px", borderRadius:8,
-                              border:`1px solid ${C2.border}`, background:C2.surface, color:gammaCopied === key ? "#16a34a" : C2.textSoft,
-                              fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" as const,
-                              transition:"color .15s" }}>
-                            {gammaCopied === key ? "✓ Copied!" : "Copy link"}
-                          </button>
-                        )}
-                        {d.error && !d.loading && (
-                          <span style={{ fontSize:11, color:"#dc2626", fontFamily:body, lineHeight:1.4 }}>{d.error}</span>
-                        )}
-                      </div>
-                      {d.url && !d.loading && (
-                        <div style={{ padding:"0 20px 14px" }}>
-                          <div style={{ fontSize:11, fontFamily:"monospace", color:C2.muted, background:C2.surface,
-                            border:`1px solid ${C2.border}`, borderRadius:7, padding:"7px 10px",
-                            overflowX:"auto", whiteSpace:"nowrap" as const, userSelect:"all" as const }}>
-                            {d.url}
-                          </div>
-                        </div>
-                      )}
+                    ))}
+                  </div>
+                </div>
+                {/* Actions */}
+                <div style={{ padding:"14px 20px", borderTop:`1px solid ${C2.border}`,
+                  display:"flex", alignItems:"center", gap:10 }}>
+                  <button
+                    onClick={() => createGammaDeck(company, prods, personas, groups)}
+                    disabled={d.loading}
+                    style={{ display:"flex", alignItems:"center", gap:7, padding:"8px 16px", borderRadius:8,
+                      border:`1px solid ${d.error ? "#dc262655" : "#7c3aed44"}`,
+                      background: d.error ? "#fef2f2" : "#7c3aed12",
+                      color: d.error ? "#dc2626" : "#7c3aed",
+                      fontSize:12, fontFamily:head, fontWeight:700, cursor:d.loading?"default":"pointer",
+                      opacity:d.loading?0.7:1, transition:"all .15s", whiteSpace:"nowrap" as const }}>
+                    {d.loading ? (
+                      <span style={{ display:"inline-block", width:11, height:11, border:"2px solid #7c3aed44",
+                        borderTop:"2px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
+                    ) : null}
+                    {d.loading ? "Creating deck…" : d.url ? "↺ Recreate" : d.error ? "Retry" : "Create Deck"}
+                  </button>
+                  {d.url && !d.loading && (
+                    <a href={d.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:8,
+                        background:"#7c3aed", color:"#fff", fontSize:12, fontFamily:head, fontWeight:700,
+                        textDecoration:"none", whiteSpace:"nowrap" as const }}>
+                      Open in Gamma →
+                    </a>
+                  )}
+                  {d.url && !d.loading && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(d.url!);
+                        setGammaCopied(true);
+                        setTimeout(() => setGammaCopied(false), 2000);
+                      }}
+                      style={{ display:"flex", alignItems:"center", gap:5, padding:"8px 14px", borderRadius:8,
+                        border:`1px solid ${C2.border}`, background:C2.surface, color:gammaCopied ? "#16a34a" : C2.textSoft,
+                        fontSize:12, fontFamily:head, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" as const,
+                        transition:"color .15s" }}>
+                      {gammaCopied ? "✓ Copied!" : "Copy link"}
+                    </button>
+                  )}
+                  {d.error && !d.loading && (
+                    <span style={{ fontSize:11, color:"#dc2626", fontFamily:body, lineHeight:1.4 }}>{d.error}</span>
+                  )}
+                </div>
+                {d.url && !d.loading && (
+                  <div style={{ padding:"0 20px 14px" }}>
+                    <div style={{ fontSize:11, fontFamily:"monospace", color:C2.muted, background:C2.surface,
+                      border:`1px solid ${C2.border}`, borderRadius:7, padding:"7px 10px",
+                      overflowX:"auto", whiteSpace:"nowrap" as const, userSelect:"all" as const }}>
+                      {d.url}
                     </div>
-                  );
-                })}
+                  </div>
+                )}
               </div>
             </div>
           );
