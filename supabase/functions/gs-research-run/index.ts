@@ -92,22 +92,30 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   if (normUrl && !/^https?:\/\//i.test(normUrl)) normUrl = `https://${normUrl}`;
   const domain = normUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
 
-  await appendLog(sb, wsId, "Fetching homepage...");
-  let pageContent = await fetchPage(normUrl, 20000, 12000);
+  await appendLog(sb, wsId, "Fetching website (homepage + key pages)...");
+
+  // Fetch the homepage and all candidate sub-pages concurrently rather than
+  // one-at-a-time, then keep the first sub-page (in priority order) that
+  // returned usable content. This cuts wall-clock from sum-of-timeouts to the
+  // single slowest request.
+  const extraPaths = ["/products", "/services", "/solutions", "/about", "/platform"];
+  const [homepage, ...subPages] = await Promise.all([
+    fetchPage(normUrl, 20000, 12000),
+    ...extraPaths.map((path) => fetchPage(`${normUrl}${path}`, 10000, 6000)),
+  ]);
+
+  let pageContent = homepage;
   if (pageContent) {
     await appendLog(sb, wsId, `Fetched homepage (${Math.round(pageContent.length / 100) / 10}k chars)`);
   } else {
     await appendLog(sb, wsId, "Warning: could not fetch homepage — proceeding with limited data");
   }
 
-  const extraPaths = ["/products", "/services", "/solutions", "/about", "/platform"];
-  for (const path of extraPaths) {
-    const sub = await fetchPage(`${normUrl}${path}`, 10000, 6000);
-    if (sub && sub.length > 500) {
-      pageContent += `\n\n${path.toUpperCase()} PAGE:\n${sub}`;
-      await appendLog(sb, wsId, `Fetched ${path}`);
-      break;
-    }
+  const bestIdx = subPages.findIndex((sub) => sub && sub.length > 500);
+  if (bestIdx !== -1) {
+    const path = extraPaths[bestIdx];
+    pageContent += `\n\n${path.toUpperCase()} PAGE:\n${subPages[bestIdx]}`;
+    await appendLog(sb, wsId, `Fetched ${path}`);
   }
 
   await appendLog(sb, wsId, "Analyzing with Claude...");

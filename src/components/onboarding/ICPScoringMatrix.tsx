@@ -13,6 +13,41 @@ const C = {
 const head = "'Inter', system-ui, sans-serif";
 const mono = "'JetBrains Mono', 'Fira Code', monospace";
 
+// Static scoring rubric + output schema — sent as a cached system prompt so
+// re-scoring reuses the prefix instead of re-sending it each run.
+const SCORING_SYSTEM = `You are a B2B go-to-market expert. Score each ICP provided in the user message for a B2B outreach program.
+
+Score each ICP on 5 dimensions (1-10 each). Apply these weights:
+- marketSize (20%): TAM segment size, ease of list-building, intent signal availability
+- productFit (25%): How well the value proposition maps to this ICP's pains and gains
+- proof (20%): Whether existing case studies / proof points match this ICP's industry/size
+- accessibility (20%): LinkedIn activity, best channel signals, trigger event detectability
+- competitive (15%): Strength of competitive displacement messaging for this ICP
+
+Return only valid JSON in this exact shape:
+{
+  "generatedAt": "<ISO timestamp>",
+  "scores": [
+    {
+      "icpId": "<id>",
+      "icpName": "<name>",
+      "dimensions": {
+        "marketSize":    { "score": 0-10, "rationale": "one sentence" },
+        "productFit":    { "score": 0-10, "rationale": "one sentence" },
+        "proof":         { "score": 0-10, "rationale": "one sentence" },
+        "accessibility": { "score": 0-10, "rationale": "one sentence" },
+        "competitive":   { "score": 0-10, "rationale": "one sentence" }
+      },
+      "weightedScore": <0-10 float, 2 decimals>,
+      "rank": <1-N>,
+      "recommendation": "launch_first|launch_second|test_small|defer|skip",
+      "topStrengths": ["strength1", "strength2"],
+      "topGaps": ["gap1", "gap2"],
+      "suggestedAngle": "One sentence describing the best outbound angle for this ICP"
+    }
+  ]
+}`;
+
 interface Props {
   ws: { companyData: any; icps: any[]; products: any[]; icpTree: any };
   scoringResult: any | null;
@@ -120,9 +155,9 @@ export function ICPScoringMatrix({ ws, scoringResult, onSave, onPlanCampaign }: 
 
       addLog("Scoring ICPs with Claude...");
 
-      const prompt = `You are a B2B go-to-market expert. Score each ICP for a B2B outreach program.
-
-COMPANY:
+      // Static rubric + schema (identical across runs) goes in the cached
+      // system prompt; only the company/ICP data varies in the user message.
+      const prompt = `COMPANY:
 ${JSON.stringify(coData, null, 2)}
 
 ICP PROFILES (from company data):
@@ -131,40 +166,9 @@ ${JSON.stringify(icpContext, null, 2)}
 ICP TREE (structural hierarchy):
 ${JSON.stringify(treeIcps, null, 2)}
 
-Score each ICP on 5 dimensions (1-10 each). Apply these weights:
-- marketSize (20%): TAM segment size, ease of list-building, intent signal availability
-- productFit (25%): How well the value proposition maps to this ICP's pains and gains
-- proof (20%): Whether existing case studies / proof points match this ICP's industry/size
-- accessibility (20%): LinkedIn activity, best channel signals, trigger event detectability
-- competitive (15%): Strength of competitive displacement messaging for this ICP
+Score ALL ICPs provided.`;
 
-Return a JSON object:
-{
-  "generatedAt": "<ISO timestamp>",
-  "scores": [
-    {
-      "icpId": "<id>",
-      "icpName": "<name>",
-      "dimensions": {
-        "marketSize":    { "score": 0-10, "rationale": "one sentence" },
-        "productFit":    { "score": 0-10, "rationale": "one sentence" },
-        "proof":         { "score": 0-10, "rationale": "one sentence" },
-        "accessibility": { "score": 0-10, "rationale": "one sentence" },
-        "competitive":   { "score": 0-10, "rationale": "one sentence" }
-      },
-      "weightedScore": <0-10 float, 2 decimals>,
-      "rank": <1-N>,
-      "recommendation": "launch_first|launch_second|test_small|defer|skip",
-      "topStrengths": ["strength1", "strength2"],
-      "topGaps": ["gap1", "gap2"],
-      "suggestedAngle": "One sentence describing the best outbound angle for this ICP"
-    }
-  ]
-}
-
-Score ALL ICPs provided. Return only valid JSON.`;
-
-      const raw = await callClaude(prompt, "You are a B2B go-to-market expert. Return only valid JSON.", 4000, "sonnet");
+      const raw = await callClaude(prompt, SCORING_SYSTEM, 4000, "sonnet", { cacheSystem: true });
       const result = parseJSON(raw, { generatedAt: new Date().toISOString(), scores: [] });
 
       // Sort by weighted score and assign ranks

@@ -1,12 +1,28 @@
+interface CallOpts {
+  // When true, the system prompt is sent as a cacheable block. Use for calls
+  // that share a large, static system prompt (rubrics, frameworks, schemas) so
+  // repeated calls within the 5-min window reuse the cached prefix instead of
+  // re-billing it. The prefix must be ~1024+ tokens for the cache to activate.
+  cacheSystem?: boolean;
+}
+
 export async function callClaude(
   prompt: string,
   system: string,
   maxTokens: number,
-  model: "haiku" | "sonnet" = "haiku"
+  model: "haiku" | "sonnet" = "haiku",
+  opts: CallOpts = {}
 ): Promise<string> {
   const apiKey = (() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } })();
   if (!apiKey) throw new Error("No Anthropic API key found. Add it in the API Keys settings.");
   const modelId = model === "haiku" ? "claude-haiku-4-5-20251001" : "claude-sonnet-4-6";
+
+  // Cacheable system prompts are sent as a content-block array with
+  // cache_control; plain strings otherwise (no caching overhead).
+  const systemField = opts.cacheSystem
+    ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }]
+    : system;
+
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -18,7 +34,7 @@ export async function callClaude(
     body: JSON.stringify({
       model: modelId,
       max_tokens: maxTokens,
-      system,
+      system: systemField,
       messages: [{ role: "user", content: prompt }],
     }),
   });

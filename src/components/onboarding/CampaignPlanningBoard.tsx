@@ -34,6 +34,53 @@ Strategy 12: Before/After Frame — Paint current painful state vs desired outco
 - Touch 5: Breakup (email + LinkedIn) — Always Honest Breakup
 `;
 
+// Static system prompt: identical for every ICP, so it is sent as a cached
+// block. Generating campaigns for multiple ICPs within the cache window then
+// reuses this prefix instead of re-billing the framework on each call.
+const CAMPAIGN_SYSTEM = `You are an expert B2B outreach copywriter. Generate a 5-touch email + LinkedIn outreach sequence for the client and ICP provided in the user message.
+
+GTM OUTREACH STRATEGY FRAMEWORK:
+${GTM_STRATEGIES}
+
+REQUIREMENTS:
+- Generate exactly 5 email touches and 5 LinkedIn touches
+- Select the best GTM strategies for this specific ICP based on their characteristics
+- Each email: has a compelling subject line + body (under 120 words, no filler)
+- Each LinkedIn message: under 500 chars for touches 2-4, under 300 for touches 1 and 5
+- Touch 5 MUST use "Honest Breakup" strategy for both email and LinkedIn
+- Write actual copy — no placeholders like [Company Name] unless as personalization tokens
+- Use {prospect_name}, {company}, {industry} as personalization tokens
+- Focus on the ICP's specific pain, use the suggested angle if provided
+
+Return only valid JSON in this exact shape (use the icpId and icpName given in the user message):
+{
+  "icpId": "<the icpId from the user message>",
+  "icpName": "<the icpName from the user message>",
+  "generatedAt": "<ISO timestamp>",
+  "strategyRationale": "2-3 sentences explaining why these strategies were chosen for this ICP",
+  "sequenceArc": "1 sentence describing the narrative arc across all 5 touches",
+  "selectedStrategies": ["Strategy X", "Strategy Y", "..."],
+  "emailSequence": [
+    {
+      "touch": 1,
+      "dayOffset": 0,
+      "gtmStrategy": "Strategy name",
+      "role": "hook|proof|value|urgency|breakup",
+      "subject": "Email subject line",
+      "body": "Full email body"
+    }
+  ],
+  "linkedinSequence": [
+    {
+      "touch": 1,
+      "dayOffset": 0,
+      "gtmStrategy": "Strategy name",
+      "role": "connection|follow_up|value|proof|breakup",
+      "body": "LinkedIn message body"
+    }
+  ]
+}`;
+
 interface Touch {
   touch: number;
   dayOffset: number;
@@ -172,57 +219,18 @@ export function CampaignPlanningBoard({ icp, scoreRow, companyData, products, ca
 
       addLog("Generating sequences with Claude Sonnet...");
 
-      const prompt = `You are an expert B2B outreach copywriter. Generate a 5-touch email + LinkedIn outreach sequence for the following client and ICP.
+      // Only the per-ICP context varies; the framework, requirements and schema
+      // live in the cached CAMPAIGN_SYSTEM prompt above.
+      const prompt = `icpId: ${icp?.id || ""}
+icpName: ${icp?.name || ""}
 
 COMPANY & PRODUCT:
 ${JSON.stringify(context.company, null, 2)}
 
 TARGET ICP:
-${JSON.stringify(context.icp, null, 2)}
+${JSON.stringify(context.icp, null, 2)}`;
 
-GTM OUTREACH STRATEGY FRAMEWORK:
-${GTM_STRATEGIES}
-
-REQUIREMENTS:
-- Generate exactly 5 email touches and 5 LinkedIn touches
-- Select the best GTM strategies for this specific ICP based on their characteristics
-- Each email: has a compelling subject line + body (under 120 words, no filler)
-- Each LinkedIn message: under 500 chars for touches 2-4, under 300 for touches 1 and 5
-- Touch 5 MUST use "Honest Breakup" strategy for both email and LinkedIn
-- Write actual copy — no placeholders like [Company Name] unless as personalization tokens
-- Use {prospect_name}, {company}, {industry} as personalization tokens
-- Focus on the ICP's specific pain, use the suggested angle if provided
-
-Return valid JSON:
-{
-  "icpId": "${icp?.id || ""}",
-  "icpName": "${icp?.name || ""}",
-  "generatedAt": "<ISO timestamp>",
-  "strategyRationale": "2-3 sentences explaining why these strategies were chosen for this ICP",
-  "sequenceArc": "1 sentence describing the narrative arc across all 5 touches",
-  "selectedStrategies": ["Strategy X", "Strategy Y", "..."],
-  "emailSequence": [
-    {
-      "touch": 1,
-      "dayOffset": 0,
-      "gtmStrategy": "Strategy name",
-      "role": "hook|proof|value|urgency|breakup",
-      "subject": "Email subject line",
-      "body": "Full email body"
-    }
-  ],
-  "linkedinSequence": [
-    {
-      "touch": 1,
-      "dayOffset": 0,
-      "gtmStrategy": "Strategy name",
-      "role": "connection|follow_up|value|proof|breakup",
-      "body": "LinkedIn message body"
-    }
-  ]
-}`;
-
-      const raw = await callClaude(prompt, "You are an expert B2B outreach copywriter. Return only valid JSON.", 4000, "sonnet");
+      const raw = await callClaude(prompt, CAMPAIGN_SYSTEM, 4000, "sonnet", { cacheSystem: true });
       const result = parseJSON<CampaignPlan>(raw, {
         icpId: icp?.id || "",
         icpName: icp?.name || "",
