@@ -24,7 +24,7 @@ async function callAI(key: string, prompt: string, tokens = 1500, retries = 4): 
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
-          model: "claude-opus-4-8",
+          model: "claude-sonnet-4-6",
           max_tokens: tokens,
           system: "You are a senior customer success strategist. Analyze B2B client relationships and identify risks and opportunities. Return only valid JSON.",
           messages: [{ role: "user", content: prompt }],

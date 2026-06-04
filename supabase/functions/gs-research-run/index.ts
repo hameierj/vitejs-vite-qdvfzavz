@@ -75,7 +75,7 @@ async function callClaude(anthropicKey: string, prompt: string): Promise<string>
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-opus-4-8",
+      model: "claude-sonnet-4-6",
       max_tokens: 4000,
       system: "You are a senior B2B go-to-market researcher. Return only valid JSON.",
       messages: [{ role: "user", content: prompt }],

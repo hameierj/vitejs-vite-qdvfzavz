@@ -1814,18 +1814,18 @@ function getFullContext(): string {
 }
 
 // Model options:
-//   "claude-opus-4-8"        — default. Most capable model for complex reasoning and generation.
-//   "claude-haiku-4-5-20251001" — ~1/3 cost of Opus. Use for structured extraction, classification, JSON
+//   "claude-sonnet-4-6"      — default. Strongest reasoning, best for synthesis + voice-sensitive generation.
+//   "claude-haiku-4-5-20251001" — ~1/3 cost of Sonnet. Use for structured extraction, classification, JSON
 //                                reformatting, single-field fills, and scoring tasks where quality is
-//                                near-identical but cost matters.
-type ClaudeModel = "claude-opus-4-8" | "claude-haiku-4-5-20251001";
+//                                near-identical to Sonnet but cost matters.
+type ClaudeModel = "claude-sonnet-4-6" | "claude-haiku-4-5-20251001";
 async function callAI(prompt: string, sys = "", tokens = 800, optionsOrRetries: number | { retries?: number; useFullContext?: boolean; images?: Array<{mediaType:string; base64:string}>; model?: ClaudeModel } = 5) {
   const key = getApiKey();
   if (!key) { alert("Please enter your Anthropic API key first (top-right corner)."); return ""; }
   const _retries = typeof optionsOrRetries === "number" ? optionsOrRetries : (optionsOrRetries?.retries ?? 5);
   const _useFullContext = typeof optionsOrRetries === "object" && optionsOrRetries?.useFullContext === true;
   const _images = (typeof optionsOrRetries === "object" && optionsOrRetries?.images) || [];
-  const _model: ClaudeModel = (typeof optionsOrRetries === "object" && optionsOrRetries?.model) || "claude-opus-4-8";
+  const _model: ClaudeModel = (typeof optionsOrRetries === "object" && optionsOrRetries?.model) || "claude-sonnet-4-6";
   const fullCtx = _useFullContext ? getFullContext() : "";
   // Build messages: if using full context, prepend it as a cacheable block so the same context
   // across many calls hits the Anthropic ephemeral cache (5-min TTL).
@@ -1871,7 +1871,7 @@ async function callAI(prompt: string, sys = "", tokens = 800, optionsOrRetries: 
       }
       // Log usage
       const usage = json.usage;
-      if (usage) logApiCall(usage.input_tokens||0, usage.output_tokens||0, json.model||"claude-opus-4", prompt.slice(0,60), Date.now()-startTime);
+      if (usage) logApiCall(usage.input_tokens||0, usage.output_tokens||0, json.model||"claude-sonnet-4", prompt.slice(0,60), Date.now()-startTime);
       return json.content?.[0]?.text ?? "";
     } catch(e) {
       if (attempt < _retries) { await new Promise(ok => setTimeout(ok, 1000 * Math.pow(2, attempt))); continue; }
@@ -1902,7 +1902,7 @@ async function callAIStream(
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model: "claude-opus-4-8",
+          model: "claude-sonnet-4-6",
           max_tokens: tokens,
           system: sys,
           messages,
@@ -1936,7 +1936,7 @@ async function callAIStream(
               onChunk(evt.delta.text);
             }
             if (evt.type === "message_delta" && evt.usage) {
-              logApiCall(evt.usage.input_tokens||0, evt.usage.output_tokens||0, "claude-opus-4-stream", "stream", Date.now()-startTime);
+              logApiCall(evt.usage.input_tokens||0, evt.usage.output_tokens||0, "claude-sonnet-4-stream", "stream", Date.now()-startTime);
             }
           } catch {}
         }
@@ -2290,7 +2290,7 @@ async function callAIStreamWithTools(
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model: "claude-opus-4-8",
+          model: "claude-sonnet-4-6",
           max_tokens: tokens,
           system: sys,
           messages,
@@ -2351,7 +2351,7 @@ async function callAIStreamWithTools(
               inToolUse = false;
             }
             if (evt.type === "message_delta" && evt.usage) {
-              logApiCall(evt.usage.input_tokens||0, evt.usage.output_tokens||0, "claude-opus-4-stream", "copilot-tools", Date.now()-startTime);
+              logApiCall(evt.usage.input_tokens||0, evt.usage.output_tokens||0, "claude-sonnet-4-stream", "copilot-tools", Date.now()-startTime);
             }
           } catch {}
         }

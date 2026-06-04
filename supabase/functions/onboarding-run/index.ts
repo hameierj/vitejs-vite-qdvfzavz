@@ -39,7 +39,7 @@ async function callAI(
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-opus-4-8",
+          model: "claude-sonnet-4-6",
           max_tokens: tokens,
           system: sysMsg,
           messages: [{ role: "user", content: prompt }],
