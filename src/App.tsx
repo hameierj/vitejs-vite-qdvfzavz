@@ -23056,63 +23056,6 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
           {false && (() => { return null;
           })()}
 
-          {/* Breadcrumb — persistent wayfinding so users always know which client + section they're in.
-              Hidden on views that have no workspace context or render their own primary header. */}
-          {activeWorkspace && !["welcome","accounts"].includes(view) && (() => {
-            const VIEW_LABELS: Record<string,string> = {
-              launchpad: "Getting Started",
-              home: "Home",
-              salesInputs: "Sales Handoff",
-              profile: "Client Profile",
-              calls: "Activity",
-              company: "Company Profile",
-              products: "Products & Services",
-              icps: "Personas",
-              strategy: "Strategy",
-              campaigns: "Campaigns",
-              matrix: "Coverage Matrix",
-              rtsleads: "RTS Leads",
-              analytics: "Analytics",
-              "icp-tree": "ICP Tree",
-              "onboarding-hub": "Onboarding Hub",
-              "research-brief": "Research Brief",
-              "icp-scoring": "ICP Scoring",
-              "campaign-plan": "Campaign Plan",
-              knowledge: "Knowledge Center",
-              dfySetup: "DFY Setup",
-              integrations: "Integrations",
-              clientintel: "Client Intel",
-              callAnalyzer: "Call Analyzer",
-              onboarding: "Onboarding",
-              files: "Files",
-              intake: "Intake Form",
-            };
-            const viewLabel = VIEW_LABELS[view] || view;
-            return (
-              <div style={{ flexShrink:0, padding:"10px clamp(20px, 3vw, 48px) 0",
-                display:"flex", alignItems:"center", gap:6, fontSize:11.5, fontFamily:body }}>
-                <button onClick={()=>{
-                    if (wsSwitcherOpen) { setWsSwitcherOpen(false); return; }
-                    const r = wsSwitcherBtnRef.current?.getBoundingClientRect();
-                    if (r) setWsSwitcherPos({ top: r.bottom + 6, left: r.left, width: Math.max(260, r.width) });
-                    setWsSwitcherSearch("");
-                    setWsSwitcherOpen(true);
-                  }}
-                  title="Switch client account"
-                  style={{ padding:"2px 7px", borderRadius:6, border:"none",
-                    background:"transparent", color:C.textSoft,
-                    fontSize:11.5, fontFamily:body, fontWeight:600, cursor:"pointer",
-                    transition:"background .12s, color .12s" }}
-                  onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.background = C.faint; (e.currentTarget as HTMLButtonElement).style.color = C.text; }}
-                  onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = C.textSoft; }}>
-                  {activeWorkspace.name}
-                </button>
-                <span style={{ color:C.muted, fontSize:11 }}>›</span>
-                <span style={{ padding:"2px 4px", color:C.text, fontSize:11.5, fontWeight:600 }}>{viewLabel}</span>
-              </div>
-            );
-          })()}
-
           <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
