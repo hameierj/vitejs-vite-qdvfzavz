@@ -1041,6 +1041,109 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// Run the full pipeline for a workspace and release its queue slot when done.
+// If the next queued job exists, self-invokes this function to start it.
+async function runJobAndRelease(
+  workspaceId: string,
+  jobId: string,
+  params: any,
+  appUrl: string,
+  slackToken: string,
+  userEmail: string,
+  anthropicKey: string,
+  supabase: any,
+  supabaseUrl: string,
+  supabaseKey: string,
+) {
+  const jobKey = `lp_job_${workspaceId}`;
+  try {
+    lastAIError = null;
+    const result = await runPipeline(params, anthropicKey, supabase, jobKey);
+
+    if (!Array.isArray(result.products) || result.products.length === 0) {
+      await supabase.from("app_data").upsert(
+        { key: jobKey, value: JSON.stringify({
+          jobId, status: "error", step: LP_STEPS.length,
+          phase: "Failed — no products generated",
+          error: lastAIError || "AI calls returned empty results — check Anthropic API key and credit balance",
+          completedAt: new Date().toISOString(),
+        }) },
+        { onConflict: "key" },
+      );
+    } else {
+      await supabase.from("app_data").upsert(
+        { key: jobKey, value: JSON.stringify({ jobId, status: "done", step: LP_STEPS.length, phase: "Complete", completedAt: new Date().toISOString(), result }) },
+        { onConflict: "key" },
+      );
+      try {
+        const { data: wsData } = await supabase.from("app_data").select("value").eq("key", `ws_${workspaceId}`).single();
+        if (wsData?.value) {
+          const ws = JSON.parse(wsData.value as string);
+          const merged = {
+            ...ws,
+            companyData: { ...ws.companyData, ...result.company },
+            products: [...(ws.products || []), ...result.products],
+            icps: [...(ws.icps || []), ...result.personas],
+            campaigns: [...(ws.campaigns || []), ...result.campaigns],
+            offers: [...(ws.offers || []), ...result.offers],
+            battlecards: [...(ws.battlecards || []), ...result.battlecards],
+            strategy: result.strategy || ws.strategy,
+            _lpResult: { company: result.company, products: result.products, personas: result.personas, domains: result.domains, campaignGroups: result.campaignGroups },
+          };
+          await supabase.from("app_data").upsert({ key: `ws_${workspaceId}`, value: JSON.stringify(merged) }, { onConflict: "key" });
+        }
+      } catch (e) {
+        console.error("Failed to merge into workspace:", e);
+      }
+      if (slackToken && userEmail) {
+        await sendSlackNotification(slackToken, userEmail, result.company?.co_name || "your client", appUrl || "the app");
+      }
+    }
+  } catch (err) {
+    console.error("Pipeline failed:", err);
+    await supabase.from("app_data").upsert(
+      { key: jobKey, value: JSON.stringify({ jobId, status: "error", error: String(err), completedAt: new Date().toISOString() }) },
+      { onConflict: "key" },
+    );
+  } finally {
+    // Release slot and trigger next queued job (if any)
+    try {
+      const { data: nextJob } = await supabase.rpc("lp_release_slot", { p_ws_id: workspaceId });
+      if (nextJob?.wsId) {
+        // Write running state for the next job before self-invoking
+        const nextJobKey = `lp_job_${nextJob.wsId}`;
+        await supabase.from("app_data").upsert(
+          { key: nextJobKey, value: JSON.stringify({
+            jobId: nextJob.jobId, status: "running", step: 0,
+            phase: "Starting...", startedAt: new Date().toISOString(),
+            lastHeartbeat: new Date().toISOString(),
+          }) },
+          { onConflict: "key" },
+        );
+        // Self-invoke to run the next job (_dispatch skips the queue claim)
+        fetch(`${supabaseUrl}/functions/v1/launchpad-run`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
+            "apikey": supabaseKey,
+          },
+          body: JSON.stringify({
+            _dispatch: true,
+            workspaceId: nextJob.wsId,
+            jobId: nextJob.jobId,
+            params: nextJob.params,
+            appUrl: nextJob.appUrl || "",
+            userEmail: nextJob.userEmail || "",
+          }),
+        }).catch((e) => console.error("Failed to dispatch next queued job:", e));
+      }
+    } catch (e) {
+      console.error("Failed to release queue slot:", e);
+    }
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -1052,6 +1155,8 @@ serve(async (req: Request) => {
       appUrl = "",
       slackToken = "",
       userEmail = "",
+      _dispatch = false,
+      jobId: dispatchedJobId,
     } = body;
 
     if (!workspaceId || !params?.url) {
@@ -1071,82 +1176,63 @@ serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ── Dispatched from queue: slot already claimed, just run ──────────────
+    if (_dispatch) {
+      const jobId = dispatchedJobId || uid();
+      // @ts-ignore — EdgeRuntime is available in Supabase Deno runtime
+      EdgeRuntime.waitUntil(
+        runJobAndRelease(workspaceId, jobId, params, appUrl, slackToken, userEmail, anthropicKey, supabase, supabaseUrl, supabaseKey)
+      );
+      return new Response(JSON.stringify({ jobId, status: "running" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── User-initiated: claim a slot or join the queue ──────────────────────
     const jobId = uid();
     const jobKey = `lp_job_${workspaceId}`;
 
-    // Write initial job state
+    const { data: slot, error: claimError } = await supabase.rpc("lp_claim_slot", {
+      p_ws_id:      workspaceId,
+      p_job_id:     jobId,
+      p_params:     params,
+      p_user_email: userEmail,
+      p_app_url:    appUrl,
+    });
+
+    if (claimError) {
+      console.error("Queue claim failed, running directly:", claimError);
+      // Fall through to direct run if the RPC fails (e.g. function not yet deployed)
+    }
+
+    if (slot?.status === "queued") {
+      // Write queued state so the frontend can poll it
+      await supabase.from("app_data").upsert(
+        { key: jobKey, value: JSON.stringify({
+          jobId, status: "queued",
+          queuePosition: slot.position,
+          phase: `In queue (position ${slot.position})`,
+          queuedAt: new Date().toISOString(),
+        }) },
+        { onConflict: "key" },
+      );
+      return new Response(JSON.stringify({ jobId, status: "queued", position: slot.position }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Slot claimed (or claim RPC unavailable) — run immediately
     await supabase.from("app_data").upsert(
       { key: jobKey, value: JSON.stringify({ jobId, status: "running", step: 0, phase: "Starting...", startedAt: new Date().toISOString(), lastHeartbeat: new Date().toISOString() }) },
       { onConflict: "key" },
     );
 
-    // Run pipeline in background (responds immediately, completes after response)
     // @ts-ignore — EdgeRuntime is available in Supabase Deno runtime
-    EdgeRuntime.waitUntil((async () => {
-      try {
-        lastAIError = null;
-        const result = await runPipeline(params, anthropicKey, supabase, jobKey);
+    EdgeRuntime.waitUntil(
+      runJobAndRelease(workspaceId, jobId, params, appUrl, slackToken, userEmail, anthropicKey, supabase, supabaseUrl, supabaseKey)
+    );
 
-        // Treat a run that produced no products as a failure — usually
-        // means the company-profile or research-brief AI call failed.
-        // Surface lastAIError so the user knows what to retry.
-        if (!Array.isArray(result.products) || result.products.length === 0) {
-          await supabase.from("app_data").upsert(
-            { key: jobKey, value: JSON.stringify({
-              jobId,
-              status: "error",
-              step: LP_STEPS.length,
-              phase: "Failed — no products generated",
-              error: lastAIError || "AI calls returned empty results — check Anthropic API key and credit balance",
-              completedAt: new Date().toISOString(),
-            }) },
-            { onConflict: "key" },
-          );
-          return;
-        }
-
-        // Save completed job with full result
-        await supabase.from("app_data").upsert(
-          { key: jobKey, value: JSON.stringify({ jobId, status: "done", step: LP_STEPS.length, phase: "Complete", completedAt: new Date().toISOString(), result }) },
-          { onConflict: "key" },
-        );
-
-        // Also merge LP result into the workspace record so the client can reload it
-        try {
-          const { data: wsData } = await supabase.from("app_data").select("value").eq("key", `ws_${workspaceId}`).single();
-          if (wsData?.value) {
-            const ws = JSON.parse(wsData.value as string);
-            const merged = {
-              ...ws,
-              companyData: { ...ws.companyData, ...result.company },
-              products: [...(ws.products || []), ...result.products],
-              icps: [...(ws.icps || []), ...result.personas],
-              campaigns: [...(ws.campaigns || []), ...result.campaigns],
-              offers: [...(ws.offers || []), ...result.offers],
-              battlecards: [...(ws.battlecards || []), ...result.battlecards],
-              strategy: result.strategy || ws.strategy,
-              _lpResult: { company: result.company, products: result.products, personas: result.personas, domains: result.domains, campaignGroups: result.campaignGroups },
-            };
-            await supabase.from("app_data").upsert({ key: `ws_${workspaceId}`, value: JSON.stringify(merged) }, { onConflict: "key" });
-          }
-        } catch (e) {
-          console.error("Failed to merge into workspace:", e);
-        }
-
-        // Send Slack DM
-        if (slackToken && userEmail) {
-          await sendSlackNotification(slackToken, userEmail, result.company?.co_name || "your client", appUrl || "the app");
-        }
-      } catch (err) {
-        console.error("Pipeline failed:", err);
-        await supabase.from("app_data").upsert(
-          { key: jobKey, value: JSON.stringify({ jobId, status: "error", error: String(err), completedAt: new Date().toISOString() }) },
-          { onConflict: "key" },
-        );
-      }
-    })());
-
-    return new Response(JSON.stringify({ jobId }), {
+    return new Response(JSON.stringify({ jobId, status: "running" }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

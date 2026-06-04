@@ -17280,8 +17280,9 @@ const LP_STEPS = [
 ];
 
 
-function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChange, onLaunch, onContinue, onReset, onRegenDomains, onProcessOnboarding, onGenerateExport, salesContext, companyName, clientId }: {
-  lpState: "idle"|"running"|"done";
+function LaunchPadPage({ lpState, lpQueuePosition, lpProgress, lpLog, lpResult, lpTab, onTabChange, onLaunch, onContinue, onReset, onRegenDomains, onProcessOnboarding, onGenerateExport, salesContext, companyName, clientId }: {
+  lpState: "idle"|"running"|"done"|"queued";
+  lpQueuePosition?: number;
   lpProgress: { step:number; phase:string; total:number };
   lpLog: string[];
   lpResult: any;
@@ -17563,6 +17564,34 @@ function LaunchPadPage({ lpState, lpProgress, lpLog, lpResult, lpTab, onTabChang
             </button>
             Builds: company profile · products · personas · 67 domains · 3–5 campaigns with email + LinkedIn sequences
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (lpState === "queued") {
+    return (
+      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"#fff" }}>
+        <style>{`@keyframes lpQueuePulse{0%,100%{opacity:.4}50%{opacity:1}}`}</style>
+        <div style={{ width:"100%", maxWidth:420, padding:"0 24px", textAlign:"center" }}>
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:24 }}>
+            <div style={{ width:56, height:56, borderRadius:"50%", background:`${C2.accent}12`,
+              display:"flex", alignItems:"center", justifyContent:"center", fontSize:22,
+              animation:"lpQueuePulse 2s ease-in-out infinite" }}>
+              ⏳
+            </div>
+          </div>
+          <div style={{ fontSize:17, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:6 }}>
+            In Queue{lpQueuePosition ? ` — Position ${lpQueuePosition}` : ""}
+          </div>
+          <div style={{ fontSize:13, color:C2.muted, fontFamily:body, marginBottom:20, lineHeight:1.6 }}>
+            Two other clients are generating right now. Your run will start automatically when a slot opens — no action needed.
+          </div>
+          <div style={{ background:C2.faint, border:`1px solid ${C2.border}`, borderRadius:10, padding:"10px 16px" }}>
+            <div style={{ fontSize:12, fontFamily:body, color:C2.muted, lineHeight:1.6 }}>
+              You can navigate away or switch accounts. It'll keep your place and start running when it's your turn.
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -18504,7 +18533,8 @@ function AppMain() {
   const [aiAnalyses, setAiAnalyses] = useState<{ sentiment: any; pitch: any; coaching: any; intel: any }>({ sentiment: null, pitch: null, coaching: null, intel: null });
 
   // Launch Pad state
-  const [lpState,    setLpState]    = useState<"idle"|"running"|"done">("idle");
+  const [lpState,    setLpState]    = useState<"idle"|"running"|"done"|"queued">("idle");
+  const [lpQueuePosition, setLpQueuePosition] = useState<number>(0);
   const [lpProgress, setLpProgress] = useState<{step:number;phase:string;total:number}>({step:0,phase:"",total:LP_STEPS.length});
   const [lpLog,      setLpLog]      = useState<string[]>([]);
   const [lpResult,   setLpResult]   = useState<any>(null);
@@ -19074,7 +19104,11 @@ function AppMain() {
           setLpProgress({ step: job.step, phase, total: LP_STEPS.length });
         }
 
-        if (job.status === "running") {
+        if (job.status === "queued") {
+          setLpState("queued");
+          setLpQueuePosition(job.queuePosition || 1);
+          schedule(6000);
+        } else if (job.status === "running") {
           // Detect stuck jobs: if the edge function got killed by the
           // Supabase background execution cap mid-pipeline, the row stays
           // "running" forever. A stale heartbeat (>8 min without any
@@ -21336,14 +21370,12 @@ Return ONLY valid JSON:
       return;
     }
 
-    setLpState("running");
     setLpLog(["Starting LaunchPad..."]);
     setLpProgress({ step: 0, phase: "Starting...", total: LP_STEPS.length });
-    try { localStorage.setItem(`lp_running_${wsId}`, "1"); } catch {}
     try { localStorage.removeItem(`lp_applied_job_${wsId}`); } catch {}
 
     try {
-      const { error } = await supabase.functions.invoke("launchpad-run", {
+      const { data: invokeData, error } = await supabase.functions.invoke("launchpad-run", {
         body: {
           workspaceId: wsId,
           params: {
@@ -21360,6 +21392,15 @@ Return ONLY valid JSON:
         },
       });
       if (error) throw error;
+      if (invokeData?.status === "queued") {
+        setLpState("queued");
+        setLpQueuePosition(invokeData.position || 1);
+        setLpLog([`Waiting in queue (position ${invokeData.position || 1})…`]);
+        setLpProgress({ step: 0, phase: `In queue — position ${invokeData.position || 1}`, total: LP_STEPS.length });
+      } else {
+        setLpState("running");
+        try { localStorage.setItem(`lp_running_${wsId}`, "1"); } catch {}
+      }
       lpPollKickRef.current();
     } catch (err: any) {
       setLpState("idle");
@@ -23246,7 +23287,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
             {/* ══ LAUNCH PAD ══ */}
             {view==="launchpad" && (
               <LaunchPadPage
-                lpState={lpState} lpProgress={lpProgress} lpLog={lpLog}
+                lpState={lpState} lpQueuePosition={lpQueuePosition} lpProgress={lpProgress} lpLog={lpLog}
                 lpResult={lpResult} lpTab={lpTab} onTabChange={setLpTab}
                 onLaunch={(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx) => runLaunchPad(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx)}
                 onContinue={() => { setLpTab("research"); setView("home"); }}
