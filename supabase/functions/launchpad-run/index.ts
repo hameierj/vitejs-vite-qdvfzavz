@@ -469,7 +469,7 @@ Raw JSON only.`,
     3000,
     2,        // 2 retries on transient errors
     90000,    // 90s — Sonnet on big prompts can be slow
-    "claude-sonnet-4-6",
+    "claude-opus-4-8",
   );
   let coFields: any = {};
   let coParsedOK = false;
@@ -521,7 +521,7 @@ Return ONLY valid JSON:
       4000,
       2,        // 2 retries on transient errors
       90000,    // 90s — Sonnet on big prompts
-      "claude-sonnet-4-6",
+      "claude-opus-4-8",
     );
     if (!briefRaw) throw new Error(`empty response from Claude (${lastAIError || "no detail"})`);
     brief = JSON.parse(briefRaw.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
@@ -542,7 +542,7 @@ Return ONLY valid JSON:
       for (let attempt = 1; attempt <= 2; attempt++) {
         let prodRaw = "";
         try {
-          prodRaw = await callAI(anthropicKey, productPrompt, "Return only valid JSON. Be specific and actionable.", attempt === 1 ? 6000 : 8000, 0, 90000, "claude-sonnet-4-6");
+          prodRaw = await callAI(anthropicKey, productPrompt, "Return only valid JSON. Be specific and actionable.", attempt === 1 ? 6000 : 8000, 0, 90000, "claude-opus-4-8");
           const parsed = JSON.parse(prodRaw.replace(/```json|```/g, "").trim());
           return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())), sourceUrl: p.sourceUrl || "" };
         } catch (err) {
@@ -582,7 +582,7 @@ Return ONLY valid JSON:
         let raw = "";
         try {
           const tokenLimit = attempt === 1 ? 6000 : 8000;
-          const { text, stopReason } = await callAIFull(anthropicKey, personaPrompt, "Return only valid JSON. Be specific and actionable.", tokenLimit, 0, 120000, "claude-sonnet-4-6");
+          const { text, stopReason } = await callAIFull(anthropicKey, personaPrompt, "Return only valid JSON. Be specific and actionable.", tokenLimit, 0, 120000, "claude-opus-4-8");
           raw = text;
           if (stopReason === "max_tokens") {
             console.warn(`[LP] Persona "${pe.name}" hit token limit (${tokenLimit}) on attempt ${attempt} — retrying with more tokens`);

@@ -6,7 +6,7 @@ export async function callClaude(
 ): Promise<string> {
   const apiKey = (() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } })();
   if (!apiKey) throw new Error("No Anthropic API key found. Add it in the API Keys settings.");
-  const modelId = model === "haiku" ? "claude-haiku-4-5-20251001" : "claude-sonnet-4-6";
+  const modelId = model === "haiku" ? "claude-haiku-4-5-20251001" : "claude-opus-4-8";
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
