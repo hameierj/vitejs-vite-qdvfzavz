@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const head = "'Inter', system-ui, sans-serif";
 const mono = "'JetBrains Mono', 'Fira Code', monospace";
@@ -39,13 +40,16 @@ export function ElapsedTimer({ running, startedAt, label = "ELAPSED" }: Props) {
   const ss = elapsed % 60;
   const time = `${mm}:${String(ss).padStart(2, "0")}`;
 
-  return (
+  // Render through a portal to <body> so the fixed position pins to the
+  // viewport. Ancestors that apply `filter` (e.g. the pageFade blur animation)
+  // would otherwise become the containing block and trap/clip the badge.
+  return createPortal(
     <div
       style={{
         position: "fixed",
         top: 16,
         right: 24,
-        zIndex: 9999,
+        zIndex: 2147483600,
         display: "flex",
         alignItems: "center",
         gap: 10,
@@ -80,6 +84,7 @@ export function ElapsedTimer({ running, startedAt, label = "ELAPSED" }: Props) {
           {time}
         </span>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
