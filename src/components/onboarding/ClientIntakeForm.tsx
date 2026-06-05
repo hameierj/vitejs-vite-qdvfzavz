@@ -37,6 +37,12 @@ interface IntakeFormData {
   exclusions: string;
   goal90day: string;
   websitePermission: string;
+  // Infrastructure & volume (sizes the sending infra — Track B)
+  targetMonthlyVolume: string;
+  linkedinAccounts: string;
+  preferredTlds: string;
+  brandWords: string;
+  existingInfra: string;
   // Optional
   referenceEmails: string;
   notes: string;
@@ -65,6 +71,7 @@ export function ClientIntakeFormPage() {
     targetIndustries: "", companySizes: [], buyerTitles: "", championRoles: "",
     mainPain: "", triggerEvents: "", costOfInaction: "",
     tone: "", whatWorked: "", exclusions: "", goal90day: "", websitePermission: "yes",
+    targetMonthlyVolume: "", linkedinAccounts: "", preferredTlds: "", brandWords: "", existingInfra: "",
     referenceEmails: "", notes: "",
   });
 
@@ -336,8 +343,34 @@ export function ClientIntakeFormPage() {
           </FQ>
         </Section>
 
-        {/* Section 5: Optional */}
-        <Section title="Optional — Reference Materials" num={5} optional>
+        {/* Section 5: Infrastructure & Volume (sizes sending infra — Track B) */}
+        <Section title="Sending Infrastructure & Volume" num={5}>
+          <p style={{ fontSize: 12.5, color: C.textSoft, margin: "0 0 12px", lineHeight: 1.6 }}>
+            This sizes the email domains and mailboxes we set up for you. If you're unsure, leave blank and we'll use a standard configuration.
+          </p>
+          <TwoCol>
+            <FQ label="Target outbound emails per month (across all campaigns)">
+              <Input value={form.targetMonthlyVolume} onChange={v => set("targetMonthlyVolume", v.replace(/[^0-9]/g, ""))} placeholder="e.g. 40000" />
+            </FQ>
+            <FQ label="How many LinkedIn accounts can we run outreach from?">
+              <Input value={form.linkedinAccounts} onChange={v => set("linkedinAccounts", v.replace(/[^0-9]/g, ""))} placeholder="e.g. 2" />
+            </FQ>
+          </TwoCol>
+          <TwoCol>
+            <FQ label="Preferred domain extensions (TLDs)">
+              <Input value={form.preferredTlds} onChange={v => set("preferredTlds", v)} placeholder="e.g. .com, .io, .co" />
+            </FQ>
+            <FQ label="Preferred brand word for sending domains (optional)">
+              <Input value={form.brandWords} onChange={v => set("brandWords", v)} placeholder="defaults to your domain name" />
+            </FQ>
+          </TwoCol>
+          <FQ label="Any existing sending infrastructure we should preserve or avoid?">
+            <Input value={form.existingInfra} onChange={v => set("existingInfra", v)} placeholder="e.g. keep our primary domain off cold sending" />
+          </FQ>
+        </Section>
+
+        {/* Section 6: Optional */}
+        <Section title="Optional — Reference Materials" num={6} optional>
           <FQ label="Paste any outreach emails that have gotten good responses for you in the past">
             <Textarea value={form.referenceEmails} onChange={v => set("referenceEmails", v)} rows={5} placeholder="Paste one or more email examples here…" />
           </FQ>

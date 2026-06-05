@@ -4,7 +4,7 @@ import mammoth from "mammoth";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Routes, Route, useParams, HashRouter, useNavigate } from "react-router-dom";
 import { ICPTreeGenerator } from "./components/stages/ICPTreeGenerator";
-import { OnboardingChecklist } from "./components/onboarding/OnboardingChecklist";
+import { OnboardingGates } from "./components/onboarding/OnboardingGates";
 import { InitialResearchBrief } from "./components/onboarding/InitialResearchBrief";
 import { ICPScoringMatrix } from "./components/onboarding/ICPScoringMatrix";
 import { CampaignPlanningBoard } from "./components/onboarding/CampaignPlanningBoard";
@@ -13737,7 +13737,7 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   );
 }
 
-function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[], slackComms = [] as any[], activeWorkspace = null as any, offers = [] as any[], roiConfig = null as any, wsFiles = [] as any[], wsLinks = [] as any[], rtsLists = [] as any[], onRerunAnalysis = (_k:string)=>{} }) {
+function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[], slackComms = [] as any[], activeWorkspace = null as any, offers = [] as any[], roiConfig = null as any, wsFiles = [] as any[], wsLinks = [] as any[], rtsLists = [] as any[], onRerunAnalysis = (_k:string)=>{}, scopeHint = "" }) {
   const [activeChatId, setActiveChatId] = useState<string|null>(() => chats[0]?.id ?? null);
   const [input,          setInput]          = useState("");
   const [isStreaming,    setIsStreaming]    = useState(false);
@@ -14125,6 +14125,12 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         }
       }
       if (name === "update_dfy_setup") {
+        // Domains/mailboxes are a one-time setup — once the infra gate is
+        // confirmed they're locked from chat edits.
+        if ((companyData as any)?._gates?.infra?.status === "confirmed") {
+          onToast({ title: "Infrastructure locked", status: "error", message: "Domains & mailboxes are confirmed and can't be changed via chat." });
+          return "Domains & mailboxes are locked: the infrastructure setup has been confirmed and is a one-time configuration. It cannot be changed here.";
+        }
         const fields = input.fields || {};
         const patch: any = {};
         if (fields.tlds) patch.tlds = fields.tlds;
@@ -14295,7 +14301,7 @@ RESPONSE FORMAT (strict — you MUST follow these):
 - If many issues exist, show top 3 only. End with "X more — ask to expand."
 - For slash commands: use ## headers with 2-3 bullets each, 4 sections max.
 - End with one next action in bold. No summary paragraphs. No sign-offs.
-${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page.` : ""}`;
+${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page.` : ""}${scopeHint ? `\n\nONBOARDING REVIEW FOCUS: The user is reviewing the "${scopeHint}" stage of guided onboarding and wants to refine it via chat. Focus your edits on that artifact. Apply changes immediately with the appropriate update/create tools, then briefly confirm. Do NOT touch domains/mailboxes (DFY setup) unless this focus is the infrastructure stage.` : ""}`;
 
     streamFull.current = "";
     streamPos.current = 0;
@@ -18625,6 +18631,12 @@ function AppMain() {
   const [researchLog,   setResearchLog]   = useState<string[]>([]);
   const [researchStartedAt, setResearchStartedAt] = useState<number | null>(null);
   const researchPollKickRef = useRef<() => void>(() => {});
+  // Gated-onboarding stage jobs (products / tamicp / personas / infra). Each
+  // entry mirrors the job row written by its edge function: { status, phase, log }.
+  const [stageJobs, setStageJobs] = useState<Record<string, any>>({});
+  const stagePollKickRef = useRef<() => void>(() => {});
+  // When set, the Copilot focuses refinements on a specific onboarding gate.
+  const [copilotScope, setCopilotScope] = useState<string>("");
   const lpPollKickRef = useRef<() => void>(() => {});
   const [icpScoringState, setIcpScoringState] = useState<"idle"|"scoring"|"done">("idle");
   const [campaignPlanIcp, setCampaignPlanIcp] = useState<any>(null);
@@ -18863,7 +18875,7 @@ function AppMain() {
     const savedConf = saved?.companyConf ?? {};
     setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
     // Don't override onboarding view — it was intentionally set for new/empty workspaces
-    setView(prev => prev === "onboarding" || prev === "welcome" || prev === "launchpad" ? prev : "company");
+    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(prev) ? prev : "company");
     setEditingId(null);
     // Detect an in-flight LaunchPad job for this workspace synchronously so
     // the page shows the running state instead of flashing the empty form
@@ -19070,6 +19082,85 @@ function AppMain() {
 
     return () => { cancelled = true; if (timerId) clearTimeout(timerId); researchPollKickRef.current = () => {}; };
   }, [(activeWorkspace as any)?.id]);
+
+  // ── Gated-onboarding stage jobs: poll products / tamicp / personas / infra
+  // job rows for the active workspace. Each runs server-side under
+  // EdgeRuntime.waitUntil (mirrors gs-research-run), so it survives refresh,
+  // navigation, and account switches. On done, the result is merged into state
+  // once per jobId; the normal save effect persists it.
+  useEffect(() => {
+    if (!activeWorkspace || !supabase) { setStageJobs({}); return; }
+    const wsId = (activeWorkspace as any).id;
+    const STAGES = ["products", "tamicp", "personas", "infra"] as const;
+    let cancelled = false;
+    let timerId: any = null;
+    const applied: Record<string, string> = {};
+
+    const applyStageResult = (stage: string, result: any) => {
+      if (!result) return;
+      if (stage === "products") {
+        setProducts(Array.isArray(result.products) ? result.products : []);
+      } else if (stage === "tamicp") {
+        setCompanyData((prev: any) => ({ ...prev, _tamTree: result.tamTree || null, _icpScoringResult: result.scoring || null }));
+        if (Array.isArray(result.icps)) setIcps(result.icps);
+      } else if (stage === "personas") {
+        const enriched = Array.isArray(result.personas) ? result.personas : [];
+        setIcps((prev: any[]) => prev.map((ic: any) => {
+          const m = enriched.find((p: any) => p.id === ic.id);
+          return m ? { ...ic, name: m.name || ic.name, data: { ...(ic.data || {}), ...(m.fields || {}) }, confidence: { ...(ic.confidence || {}), ...(m.confidence || {}) } } : ic;
+        }));
+        setCompanyData((prev: any) => ({ ...prev, _personasGeneratedAt: new Date().toISOString() }));
+      } else if (stage === "infra") {
+        if (result.dfySetup) setDfySetup((prev: any) => ({ ...prev, ...result.dfySetup }));
+      }
+    };
+
+    const poll = async () => {
+      if (cancelled || !supabase) return;
+      try {
+        const keys = STAGES.map((s) => `${s}_job_${wsId}`);
+        const { data } = await supabase.from("app_data").select("key, value").in("key", keys);
+        if (cancelled) return;
+        const next: Record<string, any> = {};
+        let anyRunning = false;
+        for (const stage of STAGES) {
+          const row = (data || []).find((r: any) => r.key === `${stage}_job_${wsId}`);
+          if (!row) continue;
+          let job: any = null;
+          try { job = JSON.parse(row.value as string); } catch { job = null; }
+          if (!job) continue;
+          next[stage] = job;
+          if (job.status === "running") anyRunning = true;
+          if (job.status === "done" && job.result && applied[stage] !== (job.jobId || "_one_")) {
+            applied[stage] = job.jobId || "_one_";
+            applyStageResult(stage, job.result);
+          }
+        }
+        setStageJobs(next);
+        if (!cancelled) { if (timerId) clearTimeout(timerId); timerId = setTimeout(poll, anyRunning ? 2500 : 9000); }
+      } catch {
+        if (!cancelled) { if (timerId) clearTimeout(timerId); timerId = setTimeout(poll, 6000); }
+      }
+    };
+
+    stagePollKickRef.current = () => { if (!cancelled) poll(); };
+    poll();
+    return () => { cancelled = true; if (timerId) clearTimeout(timerId); stagePollKickRef.current = () => {}; };
+  }, [(activeWorkspace as any)?.id]);
+
+  // ── Track B: kick infrastructure generation when the intake form is
+  // submitted (sized from intake alone, fully parallel to Track A research). ──
+  useEffect(() => {
+    if (!activeWorkspace) return;
+    const cd = companyData as any;
+    if (!cd?._intakeSubmittedAt) return;
+    if (cd?._gates?.infra?.status === "confirmed") return;
+    if (dfySetup?.suggestedDomains?.length || dfySetup?.generatedAt) return;
+    const j = stageJobs.infra;
+    if (j?.status === "running" || j?.status === "done") return;
+    startStage("infra");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(activeWorkspace as any)?.id, (companyData as any)?._intakeSubmittedAt]);
 
   // ── LaunchPad job: poll job state for the active workspace. The
   // launchpad-run edge function executes under EdgeRuntime.waitUntil so it
@@ -21445,6 +21536,45 @@ Return ONLY valid JSON:
     }
   };
 
+  // ── Gated onboarding: start a stage generator (edge function) ──
+  const startStage = async (stage: string) => {
+    const wsId = activeWorkspace ? (activeWorkspace as any).id : null;
+    if (!wsId || !supabase) { addToast({ title: "No active workspace", status: "error", message: "Open a client account first." }); return; }
+    const fnMap: Record<string, string> = { products: "products-run", tamicp: "tam-icp-run", personas: "personas-run", infra: "infra-run" };
+    const fn = fnMap[stage];
+    if (!fn) return;
+    setStageJobs((prev) => ({ ...prev, [stage]: { status: "running", phase: "Starting...", log: ["Starting..."] } }));
+    try {
+      const { error } = await supabase.functions.invoke(fn, { body: { workspaceId: wsId } });
+      if (error) throw error;
+      stagePollKickRef.current();
+    } catch (e: any) {
+      setStageJobs((prev) => ({ ...prev, [stage]: { status: "error", error: e?.message || String(e) } }));
+      addToast({ title: "Stage failed to start", status: "error", message: e?.message || String(e) });
+    }
+  };
+
+  // Confirm a gate → lock it and auto-kick the next Track-A stage if its
+  // artifact doesn't already exist. Track B (infra) has no successor.
+  const handleConfirmGate = (gateId: string) => {
+    setCompanyData((prev: any) => ({ ...prev, _gates: { ...(prev?._gates || {}), [gateId]: { status: "confirmed", confirmedAt: new Date().toISOString() } } }));
+    const nextStage: Record<string, string> = { companyResearch: "products", products: "tamicp", tamIcp: "personas" };
+    const next = nextStage[gateId];
+    if (next) {
+      const cd = companyData as any;
+      const alreadyHas = (next === "products" && (products || []).length > 0)
+        || (next === "tamicp" && !!cd?._tamTree)
+        || (next === "personas" && !!cd?._personasGeneratedAt);
+      if (!alreadyHas) startStage(next);
+    }
+  };
+
+  // Open the Copilot focused on refining a specific gate's artifact.
+  const handleRefineGate = (scopeLabel: string) => {
+    setCopilotScope(scopeLabel);
+    setShowCopilot(true);
+  };
+
   const handleCopyIntakeLink = () => {
     const token = wsShareToken;
     if (!token) { addToast({ title:"No intake link available", status:"error", message:"Workspace not found in database. Re-open this account and try again." }); return; }
@@ -22487,7 +22617,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
               {/* Launch Pad — always visible at the top */}
               {activeWorkspace && (
                 <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:6 }}>
-                  <button onClick={()=>{ setView("launchpad"); }}
+                  <button onClick={()=>{ setView("onboarding-hub"); }}
                     style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 14px",
                       borderRadius:10, border:"none",
                       background: view==="launchpad" ? C2.accent : `${C2.accent}14`,
@@ -23165,7 +23295,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                       const lpDone = (() => { try { return !!localStorage.getItem(`lp_result_${c.id}`); } catch { return false; } })();
                       return (
                         <div key={c.id}
-                          onClick={()=>{ setActiveWorkspace(c); setView("launchpad"); }}
+                          onClick={()=>{ setActiveWorkspace(c); setView("onboarding-hub"); }}
                           style={{ display:"grid", gridTemplateColumns:"1fr 24px 160px 140px 100px 120px 60px",
                             padding:"13px 20px", gap:12, alignItems:"center", cursor:"pointer",
                             borderBottom: idx < filteredAccts.length-1 ? `1px solid ${C.border}` : "none",
@@ -23248,7 +23378,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
               <div style={{ position:"absolute", inset:0, display:"flex",
                 animation: "welcomePhaseIn .8s cubic-bezier(0.16, 1, 0.3, 1) both" }}>
                 <WelcomeScreen companyName={activeWorkspace?.name}
-                  onLaunchPad={()=>{ setView("launchpad"); }}
+                  onLaunchPad={()=>{ setView("onboarding-hub"); }}
                   onManual={()=>setView("company")}
                   onPasteForm={()=>{ setShowPasteForm(true); }}
                   onImport={()=>{
@@ -27950,15 +28080,19 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
 
             {view==="onboarding-hub" && (
               <div style={{ overflow:"auto", height:"100%", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-                <OnboardingChecklist
+                <OnboardingGates
                   companyData={companyData}
-                  icpTree={icpTree}
-                  campaigns={campaigns}
-                  callRecords={callRecords}
+                  products={products}
+                  icps={icps}
+                  dfySetup={dfySetup}
+                  stageJobs={stageJobs}
+                  researchState={researchState}
+                  researchLog={researchLog}
+                  onRunResearch={(domain) => handleStartResearch(domain)}
+                  onStartStage={(stage) => startStage(stage)}
+                  onConfirmGate={(gate) => handleConfirmGate(gate)}
+                  onRefine={(scope) => handleRefineGate(scope)}
                   onNavigate={(v) => setView(v)}
-                  onStartResearch={() => { setView("research-brief"); }}
-                  onCopyIntakeLink={handleCopyIntakeLink}
-                  onOpenIcpScoring={() => { setCampaignPlanIcp(null); setView("icp-scoring"); }}
                 />
               </div>
             )}
@@ -31955,7 +32089,7 @@ RULES:
                 setNewAcctIndustry("");
                 setActiveWorkspace(newClient);
                 setLpState("idle"); setLpResult(null);
-                setView("launchpad");
+                setView("onboarding-hub");
               }}
                 style={{ flex:2, padding:"10px", borderRadius:8, border:"none",
                   background:newAcctName.trim()?C.accent:C.border,
@@ -32129,8 +32263,9 @@ RULES:
           campaigns={campaigns}
           strategy={strategy}
           currentView={view}
+          scopeHint={copilotScope}
           onNavigate={(v:string)=>{ setView(v); }}
-          onClose={()=>setShowCopilot(false)}
+          onClose={()=>{ setShowCopilot(false); setCopilotScope(""); }}
           onUpdateCompany={setCompanyData}
           onUpdateIcps={setIcps}
           onUpdateProducts={setProducts}
