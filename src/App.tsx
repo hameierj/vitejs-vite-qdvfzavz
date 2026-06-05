@@ -15197,9 +15197,40 @@ const loadClients = (): ClientRecord[] => {
 };
 const saveClients = (c: ClientRecord[]) => {
   try { localStorage.setItem("b2br_clients", JSON.stringify(c)); } catch {}
-  // Bypass debounce — clients are critical and rarely change, write immediately
-  dbPut("app_data", "clients", c).catch(e => console.error("[DB] Client save failed:", e));
+  // Merge against the cloud copy before writing. `clients` is a single shared record cached
+  // per-browser; a stale local cache must NEVER clobber clients added by another session/device.
+  void mergeClientsToCloud(c);
 };
+
+// Reconcile a local clients array with the cloud copy, then persist the union.
+//  • Clients present locally win for their ids (covers name/industry/status edits made here).
+//  • Clients present only in the cloud (added by another session) are preserved, never dropped.
+//  • Ids in `deletedIds` are removed from the union (intentional deletes).
+// Returns the merged array so callers can reconcile React state.
+async function mergeClientsToCloud(local: ClientRecord[], deletedIds?: Set<string>): Promise<ClientRecord[]> {
+  if (!supabase) return local;
+  let cloud: ClientRecord[] = [];
+  try {
+    const { data, error } = await supabase.from("app_data").select("value").eq("key", "clients").maybeSingle();
+    if (error) {
+      // Can't read cloud — do NOT overwrite with a possibly-stale local array; bail safely.
+      console.warn("[DB] clients merge skipped — cloud read failed:", error.message);
+      return local;
+    }
+    if (Array.isArray(data?.value)) cloud = data.value as ClientRecord[];
+  } catch (e) {
+    console.warn("[DB] clients merge skipped — cloud read threw:", e);
+    return local;
+  }
+  const byId = new Map<string, ClientRecord>();
+  for (const c of cloud) byId.set(c.id, c);   // start from cloud truth
+  for (const c of local) byId.set(c.id, c);   // local edits/additions take precedence
+  if (deletedIds) for (const id of deletedIds) byId.delete(id);
+  const merged = Array.from(byId.values());
+  try { localStorage.setItem("b2br_clients", JSON.stringify(merged)); } catch {}
+  await dbPut("app_data", "clients", merged).catch(e => console.error("[DB] Client save failed:", e));
+  return merged;
+}
 
 // Recently-viewed account ids — keeps the workspace switcher's "Recent" section sorted by last-opened.
 const RECENT_ACCOUNTS_KEY = "b2br_recent_account_ids";
@@ -15541,7 +15572,8 @@ function AdminPanel({ onClose, signOut, cloudSynced }: { onClose: () => void; si
     const remaining = clients.filter(c => !selectedClientIds.has(c.id));
     setClients(remaining);
     try { localStorage.setItem("b2br_clients", JSON.stringify(remaining)); } catch {}
-    dbPut("app_data", "clients", remaining);
+    // Merge-delete: union with cloud (preserving clients added by other sessions), minus these ids.
+    mergeClientsToCloud(remaining, new Set(selectedClientIds)).then(setClients);
     setSelectedClientIds(new Set());
   };
   const [showBulkImport, setShowBulkImport] = useState(false);
@@ -15707,8 +15739,8 @@ function AdminPanel({ onClose, signOut, cloudSynced }: { onClose: () => void; si
     setClients(remaining);
     // Save to localStorage immediately
     try { localStorage.setItem("b2br_clients", JSON.stringify(remaining)); } catch {}
-    // Push to Supabase immediately (bypass the 5s debounce)
-    dbPut("app_data", "clients", remaining);
+    // Merge-delete: union with cloud (preserving clients added by other sessions), minus this id.
+    mergeClientsToCloud(remaining, new Set([deleteClientId])).then(setClients);
     setDeleteClientId(null);
   };
 
