@@ -19013,6 +19013,7 @@ function AppMain() {
     let cancelled = false;
     let timerId: any = null;
     const phasesSeen = new Set<string>();
+    const errorsSeen = new Set<string>();
 
     const schedule = (ms: number) => {
       if (cancelled) return;
@@ -19155,10 +19156,15 @@ function AppMain() {
           schedule(15000);
         } else if (job.status === "error") {
           setLpState("idle");
-          setLpLog((prev) => [...(Array.isArray(prev) ? prev : []), `Error: ${job.error || "unknown"}`]);
           try { localStorage.removeItem(`lp_running_${wsId}`); } catch {}
-          addToast({ title: "Launch pad failed", status: "error", message: job.error || "Background job reported an error" });
-          schedule(15000);
+          const errorKey = job.jobId || job.error || "unknown";
+          if (!errorsSeen.has(errorKey)) {
+            errorsSeen.add(errorKey);
+            setLpLog((prev) => [...(Array.isArray(prev) ? prev : []), `Error: ${job.error || "unknown"}`]);
+            addToast({ title: "Launch pad failed", status: "error", message: job.error || "Background job reported an error" });
+          }
+          // Don't re-poll frequently on error — this job is terminal until Reset clears it
+          schedule(60000);
         } else {
           schedule(5000);
         }
@@ -23308,7 +23314,16 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                 lpResult={lpResult} lpTab={lpTab} onTabChange={setLpTab}
                 onLaunch={(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx) => runLaunchPad(url, extra, linkedin, extraUrls, offerings, playbook, salesCtx)}
                 onContinue={() => { setLpTab("research"); setView("home"); }}
-                onReset={() => { setLpState("idle"); setLpResult(null); if (activeWorkspace) { try { const id=(activeWorkspace as any).id; localStorage.removeItem(`lp_result_${id}`); localStorage.removeItem(`lp_running_${id}`); } catch {} } }}
+                onReset={() => {
+                  setLpState("idle"); setLpResult(null);
+                  if (activeWorkspace) {
+                    const id = (activeWorkspace as any).id;
+                    try { localStorage.removeItem(`lp_result_${id}`); localStorage.removeItem(`lp_running_${id}`); localStorage.removeItem(`lp_applied_job_${id}`); } catch {}
+                    // Clear the stale job row from Supabase so polling doesn't keep re-surfacing the error
+                    if (supabase) supabase.from("app_data").delete().eq("key", `lp_job_${id}`).then(() => {}).catch(() => {});
+                    if (supabase) supabase.from("app_data").delete().eq("key", `lp_partial_${id}`).then(() => {}).catch(() => {});
+                  }
+                }}
                 onRegenDomains={regenLpDomains}
                 onProcessOnboarding={processOnboarding}
                 onGenerateExport={generateExport}
