@@ -17325,6 +17325,43 @@ function LaunchPadPage({ lpState, lpQueuePosition, lpProgress, lpLog, lpResult, 
   const [gammaDeck, setGammaDeck] = useState<{ loading: boolean; url: string|null; error: string|null }>({ loading: false, url: null, error: null });
   const [gammaCopied, setGammaCopied] = useState(false);
 
+  // Persist form inputs to localStorage so they survive failures/refreshes
+  const lpFormKey = clientId ? `lp_form_${clientId}` : null;
+
+  // Load saved form values on mount / client switch
+  useEffect(() => {
+    if (!lpFormKey) return;
+    try {
+      const saved = localStorage.getItem(lpFormKey);
+      if (saved) {
+        const v = JSON.parse(saved);
+        if (v.url !== undefined) setUrl(v.url);
+        if (v.extra !== undefined) setExtra(v.extra);
+        if (v.linkedin !== undefined) setLinkedin(v.linkedin);
+        if (v.extraUrls !== undefined) setExtraUrls(v.extraUrls);
+        if (v.offerings !== undefined) setOfferings(v.offerings);
+        if (v.playbook !== undefined) setPlaybook(v.playbook);
+        if (v.salesTranscript !== undefined) setSalesTranscript(v.salesTranscript);
+        if (v.lpStep !== undefined) setLpStep(v.lpStep);
+      }
+    } catch {}
+  }, [lpFormKey]);
+
+  // Save form inputs whenever they change
+  useEffect(() => {
+    if (!lpFormKey) return;
+    try {
+      localStorage.setItem(lpFormKey, JSON.stringify({ url, extra, linkedin, extraUrls, offerings, playbook, salesTranscript, lpStep }));
+    } catch {}
+  }, [lpFormKey, url, extra, linkedin, extraUrls, offerings, playbook, salesTranscript, lpStep]);
+
+  // Clear saved form inputs once the run succeeds
+  useEffect(() => {
+    if (lpState === "done" && lpFormKey) {
+      try { localStorage.removeItem(lpFormKey); } catch {}
+    }
+  }, [lpState, lpFormKey]);
+
   // Load saved Gamma URL for this client on mount / client switch
   useEffect(() => {
     if (!clientId) return;
