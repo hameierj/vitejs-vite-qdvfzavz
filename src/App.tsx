@@ -281,7 +281,17 @@ async function syncFromCloud() {
     const cloudUsers = await dbGet("app_data", "users");
     if (controller.signal.aborted) throw new Error("timeout");
     if (cloudUsers) {
-      try { localStorage.setItem("b2br_users", JSON.stringify(cloudUsers)); } catch {}
+      // Preserve any lastLogin that is newer locally (handles race where login wrote after this fetch started)
+      let localUsers: any[] = [];
+      try { localUsers = JSON.parse(localStorage.getItem("b2br_users") || "[]"); } catch {}
+      const merged = (cloudUsers as any[]).map((cu: any) => {
+        const lu = localUsers.find((u: any) => u.id === cu.id || u.email?.toLowerCase() === cu.email?.toLowerCase());
+        if (lu?.lastLogin && (!cu.lastLogin || new Date(lu.lastLogin) > new Date(cu.lastLogin))) {
+          return { ...cu, lastLogin: lu.lastLogin };
+        }
+        return cu;
+      });
+      try { localStorage.setItem("b2br_users", JSON.stringify(merged)); } catch {}
     }
     // Sync all workspaces — wrap each write individually so one quota failure doesn't abort the rest
     const workspaces = await dbGetAll("app_data", "ws_");
@@ -18667,7 +18677,12 @@ function AppMain() {
     setApiLogUser(user.id, user.email);
     const allUsers = loadUsers();
     const idx = allUsers.findIndex(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
-    if (idx !== -1) { allUsers[idx] = { ...allUsers[idx], lastLogin: now }; saveUsers(allUsers); }
+    if (idx !== -1) {
+      allUsers[idx] = { ...allUsers[idx], lastLogin: now };
+    } else {
+      allUsers.push({ ...user, lastLogin: now });
+    }
+    saveUsers(allUsers);
   };
 
   const handleUserSignOut = () => {
