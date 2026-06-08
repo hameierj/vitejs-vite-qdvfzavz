@@ -13868,6 +13868,10 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   );
 }
 
+// Width of the docked Copilot panel. Shared by the panel itself and the main layout
+// (which shrinks by this amount so the panel never covers content — true split screen).
+const COPILOT_PANEL_W = "clamp(360px, 28vw, 460px)";
+
 // Flash + scroll-to the element the Copilot just changed, so the user sees the edit land
 // in real time. Targets match either a card wrapper (data-copilot-id) or an editable field
 // (data-field-id). Retries briefly because the target may still be mounting after a view switch.
@@ -14687,11 +14691,11 @@ ${currentView ? `\nCURRENT PAGE: The user is looking at the "${PAGE_LABELS[curre
   ];
 
   return (
-      <div style={{ position:"fixed", bottom:24, right:24, width:"clamp(370px, 30vw, 420px)", height:"clamp(500px, 62vh, 660px)",
+      <div style={{ position:"fixed", top:0, right:0, bottom:0, width:COPILOT_PANEL_W,
         zIndex:999, display:"flex", flexDirection:"column", background:C2.canvas,
-        borderRadius:20, border:`1px solid ${C2.border}`,
-        boxShadow:`0 20px 60px rgba(13,15,26,0.22), 0 0 0 1px ${C2.accent}08`,
-        animation:"copilotPopUp .3s cubic-bezier(0.16, 1, 0.3, 1)", overflow:"hidden" }}>
+        borderLeft:`1px solid ${C2.border}`,
+        boxShadow:`-10px 0 40px rgba(13,15,26,0.10)`,
+        animation:"copilotSlideIn .3s cubic-bezier(0.16, 1, 0.3, 1)", overflow:"hidden" }}>
 
         {/* Header */}
         <div style={{ padding:"10px 12px 10px 16px", borderBottom:`1px solid ${C2.border}`,
@@ -23047,6 +23051,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
         @keyframes onboardCardIn{0%{opacity:0;transform:translateY(16px) scale(0.97)}100%{opacity:1;transform:translateY(0) scale(1)}}
         @keyframes copilotSlideIn{0%{transform:translateX(100%);opacity:0}100%{transform:translateX(0);opacity:1}}
         @keyframes copilotPopUp{0%{opacity:0;transform:translateY(20px) scale(0.95)}100%{opacity:1;transform:translateY(0) scale(1)}}
+        @keyframes copilotSlideIn{0%{opacity:0;transform:translateX(40px)}100%{opacity:1;transform:translateX(0)}}
         @keyframes wordFadeIn{0%{opacity:0;filter:blur(2px)}100%{opacity:1;filter:blur(0)}}
         @keyframes obLetterIn{0%{opacity:0;transform:translateY(-12px);filter:blur(4px)}100%{opacity:1;transform:translateY(0);filter:blur(0)}}
         @keyframes obSubIn{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
@@ -23062,7 +23067,9 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
         ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
       `}</style>
 
-      <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:C2.bg }}>
+      <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:C2.bg,
+        width: (showCopilot && activeWorkspace) ? `calc(100% - ${COPILOT_PANEL_W})` : "100%",
+        transition:"width .3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
 
         {/* ── SIDEBAR ── */}
         {(() => {
