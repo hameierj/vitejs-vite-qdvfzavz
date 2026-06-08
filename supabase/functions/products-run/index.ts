@@ -79,20 +79,52 @@ async function appendLog(sb: SupabaseClient, wsId: string, line: string) {
   } catch (e) { console.error("appendLog failed:", e); }
 }
 
-async function callClaude(anthropicKey: string, prompt: string, tokens: number, system = "Return only valid JSON. Be specific and actionable."): Promise<string> {
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: tokens, system, messages: [{ role: "user", content: prompt }] }),
-    signal: AbortSignal.timeout(120000),
-  });
-  if (!r.ok) throw new Error(`Claude error ${r.status}`);
-  const json = await r.json();
-  return json.content?.[0]?.text ?? "";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const TRANSIENT_ERROR_TYPES = new Set(["overloaded_error", "rate_limit_error", "api_error", "timeout_error"]);
+
+// Robust call: retries on 429/529/5xx and transient Anthropic errors with backoff. With 3-4
+// product profiles generated in parallel, one call hitting an overload (529) used to fail both
+// immediate attempts and fall back to a near-empty profile (the "8% filled" product).
+async function callClaude(anthropicKey: string, prompt: string, tokens: number, system = "Return only valid JSON. Be specific and actionable.", retries = 3): Promise<string> {
+  let lastErr = "";
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: tokens, system, messages: [{ role: "user", content: prompt }] }),
+        signal: AbortSignal.timeout(120000),
+      });
+      if (r.status === 429 || r.status === 529 || r.status >= 500) {
+        lastErr = `Anthropic HTTP ${r.status}`;
+        if (attempt < retries) { await sleep(Math.min(1500 * (attempt + 1), 8000)); continue; }
+        throw new Error(lastErr);
+      }
+      const json = await r.json().catch(() => ({} as any));
+      if (json.error) {
+        const t = String(json.error.type || "anthropic_error");
+        lastErr = `${t}: ${String(json.error.message || "")}`;
+        if (TRANSIENT_ERROR_TYPES.has(t) && attempt < retries) { await sleep(Math.min(1500 * (attempt + 1), 8000)); continue; }
+        throw new Error(lastErr);
+      }
+      return json.content?.[0]?.text ?? "";
+    } catch (e) {
+      lastErr = String((e as Error)?.message ?? e);
+      if (attempt < retries) { await sleep(Math.min(1500 * (attempt + 1), 8000)); continue; }
+      throw new Error(lastErr);
+    }
+  }
+  throw new Error(lastErr || "callClaude failed");
 }
 
+// Extract the outermost JSON object even if the model wraps it in prose or code fences,
+// so a little extra text never collapses a profile to the empty fallback.
 function parseJSON(raw: string): any {
-  return JSON.parse((raw || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim());
+  let s = (raw || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
+  const first = s.indexOf("{");
+  const last = s.lastIndexOf("}");
+  if (first >= 0 && last > first) s = s.slice(first, last + 1);
+  return JSON.parse(s);
 }
 
 async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, userContext = ""): Promise<void> {
@@ -165,16 +197,20 @@ Return ONLY JSON:
 
 unsolvedImpact: what happens if the customer does nothing — lost revenue, competitive disadvantage, scaling limits.
 IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) or one-time (project, purchase). Fill the relevant commercial fields accordingly.`;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const raw = await callClaude(anthropicKey, prompt, attempt === 1 ? 6000 : 8000);
+        const raw = await callClaude(anthropicKey, prompt, 8000);
         const parsed = parseJSON(raw);
+        const filledCount = Object.values(parsed).filter((v) => v && String(v).trim()).length;
+        // A real profile fills many fields; if we only got a couple, treat as a bad parse and retry.
+        if (filledCount < 6 && attempt < 3) { console.warn(`product "${p.name}" attempt ${attempt}: only ${filledCount} fields, retrying`); await sleep(1200 * attempt); continue; }
         return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())) };
       } catch (err) {
         console.error(`product "${p.name}" attempt ${attempt} failed:`, err);
-        if (attempt === 2) return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: "Other" };
+        if (attempt < 3) { await sleep(1200 * attempt); continue; }
       }
     }
+    await appendLog(sb, wsId, `⚠️ "${p.name}" came back thin after retries — saved name + description only`);
     return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: "Other" };
   }))).filter((r: any) => r?.name);
 
