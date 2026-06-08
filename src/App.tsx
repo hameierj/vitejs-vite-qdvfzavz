@@ -7,6 +7,7 @@ import { ICPTreeGenerator } from "./components/stages/ICPTreeGenerator";
 import { OnboardingGates } from "./components/onboarding/OnboardingGates";
 import { LaunchBoard } from "./components/launch/LaunchBoard";
 import { NarrativeView } from "./components/narrative/NarrativeView";
+import { OptimizeView } from "./components/optimize/OptimizeView";
 import { callClaude as callClaudeLib } from "./lib/callClaude";
 import { InitialResearchBrief } from "./components/onboarding/InitialResearchBrief";
 import { ICPScoringMatrix } from "./components/onboarding/ICPScoringMatrix";
@@ -19029,7 +19030,7 @@ function AppMain() {
     const savedConf = saved?.companyConf ?? {};
     setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
     // Don't override onboarding view — it was intentionally set for new/empty workspaces
-    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(prev) ? prev : "company");
+    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(prev) ? prev : "company");
     setEditingId(null);
     // Detect an in-flight LaunchPad job for this workspace synchronously so
     // the page shows the running state instead of flashing the empty form
@@ -21805,6 +21806,67 @@ Return ONLY valid JSON:
     });
   };
 
+  // ── Flow 3: optimization loop — generate challenger, one-tap promote, kill/replace ──
+  const handleGenerateChallenger = async (campaignId: string) => {
+    const c = (campaigns || []).find((x: any) => x.id === campaignId);
+    if (!c || !c.sequence?.length) { addToast({ title: "No sequence to optimize", status: "error", message: "Generate the campaign first." }); return; }
+    const step = c.sequence[0];
+    const cd: any = companyData || {};
+    const persona = (icps || []).find((p: any) => (c.personaIds || []).includes(p.id));
+    const isEmail = c.channel === "email";
+    const prompt = `Write ONE challenger variant for the FIRST touch of a ${c.channel} cold-outreach sequence. It must take a DIFFERENT angle than the current version so we can A/B test it.
+
+CURRENT ${isEmail ? "SUBJECT" : ""}: ${isEmail ? (step.subject || "") : ""}
+CURRENT BODY: ${step.body || ""}
+
+COMPANY: ${cd.co_name || ""} — ${cd.co_pitch || ""}
+ICP: ${persona?.name || ""} | pain: ${persona?.data?.pain1 || ""} | tone: ${persona?.data?.tone || ""}
+Rules: NO links/URLs, no exclamation marks, no spam words, under 120 words. Use only {{prospect_first_name}} / {{sender_signature}} style merge tags.
+Return ONLY JSON: {"subject":"${isEmail ? "" : "(omit for linkedin)"}","body":"","angle":"one phrase describing the new angle"}`;
+    const raw = await callClaudeLib(prompt, "You are a senior cold-outreach copywriter. Return only valid JSON.", 1200, "sonnet");
+    let v: any = {};
+    try { const m = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\})/); v = JSON.parse(m ? m[1] : raw); } catch { throw new Error("Could not parse variant"); }
+    const variantId = uid();
+    setCampaigns((prev: any[]) => prev.map((x: any) => {
+      if (x.id !== campaignId) return x;
+      const seq = [...x.sequence];
+      const variants = [...(seq[0].variants || []), { id: variantId, label: "Challenger", subject: v.subject || "", body: v.body || "", testVariable: isEmail ? "subject_line" : "opening", angle: v.angle || "" }];
+      seq[0] = { ...seq[0], variants };
+      const iterations = [...(x.iterations || []), { id: uid(), status: "live", variable: isEmail ? "subject_line" : "opening", variantId, startedAt: new Date().toISOString() }];
+      return { ...x, sequence: seq, iterations };
+    }));
+    addToast({ title: "Challenger generated", status: "success", message: v.angle || "New variant ready to test" });
+  };
+
+  const handlePromoteWinner = (campaignId: string, variantId: string) => {
+    setCampaigns((prev: any[]) => prev.map((x: any) => {
+      if (x.id !== campaignId) return x;
+      const seq = [...x.sequence];
+      const variant = (seq[0].variants || []).find((vv: any) => vv.id === variantId);
+      if (!variant) return x;
+      seq[0] = { ...seq[0], subject: variant.subject || seq[0].subject, body: variant.body || seq[0].body, variants: (seq[0].variants || []).filter((vv: any) => vv.id !== variantId) };
+      const iterations = (x.iterations || []).map((it: any) => it.variantId === variantId ? { ...it, status: "completed", outcome: "winner", promotedAt: new Date().toISOString() } : it);
+      return { ...x, sequence: seq, iterations, _baselineUpdatedAt: new Date().toISOString() };
+    }));
+    addToast({ title: "Winner promoted to baseline", status: "success", message: "The challenger is now the baseline. Loop continues." });
+  };
+
+  const handleKeepBaseline = (campaignId: string, variantId: string) => {
+    setCampaigns((prev: any[]) => prev.map((x: any) => {
+      if (x.id !== campaignId) return x;
+      const seq = [...x.sequence];
+      seq[0] = { ...seq[0], variants: (seq[0].variants || []).filter((vv: any) => vv.id !== variantId) };
+      const iterations = (x.iterations || []).map((it: any) => it.variantId === variantId ? { ...it, status: "completed", outcome: "flat" } : it);
+      return { ...x, sequence: seq, iterations };
+    }));
+  };
+
+  const handleKillReplace = (campaignId: string) => {
+    setCampaigns((prev: any[]) => prev.map((x: any) => x.id === campaignId ? { ...x, status: "completed", _killedAt: new Date().toISOString() } : x));
+    addToast({ title: "Campaign retired", status: "success", message: "Pull a fresh ICP from the Launch plan to replace it." });
+    setView("launch");
+  };
+
   // ── Narrative layer: AI-written executive summary of the program state ──
   const handleGenerateNarrative = async () => {
     setNarrativeGenerating(true);
@@ -23057,6 +23119,18 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                     <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="narrative"?700:500, color:view==="narrative"?C2.text:C2.textSoft }}>Narrative</span>
                   </button>
 
+                  {/* Optimize (Flow 3) */}
+                  <button onClick={()=>guardedNav(()=>setView("optimize"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="optimize" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                    onMouseEnter={e=>{ if(view!=="optimize")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="optimize")(e.currentTarget as HTMLButtonElement).style.background=view==="optimize"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="optimize"?C2.accent:C2.muted }}>♻️</span>
+                    <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="optimize"?700:500, color:view==="optimize"?C2.text:C2.textSoft }}>Optimize</span>
+                  </button>
+
                   {/* RTS Leads */}
                   {(
                     <button onClick={()=>guardedNav(()=>setView("rtsleads"))}
@@ -23107,12 +23181,12 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                     <button onClick={()=>guardedNav(()=>setView("onboarding-hub"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
-                        background: ["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view) ? `${C2.accent}14` : "transparent",
+                        background: ["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view) ? `${C2.accent}14` : "transparent",
                         cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view))(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view)?C2.accent:C2.muted }}>◉</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view)?700:500, color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view)?C2.text:C2.textSoft }}>Onboarding Hub</span>
+                      onMouseEnter={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view))(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view)?C2.accent:C2.muted }}>◉</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view)?700:500, color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view)?C2.text:C2.textSoft }}>Onboarding Hub</span>
                     </button>
                   )}
 
@@ -23480,7 +23554,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch","narrative"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch","narrative"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch","narrative"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -26018,6 +26092,21 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       return c;
                     }} />
                 </div>
+              </div>
+            )}
+
+            {view==="optimize" && (
+              <div style={{ position:"absolute" as const, inset:0, overflow:"auto", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <OptimizeView
+                  campaigns={campaigns}
+                  companyData={companyData}
+                  icps={icps}
+                  onGenerateChallenger={handleGenerateChallenger}
+                  onPromoteWinner={handlePromoteWinner}
+                  onKeepBaseline={handleKeepBaseline}
+                  onKillReplace={handleKillReplace}
+                  onNavigate={(v) => setView(v)}
+                />
               </div>
             )}
 
