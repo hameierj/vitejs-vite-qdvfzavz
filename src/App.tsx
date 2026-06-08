@@ -6512,7 +6512,7 @@ function ProductsPage({ products, onProductsChange, companyData, fileContext = "
                 const pFilled = visF.filter((f:any) => p[f.id] && String(p[f.id]).trim()).length;
                 const pPct = Math.round(pFilled / visF.length * 100);
                 return (
-                  <div key={p.id} onClick={()=>{ setSelectedId(p.id); setSecTab("core"); }}
+                  <div key={p.id} data-copilot-id={p.id} onClick={()=>{ setSelectedId(p.id); setSecTab("core"); }}
                     style={{ background:_C.canvas, borderRadius:12, borderLeft:`3px solid ${_C.accent}`,
                       borderTop:`1px solid ${_C.border}`, borderRight:`1px solid ${_C.border}`, borderBottom:`1px solid ${_C.border}`,
                       cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.03)",
@@ -11855,7 +11855,7 @@ Raw JSON only, no markdown.`;
                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const,
                     };
                     return (
-                      <tr key={c.id} className="camp-row"
+                      <tr key={c.id} data-copilot-id={c.id} className="camp-row"
                         onClick={()=>{ setSelectedId(c.id); setTab("settings"); }}
                         style={{ cursor:"pointer", transition:"background .12s" }}
                         onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.background=_C.surface; const d=e.currentTarget.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="1"; }}
@@ -13843,6 +13843,31 @@ function RoiDashboard({ roiConfig, onConfigChange, perfLogs, icps, companyData }
   );
 }
 
+// Flash + scroll-to the element the Copilot just changed, so the user sees the edit land
+// in real time. Targets match either a card wrapper (data-copilot-id) or an editable field
+// (data-field-id). Retries briefly because the target may still be mounting after a view switch.
+function copilotFlash(targets: string[]) {
+  const list = (targets || []).filter(Boolean);
+  if (!list.length) return;
+  let tries = 0;
+  const run = () => {
+    tries++;
+    const sel = list.map(t => `[data-copilot-id="${(window as any).CSS?.escape ? CSS.escape(t) : t}"],[data-field-id="${(window as any).CSS?.escape ? CSS.escape(t) : t}"]`).join(",");
+    let els: HTMLElement[] = [];
+    try { els = Array.from(document.querySelectorAll(sel)) as HTMLElement[]; } catch { els = []; }
+    if (els.length) {
+      els[0].scrollIntoView({ behavior: "smooth", block: "center" });
+      els.forEach(el => {
+        el.style.animation = "copilotFlash 1.8s ease";
+        setTimeout(() => { if (el) el.style.animation = ""; }, 1900);
+      });
+      return;
+    }
+    if (tries < 14) setTimeout(run, 110); // wait for the view to render after navigation
+  };
+  setTimeout(run, 80);
+}
+
 function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, clientName, fileContext = "", products = [] as any[], campaigns = [] as any[], strategy = null as any, currentView = "", onNavigate = (_v:string)=>{}, onClose = ()=>{}, onUpdateCompany = (_f:any)=>{}, onUpdateIcps = (_f:any)=>{}, onUpdateProducts = (_f:any)=>{}, onUpdateCampaigns = (_f:any)=>{}, onUpdateStrategy = (_f:any)=>{}, onToast = (_t:any)=>{}, onUpdateOffers = (_f:any)=>{}, onUpdatePerfLogs = (_f:any)=>{}, onUpdateRoiConfig = (_f:any)=>{}, onUpdateLinks = (_f:any)=>{}, onUpdatePlaybooks = (_f:any)=>{}, onUpdateBattlecards = (_f:any)=>{}, onUpdateContentAssets = (_f:any)=>{}, onUpdateDfySetup = (_f:any)=>{}, playbooks = [] as any[], battlecards = [] as any[], contentAssets = [] as any[], dfySetup = null as any, callRecords = [] as any[], slackComms = [] as any[], activeWorkspace = null as any, offers = [] as any[], roiConfig = null as any, wsFiles = [] as any[], wsLinks = [] as any[], rtsLists = [] as any[], onRerunAnalysis = (_k:string)=>{}, scopeHint = "" }) {
   const [activeChatId, setActiveChatId] = useState<string|null>(() => chats[0]?.id ?? null);
   const [input,          setInput]          = useState("");
@@ -13853,6 +13878,18 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const streamFull = useRef("");
   const streamPos = useRef(0);
   const streamInterval = useRef<any>(null);
+  // Set by executeTool to tell sendMessage where the change landed, so we can
+  // navigate there and flash the changed element after the tools run.
+  const changeNav = useRef<{ view: string; targets: string[] } | null>(null);
+
+  // Human-readable label for the page the user is currently on (drives the prompt hint below).
+  const PAGE_LABELS: Record<string,string> = {
+    company: "Company Profile", products: "Products & Services", icps: "Personas",
+    campaigns: "Campaigns", strategy: "Strategy Roadmap", analytics: "Performance Analytics",
+    profile: "Client Profile", dfySetup: "Domains & Mailboxes", knowledge: "Knowledge Base",
+    "research-brief": "Research Brief", "icp-scoring": "ICP Scoring", "campaign-plan": "Campaign Plan",
+    calls: "Calls & CX Signals", home: "Home Dashboard", optimize: "Optimization", narrative: "Narrative",
+  };
 
   // Slash commands
   const SLASH_COMMANDS: Record<string,string> = {
@@ -13916,6 +13953,10 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
 
   // ── Tool execution ──
   const executeTool = (name: string, input: any): string => {
+    // Record where this change landed so sendMessage can navigate + flash it live.
+    const flagNav = (view: string, ...targets: (string|undefined|null)[]) => {
+      changeNav.current = { view, targets: targets.filter(Boolean) as string[] };
+    };
     try {
       if (name === "update_research_brief") {
         const patch = input.patch || {};
@@ -13933,6 +13974,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         });
         const keys = Object.keys(patch);
         onToast({ title: "Research brief updated", status: "success", message: keys.join(", ") });
+        flagNav("research-brief", ...keys);
         return `Updated research brief: ${keys.join(", ")}`;
       }
       if (name === "update_tam_icp") {
@@ -13984,6 +14026,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         if (!changed.length) return "No matching TAM/ICP items found to update.";
         onUpdateCompany((prev: any) => ({ ...prev, ...(newTam ? { _tamTree: newTam } : {}), ...(newScoring ? { _icpScoringResult: newScoring } : {}) }));
         onToast({ title: "TAM/ICP updated", status: "success", message: changed.slice(0, 4).join(", ") });
+        flagNav("icp-scoring");
         return `Updated TAM/ICP: ${changed.join(", ")}`;
       }
       if (name === "update_company_fields") {
@@ -13991,14 +14034,16 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         onUpdateCompany((prev: any) => ({ ...prev, ...fields }));
         const keys = Object.keys(fields);
         onToast({ title: "Company updated", status: "success", message: `Updated ${keys.join(", ")}` });
+        flagNav("company", ...keys);
         return `Updated company fields: ${keys.join(", ")}`;
       }
       if (name === "update_persona") {
         const fields = input.fields || {};
         let found = false;
+        let hitId = "";
         onUpdateIcps((prev: any[]) => prev.map((p: any) => {
           if (p.id === input.persona_id || (input.persona_name && p.name?.toLowerCase() === input.persona_name.toLowerCase())) {
-            found = true;
+            found = true; hitId = p.id;
             return { ...p, ...fields };
           }
           return p;
@@ -14007,7 +14052,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
           // Try partial match
           onUpdateIcps((prev: any[]) => prev.map((p: any) => {
             if (p.name?.toLowerCase().includes(input.persona_name.toLowerCase())) {
-              found = true;
+              found = true; hitId = p.id;
               return { ...p, ...fields };
             }
             return p;
@@ -14015,6 +14060,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         }
         const label = input.persona_name || input.persona_id || "persona";
         onToast({ title: "Persona updated", status: "success", message: `Updated ${label}: ${Object.keys(fields).join(", ")}` });
+        if (found) flagNav("icps", hitId);
         return found ? `Updated persona "${label}": ${Object.keys(fields).join(", ")}` : `Persona "${label}" not found — no changes made`;
       }
       if (name === "create_persona") {
@@ -14022,14 +14068,16 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         const newP = { id: uid(), ...Object.fromEntries(ALL_ICP_FIELDS.map((f: any) => [f.id, ""])), ...fields, createdAt: new Date().toISOString() };
         onUpdateIcps((prev: any[]) => [...prev, newP]);
         onToast({ title: "Persona created", status: "success", message: fields.name || "New persona" });
+        flagNav("icps", newP.id);
         return `Created persona "${fields.name || "Untitled"}" with fields: ${Object.keys(fields).join(", ")}`;
       }
       if (name === "update_product") {
         const fields = input.fields || {};
         let found = false;
+        let hitId = "";
         onUpdateProducts((prev: any[]) => prev.map((p: any) => {
           if (p.id === input.product_id || (input.product_name && p.name?.toLowerCase() === input.product_name.toLowerCase())) {
-            found = true;
+            found = true; hitId = p.id;
             return { ...p, ...fields };
           }
           return p;
@@ -14037,7 +14085,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         if (!found && input.product_name) {
           onUpdateProducts((prev: any[]) => prev.map((p: any) => {
             if (p.name?.toLowerCase().includes(input.product_name.toLowerCase())) {
-              found = true;
+              found = true; hitId = p.id;
               return { ...p, ...fields };
             }
             return p;
@@ -14045,6 +14093,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         }
         const label = input.product_name || input.product_id || "product";
         onToast({ title: "Product updated", status: "success", message: `Updated ${label}` });
+        if (found) flagNav("products", hitId);
         return found ? `Updated product "${label}": ${Object.keys(fields).join(", ")}` : `Product "${label}" not found`;
       }
       if (name === "create_product") {
@@ -14052,6 +14101,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         const newP = { id: uid(), ...Object.fromEntries(PRODUCT_FIELDS.map((f: any) => [f.id, ""])), ...fields, createdAt: new Date().toISOString() };
         onUpdateProducts((prev: any[]) => [...prev, newP]);
         onToast({ title: "Product created", status: "success", message: fields.name || "New product" });
+        flagNav("products", newP.id);
         return `Created product "${fields.name || "Untitled"}"`;
       }
       if (name === "update_campaign") {
@@ -14069,6 +14119,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
           if (!fields.intentTier) fields.intentTier = "high";
         }
         let found = false;
+        let hitId = "";
         const applyPatch = (c:any) => {
           // Mirror persona targeting when personaIds is being changed and targeting isn't explicitly set.
           let patch = { ...fields };
@@ -14089,7 +14140,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         };
         onUpdateCampaigns((prev: any[]) => prev.map((c: any) => {
           if (c.id === input.campaign_id || (input.campaign_name && c.name?.toLowerCase() === input.campaign_name.toLowerCase())) {
-            found = true;
+            found = true; hitId = c.id;
             return applyPatch(c);
           }
           return c;
@@ -14097,7 +14148,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         if (!found && input.campaign_name) {
           onUpdateCampaigns((prev: any[]) => prev.map((c: any) => {
             if (c.name?.toLowerCase().includes(input.campaign_name.toLowerCase())) {
-              found = true;
+              found = true; hitId = c.id;
               return applyPatch(c);
             }
             return c;
@@ -14105,6 +14156,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         }
         const label = input.campaign_name || input.campaign_id || "campaign";
         onToast({ title: "Campaign updated", status: "success", message: `Updated ${label}` });
+        if (found) flagNav("campaigns", hitId);
         return found ? `Updated campaign "${label}": ${Object.keys(fields).join(", ")}` : `Campaign "${label}" not found`;
       }
       if (name === "create_campaign") {
@@ -14162,6 +14214,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
           newC.targeting = { ...newC.targeting, ...fields.targeting };
         }
         onUpdateCampaigns((prev: any[]) => [...prev, newC]);
+        flagNav("campaigns", newC.id);
         const extras: string[] = [];
         if (rtsListId) extras.push("linked to RTS list");
         if (newC.personaIds?.[0]) extras.push("persona wired");
@@ -14172,6 +14225,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         const strat = input.strategy || {};
         onUpdateStrategy((prev: any) => prev ? { ...prev, ...strat } : strat);
         onToast({ title: "Strategy updated", status: "success", message: "Strategy roadmap updated" });
+        flagNav("strategy");
         return `Updated strategy roadmap`;
       }
       if (name === "create_offer") {
@@ -14216,6 +14270,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         };
         onUpdatePerfLogs((prev: any[]) => [...prev, entry]);
         onToast({ title: "Performance logged", status: "success", message: input.label || "New entry" });
+        flagNav("analytics");
         return `Added performance log: ${input.label || "entry"} — ${input.metrics?.sent || 0} sent, ${input.metrics?.replies || 0} replies, ${input.metrics?.meetings || 0} meetings`;
       }
       if (name === "update_roi_config") {
@@ -14317,6 +14372,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         onUpdateDfySetup((prev: any) => ({ ...prev, ...patch }));
         const changes = Object.keys(patch).filter(k => k !== "mailboxCount" && k !== "customAmount");
         onToast({ title: "DFY updated", status: "success", message: changes.join(", ") });
+        flagNav("dfySetup");
         return `Updated DFY setup: ${changes.join(", ")}`;
       }
       if (name === "propose_form_changes") {
@@ -14477,7 +14533,7 @@ RESPONSE FORMAT (strict — you MUST follow these):
 - If many issues exist, show top 3 only. End with "X more — ask to expand."
 - For slash commands: use ## headers with 2-3 bullets each, 4 sections max.
 - End with one next action in bold. No summary paragraphs. No sign-offs.
-${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prioritize context relevant to that page.` : ""}${scopeHint ? `\n\nONBOARDING REVIEW FOCUS: The user is reviewing the "${scopeHint}" stage of guided onboarding and wants to refine it via chat. Focus your edits on that artifact. Apply changes immediately with the appropriate update/create tools, then briefly confirm. Do NOT touch domains/mailboxes (DFY setup) unless this focus is the infrastructure stage.` : ""}`;
+${currentView ? `\nCURRENT PAGE: The user is looking at the "${PAGE_LABELS[currentView] || currentView}" page right now. When a request is ambiguous about WHICH item to change ("fix this", "tighten the headline", "that's wrong", "update it") assume they mean the content on THIS page and edit it directly. Prioritize context relevant to this page.` : ""}${scopeHint ? `\n\nONBOARDING REVIEW FOCUS: The user is reviewing the "${scopeHint}" stage of guided onboarding and wants to refine it via chat. Focus your edits on that artifact. Apply changes immediately with the appropriate update/create tools, then briefly confirm. Do NOT touch domains/mailboxes (DFY setup) unless this focus is the infrastructure stage.` : ""}`;
 
     streamFull.current = "";
     streamPos.current = 0;
@@ -14501,10 +14557,17 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
 
       // Execute any tool calls
       const toolResults: string[] = [];
+      changeNav.current = null;
       if (result.toolCalls.length > 0) {
         for (const tc of result.toolCalls) {
           const res = executeTool(tc.name, tc.input);
           toolResults.push(res);
+        }
+        // Take the user to where the change landed and flash it, so the edit is visible live.
+        const nav = changeNav.current;
+        if (nav?.view) {
+          if (nav.view !== currentView) onNavigate(nav.view);
+          copilotFlash(nav.targets);
         }
         // Append tool results summary to the streamed text
         if (result.text && toolResults.length > 0) {
@@ -22839,6 +22902,12 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
           40%{box-shadow:0 0 0 4px rgba(14,158,110,0.2)}
           100%{box-shadow:0 0 0 0 rgba(14,158,110,0)}
         }
+        @keyframes copilotFlash{
+          0%{box-shadow:0 0 0 0 rgba(99,102,241,0); background-color:rgba(99,102,241,0)}
+          15%{box-shadow:0 0 0 3px rgba(99,102,241,0.55), 0 0 18px 2px rgba(99,102,241,0.35); background-color:rgba(99,102,241,0.10)}
+          55%{box-shadow:0 0 0 3px rgba(99,102,241,0.30); background-color:rgba(99,102,241,0.06)}
+          100%{box-shadow:0 0 0 0 rgba(99,102,241,0); background-color:rgba(99,102,241,0)}
+        }
         @keyframes fieldCancel{
           0%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)}
           40%{box-shadow:0 0 0 4px rgba(239,68,68,0.2)}
@@ -26457,7 +26526,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                           const icpFilled = AI_FILLABLE_ICP_FIELDS.filter((f: any) => fieldFilled(f, d[f.id])).length;
                           const icpPct = Math.round(icpFilled / TOTAL_FIELDS * 100);
                           return (
-                            <div key={icp.id} onClick={()=>setEditingId(icp.id)}
+                            <div key={icp.id} data-copilot-id={icp.id} onClick={()=>setEditingId(icp.id)}
                               style={{ background:C2.canvas, borderRadius:12, borderLeft:`3px solid ${icp.color}`,
                                 borderTop:`1px solid ${C2.border}`, borderRight:`1px solid ${C2.border}`, borderBottom:`1px solid ${C2.border}`,
                                 cursor:"pointer", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,.03)",
