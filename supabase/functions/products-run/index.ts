@@ -133,7 +133,7 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   // Hard wall: the whole pipeline (all products in parallel) must finish within this window so
   // it always writes a terminal status and never gets killed mid-run. Comfortably under the
   // edge function's wall-clock limit.
-  const deadline = Date.now() + 240000;
+  const deadline = Date.now() + 290000;
   await appendLog(sb, wsId, "Reading confirmed company research...");
   const ws = await readWs(sb, wsId);
   const cd = ws.companyData || {};
@@ -225,16 +225,13 @@ IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) o
     return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: "Other" };
   };
 
-  // Generate with LIMITED CONCURRENCY (2 at a time) rather than all at once. Firing every product
-  // call simultaneously throttles them against each other (Anthropic 429/529), which is why some
-  // products kept coming back thin while others succeeded in the same run.
-  const CONCURRENCY = 2;
+  // Generate STRICTLY ONE AT A TIME. Running product calls in parallel made them throttle each
+  // other (Anthropic 429/529), so some came back thin. Sequential = each call gets the full
+  // capacity and the deadline budget, so every profile comes back complete.
   const results: any[] = [];
-  for (let i = 0; i < seeds.length; i += CONCURRENCY) {
-    const batch = seeds.slice(i, i + CONCURRENCY);
-    await appendLog(sb, wsId, `Building products ${i + 1}-${i + batch.length} of ${seeds.length}...`);
-    const batchResults = await Promise.all(batch.map(genProduct));
-    results.push(...batchResults);
+  for (let i = 0; i < seeds.length; i++) {
+    await appendLog(sb, wsId, `Building product ${i + 1} of ${seeds.length}: ${seeds[i].name || "Untitled"}...`);
+    results.push(await genProduct(seeds[i]));
   }
   const products = results.filter((r: any) => r?.name);
 
