@@ -67,7 +67,7 @@ function parseJSON(raw: string): any {
   return JSON.parse((raw || "").replace(/```json|```/g, "").trim());
 }
 
-async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string): Promise<void> {
+async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, userContext = ""): Promise<void> {
   await appendLog(sb, wsId, "Reading scored ICPs...");
   const ws = await readWs(sb, wsId);
   const cd = ws.companyData || {};
@@ -100,7 +100,7 @@ Persona: ${icp.name} — ${icp.data?.buyer || ""}
 Industries: ${icp.data?.industries || ""}
 Primary pain: ${icp.data?.pain1 || ""}
 Why this is an ICP: ${icp.data?._tamExplanation || ""}
-
+${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily):\n${userContext}\n` : ""}
 ALL PERSONAS being created (ensure yours is DISTINCT — different industries, titles, pains, messaging):
 ${dedup}
 
@@ -136,7 +136,7 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   try {
-    const { workspaceId } = await req.json() as { workspaceId?: string };
+    const { workspaceId, userContext } = await req.json() as { workspaceId?: string; userContext?: string };
     if (!workspaceId) return new Response(JSON.stringify({ error: "workspaceId required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     if (!anthropicKey || !supabaseUrl || !supabaseKey) return new Response(JSON.stringify({ error: "server not configured" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -146,7 +146,7 @@ serve(async (req: Request) => {
 
     // @ts-ignore — EdgeRuntime is available in the Supabase Deno runtime
     EdgeRuntime.waitUntil((async () => {
-      try { await runPipeline(sb, anthropicKey, workspaceId); }
+      try { await runPipeline(sb, anthropicKey, workspaceId, userContext || ""); }
       catch (err) {
         console.error("personas pipeline failed:", err);
         await writeJob(sb, workspaceId, { status: "error", error: String((err as Error)?.message ?? err), completedAt: new Date().toISOString() });

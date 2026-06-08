@@ -33,6 +33,7 @@ interface Props {
   onStartStage: (stage: StageKey) => void;
   onConfirmGate: (gateId: TrackAGate | "infra") => void;
   onRefine: (scopeLabel: string) => void;
+  onSetGateNote: (stage: StageKey, text: string) => void;
   onNavigate: (view: string) => void;
 }
 
@@ -54,7 +55,8 @@ const NEXT_GATE: Record<TrackAGate, TrackAGate | null> = {
 
 export function OnboardingGates(props: Props) {
   const { companyData: cd, products, icps, dfySetup, stageJobs, researchState, researchLog,
-          onRunResearch, onStartStage, onConfirmGate, onRefine, onNavigate } = props;
+          onRunResearch, onStartStage, onConfirmGate, onRefine, onSetGateNote, onNavigate } = props;
+  const noteFor = (stage: StageKey): string => ((cd?._gateNotes || {})[stage]) || "";
   const gates = (cd?._gates || {}) as Record<string, any>;
   const [domain, setDomain] = useState<string>(cd?.co_website || "");
 
@@ -190,12 +192,20 @@ export function OnboardingGates(props: Props) {
               key={g.id} num={g.num} title={g.title} desc={g.desc} status={st} isLast={isLast}
               phase={phase} jobError={job?.status === "error" ? job?.error : undefined}
               preview={renderPreview(g.id)}
-              extraTop={g.id === "companyResearch" && (st === "idle" || st === "generating") ? (
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="company.com"
-                    disabled={st === "generating"}
-                    style={{ flex: 1, padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 12.5, fontFamily: head, color: C.text, background: C.canvas }} />
-                </div>
+              extraTop={(st === "idle" || st === "generating" || st === "review") ? (
+                <>
+                  {g.id === "companyResearch" && (st === "idle" || st === "generating") && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="company.com"
+                        disabled={st === "generating"}
+                        style={{ flex: 1, padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 12.5, fontFamily: head, color: C.text, background: C.canvas }} />
+                    </div>
+                  )}
+                  {(st === "idle" || st === "review") && (
+                    <GuidanceBox value={noteFor(g.stage)} onChange={(v) => onSetGateNote(g.stage, v)}
+                      hint={st === "review" ? "Add guidance, then Regenerate to apply it" : "Steer the AI before it generates this step"} />
+                  )}
+                </>
               ) : null}
               actions={
                 <GateActions
@@ -252,6 +262,18 @@ export function OnboardingGates(props: Props) {
 }
 
 // ── Small presentational helpers ──
+function GuidanceBox({ value, onChange, hint }: { value: string; onChange: (v: string) => void; hint: string }) {
+  return (
+    <details open={!!value} style={{ marginTop: 10 }}>
+      <summary style={{ cursor: "pointer", fontSize: 11.5, color: C.accent, fontWeight: 700, fontFamily: head, listStyle: "none" as const, userSelect: "none" as const }}>
+        + Add context for the AI <span style={{ color: C.muted, fontWeight: 500 }}>(optional)</span>
+      </summary>
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3}
+        placeholder={`${hint}. e.g. "focus on the enterprise product", "their main competitor is X", "target manufacturing, not retail".`}
+        style={{ marginTop: 8, width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 12, fontFamily: head, color: C.text, background: C.canvas, resize: "vertical" as const, lineHeight: 1.5 }} />
+    </details>
+  );
+}
 function SectionLabel({ children }: { children: any }) {
   return <div style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.muted, letterSpacing: 0.8, margin: "0 0 12px 4px" }}>{children}</div>;
 }

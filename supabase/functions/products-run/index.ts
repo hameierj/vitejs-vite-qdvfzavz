@@ -83,7 +83,7 @@ function parseJSON(raw: string): any {
   return JSON.parse((raw || "").replace(/```json?\s*/gi, "").replace(/```/g, "").trim());
 }
 
-async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string): Promise<void> {
+async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, userContext = ""): Promise<void> {
   await appendLog(sb, wsId, "Reading confirmed company research...");
   const ws = await readWs(sb, wsId);
   const cd = ws.companyData || {};
@@ -112,7 +112,7 @@ Differentiator: ${p.differentiator || ""}
 Company: ${cd.co_name || ""} (${cd.co_industry || ""})
 Company value prop: ${cd.co_pitch || ""}
 Competitors: ${cd.co_competitors || ""}
-
+${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily):\n${userContext}\n` : ""}
 Return ONLY JSON:
 {"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"Established category — buyers know what this is|Emerging category — some education needed|New category — significant education required|Replacing an existing behavior (not a tool)","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both — recurring and one-time options","acv":"","mrr":"","contractLength":"Month-to-month|Quarterly|6 months|Annual|Multi-year|Custom","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}
 
@@ -141,7 +141,7 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   try {
-    const { workspaceId } = await req.json() as { workspaceId?: string };
+    const { workspaceId, userContext } = await req.json() as { workspaceId?: string; userContext?: string };
     if (!workspaceId) return new Response(JSON.stringify({ error: "workspaceId required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     if (!anthropicKey || !supabaseUrl || !supabaseKey) return new Response(JSON.stringify({ error: "server not configured" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -151,7 +151,7 @@ serve(async (req: Request) => {
 
     // @ts-ignore — EdgeRuntime is available in the Supabase Deno runtime
     EdgeRuntime.waitUntil((async () => {
-      try { await runPipeline(sb, anthropicKey, workspaceId); }
+      try { await runPipeline(sb, anthropicKey, workspaceId, userContext || ""); }
       catch (err) {
         console.error("products pipeline failed:", err);
         await writeJob(sb, workspaceId, { status: "error", error: String((err as Error)?.message ?? err), completedAt: new Date().toISOString() });

@@ -87,7 +87,7 @@ async function callClaude(anthropicKey: string, prompt: string): Promise<string>
   return json.content?.[0]?.text ?? "";
 }
 
-async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, inputDomain: string): Promise<void> {
+async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, inputDomain: string, userContext = ""): Promise<void> {
   let normUrl = inputDomain.trim();
   if (normUrl && !/^https?:\/\//i.test(normUrl)) normUrl = `https://${normUrl}`;
   const domain = normUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
@@ -126,7 +126,7 @@ WEBSITE CONTENT:
 ${pageContent || "(no content fetched — use domain knowledge about " + domain + ")"}
 
 DOMAIN: ${domain}
-
+${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily and let it steer the brief):\n${userContext}\n` : ""}
 Return a JSON object:
 {
   "generatedAt": "${new Date().toISOString()}",
@@ -204,7 +204,7 @@ serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { workspaceId, domain } = body as { workspaceId?: string; domain?: string };
+    const { workspaceId, domain, userContext } = body as { workspaceId?: string; domain?: string; userContext?: string };
 
     if (!workspaceId || !domain) {
       return new Response(JSON.stringify({ error: "workspaceId and domain are required" }), {
@@ -240,7 +240,7 @@ serve(async (req: Request) => {
     // @ts-ignore — EdgeRuntime is available in Supabase Deno runtime
     EdgeRuntime.waitUntil((async () => {
       try {
-        await runPipeline(sb, anthropicKey, workspaceId, domain);
+        await runPipeline(sb, anthropicKey, workspaceId, domain, userContext || "");
       } catch (err) {
         console.error("gs-research pipeline failed:", err);
         await writeJob(sb, workspaceId, {

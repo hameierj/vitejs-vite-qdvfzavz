@@ -85,7 +85,7 @@ function parseJSON(raw: string): any {
   return JSON.parse(match ? match[1] : raw);
 }
 
-async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string): Promise<void> {
+async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, userContext = ""): Promise<void> {
   await appendLog(sb, wsId, "Reading confirmed company + product profiles...");
   const ws = await readWs(sb, wsId);
   const cd = ws.companyData || {};
@@ -109,7 +109,7 @@ KNOWN CUSTOMERS: ${cd.co_customers || ""}
 
 PRODUCTS / SERVICES (branch the tree per product):
 ${productLines}
-
+${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily when identifying and scoring ICPs):\n${userContext}\n` : ""}
 INSTRUCTIONS:
 1. Company-level TAM: summarize the overall addressable market and break it into 2-4 broad market segments with a rough size estimate and rationale each.
 2. Per-product TAM: for EACH product/service above, summarize its addressable market and identify 1-3 ICPs that would buy it.
@@ -222,7 +222,7 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   try {
-    const { workspaceId } = await req.json() as { workspaceId?: string };
+    const { workspaceId, userContext } = await req.json() as { workspaceId?: string; userContext?: string };
     if (!workspaceId) return new Response(JSON.stringify({ error: "workspaceId required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     if (!anthropicKey || !supabaseUrl || !supabaseKey) return new Response(JSON.stringify({ error: "server not configured" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -232,7 +232,7 @@ serve(async (req: Request) => {
 
     // @ts-ignore — EdgeRuntime is available in the Supabase Deno runtime
     EdgeRuntime.waitUntil((async () => {
-      try { await runPipeline(sb, anthropicKey, workspaceId); }
+      try { await runPipeline(sb, anthropicKey, workspaceId, userContext || ""); }
       catch (err) {
         console.error("tam-icp pipeline failed:", err);
         await writeJob(sb, workspaceId, { status: "error", error: String((err as Error)?.message ?? err), completedAt: new Date().toISOString() });

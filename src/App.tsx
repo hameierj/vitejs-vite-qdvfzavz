@@ -21729,8 +21729,9 @@ Return ONLY valid JSON:
     setResearchLog(["Starting research..."]);
 
     try {
+      const userContext = ((companyData as any)?._gateNotes || {}).research || "";
       const { error } = await supabase.functions.invoke("gs-research-run", {
-        body: { workspaceId: wsId, domain: inputDomain },
+        body: { workspaceId: wsId, domain: inputDomain, userContext },
       });
       if (error) throw error;
       // The job runs server-side under EdgeRuntime.waitUntil. Progress and the
@@ -21754,7 +21755,8 @@ Return ONLY valid JSON:
     if (!fn) return;
     setStageJobs((prev) => ({ ...prev, [stage]: { status: "running", phase: "Starting...", log: ["Starting..."] } }));
     try {
-      const { error } = await supabase.functions.invoke(fn, { body: { workspaceId: wsId } });
+      const userContext = ((companyData as any)?._gateNotes || {})[stage] || "";
+      const { error } = await supabase.functions.invoke(fn, { body: { workspaceId: wsId, userContext } });
       if (error) throw error;
       stagePollKickRef.current();
     } catch (e: any) {
@@ -21782,6 +21784,11 @@ Return ONLY valid JSON:
   const handleRefineGate = (scopeLabel: string) => {
     setCopilotScope(scopeLabel);
     setShowCopilot(true);
+  };
+
+  // Per-gate optional guidance the user gives the AI before generating.
+  const handleSetGateNote = (stage: string, text: string) => {
+    setCompanyData((prev: any) => ({ ...prev, _gateNotes: { ...(prev?._gateNotes || {}), [stage]: text } }));
   };
 
   // ── Flow 2: launch orchestration ──
@@ -28493,6 +28500,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   onStartStage={(stage) => startStage(stage)}
                   onConfirmGate={(gate) => handleConfirmGate(gate)}
                   onRefine={(scope) => handleRefineGate(scope)}
+                  onSetGateNote={(stage, text) => handleSetGateNote(stage, text)}
                   onNavigate={(v) => setView(v)}
                 />
               </div>
