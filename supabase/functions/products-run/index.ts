@@ -21,6 +21,7 @@ const corsHeaders = {
 
 const JOB_KEY = (wsId: string) => `products_job_${wsId}`;
 const WS_KEY = (wsId: string) => `ws_${wsId}`;
+const RESEARCH_JOB_KEY = (wsId: string) => `gs_research_job_${wsId}`;
 
 const PRODUCT_NAMING = `PRODUCT NAMING RULES (strict):
 - USE THE EXACT PRODUCT NAME as it appears on the company's website. Do NOT rename or genericize.
@@ -47,6 +48,17 @@ async function readWs(sb: SupabaseClient, wsId: string): Promise<any> {
     const { data } = await sb.from("app_data").select("value").eq("key", WS_KEY(wsId)).single();
     return data?.value ? JSON.parse(data.value as string) : {};
   } catch { return {}; }
+}
+
+// The research brief is written DIRECTLY to the research job row by gs-research-run, so it's
+// always present server-side — unlike ws_<id>.companyData._initialResearchBrief, which depends
+// on the client having polled + merged + saved it. Read the job row as the source of truth.
+async function readResearchBrief(sb: SupabaseClient, wsId: string): Promise<any> {
+  try {
+    const { data } = await sb.from("app_data").select("value").eq("key", RESEARCH_JOB_KEY(wsId)).single();
+    const job = data?.value ? JSON.parse(data.value as string) : {};
+    return (job && job.result) ? job.result : null;
+  } catch { return null; }
 }
 
 async function writeJob(sb: SupabaseClient, wsId: string, patch: Record<string, unknown>) {
@@ -87,7 +99,12 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   await appendLog(sb, wsId, "Reading confirmed company research...");
   const ws = await readWs(sb, wsId);
   const cd = ws.companyData || {};
-  const brief = cd._initialResearchBrief || {};
+  // Prefer the brief written directly by gs-research-run (always present), fall back to the
+  // copy the client merged into companyData. This is why the gated flow was producing the
+  // empty "Core Offering" placeholder — the client-saved copy hadn't landed in ws_.
+  const jobBrief = await readResearchBrief(sb, wsId);
+  const brief = jobBrief || cd._initialResearchBrief || {};
+  await appendLog(sb, wsId, jobBrief ? "Loaded research brief from research job." : (cd._initialResearchBrief ? "Loaded research brief from workspace." : "No research brief found — using company fields."));
 
   // Seed product list from the confirmed research brief (preferred) or the
   // company product breakdown. Each seed is expanded into a full profile.
