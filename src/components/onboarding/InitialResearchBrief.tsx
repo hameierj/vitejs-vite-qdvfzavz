@@ -119,7 +119,7 @@ export function InitialResearchBrief({ brief, generating, genLog, onGenerate, on
           {/* Overview row */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
             {/* Company overview */}
-            <Card title="Company Overview">
+            <Card title="Company Overview" anchor="companyOverview">
               {brief.companyOverview && (
                 <>
                   {brief.companyOverview.businessModel && <Field label="Business Model" value={brief.companyOverview.businessModel} />}
@@ -130,7 +130,7 @@ export function InitialResearchBrief({ brief, generating, genLog, onGenerate, on
             </Card>
 
             {/* Products */}
-            <Card title="Products / Services">
+            <Card title="Products / Services" anchor="productsServices">
               {(brief.productsServices || []).slice(0, 3).map((p: any, i: number) => (
                 <div key={i} style={{ marginBottom: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{p.name}</div>
@@ -141,7 +141,7 @@ export function InitialResearchBrief({ brief, generating, genLog, onGenerate, on
             </Card>
 
             {/* Competitive */}
-            <Card title="Competitive Position">
+            <Card title="Competitive Position" anchor="competitivePositioning">
               {brief.competitivePositioning && (
                 <>
                   {brief.competitivePositioning.category && <Field label="Category" value={brief.competitivePositioning.category} />}
@@ -170,7 +170,7 @@ export function InitialResearchBrief({ brief, generating, genLog, onGenerate, on
 
           {/* Value props */}
           {(brief.valuePropositions || []).length > 0 && (
-            <div style={{ background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, marginBottom: 16 }}>
+            <div data-copilot-id="valuePropositions" style={{ background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 12, textTransform: "uppercase" as const, letterSpacing: 0.5, fontFamily: mono }}>Value Propositions</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
                 {brief.valuePropositions.map((v: any, i: number) => (
@@ -187,7 +187,7 @@ export function InitialResearchBrief({ brief, generating, genLog, onGenerate, on
           {/* ICP hypotheses + angles */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
             {(brief.icpHypotheses || []).length > 0 && (
-              <Card title="ICP Hypotheses">
+              <Card title="ICP Hypotheses" anchor="icpHypotheses">
                 {brief.icpHypotheses.map((h: any, i: number) => (
                   <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: i < brief.icpHypotheses.length - 1 ? `1px solid ${C.border}` : "none" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
@@ -208,7 +208,7 @@ export function InitialResearchBrief({ brief, generating, genLog, onGenerate, on
             )}
 
             {(brief.recommendedAngles || []).length > 0 && (
-              <Card title="Recommended Outbound Angles">
+              <Card title="Recommended Outbound Angles" anchor="recommendedAngles">
                 {brief.recommendedAngles.map((a: any, i: number) => (
                   <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: i < brief.recommendedAngles.length - 1 ? `1px solid ${C.border}` : "none" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
@@ -261,9 +261,9 @@ export function InitialResearchBrief({ brief, generating, genLog, onGenerate, on
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children, anchor }: { title: string; children: React.ReactNode; anchor?: string }) {
   return (
-    <div style={{ background: "#FFFFFF", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+    <div data-copilot-id={anchor} style={{ background: "#FFFFFF", border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
       <div style={{ fontSize: 11, fontFamily: mono, fontWeight: 700, color: C.muted, letterSpacing: 0.5, textTransform: "uppercase" as const, marginBottom: 12 }}>
         {title}
       </div>

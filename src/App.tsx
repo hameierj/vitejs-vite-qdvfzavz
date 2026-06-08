@@ -2335,6 +2335,31 @@ const COPILOT_TOOLS = [
     },
   },
   {
+    name: "propose_edits",
+    description: "Use this WHENEVER the user asks to change, fix, adjust, reword, rephrase, or correct EXISTING content (a value prop, a product/service description, positioning, a persona, the research brief, a headline, the business model, etc.). Do NOT apply the change directly. First REVIEW the workspace and find EVERY place that concept appears — the same idea is usually duplicated across the research brief sections (companyOverview, productsServices, valuePropositions, competitivePositioning) and may also live in the actual products, personas, campaigns, offers, or strategy. List every spot that must change to stay consistent so the user can VERIFY where you'll edit before anything is touched. Each entry names a human-readable location plus the exact underlying tool call to run on approval. The user reviews and approves; only then are edits applied. ALWAYS prefer this over calling update_* tools directly for any 'change/fix/adjust' request. After calling it, do NOT claim anything is updated yet — say which places you found and ask them to confirm.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        summary: { type: "string" as const, description: "One short sentence describing the overall change the user asked for." },
+        edits: {
+          type: "array" as const,
+          description: "Every place that needs to change — one entry per location. Include all duplicated spots, not just the most obvious one.",
+          items: {
+            type: "object" as const,
+            properties: {
+              location: { type: "string" as const, description: "Human-readable location, e.g. 'Research Brief → Products / Services → White Label' or 'Products → B2B Rocket White Label'." },
+              what: { type: "string" as const, description: "Short description of what changes here (one sentence)." },
+              tool: { type: "string" as const, description: "Tool to run on approval. One of: update_research_brief, update_company_fields, update_persona, update_product, update_campaign, update_strategy, update_tam_icp, update_offer, update_dfy_setup." },
+              input: { type: "object" as const, description: "The exact input object for that tool, same shape it expects — e.g. { patch: {...} } for update_research_brief, { fields: {...} } for update_company_fields, { product_name, fields } for update_product, { persona_name, fields } for update_persona." },
+            },
+            required: ["location", "what", "tool", "input"],
+          },
+        },
+      },
+      required: ["summary", "edits"],
+    },
+  },
+  {
     name: "rerun_analysis",
     description: "Re-run a Client Intelligence AI analysis with fresh conversation data. Use when the user says 'refresh the sentiment analysis', 'regenerate coaching', 'update the client intel profile', or after they've added new calls/emails that should change the analysis. Valid analysis keys: sentiment, pitch, coaching, intel.",
     input_schema: {
@@ -13874,6 +13899,9 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   const [isStreaming,    setIsStreaming]    = useState(false);
   const [streamingText,  setStreamingText]  = useState("");
   const [pendingChanges, setPendingChanges] = useState<{id:string; changes:{field:string;label:string;section:string;oldVal:string;newVal:string;status:"new"|"conflict"|"same";approved:boolean}[]; appliedAt?:number}|null>(null);
+  // Review-and-confirm plan: the Copilot finds every place a change is needed and
+  // lists them here for the user to verify before anything is applied.
+  const [pendingEdits, setPendingEdits] = useState<{id:string; summary:string; edits:{location:string;what:string;tool:string;input:any;approved:boolean}[]; appliedAt?:number}|null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const streamFull = useRef("");
   const streamPos = useRef(0);
@@ -14394,6 +14422,20 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         const conflictCount = proposedChanges.filter((c:any) => c.status === "conflict").length;
         return `Parsed ${proposedChanges.length} fields from the form. ${newCount} new fields (auto-approved), ${conflictCount} conflicts need your review. Check the changes card below.`;
       }
+      if (name === "propose_edits") {
+        const edits = (input.edits || [])
+          .filter((e: any) => e && e.tool && e.input)
+          .map((e: any) => ({
+            location: e.location || "Workspace",
+            what: e.what || "",
+            tool: e.tool,
+            input: e.input || {},
+            approved: true,
+          }));
+        if (!edits.length) return "No edits to propose — nothing to change.";
+        setPendingEdits({ id: uid(), summary: input.summary || "Proposed changes", edits });
+        return `Found ${edits.length} place${edits.length > 1 ? "s" : ""} that need updating. Review the list below and approve to apply.`;
+      }
       if (name === "rerun_analysis") {
         const which = input.analysis as string;
         if (!["sentiment","pitch","coaching","intel"].includes(which)) return `Invalid analysis: ${which}`;
@@ -14491,13 +14533,20 @@ IMPORTANT DATA READ-ONLY RULES:
 If the user asks you to refresh any of the AI analyses (sentiment, pitch, coaching, intel), use the rerun_analysis tool.
 
 YOUR ROLE:
-You are a hands-on strategist who knows every field in this workspace AND can directly modify any data. When the user asks to change, update, set, or create anything — USE YOUR TOOLS to make the change immediately. Do not just suggest changes; execute them.
+You are a hands-on strategist who knows every field in this workspace AND can modify any data. You operate in two modes: for NEW items you create them immediately; for CHANGES to existing content you review-and-confirm first (see below).
+
+EDIT REQUESTS — REVIEW & CONFIRM FIRST (this is the most important rule):
+When the user asks to change / fix / adjust / reword / rephrase / correct EXISTING content, DO NOT apply it directly. The same idea is usually written in several places, and editing only one leaves the workspace inconsistent. Instead:
+1. REVIEW the whole workspace and find EVERY place that concept appears. On the research brief, one concept is commonly duplicated across companyOverview, productsServices, valuePropositions, and competitivePositioning. It may ALSO live in the actual products, personas, campaigns, offers, or strategy. Look everywhere before deciding.
+2. Call propose_edits with one entry per location you'd touch (location + what changes + the underlying tool + its input). This shows the user WHERE you'll change things.
+3. In your text, briefly say which places you found and ask them to confirm. Do NOT say anything is "updated" / "updating now" — nothing is applied until they approve the list.
+Only skip propose_edits when: creating a brand-new item, importing a pasted form (use propose_form_changes), or the user explicitly says "just change it" / "apply directly" / "don't ask".
 
 WHEN TO USE TOOLS:
-- User wants to fix/refine the onboarding research brief ("change the business model to…", "that competitor is wrong", "tighten the value prop") → call update_research_brief with only the changed fields. NEVER regenerate the brief; adjust the existing content in place.
-- User says "set the industry to SaaS" → call update_company_fields
+- User wants to fix/refine the onboarding research brief ("change the business model to…", "that competitor is wrong", "tighten the value prop") → use propose_edits (the same fix often spans several brief sections). The underlying tool for brief sections is update_research_brief with only the changed fields. NEVER regenerate the brief; adjust the existing content in place.
+- User says "set the industry to SaaS" (a single concrete field they named) → call update_company_fields directly.
 - User says "add a persona for CFOs" → call create_persona
-- User says "change the value prop to..." → call the appropriate update tool
+- User says "change the value prop to..." / "reword this" / "fix the positioning" → use propose_edits
 - User says "create a new campaign targeting..." → call create_campaign
 - User says "create an audience from this RTS list" / "set up campaigns for my RTS lists" → for EACH RTS list, do TWO things in sequence:
   1. Call create_persona with fields derived from the RTS list's customerProfile / sellingDescription / campaignGoal. Name it "[Segment] — [Buyer Role]" derived from the signal. Include industries, buyer, pain1, triggers, current_solutions, etc.
@@ -14808,6 +14857,73 @@ ${currentView ? `\nCURRENT PAGE: The user is looking at the "${PAGE_LABELS[curre
             <div style={{ margin:"8px 0", padding:10, borderRadius:10, background:"#eaf5f0", border:"1px solid #9fd5b8", fontSize:11, color:"#1e6b45", fontFamily:body, display:"flex", alignItems:"center", gap:8 }}>
               <span>✓</span> Changes applied successfully
               <button onClick={()=>setPendingChanges(null)} style={{ marginLeft:"auto", background:"none", border:"none", color:"#1e6b45", fontSize:10, cursor:"pointer", fontFamily:mono }}>Dismiss</button>
+            </div>
+          )}
+
+          {/* Proposed Edits — review WHERE the change will land, then approve */}
+          {pendingEdits && !pendingEdits.appliedAt && (
+            <div style={{ margin:"8px 0", padding:12, borderRadius:12, border:`1px solid ${C2.accent}33`, background:`${C2.accent}06` }}>
+              <div style={{ fontSize:11.5, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:3 }}>
+                Review where I'll make changes
+              </div>
+              <div style={{ fontSize:10.5, color:C2.muted, fontFamily:body, marginBottom:8 }}>
+                {pendingEdits.summary} · {pendingEdits.edits.filter(e=>e.approved).length}/{pendingEdits.edits.length} selected
+              </div>
+              <div style={{ maxHeight:280, overflowY:"auto", marginBottom:10 }}>
+                {pendingEdits.edits.map((e, ei) => (
+                  <div key={ei} style={{ display:"flex", alignItems:"flex-start", gap:8, padding:"6px 0", borderBottom:`1px solid ${C2.border}22` }}>
+                    <input type="checkbox" checked={e.approved} onChange={()=>{
+                      setPendingEdits(prev => prev ? { ...prev, edits: prev.edits.map((x,i2) => i2===ei ? { ...x, approved: !x.approved } : x) } : prev);
+                    }} style={{ marginTop:3, accentColor:C2.accent }} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:11, fontWeight:700, fontFamily:head, color:C2.text, marginBottom:1, wordBreak:"break-word" }}>{e.location}</div>
+                      {e.what && <div style={{ fontSize:10.5, color:C2.textSoft, fontFamily:body, lineHeight:1.45, wordBreak:"break-word" }}>{e.what}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={()=>{
+                  setPendingEdits(prev => prev ? { ...prev, edits: prev.edits.map(e=>({...e, approved:true})) } : prev);
+                }} style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  Select All
+                </button>
+                <div style={{ flex:1 }} />
+                <button onClick={()=>setPendingEdits(null)}
+                  style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.muted, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
+                  Cancel
+                </button>
+                <button onClick={()=>{
+                  const approved = pendingEdits.edits.filter(e=>e.approved);
+                  if (!approved.length) { onToast({ title:"Nothing selected", status:"info", message:"Check the places you want to update" }); return; }
+                  // Run each approved edit through its underlying tool, collecting where to navigate + flash.
+                  const allTargets: string[] = [];
+                  let navView = "";
+                  for (const e of approved) {
+                    changeNav.current = null;
+                    executeTool(e.tool, e.input);
+                    if (changeNav.current) {
+                      if (!navView) navView = changeNav.current.view;
+                      allTargets.push(...changeNav.current.targets);
+                    }
+                  }
+                  if (navView && navView !== currentView) onNavigate(navView);
+                  copilotFlash(allTargets);
+                  setPendingEdits(prev => prev ? { ...prev, appliedAt: Date.now() } : prev);
+                  onToast({ title:`${approved.length} place${approved.length>1?"s":""} updated`, status:"success", message: approved.map(e=>e.location).slice(0,4).join(" · ") + (approved.length > 4 ? ` +${approved.length-4} more` : "") });
+                }}
+                  style={{ padding:"5px 16px", borderRadius:6, border:"none", background:C2.accent, color:"#fff", fontSize:10, fontFamily:head, fontWeight:700, cursor:"pointer" }}>
+                  Apply {pendingEdits.edits.filter(e=>e.approved).length} {pendingEdits.edits.filter(e=>e.approved).length===1?"edit":"edits"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Edits applied confirmation */}
+          {pendingEdits?.appliedAt && (
+            <div style={{ margin:"8px 0", padding:10, borderRadius:10, background:"#eaf5f0", border:"1px solid #9fd5b8", fontSize:11, color:"#1e6b45", fontFamily:body, display:"flex", alignItems:"center", gap:8 }}>
+              <span>✓</span> Updated {pendingEdits.edits.filter(e=>e.approved).length} place{pendingEdits.edits.filter(e=>e.approved).length>1?"s":""}
+              <button onClick={()=>setPendingEdits(null)} style={{ marginLeft:"auto", background:"none", border:"none", color:"#1e6b45", fontSize:10, cursor:"pointer", fontFamily:mono }}>Dismiss</button>
             </div>
           )}
         </div>
