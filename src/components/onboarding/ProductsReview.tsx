@@ -11,6 +11,23 @@ const head = "'Inter', system-ui, sans-serif";
 const mono = "'JetBrains Mono', 'Fira Code', monospace";
 
 const SECTION_KEYS = Object.keys(PRODUCT_SECTIONS);
+// Map every product field id → its section + human label, so we can render whatever the product
+// object actually contains (and group it), rather than only the fields we expect.
+const FIELD_META: Record<string, { section: string; label: string; order: number }> = {};
+SECTION_KEYS.forEach((sk) => {
+  PRODUCT_SECTIONS[sk as keyof typeof PRODUCT_SECTIONS].fields.forEach((f: any, i: number) => {
+    FIELD_META[f.id] = { section: PRODUCT_SECTIONS[sk as keyof typeof PRODUCT_SECTIONS].label, label: f.label, order: i };
+  });
+});
+// Internal/meta keys that should never be shown as content.
+const HIDDEN_KEYS = new Set(["id", "createdAt", "updatedAt", "sourceUrl", "name", "category"]);
+const prettyKey = (k: string) => k.replace(/([A-Z])/g, " $1").replace(/[_-]+/g, " ").replace(/^\w/, (c) => c.toUpperCase()).trim();
+const toText = (v: any): string => {
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map((x) => (typeof x === "object" ? JSON.stringify(x) : String(x))).join("\n");
+  if (typeof v === "object") return Object.entries(v).map(([k, val]) => `${prettyKey(k)}: ${val}`).join("\n");
+  return String(v);
+};
 
 interface Props {
   products: any[];
@@ -62,7 +79,35 @@ export function ProductsReview({ products, onRefine, onEdit }: Props) {
 }
 
 function ProductCard({ product, index }: { product: any; index: number }) {
-  const filled = (v: any) => v !== undefined && v !== null && String(v).trim() !== "";
+  const filled = (v: any) => v !== undefined && v !== null && toText(v).trim() !== "";
+
+  // Build groups from EVERY populated key on the product object (not just expected fields), so the
+  // review always mirrors what's actually stored — anything the editor shows, this shows.
+  const groups: Record<string, { label: string; value: string; order: number }[]> = {};
+  const extras: { label: string; value: string }[] = [];
+  for (const [k, v] of Object.entries(product)) {
+    if (HIDDEN_KEYS.has(k) || k.startsWith("_")) continue;
+    if (!filled(v)) continue;
+    const meta = FIELD_META[k];
+    if (meta) {
+      (groups[meta.section] = groups[meta.section] || []).push({ label: meta.label, value: toText(v), order: meta.order });
+    } else {
+      extras.push({ label: prettyKey(k), value: toText(v) });
+    }
+  }
+  Object.values(groups).forEach((arr) => arr.sort((a, b) => a.order - b.order));
+  // Preserve the canonical section order, then any leftover sections.
+  const orderedSections = [
+    ...SECTION_KEYS.map((sk) => PRODUCT_SECTIONS[sk as keyof typeof PRODUCT_SECTIONS].label),
+  ].filter((label, i, a) => a.indexOf(label) === i && groups[label]?.length);
+
+  const Tile = ({ label, value }: { label: string; value: string }) => (
+    <div style={{ background: C.faint, borderRadius: 9, padding: "9px 11px" }}>
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: C.textSoft, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5, whiteSpace: "pre-wrap" as const, wordBreak: "break-word" as const }}>{value}</div>
+    </div>
+  );
+
   return (
     <div data-copilot-id={product.id} style={{ background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,.03)" }}>
       {/* Header */}
@@ -70,31 +115,28 @@ function ProductCard({ product, index }: { product: any; index: number }) {
         <div style={{ width: 26, height: 26, borderRadius: 8, background: C.accentLo, color: C.accent, fontSize: 12, fontWeight: 800, fontFamily: mono, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{index + 1}</div>
         <h2 style={{ fontSize: 17, fontWeight: 800, color: C.text, margin: 0, flex: 1 }}>{product.name || "Untitled product"}</h2>
         {filled(product.category) && (
-          <span style={{ fontSize: 10.5, fontFamily: mono, fontWeight: 700, color: C.accent, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 9px", borderRadius: 6, whiteSpace: "nowrap" as const }}>{product.category}</span>
+          <span style={{ fontSize: 10.5, fontFamily: mono, fontWeight: 700, color: C.accent, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 9px", borderRadius: 6, whiteSpace: "nowrap" as const }}>{toText(product.category)}</span>
         )}
       </div>
 
       {/* Sections */}
       <div style={{ display: "flex", flexDirection: "column" as const, gap: 16 }}>
-        {SECTION_KEYS.map((key) => {
-          const sec = PRODUCT_SECTIONS[key as keyof typeof PRODUCT_SECTIONS];
-          // Only fields with a value, and skip the name (already in the header).
-          const fields = sec.fields.filter((f: any) => f.id !== "name" && f.id !== "category" && filled(product[f.id]));
-          if (fields.length === 0) return null;
-          return (
-            <div key={key}>
-              <div style={{ fontSize: 9.5, fontFamily: mono, fontWeight: 700, color: C.muted, letterSpacing: 0.5, textTransform: "uppercase" as const, marginBottom: 8 }}>{sec.label}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
-                {fields.map((f: any) => (
-                  <div key={f.id} style={{ background: C.faint, borderRadius: 9, padding: "9px 11px" }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 600, color: C.textSoft, marginBottom: 3 }}>{f.label}</div>
-                    <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5, whiteSpace: "pre-wrap" as const, wordBreak: "break-word" as const }}>{String(product[f.id])}</div>
-                  </div>
-                ))}
-              </div>
+        {orderedSections.map((label) => (
+          <div key={label}>
+            <div style={{ fontSize: 9.5, fontFamily: mono, fontWeight: 700, color: C.muted, letterSpacing: 0.5, textTransform: "uppercase" as const, marginBottom: 8 }}>{label}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
+              {groups[label].map((f, i) => <Tile key={i} label={f.label} value={f.value} />)}
             </div>
-          );
-        })}
+          </div>
+        ))}
+        {extras.length > 0 && (
+          <div>
+            <div style={{ fontSize: 9.5, fontFamily: mono, fontWeight: 700, color: C.muted, letterSpacing: 0.5, textTransform: "uppercase" as const, marginBottom: 8 }}>Other Details</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
+              {extras.map((f, i) => <Tile key={i} label={f.label} value={f.value} />)}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
