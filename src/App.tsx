@@ -13906,6 +13906,61 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   // Review-and-confirm plan: the Copilot finds every place a change is needed and
   // lists them here for the user to verify before anything is applied.
   const [pendingEdits, setPendingEdits] = useState<{id:string; summary:string; edits:{location:string;what:string;tool:string;input:any;approved:boolean}[]; appliedAt?:number}|null>(null);
+  // Which proposed-edit row the user is hovering (highlights that target more strongly on the page).
+  const [hoverEdit, setHoverEdit] = useState<number|null>(null);
+
+  // Map a proposed edit to the on-page anchors it would touch (data-copilot-id / data-field-id),
+  // so we can highlight those areas live while the user reviews the plan — before anything is applied.
+  const editTargets = (e: { tool: string; input: any }): string[] => {
+    const inp = e.input || {};
+    const byName = (list: any[], idKey: string, nameKey: string) => {
+      const id = inp[idKey]; const name = inp[nameKey];
+      const m = (list || []).find((x: any) => x.id === id
+        || (name && (x.name?.toLowerCase() === String(name).toLowerCase() || x.name?.toLowerCase().includes(String(name).toLowerCase()))));
+      return m ? [m.id] : [];
+    };
+    switch (e.tool) {
+      case "update_research_brief": return Object.keys(inp.patch || {});
+      case "update_company_fields": return Object.keys(inp.fields || {});
+      case "update_persona": return byName(icps, "persona_id", "persona_name");
+      case "update_product": return byName(products, "product_id", "product_name");
+      case "update_campaign": return byName(campaigns, "campaign_id", "campaign_name");
+      default: return [];
+    }
+  };
+
+  // Live preview: while a plan is awaiting approval, outline every area it would touch on the
+  // current page (and emphasize the row being hovered). Cleared on apply / cancel / unmount.
+  useEffect(() => {
+    const esc = (t: string) => (window as any).CSS?.escape ? CSS.escape(t) : t;
+    const clear = () => document.querySelectorAll("[data-copilot-preview]").forEach(el => (el as HTMLElement).removeAttribute("data-copilot-preview"));
+    clear();
+    if (!pendingEdits || pendingEdits.appliedAt) return;
+    let cancelled = false, tries = 0;
+    const apply = () => {
+      if (cancelled) return;
+      tries++;
+      clear();
+      let firstAny: HTMLElement | null = null, firstHover: HTMLElement | null = null, found = false;
+      pendingEdits.edits.forEach((e, i) => {
+        const sel = editTargets(e).map(t => `[data-copilot-id="${esc(t)}"],[data-field-id="${esc(t)}"]`).join(",");
+        if (!sel) return;
+        let els: HTMLElement[] = [];
+        try { els = Array.from(document.querySelectorAll(sel)) as HTMLElement[]; } catch { els = []; }
+        els.forEach(el => {
+          el.setAttribute("data-copilot-preview", hoverEdit === i ? "2" : "1");
+          if (!firstAny) firstAny = el;
+          if (hoverEdit === i && !firstHover) firstHover = el;
+          found = true;
+        });
+      });
+      const scrollTo = firstHover || (hoverEdit === null ? firstAny : null);
+      if (scrollTo) scrollTo.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (!found && tries < 14) setTimeout(apply, 110); // wait for the page to render
+    };
+    const t = setTimeout(apply, 60);
+    return () => { cancelled = true; clearTimeout(t); clear(); };
+  }, [pendingEdits, hoverEdit]);
   const threadRef = useRef<HTMLDivElement>(null);
   const streamFull = useRef("");
   const streamPos = useRef(0);
@@ -14875,7 +14930,10 @@ ${currentView ? `\nCURRENT PAGE: The user is looking at the "${PAGE_LABELS[curre
               </div>
               <div style={{ maxHeight:280, overflowY:"auto", marginBottom:10 }}>
                 {pendingEdits.edits.map((e, ei) => (
-                  <div key={ei} style={{ display:"flex", alignItems:"flex-start", gap:8, padding:"6px 0", borderBottom:`1px solid ${C2.border}22` }}>
+                  <div key={ei}
+                    onMouseEnter={()=>setHoverEdit(ei)} onMouseLeave={()=>setHoverEdit(prev => prev===ei ? null : prev)}
+                    style={{ display:"flex", alignItems:"flex-start", gap:8, padding:"6px 4px", borderRadius:8, borderBottom:`1px solid ${C2.border}22`,
+                      background: hoverEdit===ei ? `${C2.accent}0c` : "transparent", transition:"background .15s", cursor:"default" }}>
                     <input type="checkbox" checked={e.approved} onChange={()=>{
                       setPendingEdits(prev => prev ? { ...prev, edits: prev.edits.map((x,i2) => i2===ei ? { ...x, approved: !x.approved } : x) } : prev);
                     }} style={{ marginTop:3, accentColor:C2.accent }} />
@@ -14893,7 +14951,7 @@ ${currentView ? `\nCURRENT PAGE: The user is looking at the "${PAGE_LABELS[curre
                   Select All
                 </button>
                 <div style={{ flex:1 }} />
-                <button onClick={()=>setPendingEdits(null)}
+                <button onClick={()=>{ setPendingEdits(null); setHoverEdit(null); }}
                   style={{ padding:"5px 12px", borderRadius:6, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.muted, fontSize:10, fontFamily:head, fontWeight:600, cursor:"pointer" }}>
                   Cancel
                 </button>
@@ -14912,6 +14970,7 @@ ${currentView ? `\nCURRENT PAGE: The user is looking at the "${PAGE_LABELS[curre
                     }
                   }
                   if (navView && navView !== currentView) onNavigate(navView);
+                  setHoverEdit(null);
                   copilotFlash(allTargets);
                   setPendingEdits(prev => prev ? { ...prev, appliedAt: Date.now() } : prev);
                   onToast({ title:`${approved.length} place${approved.length>1?"s":""} updated`, status:"success", message: approved.map(e=>e.location).slice(0,4).join(" · ") + (approved.length > 4 ? ` +${approved.length-4} more` : "") });
@@ -23052,6 +23111,9 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
         @keyframes copilotSlideIn{0%{transform:translateX(100%);opacity:0}100%{transform:translateX(0);opacity:1}}
         @keyframes copilotPopUp{0%{opacity:0;transform:translateY(20px) scale(0.95)}100%{opacity:1;transform:translateY(0) scale(1)}}
         @keyframes copilotSlideIn{0%{opacity:0;transform:translateX(40px)}100%{opacity:1;transform:translateX(0)}}
+        [data-copilot-preview]{outline:2px solid rgba(99,102,241,0.85);outline-offset:3px;border-radius:12px;animation:copilotPreviewPulse 2.2s ease-in-out infinite;scroll-margin:80px;}
+        [data-copilot-preview="2"]{outline-width:3px;outline-color:rgba(99,102,241,1);}
+        @keyframes copilotPreviewPulse{0%,100%{box-shadow:0 0 0 3px rgba(99,102,241,0.12)}50%{box-shadow:0 0 0 7px rgba(99,102,241,0.26)}}
         @keyframes wordFadeIn{0%{opacity:0;filter:blur(2px)}100%{opacity:1;filter:blur(0)}}
         @keyframes obLetterIn{0%{opacity:0;transform:translateY(-12px);filter:blur(4px)}100%{opacity:1;transform:translateY(0);filter:blur(0)}}
         @keyframes obSubIn{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
