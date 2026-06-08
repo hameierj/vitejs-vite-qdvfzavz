@@ -6,6 +6,8 @@ import { Routes, Route, useParams, HashRouter, useNavigate } from "react-router-
 import { ICPTreeGenerator } from "./components/stages/ICPTreeGenerator";
 import { OnboardingGates } from "./components/onboarding/OnboardingGates";
 import { LaunchBoard } from "./components/launch/LaunchBoard";
+import { NarrativeView } from "./components/narrative/NarrativeView";
+import { callClaude as callClaudeLib } from "./lib/callClaude";
 import { InitialResearchBrief } from "./components/onboarding/InitialResearchBrief";
 import { ICPScoringMatrix } from "./components/onboarding/ICPScoringMatrix";
 import { CampaignPlanningBoard } from "./components/onboarding/CampaignPlanningBoard";
@@ -18788,6 +18790,7 @@ function AppMain() {
   const stagePollKickRef = useRef<() => void>(() => {});
   // When set, the Copilot focuses refinements on a specific onboarding gate.
   const [copilotScope, setCopilotScope] = useState<string>("");
+  const [narrativeGenerating, setNarrativeGenerating] = useState(false);
   const lpPollKickRef = useRef<() => void>(() => {});
   const [icpScoringState, setIcpScoringState] = useState<"idle"|"scoring"|"done">("idle");
   const [campaignPlanIcp, setCampaignPlanIcp] = useState<any>(null);
@@ -19026,7 +19029,7 @@ function AppMain() {
     const savedConf = saved?.companyConf ?? {};
     setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
     // Don't override onboarding view — it was intentionally set for new/empty workspaces
-    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(prev) ? prev : "company");
+    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(prev) ? prev : "company");
     setEditingId(null);
     // Detect an in-flight LaunchPad job for this workspace synchronously so
     // the page shows the running state instead of flashing the empty form
@@ -19264,6 +19267,7 @@ function AppMain() {
         sequence: Array.isArray(c.sequence) ? c.sequence : [],
         status: "active",
         source: "launch",
+        _compliance: c.compliance || null,
         createdAt: new Date().toISOString(),
       };
       if (persona?.data) {
@@ -21801,6 +21805,32 @@ Return ONLY valid JSON:
     });
   };
 
+  // ── Narrative layer: AI-written executive summary of the program state ──
+  const handleGenerateNarrative = async () => {
+    setNarrativeGenerating(true);
+    try {
+      const cd: any = companyData || {};
+      const active = (campaigns || []).filter((c: any) => c.status === "active");
+      const working = (campaigns || []).filter((c: any) => c.performance?.metrics?.sent)
+        .map((c: any) => { const m = c.performance.metrics; return `${c.name}: ${m.sent} sent, ${m.allReplies || 0} replies, ${m.meetings || 0} meetings`; });
+      const waves = cd._launchPlan?.emailWaves || [];
+      const nextWave = [...waves].sort((a: any, b: any) => (a.rank || 99) - (b.rank || 99)).find((w: any) => w.status !== "finalized" && w.status !== "active");
+      const ctx = `COMPANY: ${cd.co_name || activeWorkspace?.name || ""} — ${cd.co_pitch || ""}
+PERSONAS: ${(icps || []).length}  PRODUCTS: ${(products || []).length}
+ACTIVE CAMPAIGNS: ${active.length} (${active.filter((c: any) => c.channel === "email").length} email, ${active.filter((c: any) => c.channel === "linkedin").length} LinkedIn)
+PERFORMANCE: ${working.length ? working.slice(0, 8).join("; ") : "none reported yet"}
+NEXT ICP TO LAUNCH: ${nextWave ? `${nextWave.icpName} (${nextWave.campaignType})` : "none / all active"}
+TOP ICPs: ${(cd._icpScoringResult?.icps || []).slice(0, 5).map((s: any) => `${s.icpName} (${s.weightedScore})`).join(", ")}`;
+      const prompt = `Write a concise executive narrative (4-6 sentences, plain prose, no bullets) for a B2B outreach program. Cover: what's running now, what's working (or that it's early), and where the strategy is headed next. Be specific and grounded ONLY in this data — do not invent metrics.\n\n${ctx}`;
+      const text = await callClaudeLib(prompt, "You are a GTM strategist writing a crisp status narrative for the account owner. No filler, no hype.", 700, "sonnet");
+      setCompanyData((prev: any) => ({ ...prev, _narrativeSummary: text, _narrativeSummaryAt: new Date().toISOString() }));
+    } catch (e: any) {
+      addToast({ title: "Narrative failed", status: "error", message: e?.message || String(e) });
+    } finally {
+      setNarrativeGenerating(false);
+    }
+  };
+
   const handleCopyIntakeLink = () => {
     const token = wsShareToken;
     if (!token) { addToast({ title:"No intake link available", status:"error", message:"Workspace not found in database. Re-open this account and try again." }); return; }
@@ -23015,6 +23045,18 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                     <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="launch"?700:500, color:view==="launch"?C2.text:C2.textSoft }}>Launch</span>
                   </button>
 
+                  {/* Narrative (Flow narrative layer) */}
+                  <button onClick={()=>guardedNav(()=>setView("narrative"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="narrative" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                    onMouseEnter={e=>{ if(view!=="narrative")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="narrative")(e.currentTarget as HTMLButtonElement).style.background=view==="narrative"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="narrative"?C2.accent:C2.muted }}>📖</span>
+                    <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="narrative"?700:500, color:view==="narrative"?C2.text:C2.textSoft }}>Narrative</span>
+                  </button>
+
                   {/* RTS Leads */}
                   {(
                     <button onClick={()=>guardedNav(()=>setView("rtsleads"))}
@@ -23065,12 +23107,12 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                     <button onClick={()=>guardedNav(()=>setView("onboarding-hub"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
-                        background: ["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view) ? `${C2.accent}14` : "transparent",
+                        background: ["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view) ? `${C2.accent}14` : "transparent",
                         cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view))(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view)?C2.accent:C2.muted }}>◉</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view)?700:500, color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view)?C2.text:C2.textSoft }}>Onboarding Hub</span>
+                      onMouseEnter={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view))(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view)?C2.accent:C2.muted }}>◉</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view)?700:500, color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative"].includes(view)?C2.text:C2.textSoft }}>Onboarding Hub</span>
                     </button>
                   )}
 
@@ -23438,7 +23480,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch","narrative"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch","narrative"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch","narrative"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -25976,6 +26018,21 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       return c;
                     }} />
                 </div>
+              </div>
+            )}
+
+            {view==="narrative" && (
+              <div style={{ position:"absolute" as const, inset:0, overflow:"auto", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <NarrativeView
+                  companyData={companyData}
+                  campaigns={campaigns}
+                  icps={icps}
+                  products={products}
+                  perfLogs={perfLogs}
+                  generating={narrativeGenerating}
+                  onGenerateSummary={handleGenerateNarrative}
+                  onNavigate={(v) => setView(v)}
+                />
               </div>
             )}
 

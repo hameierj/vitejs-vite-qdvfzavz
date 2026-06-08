@@ -40,6 +40,56 @@ const MERGE_TAG_RULES = `B2B ROCKET MERGE TAG RULES (strict — platform-substit
 
 function uid(): string { return crypto.randomUUID(); }
 
+// ── Compliance layer: spam-word scan + spintax application (deterministic) ──
+const SPAM_WORDS = [
+  "free", "guarantee", "guaranteed", "click here", "buy now", "order now", "act now",
+  "limited time", "risk-free", "risk free", "100%", "cash", "winner", "urgent", "cheap",
+  "discount", "no obligation", "no cost", "special offer", "special promotion", "amazing",
+  "congratulations", "exclusive deal", "earn money", "make money", "double your", "increase sales",
+  "this isn't spam", "best price", "lowest price", "money back", "incredible deal",
+];
+// Common phrases → spintax variants, applied once for sending-platform variation.
+const SPINTAX_MAP: [RegExp, string][] = [
+  [/\bHi\b/g, "{Hi|Hey|Hello}"],
+  [/\bHey\b/g, "{Hey|Hi|Hello}"],
+  [/\bThanks\b/g, "{Thanks|Thank you|Appreciate it}"],
+  [/\bI wanted to\b/gi, "{I wanted to|I was hoping to|I'd like to}"],
+  [/\bquick question\b/gi, "{quick question|quick one|fast question}"],
+  [/\bLet me know\b/g, "{Let me know|Curious to hear|Keen to hear}"],
+  [/\breach out\b/gi, "{reach out|get in touch|connect}"],
+  [/\bworth a chat\b/gi, "{worth a chat|worth a quick call|open to a chat}"],
+  [/\bmakes sense\b/gi, "{makes sense|is worth exploring|could be a fit}"],
+];
+
+function applySpintax(text: string): string {
+  if (!text || text.includes("{")) return text; // skip if already spintaxed
+  let out = text;
+  for (const [re, rep] of SPINTAX_MAP) {
+    let applied = false;
+    out = out.replace(re, (m) => { if (applied) return m; applied = true; return rep; }); // once per phrase
+  }
+  return out;
+}
+function scanSpam(text: string): string[] {
+  const lower = (text || "").toLowerCase();
+  return SPAM_WORDS.filter((w) => lower.includes(w));
+}
+function enforceCompliance(steps: any[], channel: string): { steps: any[]; spamFlags: string[] } {
+  const flags = new Set<string>();
+  const out = steps.map((s) => {
+    const subj = s.subject || "";
+    const body = s.body || "";
+    scanSpam(subj).forEach((w) => flags.add(w));
+    scanSpam(body).forEach((w) => flags.add(w));
+    // Spintax applies to email subject + body for deliverability variation.
+    if (channel === "email") {
+      return { ...s, subject: applySpintax(subj), body: applySpintax(body) };
+    }
+    return s;
+  });
+  return { steps: out, spamFlags: [...flags] };
+}
+
 async function readWs(sb: SupabaseClient, wsId: string): Promise<any> {
   try {
     const { data } = await sb.from("app_data").select("value").eq("key", WS_KEY(wsId)).single();
@@ -230,9 +280,10 @@ async function runGenerate(sb: SupabaseClient, anthropicKey: string, wsId: strin
       if (!icp) return null;
       try {
         const parsed = parseJSON(await callClaude(anthropicKey, linkedinArcPrompt(cd, icp), 2500));
+        const { steps, spamFlags } = enforceCompliance(toSequence(parsed, "linkedin"), "linkedin");
         return { channel: "linkedin", personaId: icp.id, accountIndex: a.accountIndex, goalType: "start_conversation",
           name: `${icp.name} — LinkedIn (Acct ${a.accountIndex})`, goal: `AI-SDR conversation arc: connect → open → uncover → offer call`,
-          sequence: toSequence(parsed, "linkedin") };
+          sequence: steps, compliance: { spintaxApplied: false, spamFlags, scannedAt: new Date().toISOString() } };
       } catch (e) { console.error("li arc failed:", e); return null; }
     }))).filter(Boolean);
     await appendLog(sb, wsId, `Generated ${campaigns.length} LinkedIn campaigns`);
@@ -253,9 +304,11 @@ async function runGenerate(sb: SupabaseClient, anthropicKey: string, wsId: strin
     if (!product) return null;
     try {
       const parsed = parseJSON(await callClaude(anthropicKey, emailSequencePrompt(cd, icp, product, wave.campaignType), 4000));
+      const { steps, spamFlags } = enforceCompliance(toSequence(parsed, "email"), "email");
       return { channel: "email", personaId: icp.id, productId: product.id, goalType: TYPE_TO_GOAL[wave.campaignType] || "start_conversation",
         campaignType: wave.campaignType, name: `${icp.name} × ${product.name} — ${wave.campaignType}`,
-        goal: `${wave.campaignType} campaign for ${icp.name}`, sequence: toSequence(parsed, "email") };
+        goal: `${wave.campaignType} campaign for ${icp.name}`, sequence: steps,
+        compliance: { spintaxApplied: true, spamFlags, scannedAt: new Date().toISOString() } };
     } catch (e) { console.error("email seq failed:", e); return null; }
   }))).filter(Boolean);
   await appendLog(sb, wsId, `Generated ${campaigns.length} email campaigns`);
