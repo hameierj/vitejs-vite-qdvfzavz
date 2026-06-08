@@ -159,11 +159,33 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
     return { name: full, firstName: n.firstName || parts[0] || "", lastName: n.lastName || parts.slice(1).join(" ") || "", percent, allocation: Math.round(share * mailboxCount) };
   });
 
+  // ── Explicit mailbox list: assign senders across domains by their allocation ──
+  const senderSeq: any[] = [];
+  if (mailboxNames.length) {
+    for (const n of mailboxNames) for (let i = 0; i < n.allocation; i++) senderSeq.push(n);
+    while (senderSeq.length < mailboxCount) senderSeq.push(mailboxNames[senderSeq.length % mailboxNames.length]);
+  }
+  const localPart = (sender: any, variantIdx: number): string => {
+    const f = String(sender?.firstName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const l = String(sender?.lastName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const opts = l ? [f, `${f}.${l}`, `${f}${l[0]}`, `${f[0]}${l}`] : [f || "hello", `${f || "hello"}1`, `${f || "team"}`, `${f || "hi"}`];
+    return opts[variantIdx % opts.length] || `mailbox${variantIdx}`;
+  };
+  const mailboxes: any[] = [];
+  let si = 0;
+  for (const d of suggestedDomains) {
+    for (let m = 0; m < MAILBOXES_PER_DOMAIN && mailboxes.length < mailboxCount; m++) {
+      const sender = senderSeq[si++] || mailboxNames[0] || { firstName: brand, lastName: "", name: brand };
+      mailboxes.push({ address: `${localPart(sender, m)}@${d.full}`, domain: d.full, senderName: sender.name || `${sender.firstName} ${sender.lastName}`.trim() });
+    }
+  }
+
   const dfySetup = {
     ...existing,
     tlds,
     domainCount,
     mailboxCount,
+    mailboxes,
     mailboxesPerDomain: MAILBOXES_PER_DOMAIN,
     customAmount: sizingBasis === "user_specified",
     primaryWebsite,

@@ -61,6 +61,7 @@ export function OnboardingGates(props: Props) {
   const noteFor = (stage: StageKey): string => ((cd?._gateNotes || {})[stage]) || "";
   const gates = (cd?._gates || {}) as Record<string, any>;
   const [domain, setDomain] = useState<string>(cd?.co_website || "");
+  const [showInfraAll, setShowInfraAll] = useState(false);
 
   // ── Artifact presence per gate ──
   const hasArtifact = (gate: TrackAGate): boolean => {
@@ -258,6 +259,7 @@ export function OnboardingGates(props: Props) {
                 ))}
                 {(dfySetup.suggestedDomains || []).length > 8 && <span style={{ fontSize: 11, color: C.muted }}>+{(dfySetup.suggestedDomains || []).length - 8}</span>}
               </div>
+              <LinkBtn label={`View all ${(dfySetup.suggestedDomains || []).length} domains · ${(dfySetup.mailboxes || []).length || dfySetup.mailboxCount || 0} mailboxes →`} onClick={() => setShowInfraAll(true)} />
             </PreviewBox>
           ) : null}
           actions={
@@ -273,6 +275,46 @@ export function OnboardingGates(props: Props) {
             />
           }
         />
+      </div>
+
+      {showInfraAll && <InfraAllModal dfySetup={dfySetup} onClose={() => setShowInfraAll(false)} />}
+    </div>
+  );
+}
+
+// Full list of every generated domain and mailbox.
+function InfraAllModal({ dfySetup, onClose }: { dfySetup: any; onClose: () => void }) {
+  const domains: any[] = dfySetup?.suggestedDomains || [];
+  const mailboxes: any[] = dfySetup?.mailboxes || [];
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(13,15,26,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.canvas, borderRadius: 14, width: "min(900px, 96vw)", maxHeight: "88vh", display: "flex", flexDirection: "column" as const, fontFamily: head, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Domains & Mailboxes</div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{domains.length} domains · {mailboxes.length} mailboxes</div>
+          </div>
+          <button onClick={onClose} style={{ border: "none", background: C.surface, color: C.textSoft, fontSize: 18, lineHeight: 1, cursor: "pointer", borderRadius: 7, padding: "6px 11px" }}>×</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 0, overflow: "hidden", minHeight: 0, flex: 1 }}>
+          <div style={{ borderRight: `1px solid ${C.border}`, overflow: "auto", padding: "12px 16px" }}>
+            <div style={{ fontSize: 10.5, fontFamily: mono, fontWeight: 700, color: C.muted, marginBottom: 8 }}>DOMAINS ({domains.length})</div>
+            {domains.map((d: any, i: number) => (
+              <div key={i} style={{ fontSize: 12, fontFamily: mono, color: C.text, padding: "3px 0", borderBottom: `1px solid ${C.faint}` }}>{d.full || d.domain}</div>
+            ))}
+          </div>
+          <div style={{ overflow: "auto", padding: "12px 16px" }}>
+            <div style={{ fontSize: 10.5, fontFamily: mono, fontWeight: 700, color: C.muted, marginBottom: 8 }}>MAILBOXES ({mailboxes.length})</div>
+            {mailboxes.length === 0 ? (
+              <div style={{ fontSize: 12, color: C.muted }}>No explicit mailboxes — regenerate to produce the full list.</div>
+            ) : mailboxes.map((m: any, i: number) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "3px 0", borderBottom: `1px solid ${C.faint}` }}>
+                <span style={{ fontFamily: mono, color: C.text }}>{m.address}</span>
+                {m.senderName && <span style={{ color: C.muted, flexShrink: 0 }}>{m.senderName}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
