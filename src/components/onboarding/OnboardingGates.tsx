@@ -105,7 +105,6 @@ export function OnboardingGates(props: Props) {
           <Row k="Company" v={b.companyOverview?.name || cd?.co_name || "—"} />
           <Row k="Products found" v={String((b.productsServices || []).length)} />
           <Row k="ICP hypotheses" v={String((b.icpHypotheses || []).length)} />
-          <LinkBtn label="View full brief →" onClick={() => onNavigate("research-brief")} />
         </PreviewBox>
       );
     }
@@ -117,7 +116,6 @@ export function OnboardingGates(props: Props) {
             <div key={p.id} style={{ fontSize: 12.5, color: C.text, padding: "2px 0" }}>• {p.name || "Untitled"}</div>
           ))}
           {products.length > 5 && <div style={{ fontSize: 11.5, color: C.muted }}>+{products.length - 5} more</div>}
-          <LinkBtn label="View products →" onClick={() => onNavigate("products")} />
         </PreviewBox>
       );
     }
@@ -135,7 +133,6 @@ export function OnboardingGates(props: Props) {
               {s.scope === "cross_product" && <span style={{ marginLeft: 6, fontSize: 9.5, fontFamily: mono, color: C.blue, background: C.blueLo, padding: "1px 5px", borderRadius: 3 }}>CROSS-PRODUCT</span>}
             </div>
           ))}
-          <LinkBtn label="View scoring →" onClick={() => onNavigate("icp-scoring")} />
         </PreviewBox>
       );
     }
@@ -147,11 +144,19 @@ export function OnboardingGates(props: Props) {
           {enriched.slice(0, 6).map((p: any) => (
             <div key={p.id} style={{ fontSize: 12.5, color: C.text, padding: "2px 0" }}>• {p.name}</div>
           ))}
-          <LinkBtn label="View personas →" onClick={() => onNavigate("icp-tree")} />
         </PreviewBox>
       );
     }
     return null;
+  };
+
+  const viewActionFor = (gate: TrackAGate): { label: string; onClick: () => void } | undefined => {
+    switch (gate) {
+      case "companyResearch": return { label: "View full brief", onClick: () => onNavigate("research-brief") };
+      case "products": return { label: "View products", onClick: () => onNavigate("products") };
+      case "tamIcp": return { label: "View scoring", onClick: () => onNavigate("icp-scoring") };
+      case "personas": return { label: "View personas", onClick: () => onNavigate("icp-tree") };
+    }
   };
 
   return (
@@ -195,6 +200,7 @@ export function OnboardingGates(props: Props) {
               actions={
                 <GateActions
                   status={st}
+                  viewAction={(st === "review" || st === "confirmed") ? viewActionFor(g.id) : undefined}
                   onGenerate={() => g.id === "companyResearch" ? onRunResearch(domain.trim()) : onStartStage(g.stage)}
                   generateLabel={g.id === "companyResearch" ? "Run Research" : `Generate`}
                   canGenerate={g.id === "companyResearch" ? !!domain.trim() : true}
@@ -259,14 +265,15 @@ function LinkBtn({ label, onClick }: { label: string; onClick: () => void }) {
   return <button onClick={onClick} style={{ marginTop: 8, background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: head, padding: 0 }}>{label}</button>;
 }
 
-function GateActions({ status, onGenerate, generateLabel, canGenerate, onRefine, onConfirm, onRegenerate, confirmLabel = "Confirm & Continue", hideRefineWhenConfirmed = false }: {
-  status: GateStatus; onGenerate: () => void; generateLabel: string; canGenerate: boolean;
+function GateActions({ status, viewAction, onGenerate, generateLabel, canGenerate, onRefine, onConfirm, onRegenerate, confirmLabel = "Confirm & Continue", hideRefineWhenConfirmed = false }: {
+  status: GateStatus; viewAction?: { label: string; onClick: () => void }; onGenerate: () => void; generateLabel: string; canGenerate: boolean;
   onRefine: () => void; onConfirm: () => void; onRegenerate: () => void; confirmLabel?: string; hideRefineWhenConfirmed?: boolean;
 }) {
+  // Full-width button so the right-hand stack aligns top-to-bottom.
   const btn = (label: string, onClick: () => void, kind: "primary" | "ghost" | "confirm", disabled = false) => (
     <button onClick={onClick} disabled={disabled}
       style={{
-        padding: "8px 14px", borderRadius: 7, fontSize: 12, fontWeight: 700, fontFamily: head, whiteSpace: "nowrap" as const,
+        width: "100%", padding: "8px 14px", borderRadius: 7, fontSize: 12, fontWeight: 700, fontFamily: head, whiteSpace: "nowrap" as const,
         cursor: disabled ? "default" : "pointer",
         border: kind === "ghost" ? `1px solid ${C.border}` : "none",
         background: kind === "primary" ? (disabled ? C.faint : C.accent) : kind === "confirm" ? (disabled ? C.faint : C.green) : C.canvas,
@@ -274,24 +281,28 @@ function GateActions({ status, onGenerate, generateLabel, canGenerate, onRefine,
         boxShadow: !disabled && kind !== "ghost" ? `0 2px 8px ${(kind === "confirm" ? C.green : C.accent)}30` : "none",
       }}>{label}</button>
   );
+  const Stack = ({ children }: { children: any }) => (
+    <div style={{ display: "flex", flexDirection: "column" as const, gap: 6, alignItems: "stretch", width: 184 }}>{children}</div>
+  );
   if (status === "locked") return <span style={{ fontSize: 11, color: C.muted, fontFamily: mono }}>Locked</span>;
   if (status === "generating") return <span style={{ fontSize: 11.5, color: C.accent, fontFamily: mono, fontWeight: 700 }}>Generating…</span>;
-  if (status === "idle") return <div style={{ display: "flex", gap: 8 }}>{btn(generateLabel, onGenerate, "primary", !canGenerate)}</div>;
+  if (status === "idle") return <Stack>{btn(generateLabel, onGenerate, "primary", !canGenerate)}</Stack>;
+  // Order top→bottom: View · Refine · Regenerate · Confirm
   if (status === "review") return (
-    <div style={{ display: "flex", flexDirection: "column" as const, gap: 6, alignItems: "flex-end" }}>
+    <Stack>
+      {viewAction && btn(viewAction.label, viewAction.onClick, "ghost")}
+      {btn("Refine in chat", onRefine, "ghost")}
+      {btn("Regenerate", onRegenerate, "ghost")}
       {btn(confirmLabel, onConfirm, "confirm")}
-      <div style={{ display: "flex", gap: 6 }}>
-        {btn("Refine in chat", onRefine, "ghost")}
-        {btn("Regenerate", onRegenerate, "ghost")}
-      </div>
-    </div>
+    </Stack>
   );
   // confirmed
   return (
-    <div style={{ display: "flex", flexDirection: "column" as const, gap: 6, alignItems: "flex-end" }}>
-      <span style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.green, background: C.greenLo, padding: "3px 8px", borderRadius: 4 }}>CONFIRMED ✓</span>
+    <Stack>
+      {viewAction && btn(viewAction.label, viewAction.onClick, "ghost")}
       {!hideRefineWhenConfirmed && btn("Refine in chat", onRefine, "ghost")}
-    </div>
+      <span style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.green, background: C.greenLo, padding: "5px 8px", borderRadius: 4, textAlign: "center" as const }}>CONFIRMED ✓</span>
+    </Stack>
   );
 }
 
