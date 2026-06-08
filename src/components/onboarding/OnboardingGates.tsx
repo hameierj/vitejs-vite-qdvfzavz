@@ -34,6 +34,8 @@ interface Props {
   onConfirmGate: (gateId: TrackAGate | "infra") => void;
   onRefine: (scopeLabel: string) => void;
   onSetGateNote: (stage: StageKey, text: string) => void;
+  infraInputs: any;
+  onSetInfraInputs: (patch: any) => void;
   onNavigate: (view: string) => void;
 }
 
@@ -55,7 +57,7 @@ const NEXT_GATE: Record<TrackAGate, TrackAGate | null> = {
 
 export function OnboardingGates(props: Props) {
   const { companyData: cd, products, icps, dfySetup, stageJobs, researchState, researchLog,
-          onRunResearch, onStartStage, onConfirmGate, onRefine, onSetGateNote, onNavigate } = props;
+          onRunResearch, onStartStage, onConfirmGate, onRefine, onSetGateNote, infraInputs, onSetInfraInputs, onNavigate } = props;
   const noteFor = (stage: StageKey): string => ((cd?._gateNotes || {})[stage]) || "";
   const gates = (cd?._gates || {}) as Record<string, any>;
   const [domain, setDomain] = useState<string>(cd?.co_website || "");
@@ -229,14 +231,28 @@ export function OnboardingGates(props: Props) {
         <SectionLabel>TRACK B · INFRASTRUCTURE (PARALLEL)</SectionLabel>
         <GateCard
           num={"∞" as any} title="Domains & Mailboxes" status={infraState} isLast
-          desc="Sending infrastructure sized from your intake form alone — domains preselected and mailboxes allocated. Review, swap, then confirm. One-time setup: locked after confirm."
+          desc="Answer a few questions, then we generate the .com sending domains and allocate mailboxes. Review, then confirm. One-time setup: locked after confirm."
           phase={stageJobs.infra?.phase || ""} jobError={stageJobs.infra?.status === "error" ? stageJobs.infra?.error : undefined}
+          extraTop={infraState === "idle" ? (
+            <InfraConfigForm inputs={infraInputs} defaultWebsite={cd?.co_website || ""} onChange={onSetInfraInputs} />
+          ) : null}
           preview={(infraState === "review" || infraState === "confirmed") && dfySetup ? (
             <PreviewBox>
-              <Row k="Domains" v={String(dfySetup.domainCount ?? (dfySetup.suggestedDomains || []).length)} />
+              <Row k="Primary website" v={dfySetup.primaryWebsite || cd?.co_website || "—"} />
+              <Row k="Forwarding domain" v={dfySetup.forwardingDomain || "—"} />
+              <Row k="Domains (.com)" v={String(dfySetup.domainCount ?? (dfySetup.suggestedDomains || []).length)} />
               <Row k="Mailboxes" v={String(dfySetup.mailboxCount ?? "—")} />
-              {dfySetup.sizingBasis === "intake_target_volume" && dfySetup.targetMonthlyVolume && <Row k="Sized for" v={`~${dfySetup.targetMonthlyVolume}/mo`} />}
-              <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 5, marginTop: 6 }}>
+              {(dfySetup.mailboxNames || []).length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 3 }}>Sender distribution</div>
+                  {(dfySetup.mailboxNames || []).map((n: any, i: number) => (
+                    <div key={i} style={{ fontSize: 11.5, color: C.text, display: "flex", justifyContent: "space-between" }}>
+                      <span>{n.name || `${n.firstName} ${n.lastName}`}</span><span style={{ color: C.muted, fontFamily: mono }}>{n.percent}% · {n.allocation} mbx</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 5, marginTop: 8 }}>
                 {(dfySetup.suggestedDomains || []).slice(0, 8).map((d: any, i: number) => (
                   <span key={i} style={{ fontSize: 11, fontFamily: mono, color: C.textSoft, background: C.surface, padding: "2px 7px", borderRadius: 4 }}>{d.full || d.domain}</span>
                 ))}
@@ -247,7 +263,8 @@ export function OnboardingGates(props: Props) {
           actions={
             <GateActions
               status={infraState}
-              onGenerate={() => onStartStage("infra")} generateLabel="Generate Infra" canGenerate
+              onGenerate={() => onStartStage("infra")} generateLabel="Generate Infra"
+              canGenerate={!!(infraInputs.primaryWebsite || cd?.co_website)}
               onRefine={() => onRefine("Domains & Mailboxes (infrastructure)")}
               onConfirm={() => onConfirmGate("infra")}
               onRegenerate={() => onStartStage("infra")}
@@ -256,6 +273,41 @@ export function OnboardingGates(props: Props) {
             />
           }
         />
+      </div>
+    </div>
+  );
+}
+
+// Domains & Mailboxes configuration form (asked before generation).
+function InfraConfigForm({ inputs, defaultWebsite, onChange }: { inputs: any; defaultWebsite: string; onChange: (patch: any) => void }) {
+  const names: any[] = Array.isArray(inputs.mailboxNames) ? inputs.mailboxNames : [];
+  const pctTotal = names.reduce((s, n) => s + (Number(n.percent) || 0), 0);
+  const setName = (i: number, patch: any) => onChange({ mailboxNames: names.map((n, j) => j === i ? { ...n, ...patch } : n) });
+  const addName = () => onChange({ mailboxNames: [...names, { name: "", percent: 0 }] });
+  const removeName = (i: number) => onChange({ mailboxNames: names.filter((_, j) => j !== i) });
+  const inputStyle: any = { width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 12.5, fontFamily: head, color: C.text, background: C.canvas };
+  const field = (label: string, el: any) => <div><div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>{label}</div>{el}</div>;
+  const dCount = Number(inputs.domainCount) || 67;
+  return (
+    <div style={{ marginTop: 12, padding: "12px 14px", background: C.surface, borderRadius: 9, border: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: 11, fontFamily: mono, fontWeight: 700, color: C.muted, marginBottom: 10 }}>CONFIGURE · DOMAINS ARE .COM ONLY</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        {field("Primary website", <input style={inputStyle} value={inputs.primaryWebsite || ""} placeholder={defaultWebsite || "company.com"} onChange={(e) => onChange({ primaryWebsite: e.target.value })} />)}
+        {field("Forwarding domain", <input style={inputStyle} value={inputs.forwardingDomain || ""} placeholder="where domains redirect" onChange={(e) => onChange({ forwardingDomain: e.target.value })} />)}
+        {field("Number of domains", <input style={inputStyle} type="number" value={inputs.domainCount ?? ""} placeholder="67" onChange={(e) => onChange({ domainCount: e.target.value ? Number(e.target.value) : undefined })} />)}
+        {field("Number of mailboxes", <input style={inputStyle} type="number" value={inputs.mailboxCount ?? ""} placeholder={String(dCount * 3)} onChange={(e) => onChange({ mailboxCount: e.target.value ? Number(e.target.value) : undefined })} />)}
+      </div>
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 6, fontWeight: 600 }}>Mailbox sender names & % distribution</div>
+      {names.map((n, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
+          <input style={{ ...inputStyle, flex: 1 }} value={n.name || ""} placeholder="Full name (e.g. Jane Smith)" onChange={(e) => setName(i, { name: e.target.value })} />
+          <input style={{ ...inputStyle, width: 72 }} type="number" value={n.percent ?? ""} placeholder="%" onChange={(e) => setName(i, { percent: e.target.value ? Number(e.target.value) : 0 })} />
+          <button onClick={() => removeName(i)} style={{ border: "none", background: "none", color: C.muted, cursor: "pointer", fontSize: 17, padding: "0 4px", lineHeight: 1 }}>×</button>
+        </div>
+      ))}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
+        <button onClick={addName} style={{ background: "none", border: `1px dashed ${C.borderHi}`, color: C.accent, fontSize: 11.5, fontWeight: 700, fontFamily: head, cursor: "pointer", padding: "5px 10px", borderRadius: 7 }}>+ Add name</button>
+        {names.length > 0 && <span style={{ fontSize: 11, fontFamily: mono, color: pctTotal === 100 ? C.green : C.amber }}>{pctTotal}%{pctTotal !== 100 ? " — should total 100" : " ✓"}</span>}
       </div>
     </div>
   );

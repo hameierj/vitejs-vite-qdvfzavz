@@ -78,44 +78,55 @@ function generateStems(brand: string, count: number): string[] {
   return all.slice(0, count);
 }
 
-async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string): Promise<void> {
-  await appendLog(sb, wsId, "Sizing infrastructure from intake form...");
+async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, infraInputs: any = {}): Promise<void> {
+  await appendLog(sb, wsId, "Reading infrastructure configuration...");
   const ws = await readWs(sb, wsId);
   const cd = ws.companyData || {};
   const intake = cd._intakeData || {};
   const existing = ws.dfySetup || {};
+  const inp = infraInputs || {};
 
-  // ── Size mailboxes/domains from intake alone ──
+  // ── Size from explicit user answers (preferred); fall back to intake volume, then defaults ──
   const targetVolume = Number(intake.targetMonthlyVolume) || 0;
-  let mailboxCount = DEFAULT_MAILBOXES;
-  let domainCount = DEFAULT_DOMAINS;
-  if (targetVolume > 0) {
+  let mailboxCount: number;
+  let domainCount: number;
+  let sizingBasis: string;
+  if (Number(inp.domainCount) || Number(inp.mailboxCount)) {
+    mailboxCount = Number(inp.mailboxCount) || (Number(inp.domainCount) || DEFAULT_DOMAINS) * MAILBOXES_PER_DOMAIN;
+    domainCount = Number(inp.domainCount) || Math.ceil(mailboxCount / MAILBOXES_PER_DOMAIN);
+    domainCount = Math.max(1, Math.min(300, domainCount));
+    mailboxCount = Math.max(1, mailboxCount);
+    sizingBasis = "user_specified";
+  } else if (targetVolume > 0) {
     mailboxCount = Math.max(MAILBOXES_PER_DOMAIN, Math.ceil(targetVolume / (PER_MAILBOX_DAILY * WORKING_DAYS_PER_MONTH)));
     domainCount = Math.max(1, Math.min(200, Math.ceil(mailboxCount / MAILBOXES_PER_DOMAIN)));
     mailboxCount = domainCount * MAILBOXES_PER_DOMAIN;
+    sizingBasis = "intake_target_volume";
+  } else {
+    mailboxCount = DEFAULT_MAILBOXES;
+    domainCount = DEFAULT_DOMAINS;
+    sizingBasis = "default";
   }
-  await appendLog(sb, wsId, `Allocated ${domainCount} domains / ${mailboxCount} mailboxes${targetVolume ? ` for ~${targetVolume}/mo target` : " (default)"}`);
+  await appendLog(sb, wsId, `Allocating ${domainCount} domains / ${mailboxCount} mailboxes (${sizingBasis})`);
 
-  // ── Determine TLDs from intake (stored as a free-text string like ".com, .io") ──
-  const parsedTlds = String(intake.preferredTlds || "")
-    .split(/[\s,]+/).map((t: string) => t.trim().toLowerCase()).filter(Boolean)
-    .map((t: string) => (t.startsWith(".") ? t : "." + t));
-  const tlds: string[] = parsedTlds.length ? parsedTlds
-    : (existing.tlds && existing.tlds.length ? existing.tlds : [".com"]);
+  // ── Domains are .com only (per spec) ──
+  const tlds: string[] = [".com"];
+  const primaryTld = ".com";
 
-  // ── Brand word for domain stems ──
-  const website = (cd.co_website || "").replace(/https?:\/\//i, "").replace(/\/.*/, "").replace(/^www\./, "").toLowerCase();
+  // ── Brand word for domain stems — derived from the primary website answer ──
+  const primaryWebsite = String(inp.primaryWebsite || cd.co_website || "");
+  const website = primaryWebsite.replace(/https?:\/\//i, "").replace(/\/.*/, "").replace(/^www\./, "").toLowerCase();
   const hostParts = website.split(".");
   const fwdStem = (hostParts.length >= 2 ? hostParts[hostParts.length - 2] : hostParts[0] || "").replace(/[^a-z0-9]/g, "");
   const stopW = new Set(["the","and","for","inc","llc","ltd","corp","group","company","services","solutions","consulting"]);
   const nameW = (cd.co_name || "company").toLowerCase().split(/[\s,.\-&]+/).filter((w: string) => w.length >= 2 && !stopW.has(w));
   const nameJ = nameW.join("");
-  const userBrand = (intake.brandWords && String(intake.brandWords).trim()) ? String(intake.brandWords).trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+  const userBrand = (inp.brandWord && String(inp.brandWord).trim()) ? String(inp.brandWord).trim().toLowerCase().replace(/[^a-z0-9]/g, "")
+    : (intake.brandWords && String(intake.brandWords).trim()) ? String(intake.brandWords).trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
   const brand = userBrand && userBrand.length >= 3 ? userBrand
     : (fwdStem && fwdStem.length >= 3 && fwdStem.length <= 18 ? fwdStem : (nameJ.length <= 18 ? nameJ : nameW[0] || "company"));
 
   await appendLog(sb, wsId, `Generating domains around brand "${brand}"...`);
-  const primaryTld = tlds[0] || ".com";
   const stems = generateStems(brand, domainCount);
 
   // Top up with AI-generated stems if the deterministic generator falls short.
@@ -134,7 +145,19 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   }
 
   const suggestedDomains = stems.slice(0, domainCount).map((stem) => ({ domain: stem, tld: primaryTld, full: stem + primaryTld }));
-  const forwardingDomain = cd.co_website || (website ? website : "");
+  const forwardingDomain = String(inp.forwardingDomain || primaryWebsite || "");
+
+  // ── Mailbox sender names + percent distribution → allocation counts ──
+  const rawNames: any[] = Array.isArray(inp.mailboxNames) ? inp.mailboxNames.filter((n: any) => (n?.name || n?.firstName)) : [];
+  const totalPct = rawNames.reduce((s, n) => s + (Number(n.percent) || 0), 0) || 0;
+  const mailboxNames = rawNames.map((n: any) => {
+    const full = String(n.name || `${n.firstName || ""} ${n.lastName || ""}`).trim();
+    const parts = full.split(/\s+/);
+    const percent = Number(n.percent) || 0;
+    // If percents don't sum to 100, allocate proportionally to whatever was given.
+    const share = totalPct > 0 ? percent / totalPct : (rawNames.length ? 1 / rawNames.length : 0);
+    return { name: full, firstName: n.firstName || parts[0] || "", lastName: n.lastName || parts.slice(1).join(" ") || "", percent, allocation: Math.round(share * mailboxCount) };
+  });
 
   const dfySetup = {
     ...existing,
@@ -142,14 +165,15 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
     domainCount,
     mailboxCount,
     mailboxesPerDomain: MAILBOXES_PER_DOMAIN,
-    customAmount: targetVolume > 0,
+    customAmount: sizingBasis === "user_specified",
+    primaryWebsite,
     targetMonthlyVolume: targetVolume || null,
     forwardingDomain,
     forwardingVerified: existing.forwardingVerified ?? null,
-    mailboxNames: Array.isArray(existing.mailboxNames) ? existing.mailboxNames : [],
+    mailboxNames,
     suggestedDomains,
     approvedDomains: suggestedDomains.map((d) => d.domain), // preselect all
-    sizingBasis: targetVolume > 0 ? "intake_target_volume" : "default",
+    sizingBasis,
     generatedAt: new Date().toISOString(),
   };
 
@@ -163,7 +187,7 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   try {
-    const { workspaceId } = await req.json() as { workspaceId?: string };
+    const { workspaceId, infraInputs } = await req.json() as { workspaceId?: string; infraInputs?: any };
     if (!workspaceId) return new Response(JSON.stringify({ error: "workspaceId required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     if (!supabaseUrl || !supabaseKey) return new Response(JSON.stringify({ error: "server not configured" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -173,7 +197,7 @@ serve(async (req: Request) => {
 
     // @ts-ignore — EdgeRuntime is available in the Supabase Deno runtime
     EdgeRuntime.waitUntil((async () => {
-      try { await runPipeline(sb, anthropicKey, workspaceId); }
+      try { await runPipeline(sb, anthropicKey, workspaceId, infraInputs || {}); }
       catch (err) {
         console.error("infra pipeline failed:", err);
         await writeJob(sb, workspaceId, { status: "error", error: String((err as Error)?.message ?? err), completedAt: new Date().toISOString() });

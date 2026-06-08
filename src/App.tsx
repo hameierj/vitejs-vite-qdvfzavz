@@ -19357,19 +19357,8 @@ function AppMain() {
     return () => { cancelled = true; if (timerId) clearTimeout(timerId); stagePollKickRef.current = () => {}; };
   }, [(activeWorkspace as any)?.id]);
 
-  // ── Track B: kick infrastructure generation when the intake form is
-  // submitted (sized from intake alone, fully parallel to Track A research). ──
-  useEffect(() => {
-    if (!activeWorkspace) return;
-    const cd = companyData as any;
-    if (!cd?._intakeSubmittedAt) return;
-    if (cd?._gates?.infra?.status === "confirmed") return;
-    if (dfySetup?.suggestedDomains?.length || dfySetup?.generatedAt) return;
-    const j = stageJobs.infra;
-    if (j?.status === "running" || j?.status === "done") return;
-    startStage("infra");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(activeWorkspace as any)?.id, (companyData as any)?._intakeSubmittedAt]);
+  // Track B (Domains & Mailboxes) is no longer auto-kicked: the user answers a
+  // short configuration form on the infra gate, then triggers generation.
 
   // ── LaunchPad job: poll job state for the active workspace. The
   // launchpad-run edge function executes under EdgeRuntime.waitUntil so it
@@ -21756,7 +21745,9 @@ Return ONLY valid JSON:
     setStageJobs((prev) => ({ ...prev, [stage]: { status: "running", phase: "Starting...", log: ["Starting..."] } }));
     try {
       const userContext = ((companyData as any)?._gateNotes || {})[stage] || "";
-      const { error } = await supabase.functions.invoke(fn, { body: { workspaceId: wsId, userContext } });
+      const body: any = { workspaceId: wsId, userContext };
+      if (stage === "infra") body.infraInputs = (companyData as any)?._infraInputs || {};
+      const { error } = await supabase.functions.invoke(fn, { body });
       if (error) throw error;
       stagePollKickRef.current();
     } catch (e: any) {
@@ -21789,6 +21780,11 @@ Return ONLY valid JSON:
   // Per-gate optional guidance the user gives the AI before generating.
   const handleSetGateNote = (stage: string, text: string) => {
     setCompanyData((prev: any) => ({ ...prev, _gateNotes: { ...(prev?._gateNotes || {}), [stage]: text } }));
+  };
+
+  // Domains & Mailboxes configuration answers (collected before generating infra).
+  const handleSetInfraInputs = (patch: any) => {
+    setCompanyData((prev: any) => ({ ...prev, _infraInputs: { ...(prev?._infraInputs || {}), ...patch } }));
   };
 
   // ── Flow 2: launch orchestration ──
@@ -28501,6 +28497,8 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   onConfirmGate={(gate) => handleConfirmGate(gate)}
                   onRefine={(scope) => handleRefineGate(scope)}
                   onSetGateNote={(stage, text) => handleSetGateNote(stage, text)}
+                  infraInputs={(companyData as any)?._infraInputs || {}}
+                  onSetInfraInputs={(patch) => handleSetInfraInputs(patch)}
                   onNavigate={(v) => setView(v)}
                 />
               </div>
