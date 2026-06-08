@@ -401,7 +401,17 @@ function GateActions({ status, viewAction, onGenerate, generateLabel, canGenerat
     <div style={{ display: "flex", flexDirection: "column" as const, gap: 6, alignItems: "stretch", width: 184 }}>{children}</div>
   );
   if (status === "locked") return <span style={{ fontSize: 11, color: C.muted, fontFamily: mono }}>Locked</span>;
-  if (status === "generating") return <span style={{ fontSize: 11.5, color: C.accent, fontFamily: mono, fontWeight: 700 }}>Generating…</span>;
+  if (status === "generating") return (
+    <Stack>
+      <span style={{ fontSize: 11.5, color: C.accent, fontFamily: mono, fontWeight: 700, textAlign: "center" as const }}>Generating…</span>
+      {/* Escape hatch: if a run stalls (e.g. the server was killed mid-job), let the user re-kick it. */}
+      <button onClick={onRegenerate}
+        style={{ width: "100%", padding: "6px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600, fontFamily: head,
+          border: `1px solid ${C.border}`, background: C.canvas, color: C.textSoft, cursor: "pointer" }}>
+        Restart
+      </button>
+    </Stack>
+  );
   if (status === "idle") return <Stack>{btn(generateLabel, onGenerate, "primary", !canGenerate)}</Stack>;
   // Order top→bottom: View · Refine · Regenerate · Confirm
   if (status === "review") return (
