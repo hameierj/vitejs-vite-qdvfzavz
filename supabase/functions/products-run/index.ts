@@ -96,7 +96,7 @@ async function callClaude(anthropicKey: string, prompt: string, tokens: number, 
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: tokens, system, messages: [{ role: "user", content: prompt }] }),
-        signal: AbortSignal.timeout(Math.min(110000, remaining)), // a full profile (40+ fields) can take 60-90s
+        signal: AbortSignal.timeout(Math.min(80000, remaining)), // a full profile finishes in ~30-60s; 80s catches a hang without eating the budget
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
         lastErr = `Anthropic HTTP ${r.status}`;
@@ -183,7 +183,7 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
     icpHints ? `Target buyers / ICP hypotheses:\n${icpHints}` : "",
   ].filter(Boolean).join("\n");
 
-  const genProduct = async (p: any) => {
+  const genProduct = async (p: any, pDeadline: number) => {
     const prompt = `Create a COMPLETE product profile for a SPECIFIC company's product. Fill EVERY field — no empty values. Be specific and actionable, and stay true to ${companyName}'s actual business. Do NOT produce generic SaaS boilerplate.
 
 ${PRODUCT_NAMING}
@@ -207,13 +207,13 @@ IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) o
     // overloads internally (bounded by the shared deadline), so we don't compound retries here.
     let why = "no attempts ran (out of time before first call)";
     for (let attempt = 1; attempt <= 3; attempt++) {
-      if (Date.now() + 5000 > deadline) { why = "deadline reached before this product"; break; }
+      if (Date.now() + 5000 > pDeadline) { why = "ran out of time budget for this product"; break; }
       try {
-        const raw = await callClaude(anthropicKey, prompt, 6000, deadline);
+        const raw = await callClaude(anthropicKey, prompt, 5000, pDeadline);
         const parsed = parseJSON(raw);
         const filledCount = Object.values(parsed).filter((v) => v && String(v).trim()).length;
         // A real profile fills many fields; if we only got a couple, treat as a bad parse and retry.
-        if (filledCount < 6 && attempt < 3 && Date.now() + 5000 < deadline) { why = `model returned only ${filledCount} fields`; console.warn(`product "${p.name}" attempt ${attempt}: ${why}, retrying`); continue; }
+        if (filledCount < 6 && attempt < 3 && Date.now() + 5000 < pDeadline) { why = `model returned only ${filledCount} fields`; console.warn(`product "${p.name}" attempt ${attempt}: ${why}, retrying`); continue; }
         return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())) };
       } catch (err) {
         why = String((err as Error)?.message ?? err);
@@ -230,8 +230,12 @@ IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) o
   // capacity and the deadline budget, so every profile comes back complete.
   const results: any[] = [];
   for (let i = 0; i < seeds.length; i++) {
+    // Fair-share budget: divide the time left evenly among the products still to do, so a slow or
+    // retry-heavy product can't consume the whole deadline and starve the ones after it.
+    const productsLeft = seeds.length - i;
+    const pDeadline = Date.now() + Math.max(70000, Math.floor((deadline - Date.now()) / productsLeft));
     await appendLog(sb, wsId, `Building product ${i + 1} of ${seeds.length}: ${seeds[i].name || "Untitled"}...`);
-    results.push(await genProduct(seeds[i]));
+    results.push(await genProduct(seeds[i], Math.min(pDeadline, deadline)));
   }
   const products = results.filter((r: any) => r?.name);
 
