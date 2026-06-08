@@ -100,19 +100,49 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
 
   await appendLog(sb, wsId, `Building ${seeds.length} product profile(s)...`);
 
+  // Distill the confirmed research brief into a rich company context block. The gated flow
+  // populates _initialResearchBrief (NOT the co_* profile fields), so reading co_pitch /
+  // co_competitors here yields nothing — every profile then comes out generic. Feed the brief
+  // directly so products-run has the same depth the fully-automated launchpad flow had.
+  const co = brief.companyOverview || {};
+  const cp = brief.competitivePositioning || {};
+  const valueProps = Array.isArray(brief.valuePropositions)
+    ? brief.valuePropositions.map((v: any) => `- ${v.claim || v}${v.evidence ? ` (${v.evidence})` : ""}`).join("\n")
+    : "";
+  const icpHints = Array.isArray(brief.icpHypotheses)
+    ? brief.icpHypotheses.map((h: any) => `- ${h.name}${h.rationale ? `: ${h.rationale}` : ""}`).join("\n")
+    : "";
+  const companyName = co.name || cd.co_name || "the company";
+  const businessModel = co.businessModel || cd.co_pitch || "";
+  const category = cp.category || cd.co_category || cd.co_industry || "";
+  const competitors = (Array.isArray(cp.mainCompetitors) ? cp.mainCompetitors.join(", ") : "") || cd.co_competitors || "";
+  const differentiators = (Array.isArray(cp.differentiators) ? cp.differentiators.join("; ") : "") || cd.co_diff || "";
+  const briefContext = [
+    `COMPANY (from the confirmed company research — ground every field in this; do NOT genericize):`,
+    `Name: ${companyName}${co.size ? ` · Size: ${co.size}` : ""}${co.stage ? ` · Stage: ${co.stage}` : ""}`,
+    businessModel ? `Business model: ${businessModel}` : "",
+    category ? `Category: ${category}` : "",
+    competitors ? `Main competitors: ${competitors}` : "",
+    differentiators ? `Key differentiators: ${differentiators}` : "",
+    valueProps ? `Value propositions:\n${valueProps}` : "",
+    icpHints ? `Target buyers / ICP hypotheses:\n${icpHints}` : "",
+  ].filter(Boolean).join("\n");
+
   const products = (await Promise.all(seeds.map(async (p: any) => {
-    const prompt = `Create a COMPLETE product profile. Fill EVERY field — no empty values. Be specific and actionable.
+    const prompt = `Create a COMPLETE product profile for a SPECIFIC company's product. Fill EVERY field — no empty values. Be specific and actionable, and stay true to ${companyName}'s actual business. Do NOT produce generic SaaS boilerplate.
 
 ${PRODUCT_NAMING}
 
-Product: ${p.name}
+${briefContext}
+
+THIS PRODUCT (expand into a full profile — keep it specific to ${companyName}):
+Name: ${p.name}
 Description: ${p.description || ""}
 Target buyer: ${p.targetBuyer || ""}
 Differentiator: ${p.differentiator || ""}
-Company: ${cd.co_name || ""} (${cd.co_industry || ""})
-Company value prop: ${cd.co_pitch || ""}
-Competitors: ${cd.co_competitors || ""}
 ${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily):\n${userContext}\n` : ""}
+Every field below must reflect ${companyName} specifically — reuse the company's real category, competitors, differentiators, and value props above rather than inventing generic ones.
+
 Return ONLY JSON:
 {"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"Established category — buyers know what this is|Emerging category — some education needed|New category — significant education required|Replacing an existing behavior (not a tool)","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both — recurring and one-time options","acv":"","mrr":"","contractLength":"Month-to-month|Quarterly|6 months|Annual|Multi-year|Custom","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}
 
