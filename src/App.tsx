@@ -2359,6 +2359,12 @@ async function callAIStreamWithTools(
   if (!key) { alert("Please enter your Anthropic API key first."); return { text: "", toolCalls: [] }; }
   const startTime = Date.now();
   for (let attempt = 0; attempt <= _retries; attempt++) {
+    // Abort the request if the stream stalls (no bytes) for 45s, or never connects in 60s.
+    // Without this, a hung connection leaves reader.read() pending forever and the caller's
+    // loading spinner never clears.
+    const controller = new AbortController();
+    let idleTimer: any = setTimeout(() => controller.abort(), 60000);
+    const armIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => controller.abort(), 45000); };
     try {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -2376,14 +2382,16 @@ async function callAIStreamWithTools(
           tools,
           stream: true,
         }),
+        signal: controller.signal,
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
+        clearTimeout(idleTimer);
         const retryAfter = parseFloat(r.headers.get("retry-after") || "0");
         const delay = Math.max(retryAfter * 1000, Math.min(1000 * Math.pow(2, attempt), 30000));
         if (attempt < _retries) { await new Promise(ok => setTimeout(ok, delay)); continue; }
         return { text: "", toolCalls: [] };
       }
-      if (!r.body) return { text: "", toolCalls: [] };
+      if (!r.body) { clearTimeout(idleTimer); return { text: "", toolCalls: [] }; }
       const reader = r.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -2396,6 +2404,7 @@ async function callAIStreamWithTools(
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        armIdle();
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
@@ -2435,8 +2444,10 @@ async function callAIStreamWithTools(
           } catch {}
         }
       }
+      clearTimeout(idleTimer);
       return { text: fullText, toolCalls };
     } catch (e) {
+      clearTimeout(idleTimer);
       if (attempt < _retries) { await new Promise(ok => setTimeout(ok, 1000 * Math.pow(2, attempt))); continue; }
       console.error("callAIStreamWithTools failed:", e);
     }
@@ -14456,49 +14467,66 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
       setStreamingText(full.slice(0, streamPos.current));
     }, 5);
 
-    // Use tool-enabled stream
-    const result = await callAIStreamWithTools(apiMessages, systemPrompt, 2048, COPILOT_TOOLS, chunk => {
-      streamFull.current += chunk;
-    });
+    try {
+      // Use tool-enabled stream
+      const result = await callAIStreamWithTools(apiMessages, systemPrompt, 2048, COPILOT_TOOLS, chunk => {
+        streamFull.current += chunk;
+      });
 
-    // Execute any tool calls
-    const toolResults: string[] = [];
-    if (result.toolCalls.length > 0) {
-      for (const tc of result.toolCalls) {
-        const res = executeTool(tc.name, tc.input);
-        toolResults.push(res);
-      }
-      // Append tool results summary to the streamed text
-      if (result.text && toolResults.length > 0) {
-        const summary = "\n\n✅ " + toolResults.join("\n✅ ");
-        streamFull.current += summary;
-      } else if (!result.text && toolResults.length > 0) {
-        // Model only used tools with no text — show results
-        const summary = "✅ " + toolResults.join("\n✅ ");
-        streamFull.current = summary;
-      }
-    }
-
-    // Stream done — wait for reveal to finish
-    await new Promise<void>(resolve => {
-      const wait = setInterval(() => {
-        if (streamPos.current >= streamFull.current.length) {
-          clearInterval(wait);
-          resolve();
+      // Execute any tool calls
+      const toolResults: string[] = [];
+      if (result.toolCalls.length > 0) {
+        for (const tc of result.toolCalls) {
+          const res = executeTool(tc.name, tc.input);
+          toolResults.push(res);
         }
-      }, 60);
-    });
+        // Append tool results summary to the streamed text
+        if (result.text && toolResults.length > 0) {
+          const summary = "\n\n✅ " + toolResults.join("\n✅ ");
+          streamFull.current += summary;
+        } else if (!result.text && toolResults.length > 0) {
+          // Model only used tools with no text — show results
+          const summary = "✅ " + toolResults.join("\n✅ ");
+          streamFull.current = summary;
+        }
+      }
 
-    clearInterval(streamInterval.current);
-    const full = streamFull.current;
-    setStreamingText(full);
+      // If the request failed (or returned nothing), surface a message instead of an empty bubble.
+      if (!result.text && result.toolCalls.length === 0 && !streamFull.current) {
+        streamFull.current = "⚠️ I couldn't generate a response — the request timed out or the connection dropped. Please try again.";
+      }
 
-    const assistantMsg = { id: uid(), role: "assistant" as const, content: full, timestamp: Date.now() };
-    onChatsChange(prev => prev.map(c =>
-      c.id === targetId ? { ...c, messages: [...c.messages, assistantMsg] } : c
-    ));
-    setIsStreaming(false);
-    setStreamingText("");
+      // Stream done — wait for reveal to finish (capped so it can never hang the spinner)
+      await new Promise<void>(resolve => {
+        let polls = 0;
+        const wait = setInterval(() => {
+          polls++;
+          if (streamPos.current >= streamFull.current.length || polls > 200) {
+            clearInterval(wait);
+            resolve();
+          }
+        }, 60);
+      });
+
+      const full = streamFull.current;
+      setStreamingText(full);
+
+      const assistantMsg = { id: uid(), role: "assistant" as const, content: full, timestamp: Date.now() };
+      onChatsChange(prev => prev.map(c =>
+        c.id === targetId ? { ...c, messages: [...c.messages, assistantMsg] } : c
+      ));
+    } catch (e) {
+      console.error("Copilot sendMessage failed:", e);
+      const errMsg = { id: uid(), role: "assistant" as const, content: "⚠️ Something went wrong generating a response. Please try again.", timestamp: Date.now() };
+      onChatsChange(prev => prev.map(c =>
+        c.id === targetId ? { ...c, messages: [...c.messages, errMsg] } : c
+      ));
+    } finally {
+      // Always clear loading state + reveal interval, no matter how we exited.
+      clearInterval(streamInterval.current);
+      setIsStreaming(false);
+      setStreamingText("");
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
