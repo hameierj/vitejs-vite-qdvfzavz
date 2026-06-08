@@ -22016,6 +22016,8 @@ Return ONLY valid JSON:
     setResearchLog(["Starting research..."]);
 
     try {
+      // Flush pending saves so the server reads current company data (website, notes), not stale.
+      await _flushCloudQueue();
       const userContext = ((companyData as any)?._gateNotes || {}).research || "";
       const { error } = await supabase.functions.invoke("gs-research-run", {
         body: { workspaceId: wsId, domain: inputDomain, userContext },
@@ -22042,6 +22044,10 @@ Return ONLY valid JSON:
     if (!fn) return;
     setStageJobs((prev) => ({ ...prev, [stage]: { status: "running", phase: "Starting...", log: ["Starting..."] } }));
     try {
+      // Stage generators read ws_<wsId> from the DB. Cloud writes are debounced 5s, so flush
+      // pending saves (e.g. the just-confirmed research brief) BEFORE the server reads — otherwise
+      // products/tam/personas generate from stale/empty data (the "Unknown Product" bug).
+      await _flushCloudQueue();
       const userContext = ((companyData as any)?._gateNotes || {})[stage] || "";
       const body: any = { workspaceId: wsId, userContext };
       if (stage === "infra") body.infraInputs = (companyData as any)?._infraInputs || {};
@@ -22091,6 +22097,7 @@ Return ONLY valid JSON:
     if (!wsId || !supabase) { addToast({ title: "No active workspace", status: "error", message: "Open a client account first." }); return; }
     setStageJobs((prev) => ({ ...prev, launchplan: { status: "running", mode, icpId: opts.icpId, track: opts.track, phase: mode === "plan" ? "Planning launch…" : "Generating campaigns…", log: [] } }));
     try {
+      await _flushCloudQueue(); // ensure the server reads current workspace data, not the 5s-debounced stale copy
       const { error } = await supabase.functions.invoke("launch-plan-run", { body: { workspaceId: wsId, mode, ...opts } });
       if (error) throw error;
       stagePollKickRef.current();
