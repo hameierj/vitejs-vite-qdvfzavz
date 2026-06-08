@@ -96,7 +96,7 @@ async function callClaude(anthropicKey: string, prompt: string, tokens: number, 
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: tokens, system, messages: [{ role: "user", content: prompt }] }),
-        signal: AbortSignal.timeout(Math.min(60000, remaining)),
+        signal: AbortSignal.timeout(Math.min(110000, remaining)), // a full profile (40+ fields) can take 60-90s
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
         lastErr = `Anthropic HTTP ${r.status}`;
@@ -133,7 +133,7 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   // Hard wall: the whole pipeline (all products in parallel) must finish within this window so
   // it always writes a terminal status and never gets killed mid-run. Comfortably under the
   // edge function's wall-clock limit.
-  const deadline = Date.now() + 150000;
+  const deadline = Date.now() + 240000;
   await appendLog(sb, wsId, "Reading confirmed company research...");
   const ws = await readWs(sb, wsId);
   const cd = ws.companyData || {};
