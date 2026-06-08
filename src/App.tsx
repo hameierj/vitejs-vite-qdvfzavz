@@ -1634,7 +1634,10 @@ function buildFullContext(d: any): string {
     push("TAM TREE", `Company TAM: ${t.companyLevel?.tamSummary || ""}\nProduct branches: ${(t.perProduct || []).map((br: any) => br.productName).join(", ")}`);
   }
   if (cd._icpScoringResult?.icps?.length) {
-    push("ICP SCORING (ranked)", cd._icpScoringResult.icps.map((s: any) => `#${s.rank} ${s.icpName} — score ${s.weightedScore}, ${s.recommendation}${s.scope === "cross_product" ? " (cross-product)" : ""}`).join("\n"));
+    push("ICP SCORING (ranked — editable via update_tam_icp)", cd._icpScoringResult.icps.map((s: any) => {
+      const dims = (s.dimensions || []).map((d: any) => `${d.key}=${d.score}`).join(" ");
+      return `#${s.rank} ${s.icpName} — score ${s.weightedScore}, ${s.recommendation}${s.scope === "cross_product" ? " (cross-product)" : ""}${dims ? `\n   dims: ${dims}` : ""}${s.suggestedAngle ? `\n   angle: ${s.suggestedAngle}` : ""}`;
+    }).join("\n"));
   }
   // Products
   if (d.products?.length) push("PRODUCTS / SERVICES", d.products.map((p: any, i: number) => `${i + 1}. ${p.name} (${p.category || "?"})\n  Description: ${p.description || ""}\n  Problems solved: ${p.problemsSolved || ""}\n  Value prop: ${p.valueProposition || ""}\n  Ideal customer: ${p.idealCustomer || ""}\n  Competitors: ${p.competitors || ""}\n  Deal type: ${p.dealType || ""}  ACV: ${p.acv || ""}  LTV: ${p.ltv || ""}`).join("\n\n"));
@@ -1994,6 +1997,33 @@ const COPILOT_TOOLS = [
         },
       },
       required: ["patch"],
+    },
+  },
+  {
+    name: "update_tam_icp",
+    description: "Adjust the TAM tree and ICP scoring shown on the onboarding TAM/ICP page, in place (never regenerate). Use to fix the company-level or per-product TAM summary text, or to change a scored ICP's recommendation, suggested angle, weighted score, top strengths/gaps, or individual dimension scores. When you change dimension scores, the weighted score is recomputed (weights: market_size 0.20, pmf 0.25, proof 0.20, outreach 0.20, advantage 0.15) and all ICPs are re-ranked automatically.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        companyTamSummary: { type: "string" as const, description: "New company-level TAM summary text" },
+        productTam: { type: "array" as const, description: "Per-product TAM summary edits", items: { type: "object" as const, properties: { productName: { type: "string" as const }, tamSummary: { type: "string" as const } } } },
+        icpUpdates: {
+          type: "array" as const,
+          description: "Edits to scored ICPs, matched by icpName.",
+          items: {
+            type: "object" as const,
+            properties: {
+              icpName: { type: "string" as const, description: "Name of the scored ICP to edit (must match an existing one)" },
+              recommendation: { type: "string" as const, description: "launch_first | launch_second | test_small | defer | skip" },
+              suggestedAngle: { type: "string" as const },
+              weightedScore: { type: "number" as const, description: "Override the 0-10 weighted score directly (ignored if dimensionScores is given)" },
+              dimensionScores: { type: "object" as const, description: "Any of market_size, pmf, proof, outreach, advantage → 1-10. Recomputes the weighted score.", additionalProperties: true },
+              topStrengths: { type: "array" as const, items: { type: "string" as const } },
+              topGaps: { type: "array" as const, items: { type: "string" as const } },
+            },
+          },
+        },
+      },
     },
   },
   {
@@ -13863,6 +13893,57 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
         const keys = Object.keys(patch);
         onToast({ title: "Research brief updated", status: "success", message: keys.join(", ") });
         return `Updated research brief: ${keys.join(", ")}`;
+      }
+      if (name === "update_tam_icp") {
+        const WEIGHTS: Record<string, number> = { market_size: 0.20, pmf: 0.25, proof: 0.20, outreach: 0.20, advantage: 0.15 };
+        const cd: any = companyData || {};
+        const changed: string[] = [];
+        // ── TAM tree (read current prop, build the new object deterministically) ──
+        let newTam: any = cd._tamTree;
+        if (newTam) {
+          newTam = { ...newTam };
+          if (input.companyTamSummary) {
+            newTam.companyLevel = { ...(newTam.companyLevel || {}), tamSummary: input.companyTamSummary };
+            changed.push("company TAM");
+          }
+          if (Array.isArray(input.productTam) && Array.isArray(newTam.perProduct)) {
+            newTam.perProduct = newTam.perProduct.map((br: any) => {
+              const m = input.productTam.find((p: any) => (p.productName || "").toLowerCase() === (br.productName || "").toLowerCase());
+              return m ? { ...br, tamSummary: m.tamSummary } : br;
+            });
+            if (input.productTam.length) changed.push("product TAM");
+          }
+        }
+        // ── ICP scoring (edit rows, recompute weighted score, re-rank) ──
+        let newScoring: any = cd._icpScoringResult;
+        if (newScoring?.icps && Array.isArray(input.icpUpdates) && input.icpUpdates.length) {
+          let rows = newScoring.icps.map((r: any) => ({ ...r }));
+          for (const upd of input.icpUpdates) {
+            const row = rows.find((r: any) => (r.icpName || "").toLowerCase() === (upd.icpName || "").toLowerCase());
+            if (!row) continue;
+            if (upd.recommendation) row.recommendation = upd.recommendation;
+            if (upd.suggestedAngle) row.suggestedAngle = upd.suggestedAngle;
+            if (Array.isArray(upd.topStrengths)) row.topStrengths = upd.topStrengths;
+            if (Array.isArray(upd.topGaps)) row.topGaps = upd.topGaps;
+            if (upd.dimensionScores && typeof upd.dimensionScores === "object") {
+              row.dimensions = (row.dimensions || []).map((d: any) => {
+                const nv = upd.dimensionScores[d.key];
+                return (nv !== undefined && nv !== null) ? { ...d, score: Math.max(0, Math.min(10, Number(nv) || 0)) } : d;
+              });
+              row.weightedScore = Math.round((row.dimensions || []).reduce((s: number, d: any) => s + (Number(d.score) || 0) * (WEIGHTS[d.key] ?? d.weight ?? 0), 0) * 100) / 100;
+            } else if (typeof upd.weightedScore === "number") {
+              row.weightedScore = Math.max(0, Math.min(10, upd.weightedScore));
+            }
+            changed.push(row.icpName);
+          }
+          rows.sort((a: any, b: any) => (b.weightedScore || 0) - (a.weightedScore || 0));
+          rows.forEach((r: any, i: number) => { r.rank = i + 1; });
+          newScoring = { ...newScoring, icps: rows };
+        }
+        if (!changed.length) return "No matching TAM/ICP items found to update.";
+        onUpdateCompany((prev: any) => ({ ...prev, ...(newTam ? { _tamTree: newTam } : {}), ...(newScoring ? { _icpScoringResult: newScoring } : {}) }));
+        onToast({ title: "TAM/ICP updated", status: "success", message: changed.slice(0, 4).join(", ") });
+        return `Updated TAM/ICP: ${changed.join(", ")}`;
       }
       if (name === "update_company_fields") {
         const fields = input.fields || {};
