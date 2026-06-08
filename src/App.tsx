@@ -1616,6 +1616,26 @@ function buildFullContext(d: any): string {
   // Company
   const coLines = Object.entries(cd).filter(([k, v]) => !k.startsWith("_") && v && String(v).trim()).map(([k, v]) => `${k}: ${String(v).slice(0, 800)}`);
   if (coLines.length) push("COMPANY PROFILE", coLines.join("\n"));
+  // Onboarding AI artifacts — visible so the assistant can ADJUST them in place
+  // (not regenerate). The research brief is editable via update_research_brief.
+  const brief = cd._initialResearchBrief;
+  if (brief) {
+    const b: string[] = [];
+    if (brief.companyOverview) b.push(`Business model: ${brief.companyOverview.businessModel || ""}\nSize: ${brief.companyOverview.size || ""}\nStage: ${brief.companyOverview.stage || ""}`);
+    if (brief.productsServices?.length) b.push(`Products/Services:\n${brief.productsServices.map((p: any, i: number) => `  ${i}. ${p.name}: ${p.description || ""}`).join("\n")}`);
+    if (brief.valuePropositions?.length) b.push(`Value propositions: ${brief.valuePropositions.map((v: any) => v.claim || v).join("; ")}`);
+    if (brief.competitivePositioning) b.push(`Category: ${brief.competitivePositioning.category || ""}\nCompetitors: ${(brief.competitivePositioning.mainCompetitors || []).join(", ")}\nDifferentiators: ${(brief.competitivePositioning.differentiators || []).join("; ")}`);
+    if (brief.icpHypotheses?.length) b.push(`ICP hypotheses: ${brief.icpHypotheses.map((h: any) => h.name).join("; ")}`);
+    if (brief.callPrepNotes) b.push(`Call-prep notes: ${String(brief.callPrepNotes).slice(0, 600)}`);
+    push("ONBOARDING RESEARCH BRIEF (editable via update_research_brief — patch only the fields the user wants changed; never regenerate)", b.join("\n"));
+  }
+  if (cd._tamTree) {
+    const t = cd._tamTree;
+    push("TAM TREE", `Company TAM: ${t.companyLevel?.tamSummary || ""}\nProduct branches: ${(t.perProduct || []).map((br: any) => br.productName).join(", ")}`);
+  }
+  if (cd._icpScoringResult?.icps?.length) {
+    push("ICP SCORING (ranked)", cd._icpScoringResult.icps.map((s: any) => `#${s.rank} ${s.icpName} — score ${s.weightedScore}, ${s.recommendation}${s.scope === "cross_product" ? " (cross-product)" : ""}`).join("\n"));
+  }
   // Products
   if (d.products?.length) push("PRODUCTS / SERVICES", d.products.map((p: any, i: number) => `${i + 1}. ${p.name} (${p.category || "?"})\n  Description: ${p.description || ""}\n  Problems solved: ${p.problemsSolved || ""}\n  Value prop: ${p.valueProposition || ""}\n  Ideal customer: ${p.idealCustomer || ""}\n  Competitors: ${p.competitors || ""}\n  Deal type: ${p.dealType || ""}  ACV: ${p.acv || ""}  LTV: ${p.ltv || ""}`).join("\n\n"));
   // Personas
@@ -1961,6 +1981,21 @@ async function callAIStream(
 
 // ─── COPILOT TOOL DEFINITIONS ────────────────────────────────────────────────
 const COPILOT_TOOLS = [
+  {
+    name: "update_research_brief",
+    description: "Adjust specific content in the AI-generated Initial Research Brief (the onboarding company brief shown on the Getting Started research page). Use whenever the user wants to correct or refine what's already in the brief — the business model, company size, stage, a product/service name or description, value propositions, the category, competitors, differentiators, ICP hypotheses, recommended angles, or call-prep notes. NEVER regenerate the whole brief; only patch the fields the user mentions. To edit one item in an array (e.g. fix one product description or one competitor), pass back the FULL updated array for that key with your edit applied, preserving the other items.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        patch: {
+          type: "object" as const,
+          description: "A partial research-brief object to merge. Top-level keys: companyOverview {name,size,stage,businessModel}, productsServices [{name,description,targetBuyer,differentiator}], valuePropositions [{claim,evidence,quantified}], competitivePositioning {category,mainCompetitors[],differentiators[]}, icpHypotheses [{name,rationale,confidence,signals}], recommendedAngles [{angle,why,bestChannel,suggestedHook}], callPrepNotes (string), confidenceNotes (string). Objects are deep-merged; arrays are replaced with the value you pass.",
+          additionalProperties: true,
+        },
+      },
+      required: ["patch"],
+    },
+  },
   {
     name: "update_company_fields",
     description: "Update one or more fields on the company profile or preferences. Use this whenever the user asks to change, set, or update any company-level information. Field IDs include: co_name, co_industry, co_website, co_size, co_revenue, co_pitch, co_we_help, co_who_struggle, co_by_providing, co_unlike, co_we_uniquely, co_core_problem, co_product, co_prod_breakdown, co_category, co_competitors, co_buying_motion, co_trust_risks, co_ksp, co_diff, co_proof, co_customers, co_dream, co_outbound_maturity, co_monthly_volume, co_prev_tools, co_existing_leads, co_biggest_challenge, co_90day_goal, co_deal, co_cycle, co_goal, co_timezone, co_days (array), co_start_time, co_end_time, co_past_emails, co_website_permission, co_website_urls, co_exclude, co_avoid, co_notes. NOTE: Contact info (names, emails, phone, LinkedIn) is synced from HubSpot — not editable here. co_deal/co_cycle/co_goal are editable via ROI config. Benchmarks are no longer company-level — they're calibrated per campaign.",
@@ -13811,6 +13846,24 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   // ── Tool execution ──
   const executeTool = (name: string, input: any): string => {
     try {
+      if (name === "update_research_brief") {
+        const patch = input.patch || {};
+        onUpdateCompany((prev: any) => {
+          const cur = prev?._initialResearchBrief || {};
+          const merged: any = { ...cur };
+          for (const [k, v] of Object.entries(patch)) {
+            if (v && typeof v === "object" && !Array.isArray(v) && cur[k] && typeof cur[k] === "object" && !Array.isArray(cur[k])) {
+              merged[k] = { ...cur[k], ...(v as any) };
+            } else {
+              merged[k] = v;
+            }
+          }
+          return { ...prev, _initialResearchBrief: merged };
+        });
+        const keys = Object.keys(patch);
+        onToast({ title: "Research brief updated", status: "success", message: keys.join(", ") });
+        return `Updated research brief: ${keys.join(", ")}`;
+      }
       if (name === "update_company_fields") {
         const fields = input.fields || {};
         onUpdateCompany((prev: any) => ({ ...prev, ...fields }));
@@ -14263,6 +14316,7 @@ YOUR ROLE:
 You are a hands-on strategist who knows every field in this workspace AND can directly modify any data. When the user asks to change, update, set, or create anything — USE YOUR TOOLS to make the change immediately. Do not just suggest changes; execute them.
 
 WHEN TO USE TOOLS:
+- User wants to fix/refine the onboarding research brief ("change the business model to…", "that competitor is wrong", "tighten the value prop") → call update_research_brief with only the changed fields. NEVER regenerate the brief; adjust the existing content in place.
 - User says "set the industry to SaaS" → call update_company_fields
 - User says "add a persona for CFOs" → call create_persona
 - User says "change the value prop to..." → call the appropriate update tool
@@ -18484,6 +18538,21 @@ function AppMain() {
   }, []);
 
   const [view,           setView]           = useState("accounts");
+  // Lightweight view-history so sub-pages can offer a "Back" button.
+  const prevViewRef = useRef<string>("accounts");
+  const viewHistoryRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (prevViewRef.current !== view) {
+      viewHistoryRef.current.push(prevViewRef.current);
+      if (viewHistoryRef.current.length > 50) viewHistoryRef.current.shift();
+      prevViewRef.current = view;
+    }
+  }, [view]);
+  const goBack = () => {
+    const prev = viewHistoryRef.current.pop();
+    if (prev) { prevViewRef.current = prev; setView(prev); }
+    else setView("onboarding-hub");
+  };
   const [showCopilot,    setShowCopilot]    = useState(false);
   const [showSearch,     setShowSearch]     = useState(false);
   const [analyticsTab,   setAnalyticsTab]   = useState<"perf"|"roi">("perf");
@@ -28099,6 +28168,9 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
 
             {view==="research-brief" && (
               <div style={{ overflow:"auto", height:"100%", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ position:"sticky" as const, top:0, zIndex:5, background:`${C2.bg}EE`, backdropFilter:"blur(6px)", padding:"12px 24px 6px" }}>
+                  <button onClick={goBack} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:12.5, fontWeight:600, fontFamily:head, cursor:"pointer" }}>← Back</button>
+                </div>
                 <InitialResearchBrief
                   brief={(companyData as any)?._initialResearchBrief ?? null}
                   generating={researchState === "running"}
@@ -28113,6 +28185,9 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
 
             {view==="icp-scoring" && !campaignPlanIcp && (
               <div style={{ position:"absolute" as const, inset:0, overflow:"auto", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ position:"sticky" as const, top:0, zIndex:5, background:`${C2.bg}EE`, backdropFilter:"blur(6px)", padding:"12px 24px 6px" }}>
+                  <button onClick={goBack} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:12.5, fontWeight:600, fontFamily:head, cursor:"pointer" }}>← Back</button>
+                </div>
                 <ICPScoringMatrix
                   ws={{ companyData, icps, products, icpTree }}
                   scoringResult={(companyData as any)?._icpScoringResult ?? null}
