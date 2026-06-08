@@ -183,7 +183,7 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
     icpHints ? `Target buyers / ICP hypotheses:\n${icpHints}` : "",
   ].filter(Boolean).join("\n");
 
-  const products = (await Promise.all(seeds.map(async (p: any) => {
+  const genProduct = async (p: any) => {
     const prompt = `Create a COMPLETE product profile for a SPECIFIC company's product. Fill EVERY field — no empty values. Be specific and actionable, and stay true to ${companyName}'s actual business. Do NOT produce generic SaaS boilerplate.
 
 ${PRODUCT_NAMING}
@@ -206,14 +206,14 @@ IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) o
     // Up to 2 attempts for parse/thin issues — callClaude already handles transient API
     // overloads internally (bounded by the shared deadline), so we don't compound retries here.
     let why = "no attempts ran (out of time before first call)";
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
       if (Date.now() + 5000 > deadline) { why = "deadline reached before this product"; break; }
       try {
         const raw = await callClaude(anthropicKey, prompt, 6000, deadline);
         const parsed = parseJSON(raw);
         const filledCount = Object.values(parsed).filter((v) => v && String(v).trim()).length;
-        // A real profile fills many fields; if we only got a couple, treat as a bad parse and retry once.
-        if (filledCount < 6 && attempt < 2 && Date.now() + 5000 < deadline) { why = `model returned only ${filledCount} fields`; console.warn(`product "${p.name}" attempt ${attempt}: ${why}, retrying`); continue; }
+        // A real profile fills many fields; if we only got a couple, treat as a bad parse and retry.
+        if (filledCount < 6 && attempt < 3 && Date.now() + 5000 < deadline) { why = `model returned only ${filledCount} fields`; console.warn(`product "${p.name}" attempt ${attempt}: ${why}, retrying`); continue; }
         return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())) };
       } catch (err) {
         why = String((err as Error)?.message ?? err);
@@ -223,7 +223,20 @@ IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) o
     // Surface the REAL reason so we can tell a timeout from an auth/model/parse error.
     await appendLog(sb, wsId, `⚠️ "${p.name}" came back thin — reason: ${why}`);
     return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: "Other" };
-  }))).filter((r: any) => r?.name);
+  };
+
+  // Generate with LIMITED CONCURRENCY (2 at a time) rather than all at once. Firing every product
+  // call simultaneously throttles them against each other (Anthropic 429/529), which is why some
+  // products kept coming back thin while others succeeded in the same run.
+  const CONCURRENCY = 2;
+  const results: any[] = [];
+  for (let i = 0; i < seeds.length; i += CONCURRENCY) {
+    const batch = seeds.slice(i, i + CONCURRENCY);
+    await appendLog(sb, wsId, `Building products ${i + 1}-${i + batch.length} of ${seeds.length}...`);
+    const batchResults = await Promise.all(batch.map(genProduct));
+    results.push(...batchResults);
+  }
+  const products = results.filter((r: any) => r?.name);
 
   await appendLog(sb, wsId, `Generated ${products.length} product profiles`);
   await writeJob(sb, wsId, { status: "done", phase: "Complete", completedAt: new Date().toISOString(), result: { products } });
