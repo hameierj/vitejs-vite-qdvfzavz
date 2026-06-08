@@ -2354,9 +2354,9 @@ async function callAIStreamWithTools(
   tools: any[],
   onTextChunk: (text: string) => void,
   _retries = 5
-): Promise<{ text: string; toolCalls: { id: string; name: string; input: any }[] }> {
+): Promise<{ text: string; toolCalls: { id: string; name: string; input: any }[]; error?: string }> {
   const key = getApiKey();
-  if (!key) { alert("Please enter your Anthropic API key first."); return { text: "", toolCalls: [] }; }
+  if (!key) { alert("Please enter your Anthropic API key first."); return { text: "", toolCalls: [], error: "No API key" }; }
   const startTime = Date.now();
   for (let attempt = 0; attempt <= _retries; attempt++) {
     // Abort the request if the stream stalls (no bytes) for 45s, or never connects in 60s.
@@ -2389,9 +2389,20 @@ async function callAIStreamWithTools(
         const retryAfter = parseFloat(r.headers.get("retry-after") || "0");
         const delay = Math.max(retryAfter * 1000, Math.min(1000 * Math.pow(2, attempt), 30000));
         if (attempt < _retries) { await new Promise(ok => setTimeout(ok, delay)); continue; }
-        return { text: "", toolCalls: [] };
+        return { text: "", toolCalls: [], error: `API ${r.status} after retries` };
       }
-      if (!r.body) { clearTimeout(idleTimer); return { text: "", toolCalls: [] }; }
+      // Other non-2xx (400 bad request, 401 auth, 413 too large, etc.) — not retryable.
+      // Read the error body so we can surface the real reason instead of a silent empty bubble.
+      if (!r.ok) {
+        clearTimeout(idleTimer);
+        let errBody = "";
+        try { errBody = await r.text(); } catch {}
+        let msg = errBody;
+        try { msg = JSON.parse(errBody)?.error?.message || errBody; } catch {}
+        console.error("callAIStreamWithTools HTTP", r.status, errBody);
+        return { text: "", toolCalls: [], error: `API ${r.status}: ${(msg || "").slice(0, 400)}` };
+      }
+      if (!r.body) { clearTimeout(idleTimer); return { text: "", toolCalls: [], error: "Empty response body" }; }
       const reader = r.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -2446,13 +2457,15 @@ async function callAIStreamWithTools(
       }
       clearTimeout(idleTimer);
       return { text: fullText, toolCalls };
-    } catch (e) {
+    } catch (e: any) {
       clearTimeout(idleTimer);
       if (attempt < _retries) { await new Promise(ok => setTimeout(ok, 1000 * Math.pow(2, attempt))); continue; }
       console.error("callAIStreamWithTools failed:", e);
+      const reason = e?.name === "AbortError" ? "request timed out / stalled" : (e?.message || String(e));
+      return { text: "", toolCalls: [], error: reason };
     }
   }
-  return { text: "", toolCalls: [] };
+  return { text: "", toolCalls: [], error: "request failed after retries" };
 }
 
 // Fetch a page via r.jina.ai — a free "reader" service that runs the page through a
@@ -14491,9 +14504,11 @@ ${currentView ? `\nThe user is currently viewing the "${currentView}" page. Prio
         }
       }
 
-      // If the request failed (or returned nothing), surface a message instead of an empty bubble.
+      // If the request failed (or returned nothing), surface the real reason instead of an empty bubble.
       if (!result.text && result.toolCalls.length === 0 && !streamFull.current) {
-        streamFull.current = "⚠️ I couldn't generate a response — the request timed out or the connection dropped. Please try again.";
+        streamFull.current = result.error
+          ? `⚠️ I couldn't generate a response.\n\n**Reason:** ${result.error}\n\nPlease try again.`
+          : "⚠️ I couldn't generate a response — please try again.";
       }
 
       // Stream done — wait for reveal to finish (capped so it can never hang the spinner)
