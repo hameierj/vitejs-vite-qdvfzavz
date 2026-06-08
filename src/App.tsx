@@ -1191,6 +1191,11 @@ function getApiKey() {
   return (window.__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || "").trim();
 }
 
+// Server-side streaming Anthropic proxy. Holds ANTHROPIC_API_KEY as a Supabase
+// secret (same key the Getting Started flow uses), so browser AI features don't
+// depend on a valid localStorage key.
+const AI_PROXY_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/ai-proxy` : "";
+
 // ─── SLACK INTEGRATION ──────────────────────────────────────────────────────
 const SLACK_PROXY_URL = `${SUPABASE_URL}/functions/v1/slack-proxy`;
 
@@ -2355,8 +2360,11 @@ async function callAIStreamWithTools(
   onTextChunk: (text: string) => void,
   _retries = 5
 ): Promise<{ text: string; toolCalls: { id: string; name: string; input: any }[]; error?: string }> {
-  const key = getApiKey();
-  if (!key) { alert("Please enter your Anthropic API key first."); return { text: "", toolCalls: [], error: "No API key" }; }
+  // Prefer the server-side proxy (valid key held as a Supabase secret). Fall back to a
+  // direct browser call with the localStorage key only if the proxy isn't configured.
+  const browserKey = getApiKey();
+  const useProxy = !!AI_PROXY_URL;
+  if (!useProxy && !browserKey) { alert("Please enter your Anthropic API key first."); return { text: "", toolCalls: [], error: "No API key" }; }
   const startTime = Date.now();
   for (let attempt = 0; attempt <= _retries; attempt++) {
     // Abort the request if the stream stalls (no bytes) for 45s, or never connects in 60s.
@@ -2366,22 +2374,27 @@ async function callAIStreamWithTools(
     let idleTimer: any = setTimeout(() => controller.abort(), 60000);
     const armIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => controller.abort(), 45000); };
     try {
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
+      const r = await fetch(useProxy ? AI_PROXY_URL : "https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: tokens,
-          system: sys,
-          messages,
-          tools,
-          stream: true,
-        }),
+        headers: useProxy
+          ? {
+              "Content-Type": "application/json",
+              "apikey": SUPABASE_KEY,
+              "Authorization": `Bearer ${SUPABASE_KEY}`,
+              // Optional fallback used by the proxy only if the server secret is unset.
+              ...(browserKey ? { "x-anthropic-key": browserKey } : {}),
+            }
+          : {
+              "Content-Type": "application/json",
+              "x-api-key": browserKey,
+              "anthropic-version": "2023-06-01",
+              "anthropic-dangerous-direct-browser-access": "true",
+            },
+        body: JSON.stringify(
+          useProxy
+            ? { messages, system: sys, max_tokens: tokens, tools }
+            : { model: "claude-sonnet-4-6", max_tokens: tokens, system: sys, messages, tools, stream: true },
+        ),
         signal: controller.signal,
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
@@ -2398,7 +2411,7 @@ async function callAIStreamWithTools(
         let errBody = "";
         try { errBody = await r.text(); } catch {}
         let msg = errBody;
-        try { msg = JSON.parse(errBody)?.error?.message || errBody; } catch {}
+        try { const p = JSON.parse(errBody); msg = p?.error?.message || p?.error || errBody; } catch {}
         console.error("callAIStreamWithTools HTTP", r.status, errBody);
         return { text: "", toolCalls: [], error: `API ${r.status}: ${(msg || "").slice(0, 400)}` };
       }
