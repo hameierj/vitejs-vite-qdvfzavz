@@ -5,6 +5,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Routes, Route, useParams, HashRouter, useNavigate } from "react-router-dom";
 import { ICPTreeGenerator } from "./components/stages/ICPTreeGenerator";
 import { OnboardingGates } from "./components/onboarding/OnboardingGates";
+import { LaunchBoard } from "./components/launch/LaunchBoard";
 import { InitialResearchBrief } from "./components/onboarding/InitialResearchBrief";
 import { ICPScoringMatrix } from "./components/onboarding/ICPScoringMatrix";
 import { CampaignPlanningBoard } from "./components/onboarding/CampaignPlanningBoard";
@@ -19025,7 +19026,7 @@ function AppMain() {
     const savedConf = saved?.companyConf ?? {};
     setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
     // Don't override onboarding view — it was intentionally set for new/empty workspaces
-    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(prev) ? prev : "company");
+    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(prev) ? prev : "company");
     setEditingId(null);
     // Detect an in-flight LaunchPad job for this workspace synchronously so
     // the page shows the running state instead of flashing the empty form
@@ -19241,10 +19242,62 @@ function AppMain() {
   useEffect(() => {
     if (!activeWorkspace || !supabase) { setStageJobs({}); return; }
     const wsId = (activeWorkspace as any).id;
-    const STAGES = ["products", "tamicp", "personas", "infra"] as const;
+    const STAGES = ["products", "tamicp", "personas", "infra", "launchplan"] as const;
     let cancelled = false;
     let timerId: any = null;
     const applied: Record<string, string> = {};
+
+    // Flow 2 launch: build a campaign from the edge-generated copy, reusing the
+    // module-level EMPTY_CAMPAIGN shape and populating targeting from the persona.
+    const buildLaunchCampaign = (c: any) => {
+      const persona = (icps || []).find((p: any) => p.id === c.personaId);
+      const base = EMPTY_CAMPAIGN();
+      const camp: any = {
+        ...base,
+        channel: c.channel || "email",
+        type: c.channel === "linkedin" ? "linkedin_connection" : "cold_email",
+        personaIds: c.personaId ? [c.personaId] : [],
+        productId: c.productId || "",
+        goalType: c.goalType || base.goalType,
+        name: c.name || base.name,
+        goal: c.goal || "",
+        sequence: Array.isArray(c.sequence) ? c.sequence : [],
+        status: "active",
+        source: "launch",
+        createdAt: new Date().toISOString(),
+      };
+      if (persona?.data) {
+        camp.targeting = { ...base.targeting,
+          titles: persona.data.buyer || "", industries: persona.data.industries || "",
+          companySizes: Array.isArray(persona.data.co_sizes) ? persona.data.co_sizes.join(", ") : "",
+          keywords: persona.data.keywords || "" };
+      }
+      return camp;
+    };
+
+    const applyLaunchResult = (job: any) => {
+      const result = job?.result || {};
+      if (job.mode === "plan" && result.plan) {
+        setCompanyData((prev: any) => ({ ...prev, _launchPlan: result.plan }));
+        return;
+      }
+      if (job.mode === "generate" && Array.isArray(result.campaigns) && result.campaigns.length) {
+        // Cross-reload idempotency — generate appends, so guard against re-adding.
+        const k = `launchgen_applied_${wsId}_${job.jobId}`;
+        try { if (localStorage.getItem(k)) return; localStorage.setItem(k, "1"); } catch { /* ignore */ }
+        const built = result.campaigns.map((c: any) => buildLaunchCampaign(c));
+        setCampaigns((prev: any[]) => [...prev, ...built]);
+        if (job.icpId) {
+          setCompanyData((prev: any) => {
+            const lp = prev?._launchPlan; if (!lp) return prev;
+            return { ...prev, _launchPlan: { ...lp, emailWaves: (lp.emailWaves || []).map((w: any) => w.icpId === job.icpId ? { ...w, status: "active", activatedAt: new Date().toISOString() } : w) } };
+          });
+        }
+        if (job.track === "linkedin") {
+          setCompanyData((prev: any) => prev?._launchPlan ? { ...prev, _launchPlan: { ...prev._launchPlan, linkedinActivatedAt: new Date().toISOString() } } : prev);
+        }
+      }
+    };
 
     const applyStageResult = (stage: string, result: any) => {
       if (!result) return;
@@ -19283,7 +19336,8 @@ function AppMain() {
           if (job.status === "running") anyRunning = true;
           if (job.status === "done" && job.result && applied[stage] !== (job.jobId || "_one_")) {
             applied[stage] = job.jobId || "_one_";
-            applyStageResult(stage, job.result);
+            if (stage === "launchplan") applyLaunchResult(job);
+            else applyStageResult(stage, job.result);
           }
         }
         setStageJobs(next);
@@ -21725,6 +21779,28 @@ Return ONLY valid JSON:
     setShowCopilot(true);
   };
 
+  // ── Flow 2: launch orchestration ──
+  const startLaunchPlan = async (mode: "plan" | "generate", opts: { icpId?: string; track?: string } = {}) => {
+    const wsId = activeWorkspace ? (activeWorkspace as any).id : null;
+    if (!wsId || !supabase) { addToast({ title: "No active workspace", status: "error", message: "Open a client account first." }); return; }
+    setStageJobs((prev) => ({ ...prev, launchplan: { status: "running", mode, icpId: opts.icpId, track: opts.track, phase: mode === "plan" ? "Planning launch…" : "Generating campaigns…", log: [] } }));
+    try {
+      const { error } = await supabase.functions.invoke("launch-plan-run", { body: { workspaceId: wsId, mode, ...opts } });
+      if (error) throw error;
+      stagePollKickRef.current();
+    } catch (e: any) {
+      setStageJobs((prev) => ({ ...prev, launchplan: { status: "error", error: e?.message || String(e) } }));
+      addToast({ title: "Launch failed to start", status: "error", message: e?.message || String(e) });
+    }
+  };
+
+  const handleFinalizeWave = (icpId: string) => {
+    setCompanyData((prev: any) => {
+      const lp = prev?._launchPlan; if (!lp) return prev;
+      return { ...prev, _launchPlan: { ...lp, emailWaves: (lp.emailWaves || []).map((w: any) => w.icpId === icpId ? { ...w, status: "finalized", finalizedAt: new Date().toISOString() } : w) } };
+    });
+  };
+
   const handleCopyIntakeLink = () => {
     const token = wsShareToken;
     if (!token) { addToast({ title:"No intake link available", status:"error", message:"Workspace not found in database. Re-open this account and try again." }); return; }
@@ -22927,6 +23003,18 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                     </button>
                   );})()}
 
+                  {/* Launch (Flow 2) */}
+                  <button onClick={()=>guardedNav(()=>setView("launch"))}
+                    style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
+                      borderRadius:12, border:"none",
+                      background: view==="launch" ? `${C2.accent}14` : "transparent",
+                      cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
+                    onMouseEnter={e=>{ if(view!=="launch")(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                    onMouseLeave={e=>{ if(view!=="launch")(e.currentTarget as HTMLButtonElement).style.background=view==="launch"?`${C2.accent}14`:"transparent"; }}>
+                    <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="launch"?C2.accent:C2.muted }}>🚀</span>
+                    <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="launch"?700:500, color:view==="launch"?C2.text:C2.textSoft }}>Launch</span>
+                  </button>
+
                   {/* RTS Leads */}
                   {(
                     <button onClick={()=>guardedNav(()=>setView("rtsleads"))}
@@ -22977,12 +23065,12 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                     <button onClick={()=>guardedNav(()=>setView("onboarding-hub"))}
                       style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
                         borderRadius:12, border:"none",
-                        background: ["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view) ? `${C2.accent}14` : "transparent",
+                        background: ["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view) ? `${C2.accent}14` : "transparent",
                         cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view))(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view)?C2.accent:C2.muted }}>◉</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view)?700:500, color:["onboarding-hub","research-brief","icp-scoring","campaign-plan"].includes(view)?C2.text:C2.textSoft }}>Onboarding Hub</span>
+                      onMouseEnter={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view))(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
+                      onMouseLeave={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
+                      <span style={{ fontSize:14, width:20, textAlign:"center", color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view)?C2.accent:C2.muted }}>◉</span>
+                      <span style={{ fontSize:13, fontFamily:head, fontWeight:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view)?700:500, color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch"].includes(view)?C2.text:C2.textSoft }}>Onboarding Hub</span>
                     </button>
                   )}
 
@@ -23350,7 +23438,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
           {false && (() => { return null;
           })()}
 
-          <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
+          <div style={{ flex:1, minHeight:0, position: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch"].includes(view) ? "relative" as const : undefined, overflow: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch"].includes(view) ? "hidden" : "auto", padding: ["launchpad","icps","company","products","strategy","campaigns","rtsleads","matrix","onboarding","welcome","callAnalyzer","knowledge","dfySetup","calls","home","integrations","profile","analytics","salesInputs","icp-scoring","campaign-plan","launch"].includes(view) ? 0 : "0 clamp(20px, 3vw, 48px) 36px" }}>
 
           {/* Accounts page */}
           {view === "accounts" && currentRole === "team" && (() => {
@@ -25888,6 +25976,23 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                       return c;
                     }} />
                 </div>
+              </div>
+            )}
+
+            {view==="launch" && (
+              <div style={{ position:"absolute" as const, inset:0, overflow:"auto", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <LaunchBoard
+                  companyData={companyData}
+                  icps={icps}
+                  products={products}
+                  campaigns={campaigns}
+                  launchJob={stageJobs.launchplan}
+                  onGeneratePlan={() => startLaunchPlan("plan")}
+                  onActivateWave={(icpId) => startLaunchPlan("generate", { icpId })}
+                  onActivateLinkedIn={() => startLaunchPlan("generate", { track: "linkedin" })}
+                  onFinalizeWave={(icpId) => handleFinalizeWave(icpId)}
+                  onNavigate={(v) => setView(v)}
+                />
               </div>
             )}
 
