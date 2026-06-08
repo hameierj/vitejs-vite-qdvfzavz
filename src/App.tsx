@@ -10,6 +10,7 @@ import { NarrativeView } from "./components/narrative/NarrativeView";
 import { OptimizeView } from "./components/optimize/OptimizeView";
 import { callClaude as callClaudeLib } from "./lib/callClaude";
 import { InitialResearchBrief } from "./components/onboarding/InitialResearchBrief";
+import { ProductsReview } from "./components/onboarding/ProductsReview";
 import { ICPScoringMatrix } from "./components/onboarding/ICPScoringMatrix";
 import { CampaignPlanningBoard } from "./components/onboarding/CampaignPlanningBoard";
 import { ClientIntakeFormPage } from "./components/onboarding/ClientIntakeForm";
@@ -13974,7 +13975,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
     company: "Company Profile", products: "Products & Services", icps: "Personas",
     campaigns: "Campaigns", strategy: "Strategy Roadmap", analytics: "Performance Analytics",
     profile: "Client Profile", dfySetup: "Domains & Mailboxes", knowledge: "Knowledge Base",
-    "research-brief": "Research Brief", "icp-scoring": "ICP Scoring", "campaign-plan": "Campaign Plan",
+    "research-brief": "Research Brief", "products-review": "Products & Services", "icp-scoring": "ICP Scoring", "campaign-plan": "Campaign Plan",
     calls: "Calls & CX Signals", home: "Home Dashboard", optimize: "Optimization", narrative: "Narrative",
   };
 
@@ -19328,7 +19329,7 @@ function AppMain() {
     const savedConf = saved?.companyConf ?? {};
     setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
     // Don't override onboarding view — it was intentionally set for new/empty workspaces
-    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(prev) ? prev : "company");
+    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","products-review","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(prev) ? prev : "company");
     setEditingId(null);
     // Detect an in-flight LaunchPad job for this workspace synchronously so
     // the page shows the running state instead of flashing the empty form
@@ -28834,6 +28835,19 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   onGenerate={(domain) => handleStartResearch(domain)}
                   onMarkReviewed={() => setCompanyData((prev:any) => ({ ...prev, _researchBriefReviewed: true }))}
                   reviewed={!!(companyData as any)?._researchBriefReviewed}
+                />
+              </div>
+            )}
+
+            {view==="products-review" && (
+              <div style={{ overflow:"auto", height:"100%", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ position:"sticky" as const, top:0, zIndex:5, background:`${C2.bg}EE`, backdropFilter:"blur(6px)", padding:"12px 24px 6px" }}>
+                  <button onClick={goBack} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:12.5, fontWeight:600, fontFamily:head, cursor:"pointer" }}>← Back</button>
+                </div>
+                <ProductsReview
+                  products={products}
+                  onRefine={() => { setCopilotScope("Products & Services"); setShowCopilot(true); }}
+                  onEdit={() => setView("products")}
                 />
               </div>
             )}
