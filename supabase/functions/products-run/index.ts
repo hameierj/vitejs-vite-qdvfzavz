@@ -205,20 +205,23 @@ unsolvedImpact: what happens if the customer does nothing — lost revenue, comp
 IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) or one-time (project, purchase). Fill the relevant commercial fields accordingly.`;
     // Up to 2 attempts for parse/thin issues — callClaude already handles transient API
     // overloads internally (bounded by the shared deadline), so we don't compound retries here.
+    let why = "no attempts ran (out of time before first call)";
     for (let attempt = 1; attempt <= 2; attempt++) {
-      if (Date.now() + 5000 > deadline) break; // out of time — take the fallback
+      if (Date.now() + 5000 > deadline) { why = "deadline reached before this product"; break; }
       try {
         const raw = await callClaude(anthropicKey, prompt, 6000, deadline);
         const parsed = parseJSON(raw);
         const filledCount = Object.values(parsed).filter((v) => v && String(v).trim()).length;
         // A real profile fills many fields; if we only got a couple, treat as a bad parse and retry once.
-        if (filledCount < 6 && attempt < 2 && Date.now() + 5000 < deadline) { console.warn(`product "${p.name}" attempt ${attempt}: only ${filledCount} fields, retrying`); continue; }
+        if (filledCount < 6 && attempt < 2 && Date.now() + 5000 < deadline) { why = `model returned only ${filledCount} fields`; console.warn(`product "${p.name}" attempt ${attempt}: ${why}, retrying`); continue; }
         return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())) };
       } catch (err) {
-        console.error(`product "${p.name}" attempt ${attempt} failed:`, err);
+        why = String((err as Error)?.message ?? err);
+        console.error(`product "${p.name}" attempt ${attempt} failed:`, why);
       }
     }
-    await appendLog(sb, wsId, `⚠️ "${p.name}" came back thin after retries — saved name + description only`);
+    // Surface the REAL reason so we can tell a timeout from an auth/model/parse error.
+    await appendLog(sb, wsId, `⚠️ "${p.name}" came back thin — reason: ${why}`);
     return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: "Other" };
   }))).filter((r: any) => r?.name);
 

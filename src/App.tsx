@@ -28848,6 +28848,10 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   products={products}
                   onRefine={() => { setCopilotScope("Products & Services"); setShowCopilot(true); }}
                   onEdit={() => setView("products")}
+                  onRegenerate={() => startStage("products")}
+                  generating={stageJobs.products?.status === "running"}
+                  phase={stageJobs.products?.phase || ""}
+                  log={stageJobs.products?.log || []}
                 />
               </div>
             )}

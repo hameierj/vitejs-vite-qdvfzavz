@@ -33,13 +33,23 @@ interface Props {
   products: any[];
   onRefine: () => void;
   onEdit: () => void;
+  onRegenerate?: () => void;
+  generating?: boolean;
+  phase?: string;
+  log?: string[];
 }
 
 // Read-only, in-flow review of every generated product profile — the products analogue of
 // InitialResearchBrief. Stays inside the guided-onboarding flow (the host renders a Back button)
 // instead of dropping the user into the full Products editor.
-export function ProductsReview({ products, onRefine, onEdit }: Props) {
+export function ProductsReview({ products, onRefine, onEdit, onRegenerate, generating = false, phase = "", log = [] }: Props) {
   const list = products || [];
+  // Heuristic: a healthy profile has many fields. If every product is just name+description+Other,
+  // generation fell back — warn and offer a one-click regenerate right here.
+  const looksThin = list.length > 0 && list.every((p: any) => {
+    const keys = Object.keys(p).filter((k) => !HIDDEN_KEYS.has(k) && !k.startsWith("_") && p[k] != null && String(p[k]).trim() !== "");
+    return keys.length <= 2; // only description (category "Other" is in HIDDEN_KEYS)
+  });
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "8px 24px 64px", fontFamily: head }}>
@@ -52,6 +62,12 @@ export function ProductsReview({ products, onRefine, onEdit }: Props) {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          {onRegenerate && (
+            <button onClick={onRegenerate} disabled={generating}
+              style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: generating ? C.faint : C.accent, color: generating ? C.muted : "#fff", fontSize: 12, fontWeight: 700, fontFamily: head, cursor: generating ? "default" : "pointer", whiteSpace: "nowrap" as const }}>
+              {generating ? "Generating…" : "Regenerate"}
+            </button>
+          )}
           <button onClick={onRefine}
             style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.canvas, color: C.textSoft, fontSize: 12, fontWeight: 600, fontFamily: head, cursor: "pointer", whiteSpace: "nowrap" as const }}>
             Refine in chat
@@ -62,6 +78,20 @@ export function ProductsReview({ products, onRefine, onEdit }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Live generation status / thin-data warning */}
+      {generating ? (
+        <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 10, background: C.accentLo, border: `1px solid ${C.accentBorder}`, fontSize: 12.5, color: C.text, fontFamily: head }}>
+          <div style={{ fontWeight: 700, marginBottom: log.length ? 6 : 0 }}>{phase || "Generating product profiles…"}</div>
+          {log.slice(-4).map((l, i) => (
+            <div key={i} style={{ fontSize: 11, fontFamily: mono, color: C.textSoft, lineHeight: 1.5 }}>{l}</div>
+          ))}
+        </div>
+      ) : looksThin ? (
+        <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 10, background: "#FEF6E7", border: "1px solid #F4D89A", fontSize: 12.5, color: "#7a5800", fontFamily: head, lineHeight: 1.5 }}>
+          <strong>These profiles look incomplete</strong> — only a description came through, which means generation fell back. Click <strong>Regenerate</strong> above to rebuild full profiles from your research.
+        </div>
+      ) : null}
 
       {list.length === 0 ? (
         <div style={{ padding: 40, textAlign: "center" as const, color: C.muted, fontSize: 13, background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 14 }}>
