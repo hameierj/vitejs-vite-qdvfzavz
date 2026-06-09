@@ -136,18 +136,19 @@ function normalizeScores(sr: any): ScoreRow[] {
   });
 }
 
-const GRAPH_COLORS = { company: C.accent, segment: "#0984E3", product: C.green };
+const GRAPH_COLORS = { company: C.accent, product: C.green };
 const GRAPH_LEGEND = [
   { label: "Company", color: GRAPH_COLORS.company },
-  { label: "Market segment", color: GRAPH_COLORS.segment },
   { label: "Product / service", color: GRAPH_COLORS.product },
   { label: "ICP (color = score)", color: C.amber },
 ];
 
-// Flatten the onboarding TAM tree into a connected graph: Company → market
-// segments + products, products → ICPs. Cross-product ICPs (deduped by name)
-// link to every product they fit, so the result is a true graph, not a strict
-// tree. ICP node ids reuse the scoring row id so selecting one opens its row.
+// Flatten the TAM tree into a clean hierarchy: Company → Products/Services →
+// ICPs. Market segments are company-level TAM context (the AI doesn't map them
+// to specific products), so they're surfaced as a summary above the graph
+// rather than as disconnected nodes. Cross-product ICPs (deduped by name) link
+// to every product they fit, so the result is still a graph, not a strict tree.
+// ICP node ids reuse the scoring row id so selecting one opens its scorecard.
 function buildTamGraph(tamTree: any, scores: ScoreRow[], companyName: string): { nodes: FNode[]; links: FLink[] } {
   const nodes: FNode[] = [];
   const links: FLink[] = [];
@@ -156,17 +157,11 @@ function buildTamGraph(tamTree: any, scores: ScoreRow[], companyName: string): {
 
   const scoreByName = new Map(scores.map(s => [String(s.icpName || "").trim().toLowerCase(), s]));
 
-  (tamTree?.companyLevel?.segments || []).forEach((seg: any, i: number) => {
-    const id = `seg-${i}`;
-    nodes.push({ id, type: "segment", label: seg.name || `Segment ${i + 1}`, color: GRAPH_COLORS.segment, r: 8, depth: 1 });
-    links.push({ source: ROOT, target: id });
-  });
-
   const icpIdByName = new Map<string, string>();
   let synth = 0;
   (tamTree?.perProduct || []).forEach((branch: any, pi: number) => {
     const pid = `prod-${pi}`;
-    nodes.push({ id: pid, type: "product", label: branch.productName || `Product ${pi + 1}`, color: GRAPH_COLORS.product, r: 12, depth: 1 });
+    nodes.push({ id: pid, type: "product", label: branch.productName || `Product ${pi + 1}`, color: GRAPH_COLORS.product, r: 13, depth: 1 });
     links.push({ source: ROOT, target: pid });
     (branch.icps || []).forEach((icp: any) => {
       const key = String(icp.name || "").trim().toLowerCase();
@@ -317,7 +312,7 @@ Score ALL ICPs provided.`;
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.accent, letterSpacing: 0.8, marginBottom: 8, textTransform: "uppercase" as const }}>
-          STEP 7
+          STEP 3 · TAM TREE → ICPs
         </div>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
           <div>
@@ -363,9 +358,27 @@ Score ALL ICPs provided.`;
         </div>
       )}
 
-      {/* Graph view — Obsidian-style relationship graph of the TAM tree */}
+      {/* Graph view — Company → Products → ICPs hierarchy */}
       {scores.length > 0 && !scoring && gview === "graph" && (
-        <div style={{ height: "70vh", minHeight: 420, display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", background: C.bg }}>
+        <div>
+          {(tamTree?.companyLevel?.tamSummary || (tamTree?.companyLevel?.segments || []).length > 0) && (
+            <div style={{ background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 16px", marginBottom: 12 }}>
+              {tamTree?.companyLevel?.tamSummary && (
+                <div style={{ fontSize: 12.5, color: C.textSoft, lineHeight: 1.6, marginBottom: (tamTree?.companyLevel?.segments || []).length ? 8 : 0 }}>{tamTree.companyLevel.tamSummary}</div>
+              )}
+              {(tamTree?.companyLevel?.segments || []).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.muted, textTransform: "uppercase" as const, letterSpacing: 0.4 }}>Market segments</span>
+                  {(tamTree.companyLevel.segments as any[]).map((s, i) => (
+                    <span key={i} title={s.sizeEstimate || ""} style={{ fontSize: 11.5, fontFamily: head, color: C.text, background: C.faint, border: `1px solid ${C.border}`, borderRadius: 20, padding: "2px 10px" }}>
+                      {s.name}{s.sizeEstimate ? ` · ${s.sizeEstimate}` : ""}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ height: "70vh", minHeight: 420, display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", background: C.bg }}>
           <ForceGraph
             nodes={graph.nodes}
             links={graph.links}
@@ -378,6 +391,7 @@ Score ALL ICPs provided.`;
             }}
             theme={{ bg: C.bg, canvas: C.canvas, text: C.text, muted: C.muted, borderHi: C.borderHi, border: C.border, accent: C.accent }}
           />
+          </div>
         </div>
       )}
 
