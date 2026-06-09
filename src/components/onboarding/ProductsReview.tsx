@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PRODUCT_SECTIONS } from "../../lib/schemas";
 
 const C = {
@@ -27,6 +28,26 @@ const toText = (v: any): string => {
   if (Array.isArray(v)) return v.map((x) => (typeof x === "object" ? JSON.stringify(x) : String(x))).join("\n");
   if (typeof v === "object") return Object.entries(v).map(([k, val]) => `${prettyKey(k)}: ${val}`).join("\n");
   return String(v);
+};
+// Fields that are conceptually lists — render their values as bullets when splittable.
+const LIST_FIELDS = new Set(["useCases", "keyFeatures", "problemsSolved", "competitors", "buyerObjections", "switchTriggers", "proofPoints", "roiMetrics", "caseStudies", "industryProof", "socialProof", "objectionRebuttals", "messagingDos", "messagingDonts", "dealStakeholders", "unsolvedImpact"]);
+// Split a value into list items: prefer newlines/numbered/bulleted; fall back to commas for list fields.
+const toItems = (value: string, isList: boolean): string[] | null => {
+  const byLine = value.split(/\n|(?:^|\s)(?:\d+[.)]\s)|\s*[•\-–]\s+/).map((s) => s.trim()).filter(Boolean);
+  if (byLine.length > 1) return byLine.map((s) => s.replace(/^[•\-–]\s*/, ""));
+  if (isList) {
+    // Split on commas that are NOT inside parentheses, so "(email, call, daily tasks)" stays intact.
+    const parts: string[] = []; let depth = 0, cur = "";
+    for (const ch of value) {
+      if (ch === "(") depth++;
+      if (ch === ")") depth = Math.max(0, depth - 1);
+      if (ch === "," && depth === 0) { if (cur.trim()) parts.push(cur.trim()); cur = ""; }
+      else cur += ch;
+    }
+    if (cur.trim()) parts.push(cur.trim());
+    if (parts.length > 1) return parts;
+  }
+  return null;
 };
 
 interface Props {
@@ -117,66 +138,87 @@ export function ProductsReview({ products, onRefine, onEdit, onRegenerate, gener
   );
 }
 
+function Tile({ label, value, id }: { label: string; value: string; id?: string }) {
+  const items = toItems(value, !!id && LIST_FIELDS.has(id));
+  return (
+    <div style={{ background: C.faint, borderRadius: 10, padding: "11px 13px", border: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 5, textTransform: "uppercase" as const, letterSpacing: 0.4, fontFamily: mono }}>{label}</div>
+      {items ? (
+        <ul style={{ margin: 0, paddingLeft: 16, display: "flex", flexDirection: "column" as const, gap: 4 }}>
+          {items.map((it, i) => <li key={i} style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5, wordBreak: "break-word" as const }}>{it}</li>)}
+        </ul>
+      ) : (
+        <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.55, whiteSpace: "pre-wrap" as const, wordBreak: "break-word" as const }}>{value}</div>
+      )}
+    </div>
+  );
+}
+
 function ProductCard({ product, index }: { product: any; index: number }) {
+  const [open, setOpen] = useState(index === 0); // first product expanded by default
   const filled = (v: any) => v !== undefined && v !== null && toText(v).trim() !== "";
 
   // Build groups from EVERY populated key on the product object (not just expected fields), so the
   // review always mirrors what's actually stored — anything the editor shows, this shows.
-  const groups: Record<string, { label: string; value: string; order: number }[]> = {};
-  const extras: { label: string; value: string }[] = [];
+  const groups: Record<string, { label: string; value: string; order: number; id: string }[]> = {};
+  const extras: { label: string; value: string; id: string }[] = [];
   for (const [k, v] of Object.entries(product)) {
     if (HIDDEN_KEYS.has(k) || k.startsWith("_")) continue;
     if (!filled(v)) continue;
     const meta = FIELD_META[k];
     if (meta) {
-      (groups[meta.section] = groups[meta.section] || []).push({ label: meta.label, value: toText(v), order: meta.order });
+      (groups[meta.section] = groups[meta.section] || []).push({ label: meta.label, value: toText(v), order: meta.order, id: k });
     } else {
-      extras.push({ label: prettyKey(k), value: toText(v) });
+      extras.push({ label: prettyKey(k), value: toText(v), id: k });
     }
   }
   Object.values(groups).forEach((arr) => arr.sort((a, b) => a.order - b.order));
-  // Preserve the canonical section order, then any leftover sections.
-  const orderedSections = [
-    ...SECTION_KEYS.map((sk) => PRODUCT_SECTIONS[sk as keyof typeof PRODUCT_SECTIONS].label),
-  ].filter((label, i, a) => a.indexOf(label) === i && groups[label]?.length);
-
-  const Tile = ({ label, value }: { label: string; value: string }) => (
-    <div style={{ background: C.faint, borderRadius: 9, padding: "9px 11px" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 600, color: C.textSoft, marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5, whiteSpace: "pre-wrap" as const, wordBreak: "break-word" as const }}>{value}</div>
-    </div>
-  );
+  const sectionLabels = SECTION_KEYS.map((sk) => PRODUCT_SECTIONS[sk as keyof typeof PRODUCT_SECTIONS].label)
+    .filter((label, i, a) => a.indexOf(label) === i && groups[label]?.length);
+  const tabs = [...sectionLabels, ...(extras.length ? ["Other Details"] : [])];
+  const [tab, setTab] = useState(tabs[0] || "");
+  const activeTab = tabs.includes(tab) ? tab : (tabs[0] || "");
+  const activeFields = activeTab === "Other Details" ? extras : (groups[activeTab] || []);
+  const fieldCount = Object.values(groups).reduce((n, a) => n + a.length, 0) + extras.length;
+  const preview = toText(product.description || "").slice(0, 120);
 
   return (
-    <div data-copilot-id={product.id} style={{ background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,.03)" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 14, borderBottom: `1px solid ${C.border}` }}>
+    <div data-copilot-id={product.id} style={{ background: C.canvas, border: `1px solid ${open ? C.accentBorder : C.border}`, borderRadius: 16, boxShadow: "0 1px 3px rgba(0,0,0,.03)", overflow: "hidden", transition: "border-color .15s" }}>
+      {/* Clickable header */}
+      <button onClick={() => setOpen((o) => !o)}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" as const }}>
         <div style={{ width: 26, height: 26, borderRadius: 8, background: C.accentLo, color: C.accent, fontSize: 12, fontWeight: 800, fontFamily: mono, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{index + 1}</div>
-        <h2 style={{ fontSize: 17, fontWeight: 800, color: C.text, margin: 0, flex: 1 }}>{product.name || "Untitled product"}</h2>
-        {filled(product.category) && (
-          <span style={{ fontSize: 10.5, fontFamily: mono, fontWeight: 700, color: C.accent, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "3px 9px", borderRadius: 6, whiteSpace: "nowrap" as const }}>{toText(product.category)}</span>
-        )}
-      </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{product.name || "Untitled product"}</span>
+            {filled(product.category) && (
+              <span style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.accent, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "2px 8px", borderRadius: 6, whiteSpace: "nowrap" as const }}>{toText(product.category)}</span>
+            )}
+          </div>
+          {!open && preview && (
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{preview}…</div>
+          )}
+        </div>
+        <span style={{ fontSize: 11, fontFamily: mono, color: C.muted, flexShrink: 0 }}>{fieldCount} fields</span>
+        <span style={{ fontSize: 14, color: C.muted, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>›</span>
+      </button>
 
-      {/* Sections */}
-      <div style={{ display: "flex", flexDirection: "column" as const, gap: 16 }}>
-        {orderedSections.map((label) => (
-          <div key={label}>
-            <div style={{ fontSize: 9.5, fontFamily: mono, fontWeight: 700, color: C.muted, letterSpacing: 0.5, textTransform: "uppercase" as const, marginBottom: 8 }}>{label}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
-              {groups[label].map((f, i) => <Tile key={i} label={f.label} value={f.value} />)}
-            </div>
+      {/* Expanded body: section tabs + active section */}
+      {open && (
+        <div style={{ padding: "0 20px 20px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, marginBottom: 14, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+            {tabs.map((t) => (
+              <button key={t} onClick={() => setTab(t)}
+                style={{ padding: "5px 12px", borderRadius: 999, border: `1px solid ${activeTab === t ? C.accent : C.border}`, background: activeTab === t ? C.accent : C.canvas, color: activeTab === t ? "#fff" : C.textSoft, fontSize: 11.5, fontWeight: 600, fontFamily: head, cursor: "pointer" }}>
+                {t}
+              </button>
+            ))}
           </div>
-        ))}
-        {extras.length > 0 && (
-          <div>
-            <div style={{ fontSize: 9.5, fontFamily: mono, fontWeight: 700, color: C.muted, letterSpacing: 0.5, textTransform: "uppercase" as const, marginBottom: 8 }}>Other Details</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
-              {extras.map((f, i) => <Tile key={i} label={f.label} value={f.value} />)}
-            </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+            {activeFields.map((f, i) => <Tile key={i} label={f.label} value={f.value} id={f.id} />)}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
