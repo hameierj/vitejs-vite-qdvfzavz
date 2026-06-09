@@ -25,11 +25,13 @@ const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const EMAIL_DAYS = [0, 3, 7, 14, 21];
 const LINKEDIN_DAYS = [0, 2, 5, 10, 17];
 
-// The three email campaign archetypes — identical to the original Getting Started flow.
-const EMAIL_DEFS: { label: string; short: string; ctaInstr: string }[] = [
+// The three email campaign archetypes — from the original Getting Started flow.
+// offerFocus marks the Value-Based campaign, which must feature concrete, named
+// free offers (lead magnets) rather than vague "value".
+const EMAIL_DEFS: { label: string; short: string; ctaInstr: string; offerFocus?: boolean }[] = [
   { label: "Email 1 — Conversation Starter", short: "Conversation Starter", ctaInstr: "Lead with value (free audit, consultation, or industry insight). No hard ask. Soft CTA only — e.g. 'Worth a quick look?', 'Thoughts?'. Never ask for a meeting." },
   { label: "Email 2 — Meeting CTA", short: "Meeting CTA", ctaInstr: "Direct ask for a meeting or demo. Short, confident, clear. CTA must directly ask for a meeting — e.g. 'Open to a 15-min call?', 'Worth 20 minutes?'. No soft hedging." },
-  { label: "Email 3 — Value-Based CTA", short: "Value-Based CTA", ctaInstr: "Offer clear value before asking for the meeting. Works well on colder or larger audiences. Structure: problem → outcome → offer → CTA. e.g. 'Worth seeing how we'd approach this for you?'." },
+  { label: "Email 3 — Value-Based CTA", short: "Value-Based CTA", offerFocus: true, ctaInstr: "Lead with a SPECIFIC, tangible, FREE offer (a real lead magnet — not vague 'value'), then ask for the meeting. Structure: pain → the free thing they get, named concretely → meeting ask. e.g. 'Want the free lead list first?', 'Worth seeing the sample we'd build for you?'." },
 ];
 
 interface Step { id: string; stepNumber: number; role: string; dayOffset: number; subject?: string; body: string; }
@@ -65,6 +67,7 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
   const [personaId, setPersonaId] = useState<string>(sortedPersonas?.[0]?.id || "");
   const [playbookKey, setPlaybookKey] = useState<PlaybookKey>("auto");
   const [instructions, setInstructions] = useState<string>("");
+  const [freeOffers, setFreeOffers] = useState<string>("");
 
   const [generating, setGenerating] = useState(false);
   const [log, setLog] = useState<string[]>([]);
@@ -218,6 +221,15 @@ Return ONLY valid JSON:
         const def = EMAIL_DEFS[ei];
         setPhase(`Email campaign ${ei + 1}/3 — ${def.short}…`);
         addLog(`Writing email campaign ${ei + 1}/3 (${def.short})…`);
+        const companyName = cd.co_name || "the client";
+        const offerBlock = def.offerFocus
+          ? `\nFREE-OFFER REQUIREMENT (critical for this campaign):
+Every email must feature a SPECIFIC, tangible, FREE offer that ${companyName} can hand over — a real lead magnet that creates excitement. Name the exact asset; never say just "value", "insights", or "a resource".
+${freeOffers.trim()
+  ? `Use these real free offers the client provides — rotate/vary them across the 5 emails (don't reuse the same one every time):\n${freeOffers.trim()}`
+  : `Invent concrete, plausible free offers grounded in ${companyName}'s own products/services — e.g. a free sample/starter lead list, a free month or trial of a product, a free audit or teardown, a free playbook/template pack, a free data or benchmark report. Make each one specific and enticing.`}
+The meeting ask comes only AFTER the free offer is on the table, and is framed as "want the [free thing] first?".\n`
+          : "";
         let sequence: Step[] = [];
         try {
           const er = await callClaudeProxy(
@@ -229,7 +241,7 @@ EMAIL STRATEGY (follow this exactly):
 ${emailStrategy.slice(0, 1200)}
 
 CTA STYLE FOR THIS CAMPAIGN: ${def.ctaInstr}
-
+${offerBlock}
 Rules:
 - Email 1 (Day 0): lead with the LEAD PAIN — hook, short, personal
 - Email 2 (Day 3): different angle + trigger event
@@ -446,6 +458,15 @@ Return ONLY valid JSON:
               placeholder={`Steer the copy. e.g. "mention our SOC 2 cert", "they just raised a Series B", "avoid pricing talk", "focus on the integration angle, not cost savings".`}
               style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 12.5, fontFamily: head, color: C.text, background: C.canvas, resize: "vertical" as const, lineHeight: 1.5 }} />,
             "Applied across the strategy briefs and every email + LinkedIn message."
+          )}
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          {field("Free offers / lead magnets to feature (optional)",
+            <textarea value={freeOffers} onChange={(e) => setFreeOffers(e.target.value)} rows={2}
+              placeholder={`The free things you can give to excite prospects, one per line. e.g. "free RTS lead list", "free month of Bebop sales playbooks", "free deliverability audit".`}
+              style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 12.5, fontFamily: head, color: C.text, background: C.canvas, resize: "vertical" as const, lineHeight: 1.5 }} />,
+            "Used in the Value-Based CTA campaign. Leave blank and the AI will invent plausible free offers from your products."
           )}
         </div>
 
