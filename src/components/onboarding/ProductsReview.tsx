@@ -46,10 +46,12 @@ export function ProductsReview({ products, onRefine, onEdit, onRegenerate, gener
   const list = products || [];
   // Heuristic: a healthy profile has many fields. If every product is just name+description+Other,
   // generation fell back — warn and offer a one-click regenerate right here.
-  const looksThin = list.length > 0 && list.every((p: any) => {
+  const looksThin = list.length > 0 && list.some((p: any) => {
     const keys = Object.keys(p).filter((k) => !HIDDEN_KEYS.has(k) && !k.startsWith("_") && p[k] != null && String(p[k]).trim() !== "");
     return keys.length <= 2; // only description (category "Other" is in HIDDEN_KEYS)
   });
+  // Surface the exact per-product failure reasons the server logged (persisted in the job log).
+  const reasons = (log || []).filter((l) => l.includes("⚠️"));
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "8px 24px 64px", fontFamily: head }}>
@@ -87,9 +89,16 @@ export function ProductsReview({ products, onRefine, onEdit, onRegenerate, gener
             <div key={i} style={{ fontSize: 11, fontFamily: mono, color: C.textSoft, lineHeight: 1.5 }}>{l}</div>
           ))}
         </div>
-      ) : looksThin ? (
+      ) : (looksThin || reasons.length > 0) ? (
         <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 10, background: "#FEF6E7", border: "1px solid #F4D89A", fontSize: 12.5, color: "#7a5800", fontFamily: head, lineHeight: 1.5 }}>
-          <strong>These profiles look incomplete</strong> — only a description came through, which means generation fell back. Click <strong>Regenerate</strong> above to rebuild full profiles from your research.
+          <strong>Some profiles came back incomplete.</strong> Click <strong>Regenerate</strong> above to rebuild them from your research.
+          {reasons.length > 0 && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #F0D38A" }}>
+              {reasons.map((r, i) => (
+                <div key={i} style={{ fontSize: 11, fontFamily: mono, color: "#8a6400", lineHeight: 1.5 }}>{r}</div>
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
 
