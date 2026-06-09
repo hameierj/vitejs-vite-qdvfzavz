@@ -28638,7 +28638,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
             )}
 
             {view==="campaign-generator" && (
-              <div style={{ position:"absolute" as const, inset:0, overflow:"auto", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+              <div style={{ overflow:"auto", height:"100%", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
                 <EmailCampaignGenerator
                   companyData={companyData}
                   products={products}
