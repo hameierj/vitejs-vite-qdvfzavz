@@ -13930,6 +13930,15 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
     }
   };
 
+  // When the user is editing inside guided onboarding, keep them in the in-flow review views
+  // instead of jumping to the full editors (which drops them out of the onboarding flow).
+  const inOnboarding = currentView === "products-review" || currentView === "onboarding-hub" || !!scopeHint;
+  const resolveNavView = (v: string): string => {
+    if (!inOnboarding) return v;
+    if (v === "products") return "products-review";
+    return v; // research-brief / icp-scoring already map to their in-flow review views
+  };
+
   // Live preview: while a plan is awaiting approval, outline every area it would touch on the
   // current page (and emphasize the row being hovered). Cleared on apply / cancel / unmount.
   useEffect(() => {
@@ -14675,7 +14684,8 @@ ${currentView ? `\nCURRENT PAGE: The user is looking at the "${PAGE_LABELS[curre
         // Take the user to where the change landed and flash it, so the edit is visible live.
         const nav = changeNav.current;
         if (nav?.view) {
-          if (nav.view !== currentView) onNavigate(nav.view);
+          const navTo = resolveNavView(nav.view);
+          if (navTo !== currentView) onNavigate(navTo);
           copilotFlash(nav.targets);
         }
         // Append tool results summary to the streamed text
@@ -14970,7 +14980,8 @@ ${currentView ? `\nCURRENT PAGE: The user is looking at the "${PAGE_LABELS[curre
                       allTargets.push(...changeNav.current.targets);
                     }
                   }
-                  if (navView && navView !== currentView) onNavigate(navView);
+                  const navTo = navView ? resolveNavView(navView) : "";
+                  if (navTo && navTo !== currentView) onNavigate(navTo);
                   setHoverEdit(null);
                   copilotFlash(allTargets);
                   setPendingEdits(prev => prev ? { ...prev, appliedAt: Date.now() } : prev);
