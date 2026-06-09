@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { callClaude, parseJSON } from "../../lib/callClaude";
+import { callClaudeProxy, parseJSON } from "../../lib/callClaude";
 import { PLAYBOOKS, buildPlaybookContext, type PlaybookKey } from "../../lib/playbooks";
 import { ElapsedTimer } from "./ElapsedTimer";
 
 // STEP 5 — Outreach Campaign generation. Mirrors the original "Getting Started"
 // email flow: pick a product/service → a persona → a tone (playbook) → optional
 // extra instructions, then generate ONE LinkedIn sequence + THREE email campaigns
-// (Conversation Starter, Meeting CTA, Value-Based CTA). Self-contained: talks to
-// Claude directly via callClaude, same as CampaignPlanningBoard.
+// (Conversation Starter, Meeting CTA, Value-Based CTA). Talks to Claude through
+// the server-side ai-proxy (callClaudeProxy) so it works without a user API key.
 
 const C = {
   bg: "#F8F9FE", canvas: "#FFFFFF", surface: "#F3F4FB", border: "#EDF2F7", borderHi: "#D8DEE9",
@@ -82,17 +82,8 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
 
   const generate = async () => {
     if (!product?.id || !persona?.id) return;
-    // Browser-side generation needs an Anthropic key (same resolution as the rest
-    // of the in-app AI: window-injected key OR localStorage). Fail fast with a
-    // clear message instead of silently looping through empty results.
-    let hasKey = false;
-    try { hasKey = !!((window as any).__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key")); }
-    catch { hasKey = !!(window as any).__B2BR_API_KEY__; }
-    if (!hasKey) {
-      setResult(null);
-      setError("No Anthropic API key found. Open the API Keys settings, add your key, then try again.");
-      return;
-    }
+    // Generation runs through the server-side ai-proxy (Supabase secret key), so
+    // no user/localStorage key is required — same path the gated stages use.
     setGenerating(true);
     setSaved(false);
     setResult(null);
@@ -132,7 +123,7 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
       setPhase("Email strategy…"); addLog("Generating email strategy brief…");
       let emailStrategy = "";
       try {
-        emailStrategy = await callClaude(
+        emailStrategy = await callClaudeProxy(
           `Generate a campaign strategy brief for EMAIL cold outreach.
 Context: ${ctxStr}
 ${emailPbBlock}${instrBlock}
@@ -169,7 +160,7 @@ HARD RULE: No links or URLs anywhere in the email sequence. All CTAs must be rep
       setPhase("LinkedIn strategy…"); addLog("Generating LinkedIn strategy brief…");
       let linkedinStrategy = "";
       try {
-        linkedinStrategy = await callClaude(
+        linkedinStrategy = await callClaudeProxy(
           `Generate a campaign strategy brief for LINKEDIN outreach.
 Context: ${ctxStr}
 ${liPbBlock}${instrBlock}
@@ -197,7 +188,7 @@ Touch 5 (Day 17 — breakup): [angle]
       setPhase("LinkedIn sequence…"); addLog("Writing LinkedIn sequence (1 campaign)…");
       let linkedinSequence: Step[] = [];
       try {
-        const lr = await callClaude(
+        const lr = await callClaudeProxy(
           `Write a 5-touch LinkedIn outreach sequence. Max 300 chars for connection request, 500 chars for messages.
 
 Context: ${ctxStr}
@@ -229,7 +220,7 @@ Return ONLY valid JSON:
         addLog(`Writing email campaign ${ei + 1}/3 (${def.short})…`);
         let sequence: Step[] = [];
         try {
-          const er = await callClaude(
+          const er = await callClaudeProxy(
             `Write a 5-email cold outreach sequence. Real emails, not templates. Max 100 words each body.
 
 Context: ${ctxStr}
