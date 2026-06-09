@@ -100,7 +100,10 @@ async function callClaude(anthropicKey: string, prompt: string, tokens: number, 
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
         lastErr = `Anthropic HTTP ${r.status}`;
-        if (Date.now() + 4000 < deadline) { await sleep(Math.min(1500 * (attempt + 1), 5000)); continue; }
+        // Respect Retry-After when present; otherwise exponential backoff up to 15s.
+        const ra = parseInt(r.headers.get("retry-after") || "", 10);
+        const wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 20000) : Math.min(2500 * (attempt + 1), 15000);
+        if (Date.now() + wait + 2000 < deadline) { await sleep(wait); continue; }
         throw new Error(lastErr);
       }
       const json = await r.json().catch(() => ({} as any));
@@ -133,7 +136,7 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   // Hard wall: the whole pipeline (all products in parallel) must finish within this window so
   // it always writes a terminal status and never gets killed mid-run. Comfortably under the
   // edge function's wall-clock limit.
-  const deadline = Date.now() + 290000;
+  const deadline = Date.now() + 350000;
   await appendLog(sb, wsId, "Reading confirmed company research...");
   const ws = await readWs(sb, wsId);
   const cd = ws.companyData || {};
@@ -205,23 +208,23 @@ unsolvedImpact: what happens if the customer does nothing — lost revenue, comp
 IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) or one-time (project, purchase). Fill the relevant commercial fields accordingly.`;
     // Up to 2 attempts for parse/thin issues — callClaude already handles transient API
     // overloads internally (bounded by the shared deadline), so we don't compound retries here.
-    let why = "no attempts ran (out of time before first call)";
+    let lastErr = "";       // the real underlying failure (API/timeout/parse)
     for (let attempt = 1; attempt <= 3; attempt++) {
-      if (Date.now() + 5000 > pDeadline) { why = "ran out of time budget for this product"; break; }
+      if (Date.now() + 8000 > pDeadline) break; // no time for another full attempt
       try {
         const raw = await callClaude(anthropicKey, prompt, 5000, pDeadline);
         const parsed = parseJSON(raw);
         const filledCount = Object.values(parsed).filter((v) => v && String(v).trim()).length;
         // A real profile fills many fields; if we only got a couple, treat as a bad parse and retry.
-        if (filledCount < 6 && attempt < 3 && Date.now() + 5000 < pDeadline) { why = `model returned only ${filledCount} fields`; console.warn(`product "${p.name}" attempt ${attempt}: ${why}, retrying`); continue; }
+        if (filledCount < 6) { lastErr = `model returned only ${filledCount} fields`; console.warn(`product "${p.name}" attempt ${attempt}: ${lastErr}, retrying`); continue; }
         return { ...EMPTY_PRODUCT(), ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v && String(v).trim())) };
       } catch (err) {
-        why = String((err as Error)?.message ?? err);
-        console.error(`product "${p.name}" attempt ${attempt} failed:`, why);
+        lastErr = String((err as Error)?.message ?? err);
+        console.error(`product "${p.name}" attempt ${attempt} failed:`, lastErr);
       }
     }
-    // Surface the REAL reason so we can tell a timeout from an auth/model/parse error.
-    await appendLog(sb, wsId, `⚠️ "${p.name}" came back thin — reason: ${why}`);
+    // Surface the REAL reason (the actual API/parse error), not just "out of time".
+    await appendLog(sb, wsId, `⚠️ "${p.name}" came back thin — reason: ${lastErr || "unknown"}`);
     return { ...EMPTY_PRODUCT(), name: p.name || "", description: p.description || "", category: "Other" };
   };
 
@@ -230,12 +233,17 @@ IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) o
   // capacity and the deadline budget, so every profile comes back complete.
   const results: any[] = [];
   for (let i = 0; i < seeds.length; i++) {
-    // Fair-share budget: divide the time left evenly among the products still to do, so a slow or
-    // retry-heavy product can't consume the whole deadline and starve the ones after it.
-    const productsLeft = seeds.length - i;
-    const pDeadline = Date.now() + Math.max(70000, Math.floor((deadline - Date.now()) / productsLeft));
+    // Each product gets a generous slice (~130s) — enough for a real ~40-60s call plus a retry —
+    // capped by the overall deadline. We only skip a product if the WHOLE budget is already gone,
+    // so an early product can't be starved before it even starts.
+    if (Date.now() + 10000 > deadline) {
+      await appendLog(sb, wsId, `⚠️ "${seeds[i].name}" skipped — overall time budget exhausted`);
+      results.push({ ...EMPTY_PRODUCT(), name: seeds[i].name || "", description: seeds[i].description || "", category: "Other" });
+      continue;
+    }
+    const pDeadline = Math.min(Date.now() + 130000, deadline);
     await appendLog(sb, wsId, `Building product ${i + 1} of ${seeds.length}: ${seeds[i].name || "Untitled"}...`);
-    results.push(await genProduct(seeds[i], Math.min(pDeadline, deadline)));
+    results.push(await genProduct(seeds[i], pDeadline));
   }
   const products = results.filter((r: any) => r?.name);
 
