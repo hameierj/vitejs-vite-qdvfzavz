@@ -18,6 +18,7 @@ export interface FNode {
   depth?: number;      // layer hint for "tree" / radial seed for "force" (root = 0)
   dim?: boolean;       // render faded (e.g. skeleton / low-value)
   urgent?: boolean;    // render a small red flag
+  ring?: string;       // optional outer ring color (e.g. encode a score)
 }
 export interface FLink { source: string; target: string; }
 
@@ -266,6 +267,13 @@ export function ForceGraph({
         ctx.fillStyle = nd.color;
         ctx.fill();
         ctx.globalAlpha = 1;
+        if (nd.ring) {
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, nd.r + 2.5 / k, 0, Math.PI * 2);
+          ctx.lineWidth = 2.5 / k;
+          ctx.strokeStyle = nd.ring;
+          ctx.stroke();
+        }
         if (isSel || isHov) {
           ctx.lineWidth = (isSel ? 3 : 2) / k;
           ctx.strokeStyle = isSel ? C.accent : nd.color;

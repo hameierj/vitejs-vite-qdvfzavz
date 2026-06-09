@@ -136,11 +136,11 @@ function normalizeScores(sr: any): ScoreRow[] {
   });
 }
 
-const GRAPH_COLORS = { company: C.accent, product: C.green };
+const GRAPH_COLORS = { company: C.accent, product: C.green, icp: C.amber };
 const GRAPH_LEGEND = [
   { label: "Company", color: GRAPH_COLORS.company },
   { label: "Product / service", color: GRAPH_COLORS.product },
-  { label: "ICP (color = score)", color: C.amber },
+  { label: "ICP (ring = score)", color: GRAPH_COLORS.icp },
 ];
 
 // Flatten the TAM tree into a clean hierarchy: Company → Products/Services →
@@ -171,7 +171,9 @@ function buildTamGraph(tamTree: any, scores: ScoreRow[], companyName: string): {
         id = sc?.icpId || `icp-${synth++}`;
         icpIdByName.set(key, id);
         const sv = typeof sc?.weightedScore === "number" ? sc.weightedScore : -1;
-        nodes.push({ id, type: "icp", label: icp.name || "ICP", color: sv >= 0 ? scoreColor(sv) : C.muted, r: 9, depth: 2 });
+        // ICPs are always the ICP color (amber) so they're distinct from green
+        // products; the score is encoded as an outer ring instead of the fill.
+        nodes.push({ id, type: "icp", label: icp.name || "ICP", color: GRAPH_COLORS.icp, ring: sv >= 0 ? scoreColor(sv) : undefined, r: 9, depth: 2 });
       }
       links.push({ source: pid, target: id });
     });
@@ -180,7 +182,7 @@ function buildTamGraph(tamTree: any, scores: ScoreRow[], companyName: string): {
   // Fallback: no tamTree branches — connect scored ICPs straight to the company.
   if (nodes.length === 1 && scores.length) {
     for (const s of scores) {
-      nodes.push({ id: s.icpId, type: "icp", label: s.icpName, color: scoreColor(s.weightedScore || 0), r: 9, depth: 1 });
+      nodes.push({ id: s.icpId, type: "icp", label: s.icpName, color: GRAPH_COLORS.icp, ring: scoreColor(s.weightedScore || 0), r: 9, depth: 1 });
       links.push({ source: ROOT, target: s.icpId });
     }
   }
