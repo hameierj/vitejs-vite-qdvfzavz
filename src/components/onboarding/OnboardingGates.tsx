@@ -17,7 +17,7 @@ const C = {
 const head = "'Inter', system-ui, sans-serif";
 const mono = "'JetBrains Mono', 'Fira Code', monospace";
 
-export type StageKey = "research" | "products" | "tamicp" | "personas" | "infra";
+export type StageKey = "research" | "products" | "tamicp" | "personas" | "infra" | "campaigns";
 type GateStatus = "locked" | "idle" | "generating" | "review" | "confirmed";
 
 interface Props {
@@ -39,20 +39,21 @@ interface Props {
   onNavigate: (view: string) => void;
 }
 
-type TrackAGate = "companyResearch" | "products" | "tamIcp" | "personas";
+type TrackAGate = "companyResearch" | "products" | "tamIcp" | "personas" | "emailCampaigns";
 
 const TRACK_A: { id: TrackAGate; stage: StageKey; num: number; title: string; desc: string }[] = [
   { id: "companyResearch", stage: "research", num: 1, title: "Company Research", desc: "Deep AI research on the company — products, value props, market evidence, ICP hypotheses, and call-prep notes." },
   { id: "products",        stage: "products", num: 2, title: "Products & Services", desc: "Full profiles for each product/service: value prop, deal economics, proof, objections, messaging. Generated from the confirmed research." },
   { id: "tamIcp",          stage: "tamicp",   num: 3, title: "TAM Tree → ICPs", desc: "Company-level TAM plus TAM per product/service, with ICPs identified per branch (unique or cross-product), explained and scored." },
   { id: "personas",        stage: "personas", num: 4, title: "Personas", desc: "Complete outreach personas built from the highest-scoring ICPs — buyer, pains, triggers, channels, messaging." },
+  { id: "emailCampaigns",  stage: "campaigns", num: 5, title: "Outreach Campaigns", desc: "Pick a product, persona, and writing tone (Hormozi, Vaynerchuk, etc.), then generate one LinkedIn sequence and three email campaigns — Conversation Starter, Meeting CTA, Value-Based CTA." },
 ];
 
 const STAGE_FOR_GATE: Record<TrackAGate, StageKey> = {
-  companyResearch: "research", products: "products", tamIcp: "tamicp", personas: "personas",
+  companyResearch: "research", products: "products", tamIcp: "tamicp", personas: "personas", emailCampaigns: "campaigns",
 };
 const NEXT_GATE: Record<TrackAGate, TrackAGate | null> = {
-  companyResearch: "products", products: "tamIcp", tamIcp: "personas", personas: null,
+  companyResearch: "products", products: "tamIcp", tamIcp: "personas", personas: "emailCampaigns", emailCampaigns: null,
 };
 
 export function OnboardingGates(props: Props) {
@@ -70,6 +71,7 @@ export function OnboardingGates(props: Props) {
       case "products": return (products || []).length > 0;
       case "tamIcp": return !!cd?._tamTree;
       case "personas": return !!cd?._personasGeneratedAt;
+      case "emailCampaigns": return !!cd?._campaignsGeneratedAt;
     }
   };
 
@@ -152,6 +154,22 @@ export function OnboardingGates(props: Props) {
         </PreviewBox>
       );
     }
+    if (gate === "emailCampaigns") {
+      const cp = (cd?._campaignPlans || {}) as Record<string, any>;
+      const entries = Object.values(cp);
+      if (!cd?._campaignsGeneratedAt || entries.length === 0) return null;
+      return (
+        <PreviewBox>
+          <Row k="Campaign sets generated" v={String(entries.length)} />
+          {entries.slice(0, 4).map((p: any, i: number) => (
+            <div key={i} style={{ fontSize: 12.5, color: C.text, padding: "2px 0" }}>
+              • {p.personaName || "Persona"} <span style={{ color: C.muted }}>×</span> {p.productName || "Product"}
+              <span style={{ marginLeft: 6, fontSize: 10, fontFamily: mono, color: C.accent }}>1 LinkedIn · 3 email</span>
+            </div>
+          ))}
+        </PreviewBox>
+      );
+    }
     return null;
   };
 
@@ -161,6 +179,7 @@ export function OnboardingGates(props: Props) {
       case "products": return { label: "View products", onClick: () => onNavigate("products-review") };
       case "tamIcp": return { label: "View scoring", onClick: () => onNavigate("icp-scoring") };
       case "personas": return { label: "View personas", onClick: () => onNavigate("personas-review") };
+      case "emailCampaigns": return { label: "Open generator", onClick: () => onNavigate("campaign-generator") };
     }
   };
 
@@ -204,7 +223,7 @@ export function OnboardingGates(props: Props) {
                         style={{ flex: 1, padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 12.5, fontFamily: head, color: C.text, background: C.canvas }} />
                     </div>
                   )}
-                  {(st === "idle" || st === "review") && (
+                  {(st === "idle" || st === "review") && g.id !== "emailCampaigns" && (
                     <GuidanceBox value={noteFor(g.stage)} onChange={(v) => onSetGateNote(g.stage, v)}
                       hint={st === "review" ? "Add guidance, then Regenerate to apply it" : "Steer the AI before it generates this step"} />
                   )}
@@ -214,12 +233,12 @@ export function OnboardingGates(props: Props) {
                 <GateActions
                   status={st}
                   viewAction={(st === "review" || st === "confirmed") ? viewActionFor(g.id) : undefined}
-                  onGenerate={() => g.id === "companyResearch" ? onRunResearch(domain.trim()) : onStartStage(g.stage)}
-                  generateLabel={g.id === "companyResearch" ? "Run Research" : `Generate`}
+                  onGenerate={() => g.id === "companyResearch" ? onRunResearch(domain.trim()) : g.id === "emailCampaigns" ? onNavigate("campaign-generator") : onStartStage(g.stage)}
+                  generateLabel={g.id === "companyResearch" ? "Run Research" : g.id === "emailCampaigns" ? "Open Generator" : `Generate`}
                   canGenerate={g.id === "companyResearch" ? !!domain.trim() : true}
                   onRefine={() => onRefine(g.title)}
                   onConfirm={() => onConfirmGate(g.id)}
-                  onRegenerate={() => g.id === "companyResearch" ? onRunResearch(domain.trim()) : onStartStage(g.stage)}
+                  onRegenerate={() => g.id === "companyResearch" ? onRunResearch(domain.trim()) : g.id === "emailCampaigns" ? onNavigate("campaign-generator") : onStartStage(g.stage)}
                 />
               }
             />
