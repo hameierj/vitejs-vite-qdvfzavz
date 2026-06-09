@@ -95,6 +95,47 @@ function scoreColor(s: number): string {
   return C.red;
 }
 
+// The TAM gate (tam-icp-run) and this component's own re-score write two
+// different shapes into companyData._icpScoringResult:
+//   gate:   { icps:  [{ icpId, icpName, dimensions: [{key,label,weight,score,rationale}], ... }] }
+//           with dimension keys market_size | pmf | proof | outreach | advantage
+//   re-score: { scores: [{ icpId, icpName, dimensions: { marketSize: {...}, ... }, ... }] }
+// Normalize both into the ScoreRow shape this UI renders so "View scoring"
+// shows the already-generated result instead of an empty "Score ICPs" state.
+const GATE_DIM_KEY: Record<string, DimensionKey> = {
+  market_size: "marketSize", pmf: "productFit", proof: "proof", outreach: "accessibility", advantage: "competitive",
+};
+function normalizeScores(sr: any): ScoreRow[] {
+  if (!sr) return [];
+  if (Array.isArray(sr.scores) && sr.scores.length) return sr.scores as ScoreRow[];
+  const rows = Array.isArray(sr.icps) ? sr.icps : [];
+  return rows.map((r: any): ScoreRow => {
+    const dims = {} as Record<DimensionKey, { score: number; rationale: string }>;
+    if (Array.isArray(r.dimensions)) {
+      for (const d of r.dimensions) {
+        const k = GATE_DIM_KEY[d.key] || (d.key as DimensionKey);
+        dims[k] = { score: Number(d.score) || 0, rationale: String(d.rationale || "") };
+      }
+    } else if (r.dimensions && typeof r.dimensions === "object") {
+      for (const [rawKey, v] of Object.entries<any>(r.dimensions)) {
+        const k = GATE_DIM_KEY[rawKey] || (rawKey as DimensionKey);
+        dims[k] = { score: Number(v?.score ?? v) || 0, rationale: String(v?.rationale || "") };
+      }
+    }
+    return {
+      icpId: r.icpId || r.id || r.icpName,
+      icpName: r.icpName || r.name || "ICP",
+      dimensions: dims,
+      weightedScore: Number(r.weightedScore) || 0,
+      rank: Number(r.rank) || 0,
+      recommendation: r.recommendation || "test_small",
+      topStrengths: Array.isArray(r.topStrengths) ? r.topStrengths : [],
+      topGaps: Array.isArray(r.topGaps) ? r.topGaps : [],
+      suggestedAngle: r.suggestedAngle || "",
+    };
+  });
+}
+
 const GRAPH_COLORS = { company: C.accent, segment: "#0984E3", product: C.green };
 const GRAPH_LEGEND = [
   { label: "Company", color: GRAPH_COLORS.company },
@@ -161,7 +202,7 @@ export function ICPScoringMatrix({ ws, scoringResult, onSave, onPlanCampaign }: 
   const icps: any[] = ws?.icps || [];
   const companyData: any = ws?.companyData || {};
 
-  const scores: ScoreRow[] = scoringResult?.scores || [];
+  const scores: ScoreRow[] = useMemo(() => normalizeScores(scoringResult), [scoringResult]);
   const tamTree = companyData?._tamTree || null;
 
   const graph = useMemo(
