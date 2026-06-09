@@ -13,7 +13,14 @@ export async function callClaude(
   model: "haiku" | "sonnet" = "haiku",
   opts: CallOpts = {}
 ): Promise<string> {
-  const apiKey = (() => { try { return localStorage.getItem("b2br_api_key") || ""; } catch { return ""; } })();
+  // Resolve the key the same way the rest of the app does (getApiKey in App.tsx):
+  // a cloud-loaded key lives on window.__B2BR_API_KEY__ and may not be mirrored
+  // to localStorage, so check both — otherwise browser AI features fail with a
+  // spurious "No API key" even though the app has one.
+  const apiKey = (() => {
+    try { return ((window as any).__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key") || "").trim(); }
+    catch { return ((window as any).__B2BR_API_KEY__ || "").trim(); }
+  })();
   if (!apiKey) throw new Error("No Anthropic API key found. Add it in the API Keys settings.");
   const modelId = model === "haiku" ? "claude-haiku-4-5-20251001" : "claude-sonnet-4-6";
 

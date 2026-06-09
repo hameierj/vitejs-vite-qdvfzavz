@@ -73,6 +73,7 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
   const [emailTab, setEmailTab] = useState(0);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const product = (products || []).find((p: any) => p.id === productId) || products?.[0] || {};
   const persona = (icps || []).find((p: any) => p.id === personaId) || sortedPersonas?.[0] || {};
@@ -81,14 +82,33 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
 
   const generate = async () => {
     if (!product?.id || !persona?.id) return;
+    // Browser-side generation needs an Anthropic key (same resolution as the rest
+    // of the in-app AI: window-injected key OR localStorage). Fail fast with a
+    // clear message instead of silently looping through empty results.
+    let hasKey = false;
+    try { hasKey = !!((window as any).__B2BR_API_KEY__ || localStorage.getItem("b2br_api_key")); }
+    catch { hasKey = !!(window as any).__B2BR_API_KEY__; }
+    if (!hasKey) {
+      setResult(null);
+      setError("No Anthropic API key found. Open the API Keys settings, add your key, then try again.");
+      return;
+    }
     setGenerating(true);
     setSaved(false);
     setResult(null);
+    setError(null);
     setLog(["Building context…"]);
+
+    // Capture the first real failure so we can surface it after the run.
+    let firstErr = "";
+    const note = (label: string, e: any) => {
+      const m = e?.message || String(e);
+      addLog(`${label} failed: ${m}`);
+      if (!firstErr) firstErr = m;
+    };
 
     try {
       const pd = persona?.data || {};
-      const pb = PLAYBOOKS[playbookKey] || PLAYBOOKS.auto;
       const ctx = {
         company: {
           name: cd.co_name || "", pitch: cd.co_pitch || "",
@@ -143,7 +163,7 @@ Email 5 (Day 21): [angle — breakup]
 HARD RULE: No links or URLs anywhere in the email sequence. All CTAs must be reply-based only.`,
           SYSTEM, 900, "sonnet"
         );
-      } catch (e: any) { addLog(`Email strategy failed: ${e.message || e}`); }
+      } catch (e: any) { note("Email strategy", e); }
 
       // ── LinkedIn strategy brief ──
       setPhase("LinkedIn strategy…"); addLog("Generating LinkedIn strategy brief…");
@@ -171,7 +191,7 @@ Touch 5 (Day 17 — breakup): [angle]
 **PERSONALIZATION SIGNALS** (what to look for in their LinkedIn profile)`,
           SYSTEM, 800, "sonnet"
         );
-      } catch (e: any) { addLog(`LinkedIn strategy failed: ${e.message || e}`); }
+      } catch (e: any) { note("LinkedIn strategy", e); }
 
       // ── LinkedIn sequence (1 campaign) ──
       setPhase("LinkedIn sequence…"); addLog("Writing LinkedIn sequence (1 campaign)…");
@@ -199,7 +219,7 @@ Return ONLY valid JSON:
           id: uid(), stepNumber: s.stepNumber || i + 1, role: s.role || "follow_up",
           dayOffset: s.dayOffset ?? LINKEDIN_DAYS[i] ?? i * 3, body: s.body || "",
         }));
-      } catch (e: any) { addLog(`LinkedIn sequence failed: ${e.message || e}`); }
+      } catch (e: any) { note("LinkedIn sequence", e); }
 
       // ── Three email campaigns ──
       const emailCampaigns: EmailCampaign[] = [];
@@ -237,7 +257,7 @@ Return ONLY valid JSON:
             id: uid(), stepNumber: s.stepNumber || i + 1, role: s.role || "hook",
             dayOffset: s.dayOffset ?? EMAIL_DAYS[i] ?? i * 7, subject: s.subject || "", body: s.body || "",
           }));
-        } catch (e: any) { addLog(`Email campaign ${ei + 1} failed: ${e.message || e}`); }
+        } catch (e: any) { note(`Email campaign ${ei + 1}`, e); }
         emailCampaigns.push({ label: def.label, short: def.short, ctaInstr: def.ctaInstr, sequence });
       }
 
@@ -251,17 +271,30 @@ Return ONLY valid JSON:
       setEmailTab(0);
       setPhase(""); addLog("Done.");
 
-      // Persist so the step shows a "review" state and survives navigation.
-      const key = `${product.id}__${persona.id}`;
-      onSave({
-        companyData: {
-          ...cd,
-          _campaignPlans: { ...plans, [key]: res },
-          _campaignsGeneratedAt: new Date().toISOString(),
-        },
-      });
+      const anyContent = linkedinSequence.length > 0 || emailCampaigns.some((c) => c.sequence.length > 0);
+      if (!anyContent) {
+        setError(firstErr || "Generation returned no usable content — the model response couldn't be parsed. Try Regenerate.");
+      } else if (firstErr) {
+        setError(`Some parts didn't generate: ${firstErr}`);
+      } else {
+        setError(null);
+      }
+
+      // Persist so the step shows a "review" state and survives navigation
+      // (only when we actually produced something).
+      if (anyContent) {
+        const key = `${product.id}__${persona.id}`;
+        onSave({
+          companyData: {
+            ...cd,
+            _campaignPlans: { ...plans, [key]: res },
+            _campaignsGeneratedAt: new Date().toISOString(),
+          },
+        });
+      }
     } catch (e: any) {
       addLog(`Error: ${e.message || e}`);
+      setError(e?.message || String(e));
     } finally {
       setGenerating(false);
     }
@@ -435,6 +468,17 @@ Return ONLY valid JSON:
           </button>
         </div>
       </div>
+
+      {/* Error banner */}
+      {error && !generating && (
+        <div style={{ background: "#FFF5F5", border: "1px solid #FEB2B2", borderRadius: 10, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <span style={{ fontSize: 15, lineHeight: 1.4 }}>⚠️</span>
+          <div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "#C53030", marginBottom: 2 }}>Generation problem</div>
+            <div style={{ fontSize: 12.5, color: "#9B2C2C", lineHeight: 1.55 }}>{error}</div>
+          </div>
+        </div>
+      )}
 
       {/* Progress */}
       {generating && (
