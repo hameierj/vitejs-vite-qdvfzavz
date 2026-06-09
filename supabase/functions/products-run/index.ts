@@ -82,41 +82,69 @@ async function appendLog(sb: SupabaseClient, wsId: string, line: string) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const TRANSIENT_ERROR_TYPES = new Set(["overloaded_error", "rate_limit_error", "api_error", "timeout_error"]);
 
-// Robust call bounded by a hard deadline: retries 429/529/5xx and transient Anthropic errors
-// with backoff, but NEVER past `deadline`. The deadline (shared across all parallel products)
-// guarantees the whole pipeline finishes and writes a terminal status instead of spiralling on
-// retries and getting killed mid-run — which is what left generation "stuck" forever.
+// STREAMING call. A full profile can take >2 minutes to generate; a non-streaming request with a
+// fixed timeout kept getting cut off ("Signal timed out"). Streaming lets a long-but-healthy
+// generation finish — we only abort if the stream actually STALLS (no new text for INACTIVITY ms),
+// which is what a hung connection looks like. Retries 429/529/5xx with backoff, bounded by deadline.
+const INACTIVITY_MS = 40000; // abort only if the model sends no text for 40s
 async function callClaude(anthropicKey: string, prompt: string, tokens: number, deadline: number, system = "Return only valid JSON. Be specific and actionable."): Promise<string> {
   let lastErr = "";
   for (let attempt = 0; ; attempt++) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 3000) throw new Error(lastErr || "deadline reached");
+    if (Date.now() + 5000 > deadline) throw new Error(lastErr || "deadline reached");
     try {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: tokens, system, messages: [{ role: "user", content: prompt }] }),
-        signal: AbortSignal.timeout(Math.min(115000, remaining)), // a full profile can take ~90-110s; must exceed that or every call times out
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: tokens, system, stream: true, messages: [{ role: "user", content: prompt }] }),
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
         lastErr = `Anthropic HTTP ${r.status}`;
-        // Respect Retry-After when present; otherwise exponential backoff up to 15s.
         const ra = parseInt(r.headers.get("retry-after") || "", 10);
         const wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 20000) : Math.min(2500 * (attempt + 1), 15000);
         if (Date.now() + wait + 2000 < deadline) { await sleep(wait); continue; }
         throw new Error(lastErr);
       }
-      const json = await r.json().catch(() => ({} as any));
-      if (json.error) {
-        const t = String(json.error.type || "anthropic_error");
-        lastErr = `${t}: ${String(json.error.message || "")}`;
-        if (TRANSIENT_ERROR_TYPES.has(t) && Date.now() + 4000 < deadline) { await sleep(Math.min(1500 * (attempt + 1), 5000)); continue; }
+      if (!r.ok || !r.body) {
+        const ej = await r.json().catch(() => ({} as any));
+        lastErr = ej?.error ? `${ej.error.type}: ${ej.error.message}` : `HTTP ${r.status}`;
+        if (TRANSIENT_ERROR_TYPES.has(ej?.error?.type) && Date.now() + 4000 < deadline) { await sleep(3000); continue; }
         throw new Error(lastErr);
       }
-      return json.content?.[0]?.text ?? "";
+      // Read the SSE stream, accumulating text. Abort on inactivity or deadline.
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let text = "", buf = "";
+      while (true) {
+        const res: any = await Promise.race([
+          reader.read(),
+          new Promise((resolve) => setTimeout(() => resolve({ __stall: true }), INACTIVITY_MS)),
+        ]);
+        if (res?.__stall) { try { await reader.cancel(); } catch { /* ignore */ } throw new Error("stream stalled (no output for 40s)"); }
+        if (res.done) break;
+        buf += decoder.decode(res.value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith("data:")) continue;
+          const data = t.slice(5).trim();
+          if (!data || data === "[DONE]") continue;
+          try {
+            const ev = JSON.parse(data);
+            if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") text += ev.delta.text;
+            else if (ev.type === "error") lastErr = ev.error?.message || "stream error";
+          } catch { /* partial JSON line — ignore */ }
+        }
+        if (Date.now() > deadline) { try { await reader.cancel(); } catch { /* ignore */ } break; }
+      }
+      if (text.trim()) return text;
+      lastErr = lastErr || "empty stream";
+      if (Date.now() + 4000 < deadline) { await sleep(2000); continue; }
+      throw new Error(lastErr);
     } catch (e) {
       lastErr = String((e as Error)?.message ?? e);
-      if (Date.now() + 4000 < deadline) { await sleep(Math.min(1500 * (attempt + 1), 5000)); continue; }
+      // A stall is a real failure for this attempt; retry only if we still have time.
+      if (Date.now() + 6000 < deadline) { await sleep(Math.min(2000 * (attempt + 1), 6000)); continue; }
       throw new Error(lastErr);
     }
   }
@@ -187,7 +215,8 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   ].filter(Boolean).join("\n");
 
   const genProduct = async (p: any, pDeadline: number) => {
-    const prompt = `Create a COMPLETE product profile for a SPECIFIC company's product. Fill EVERY field — no empty values. Be specific and actionable, and stay true to ${companyName}'s actual business. Do NOT produce generic SaaS boilerplate.
+    const prompt = `Create a COMPLETE product profile for a SPECIFIC company's product. Fill EVERY field — no empty values. Stay true to ${companyName}'s actual business; do NOT produce generic SaaS boilerplate.
+KEEP EVERY FIELD CONCISE: 1-2 sentences (or a short comma/newline list) per field — specific, not padded. Completing all fields matters more than length.
 
 ${PRODUCT_NAMING}
 
@@ -212,7 +241,7 @@ IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) o
     for (let attempt = 1; attempt <= 3; attempt++) {
       if (Date.now() + 8000 > pDeadline) break; // no time for another full attempt
       try {
-        const raw = await callClaude(anthropicKey, prompt, 5000, pDeadline);
+        const raw = await callClaude(anthropicKey, prompt, 3500, pDeadline);
         const parsed = parseJSON(raw);
         const filledCount = Object.values(parsed).filter((v) => v && String(v).trim()).length;
         // A real profile fills many fields; if we only got a couple, treat as a bad parse and retry.
@@ -241,7 +270,7 @@ IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) o
       results.push({ ...EMPTY_PRODUCT(), name: seeds[i].name || "", description: seeds[i].description || "", category: "Other" });
       continue;
     }
-    const pDeadline = Math.min(Date.now() + 130000, deadline);
+    const pDeadline = Math.min(Date.now() + 150000, deadline);
     await appendLog(sb, wsId, `Building product ${i + 1} of ${seeds.length}: ${seeds[i].name || "Untitled"}...`);
     results.push(await genProduct(seeds[i], pDeadline));
   }
