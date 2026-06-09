@@ -96,7 +96,7 @@ async function callClaude(anthropicKey: string, prompt: string, tokens: number, 
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: tokens, system, messages: [{ role: "user", content: prompt }] }),
-        signal: AbortSignal.timeout(Math.min(80000, remaining)), // a full profile finishes in ~30-60s; 80s catches a hang without eating the budget
+        signal: AbortSignal.timeout(Math.min(115000, remaining)), // a full profile can take ~90-110s; must exceed that or every call times out
       });
       if (r.status === 429 || r.status === 529 || r.status >= 500) {
         lastErr = `Anthropic HTTP ${r.status}`;
