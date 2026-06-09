@@ -1091,7 +1091,9 @@ async function runJobAndRelease(
       try {
         const { data: wsData } = await supabase.from("app_data").select("value").eq("key", `ws_${workspaceId}`).single();
         if (wsData?.value) {
-          const ws = JSON.parse(wsData.value as string);
+          // app_data.value is jsonb; the client owns the workspace as a raw
+          // object, so only JSON.parse a (legacy) stringified value.
+          const ws = typeof wsData.value === "string" ? JSON.parse(wsData.value) : wsData.value;
           const merged = {
             ...ws,
             companyData: { ...ws.companyData, ...result.company },
@@ -1103,7 +1105,9 @@ async function runJobAndRelease(
             strategy: result.strategy || ws.strategy,
             _lpResult: { company: result.company, products: result.products, personas: result.personas, domains: result.domains, campaignGroups: result.campaignGroups },
           };
-          await supabase.from("app_data").upsert({ key: `ws_${workspaceId}`, value: JSON.stringify(merged) }, { onConflict: "key" });
+          // Store the object directly — the client reads ws_ as jsonb (object),
+          // so stringifying here would corrupt the workspace for the client.
+          await supabase.from("app_data").upsert({ key: `ws_${workspaceId}`, value: merged }, { onConflict: "key" });
         }
       } catch (e) {
         console.error("Failed to merge into workspace:", e);

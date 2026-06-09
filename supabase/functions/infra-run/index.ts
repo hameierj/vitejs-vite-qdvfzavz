@@ -31,7 +31,10 @@ function uid(): string { return crypto.randomUUID(); }
 async function readWs(sb: SupabaseClient, wsId: string): Promise<any> {
   try {
     const { data } = await sb.from("app_data").select("value").eq("key", WS_KEY(wsId)).single();
-    return data?.value ? JSON.parse(data.value as string) : {};
+    // app_data.value is jsonb; the client stores the workspace as a raw object,
+    // so it comes back already parsed. Only JSON.parse legacy string values.
+    const v = data?.value;
+    return typeof v === "string" ? JSON.parse(v) : (v ?? {});
   } catch { return {}; }
 }
 

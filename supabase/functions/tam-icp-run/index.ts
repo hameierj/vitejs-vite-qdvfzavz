@@ -46,7 +46,11 @@ function newICP(idx: number, data: any, name: string): any {
 async function readWs(sb: SupabaseClient, wsId: string): Promise<any> {
   try {
     const { data } = await sb.from("app_data").select("value").eq("key", WS_KEY(wsId)).single();
-    return data?.value ? JSON.parse(data.value as string) : {};
+    // app_data.value is jsonb. The client writes the workspace as a raw object,
+    // so supabase-js returns it already parsed — only JSON.parse when it's a
+    // (legacy) stringified value, otherwise we'd parse "[object Object]" and lose it.
+    const v = data?.value;
+    return typeof v === "string" ? JSON.parse(v) : (v ?? {});
   } catch { return {}; }
 }
 
