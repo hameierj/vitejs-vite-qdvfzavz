@@ -49,11 +49,13 @@ interface Props {
   icps: any[];
   campaigns: any[];
   onSave: (updates: { companyData?: any; campaigns?: any[] }) => void;
+  // Mark the Step 5 gate confirmed and return to the onboarding hub.
+  onConfirm: () => void;
 }
 
 const SYSTEM = "You are an expert B2B cold-outreach copywriter. Write real, specific, human copy — never templates or placeholders. Follow the requested format and CTA style exactly.";
 
-export function EmailCampaignGenerator({ companyData, products, icps, campaigns, onSave }: Props) {
+export function EmailCampaignGenerator({ companyData, products, icps, campaigns, onSave, onConfirm }: Props) {
   const cd = companyData as any;
   const plans: Record<string, Result> = cd?._campaignPlans || {};
 
@@ -342,6 +344,14 @@ Return ONLY valid JSON:
     setSaved(true);
   };
 
+  // Save the campaigns (if not already) and mark Step 5 confirmed, then return
+  // to the onboarding hub.
+  const saveAndConfirm = () => {
+    if (!result) return;
+    if (!saved) saveToCampaigns();
+    onConfirm();
+  };
+
   const copyAll = () => {
     if (!result) return;
     const L: string[] = [];
@@ -403,19 +413,22 @@ Return ONLY valid JSON:
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
-          {result && !saved && (
-            <button onClick={saveToCampaigns}
-              style={{ padding: "9px 18px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: head, cursor: "pointer", boxShadow: `0 2px 8px ${C.green}30` }}>
-              Save to Campaigns
-            </button>
-          )}
-          {saved && (
-            <div style={{ padding: "9px 18px", borderRadius: 8, background: C.greenLo, border: `1px solid ${C.greenBorder}`, color: C.green, fontSize: 13, fontWeight: 700 }}>✓ Saved</div>
-          )}
           {result && (
             <button onClick={copyAll}
               style={{ padding: "9px 18px", borderRadius: 8, border: `1px solid ${copied ? C.greenBorder : C.border}`, background: copied ? C.greenLo : "transparent", color: copied ? C.green : C.textSoft, fontSize: 13, fontWeight: 700, fontFamily: head, cursor: "pointer", transition: "all .15s" }}>
               {copied ? "✓ Copied!" : "Copy All"}
+            </button>
+          )}
+          {result && (
+            <button onClick={saveToCampaigns}
+              style={{ padding: "9px 18px", borderRadius: 8, border: `1px solid ${saved ? C.greenBorder : C.border}`, background: saved ? C.greenLo : "transparent", color: saved ? C.green : C.textSoft, fontSize: 13, fontWeight: 700, fontFamily: head, cursor: "pointer" }}>
+              {saved ? "✓ Saved to Campaigns" : "Save to Campaigns"}
+            </button>
+          )}
+          {result && (
+            <button onClick={saveAndConfirm}
+              style={{ padding: "9px 18px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: head, cursor: "pointer", boxShadow: `0 2px 8px ${C.green}30` }}>
+              Save &amp; Confirm Step ✓
             </button>
           )}
         </div>

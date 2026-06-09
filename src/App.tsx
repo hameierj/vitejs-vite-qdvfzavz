@@ -28651,6 +28651,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                     if (updates.companyData) setCompanyData((prev:any) => ({ ...prev, ...updates.companyData }));
                     if (updates.campaigns) setCampaigns(updates.campaigns);
                   }}
+                  onConfirm={() => { handleConfirmGate("emailCampaigns"); setView("onboarding-hub"); }}
                 />
               </div>
             )}
