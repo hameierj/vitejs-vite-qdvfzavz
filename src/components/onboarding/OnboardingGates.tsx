@@ -160,7 +160,7 @@ export function OnboardingGates(props: Props) {
       case "companyResearch": return { label: "View full brief", onClick: () => onNavigate("research-brief") };
       case "products": return { label: "View products", onClick: () => onNavigate("products-review") };
       case "tamIcp": return { label: "View scoring", onClick: () => onNavigate("icp-scoring") };
-      case "personas": return { label: "View personas", onClick: () => onNavigate("icp-tree") };
+      case "personas": return { label: "View personas", onClick: () => onNavigate("personas-review") };
     }
   };
 

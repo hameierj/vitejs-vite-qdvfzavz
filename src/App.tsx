@@ -11,6 +11,7 @@ import { OptimizeView } from "./components/optimize/OptimizeView";
 import { callClaude as callClaudeLib } from "./lib/callClaude";
 import { InitialResearchBrief } from "./components/onboarding/InitialResearchBrief";
 import { ProductsReview } from "./components/onboarding/ProductsReview";
+import { PersonasReview } from "./components/onboarding/PersonasReview";
 import { ICPScoringMatrix } from "./components/onboarding/ICPScoringMatrix";
 import { CampaignPlanningBoard } from "./components/onboarding/CampaignPlanningBoard";
 import { ClientIntakeFormPage } from "./components/onboarding/ClientIntakeForm";
@@ -13933,7 +13934,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
   // In a guided-onboarding step, NEVER navigate away — the user stays on the current step and uses
   // the chat to make as many changes as they want (even edits that touch other artifacts) before
   // moving on. Outside onboarding, navigate to where the change landed as usual.
-  const inOnboarding = currentView === "products-review" || currentView === "onboarding-hub" || currentView === "research-brief" || currentView === "icp-scoring" || !!scopeHint;
+  const inOnboarding = currentView === "products-review" || currentView === "personas-review" || currentView === "onboarding-hub" || currentView === "research-brief" || currentView === "icp-scoring" || !!scopeHint;
   const resolveNavView = (v: string): string => (inOnboarding ? currentView : v);
 
   // Live preview: while a plan is awaiting approval, outline every area it would touch on the
@@ -13981,7 +13982,7 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
     company: "Company Profile", products: "Products & Services", icps: "Personas",
     campaigns: "Campaigns", strategy: "Strategy Roadmap", analytics: "Performance Analytics",
     profile: "Client Profile", dfySetup: "Domains & Mailboxes", knowledge: "Knowledge Base",
-    "research-brief": "Research Brief", "products-review": "Products & Services", "icp-scoring": "ICP Scoring", "campaign-plan": "Campaign Plan",
+    "research-brief": "Research Brief", "products-review": "Products & Services", "personas-review": "Personas", "icp-scoring": "ICP Scoring", "campaign-plan": "Campaign Plan",
     calls: "Calls & CX Signals", home: "Home Dashboard", optimize: "Optimization", narrative: "Narrative",
   };
 
@@ -19337,7 +19338,7 @@ function AppMain() {
     const savedConf = saved?.companyConf ?? {};
     setCompanyConfLocked(Object.fromEntries(Object.entries(savedConf).filter(([,v]:any)=>v>0).map(([k])=>[k,true])));
     // Don't override onboarding view — it was intentionally set for new/empty workspaces
-    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","products-review","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(prev) ? prev : "company");
+    setView(prev => ["onboarding","welcome","launchpad","onboarding-hub","research-brief","products-review","personas-review","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(prev) ? prev : "company");
     setEditingId(null);
     // Detect an in-flight LaunchPad job for this workspace synchronously so
     // the page shows the running state instead of flashing the empty form
@@ -28860,6 +28861,23 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   generating={stageJobs.products?.status === "running"}
                   phase={stageJobs.products?.phase || ""}
                   log={stageJobs.products?.log || []}
+                />
+              </div>
+            )}
+
+            {view==="personas-review" && (
+              <div style={{ overflow:"auto", height:"100%", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ position:"sticky" as const, top:0, zIndex:5, background:`${C2.bg}EE`, backdropFilter:"blur(6px)", padding:"12px 24px 6px" }}>
+                  <button onClick={goBack} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:12.5, fontWeight:600, fontFamily:head, cursor:"pointer" }}>← Back</button>
+                </div>
+                <PersonasReview
+                  icps={icps}
+                  onRefine={() => { setCopilotScope("Personas"); setShowCopilot(true); }}
+                  onEdit={() => setView("icps")}
+                  onRegenerate={() => startStage("personas")}
+                  generating={stageJobs.personas?.status === "running"}
+                  phase={stageJobs.personas?.phase || ""}
+                  log={stageJobs.personas?.log || []}
                 />
               </div>
             )}
