@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { callClaude, parseJSON } from "../../lib/callClaude";
 import { ElapsedTimer } from "./ElapsedTimer";
+import { ForceGraph, type FNode, type FLink } from "../stages/ForceGraph";
 
 const C = {
   bg: "#F8F9FE", canvas: "#FFFFFF", surface: "#F3F4FB", border: "#EDF2F7",
@@ -94,16 +95,79 @@ function scoreColor(s: number): string {
   return C.red;
 }
 
+const GRAPH_COLORS = { company: C.accent, segment: "#0984E3", product: C.green };
+const GRAPH_LEGEND = [
+  { label: "Company", color: GRAPH_COLORS.company },
+  { label: "Market segment", color: GRAPH_COLORS.segment },
+  { label: "Product / service", color: GRAPH_COLORS.product },
+  { label: "ICP (color = score)", color: C.amber },
+];
+
+// Flatten the onboarding TAM tree into a connected graph: Company → market
+// segments + products, products → ICPs. Cross-product ICPs (deduped by name)
+// link to every product they fit, so the result is a true graph, not a strict
+// tree. ICP node ids reuse the scoring row id so selecting one opens its row.
+function buildTamGraph(tamTree: any, scores: ScoreRow[], companyName: string): { nodes: FNode[]; links: FLink[] } {
+  const nodes: FNode[] = [];
+  const links: FLink[] = [];
+  const ROOT = "company";
+  nodes.push({ id: ROOT, type: "company", label: companyName || "Company", color: GRAPH_COLORS.company, r: 18, depth: 0 });
+
+  const scoreByName = new Map(scores.map(s => [String(s.icpName || "").trim().toLowerCase(), s]));
+
+  (tamTree?.companyLevel?.segments || []).forEach((seg: any, i: number) => {
+    const id = `seg-${i}`;
+    nodes.push({ id, type: "segment", label: seg.name || `Segment ${i + 1}`, color: GRAPH_COLORS.segment, r: 8, depth: 1 });
+    links.push({ source: ROOT, target: id });
+  });
+
+  const icpIdByName = new Map<string, string>();
+  let synth = 0;
+  (tamTree?.perProduct || []).forEach((branch: any, pi: number) => {
+    const pid = `prod-${pi}`;
+    nodes.push({ id: pid, type: "product", label: branch.productName || `Product ${pi + 1}`, color: GRAPH_COLORS.product, r: 12, depth: 1 });
+    links.push({ source: ROOT, target: pid });
+    (branch.icps || []).forEach((icp: any) => {
+      const key = String(icp.name || "").trim().toLowerCase();
+      let id = icpIdByName.get(key);
+      if (!id) {
+        const sc = scoreByName.get(key);
+        id = sc?.icpId || `icp-${synth++}`;
+        icpIdByName.set(key, id);
+        const sv = typeof sc?.weightedScore === "number" ? sc.weightedScore : -1;
+        nodes.push({ id, type: "icp", label: icp.name || "ICP", color: sv >= 0 ? scoreColor(sv) : C.muted, r: 9, depth: 2 });
+      }
+      links.push({ source: pid, target: id });
+    });
+  });
+
+  // Fallback: no tamTree branches — connect scored ICPs straight to the company.
+  if (nodes.length === 1 && scores.length) {
+    for (const s of scores) {
+      nodes.push({ id: s.icpId, type: "icp", label: s.icpName, color: scoreColor(s.weightedScore || 0), r: 9, depth: 1 });
+      links.push({ source: ROOT, target: s.icpId });
+    }
+  }
+  return { nodes, links };
+}
+
 export function ICPScoringMatrix({ ws, scoringResult, onSave, onPlanCampaign }: Props) {
   const [scoring, setScoring] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [gview, setGview] = useState<"matrix" | "graph">("graph");
 
   const icpTree = ws?.icpTree;
   const icps: any[] = ws?.icps || [];
   const companyData: any = ws?.companyData || {};
 
   const scores: ScoreRow[] = scoringResult?.scores || [];
+  const tamTree = companyData?._tamTree || null;
+
+  const graph = useMemo(
+    () => buildTamGraph(tamTree, scores, companyData?.co_name || ""),
+    [tamTree, scores, companyData?.co_name]
+  );
 
   const runScoring = async () => {
     setScoring(true);
@@ -221,13 +285,25 @@ Score ALL ICPs provided.`;
               AI scores each ICP on 5 dimensions to identify which to launch first, test small, or defer.
             </p>
           </div>
-          <button onClick={runScoring} disabled={scoring}
-            style={{ flexShrink: 0, padding: "10px 20px", borderRadius: 9, border: "none",
-              background: scoring ? C.faint : C.accent, color: scoring ? C.muted : "#fff",
-              fontSize: 13, fontWeight: 700, fontFamily: head, cursor: scoring ? "wait" : "pointer",
-              boxShadow: scoring ? "none" : `0 2px 8px ${C.accent}30` }}>
-            {scoring ? "Scoring…" : scores.length > 0 ? "Re-Score" : "Score ICPs"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            {scores.length > 0 && !scoring && (
+              <div style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+                {(["graph", "matrix"] as const).map(v => (
+                  <button key={v} onClick={() => setGview(v)}
+                    style={{ padding: "8px 14px", border: "none", background: gview === v ? `${C.accent}22` : "transparent", color: gview === v ? C.accent : C.textSoft, fontSize: 12.5, fontWeight: gview === v ? 700 : 500, cursor: "pointer", fontFamily: head }}>
+                    {v === "graph" ? "◉ Graph" : "≣ Matrix"}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={runScoring} disabled={scoring}
+              style={{ padding: "10px 20px", borderRadius: 9, border: "none",
+                background: scoring ? C.faint : C.accent, color: scoring ? C.muted : "#fff",
+                fontSize: 13, fontWeight: 700, fontFamily: head, cursor: scoring ? "wait" : "pointer",
+                boxShadow: scoring ? "none" : `0 2px 8px ${C.accent}30` }}>
+              {scoring ? "Scoring…" : scores.length > 0 ? "Re-Score" : "Score ICPs"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -246,8 +322,26 @@ Score ALL ICPs provided.`;
         </div>
       )}
 
+      {/* Graph view — Obsidian-style relationship graph of the TAM tree */}
+      {scores.length > 0 && !scoring && gview === "graph" && (
+        <div style={{ height: "70vh", minHeight: 420, display: "flex", flexDirection: "column", border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", background: C.bg }}>
+          <ForceGraph
+            nodes={graph.nodes}
+            links={graph.links}
+            selectedId={expanded}
+            legend={GRAPH_LEGEND}
+            hint="scroll to zoom · drag node to move · drag canvas to pan · click an ICP to open its scorecard"
+            onSelect={(n) => {
+              // Clicking an ICP node jumps to the matrix with its row expanded.
+              if (n.type === "icp") { setExpanded(n.id); setGview("matrix"); }
+            }}
+            theme={{ bg: C.bg, canvas: C.canvas, text: C.text, muted: C.muted, borderHi: C.borderHi, border: C.border, accent: C.accent }}
+          />
+        </div>
+      )}
+
       {/* Scores table */}
-      {scores.length > 0 && !scoring && (
+      {scores.length > 0 && !scoring && gview === "matrix" && (
         <div>
           <div style={{ background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
             {/* Table header */}

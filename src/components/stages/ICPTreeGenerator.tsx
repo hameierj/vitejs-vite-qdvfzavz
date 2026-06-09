@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { SUPABASE_URL, SUPABASE_KEY } from "../../lib/supabase";
+import { ForceGraph, type FNode, type FLink } from "./ForceGraph";
 
 // Server-side streaming Anthropic proxy. Holds ANTHROPIC_API_KEY as a Supabase
 // secret, so generation works without a valid localStorage key (which most
@@ -1120,10 +1121,9 @@ function TreeRow({
 }
 
 // ─── Force-Directed Graph ──────────────────────────────────────────────────────
-// Obsidian / Graphify-style connected node graph. Self-contained: a small
-// velocity-Verlet force simulation (repulsion + link springs + centering) drawn
-// to a <canvas>. No external graph library. Supports pan, zoom, node drag,
-// click-to-select, and hover highlighting.
+// Obsidian / Graphify-style connected node graph. The canvas + physics engine
+// lives in the shared <ForceGraph>; here we just flatten the ICP tree into nodes
+// and parent→child links and map graph selection back to the tree's node types.
 const GTYPE: Record<string, { color: string; r: number; label: string }> = {
   tam:       { color: C.accent,  r: 18, label: "TAM" },
   icp:       { color: C.accentHi, r: 13, label: "ICP" },
@@ -1133,33 +1133,14 @@ const GTYPE: Record<string, { color: string; r: number; label: string }> = {
   readiness: { color: C.muted,   r: 5,  label: "Readiness" },
 };
 
-interface GNode {
-  id: string; type: string; label: string; depth: number;
-  x: number; y: number; vx: number; vy: number;
-  fx: number | null; fy: number | null;
-  r: number; urgent?: boolean; skeleton?: boolean;
-}
-interface GLink { source: string; target: string; }
-
-function buildGraph(tree: ICPTree): { nodes: GNode[]; links: GLink[] } {
-  const nodes: GNode[] = [];
-  const links: GLink[] = [];
-  // Deterministic radial seed positions so the layout starts spread out and
-  // settles consistently (avoids everything piling on the origin).
-  let idx = 0;
-  const GOLDEN = 2.399963229728653;
-  const add = (id: string, type: string, label: string, depth: number, extra: Partial<GNode> = {}) => {
-    const ang = idx * GOLDEN;
-    const rad = depth * 95 + 30;
-    nodes.push({
-      id, type, label: label || GTYPE[type]?.label || type, depth,
-      x: Math.cos(ang) * rad, y: Math.sin(ang) * rad,
-      vx: 0, vy: 0, fx: null, fy: null,
-      r: GTYPE[type]?.r ?? 6, ...extra,
-    });
-    idx++;
+function buildGraph(tree: ICPTree): { nodes: FNode[]; links: FLink[] } {
+  const nodes: FNode[] = [];
+  const links: FLink[] = [];
+  const add = (id: string, type: string, label: string, depth: number, extra: Partial<FNode> = {}) => {
+    const g = GTYPE[type];
+    nodes.push({ id, type, label: label || g?.label || type, depth, color: g?.color ?? C.muted, r: g?.r ?? 6, ...extra });
   };
-  add(tree.tam.id, "tam", `TAM`, 0);
+  add(tree.tam.id, "tam", "TAM", 0);
   for (const icp of tree.tam.icps) {
     add(icp.id, "icp", icp.name, 1);
     links.push({ source: tree.tam.id, target: icp.id });
@@ -1173,7 +1154,7 @@ function buildGraph(tree: ICPTree): { nodes: GNode[]; links: GLink[] } {
           add(t.id, "trigger", t.name, 4, { urgent: t.urgency === "critical" });
           links.push({ source: j.id, target: t.id });
           for (const rs of t.readiness_states) {
-            add(rs.id, "readiness", rs.state, 5, { skeleton: rs.play_status === "skeleton_only" });
+            add(rs.id, "readiness", rs.state, 5, { dim: rs.play_status === "skeleton_only" });
             links.push({ source: t.id, target: rs.id });
           }
         }
@@ -1188,247 +1169,18 @@ function GraphCanvas({ tree, selected, onSelect }: {
   selected: { type: string; id: string } | null;
   onSelect: (type: string, id: string) => void;
 }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const nodesRef = useRef<GNode[]>([]);
-  const linksRef = useRef<GLink[]>([]);
-  const byId = useRef<Map<string, GNode>>(new Map());
-  const view = useRef({ x: 0, y: 0, k: 1 });
-  const alpha = useRef(1);
-  const hoverId = useRef<string | null>(null);
-  const selectedRef = useRef(selected);
-  selectedRef.current = selected;
-
-  // (Re)build graph data whenever the tree identity/shape changes.
-  useEffect(() => {
-    const { nodes, links } = buildGraph(tree);
-    nodesRef.current = nodes;
-    linksRef.current = links;
-    byId.current = new Map(nodes.map(n => [n.id, n]));
-    alpha.current = 1;
-    // Center the view on the canvas once we know its size.
-    const wrap = wrapRef.current;
-    if (wrap) { view.current = { x: wrap.clientWidth / 2, y: wrap.clientHeight / 2, k: 0.9 }; }
-  }, [tree]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const wrap = wrapRef.current;
-    if (!canvas || !wrap) return;
-    const ctx = canvas.getContext("2d")!;
-    let raf = 0;
-    let dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-    const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = wrap.clientWidth, h = wrap.clientHeight;
-      canvas.width = w * dpr; canvas.height = h * dpr;
-      canvas.style.width = w + "px"; canvas.style.height = h + "px";
-    };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(wrap);
-
-    // ── Physics tick ──────────────────────────────────────────────────────
-    const LINK_DIST = 64, LINK_K = 0.05, REPULSE = 2600, CENTER_K = 0.018, DAMP = 0.82;
-    const tick = () => {
-      const nodes = nodesRef.current;
-      const a = alpha.current;
-      if (a > 0.004) {
-        // Repulsion (O(n²) — fine for the few-hundred-node trees here).
-        for (let i = 0; i < nodes.length; i++) {
-          const ni = nodes[i];
-          for (let j = i + 1; j < nodes.length; j++) {
-            const nj = nodes[j];
-            let dx = ni.x - nj.x, dy = ni.y - nj.y;
-            let d2 = dx * dx + dy * dy;
-            if (d2 < 0.01) { dx = (i - j) * 0.5 + 0.1; dy = 0.3; d2 = dx * dx + dy * dy; }
-            const f = (REPULSE * a) / d2;
-            const d = Math.sqrt(d2);
-            const fx = (dx / d) * f, fy = (dy / d) * f;
-            ni.vx += fx; ni.vy += fy; nj.vx -= fx; nj.vy -= fy;
-          }
-        }
-        // Link springs.
-        for (const link of linksRef.current) {
-          const s = byId.current.get(link.source), t = byId.current.get(link.target);
-          if (!s || !t) continue;
-          const dx = t.x - s.x, dy = t.y - s.y;
-          const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-          const f = (d - LINK_DIST) * LINK_K * a;
-          const fx = (dx / d) * f, fy = (dy / d) * f;
-          s.vx += fx; s.vy += fy; t.vx -= fx; t.vy -= fy;
-        }
-        // Centering gravity + integrate.
-        for (const n of nodes) {
-          if (n.fx != null) { n.x = n.fx; n.y = n.fy!; n.vx = 0; n.vy = 0; continue; }
-          n.vx -= n.x * CENTER_K * a;
-          n.vy -= n.y * CENTER_K * a;
-          n.vx *= DAMP; n.vy *= DAMP;
-          n.x += n.vx; n.y += n.vy;
-        }
-        alpha.current = a * 0.985;
-      }
-      draw();
-      raf = requestAnimationFrame(tick);
-    };
-
-    // ── Render ────────────────────────────────────────────────────────────
-    const draw = () => {
-      const w = canvas.width, h = canvas.height;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = C.bg;
-      ctx.fillRect(0, 0, w, h);
-      const { x: vx, y: vy, k } = view.current;
-      ctx.translate(vx, vy); ctx.scale(k, k);
-
-      const sel = selectedRef.current;
-      const hov = hoverId.current;
-
-      // Edges.
-      ctx.lineWidth = 1 / k;
-      for (const link of linksRef.current) {
-        const s = byId.current.get(link.source), t = byId.current.get(link.target);
-        if (!s || !t) continue;
-        const active = sel && (sel.id === s.id || sel.id === t.id);
-        ctx.strokeStyle = active ? C.accent + "AA" : C.borderHi + "88";
-        ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y); ctx.stroke();
-      }
-
-      // Nodes.
-      ctx.font = `${12 / k}px ${head}`;
-      ctx.textBaseline = "middle";
-      for (const n of nodesRef.current) {
-        const style = GTYPE[n.type];
-        const isSel = sel?.id === n.id;
-        const isHov = hov === n.id;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-        ctx.fillStyle = n.skeleton ? C.skeleton : style.color;
-        ctx.globalAlpha = n.skeleton ? 0.7 : 1;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        if (isSel || isHov) {
-          ctx.lineWidth = (isSel ? 3 : 2) / k;
-          ctx.strokeStyle = isSel ? C.accent : style.color;
-          ctx.stroke();
-        }
-        if (n.urgent) {
-          ctx.beginPath();
-          ctx.arc(n.x + n.r * 0.8, n.y - n.r * 0.8, 3 / k + 1, 0, Math.PI * 2);
-          ctx.fillStyle = C.red; ctx.fill();
-        }
-        // Labels: always for TAM/ICP, on hover/select for the rest.
-        if (n.depth <= 1 || isSel || isHov) {
-          const tx = n.x + n.r + 5;
-          ctx.fillStyle = C.text;
-          ctx.fillText(n.label.length > 28 ? n.label.slice(0, 27) + "…" : n.label, tx, n.y);
-        }
-      }
-    };
-
-    // ── Interaction ─────────────────────────────────────────────────────────
-    const toWorld = (clientX: number, clientY: number) => {
-      const rect = canvas.getBoundingClientRect();
-      const { x, y, k } = view.current;
-      return { x: (clientX - rect.left - x) / k, y: (clientY - rect.top - y) / k };
-    };
-    const hitTest = (clientX: number, clientY: number): GNode | null => {
-      const p = toWorld(clientX, clientY);
-      // Reverse so topmost (last-drawn) wins; pad radius for easy grabbing.
-      const nodes = nodesRef.current;
-      for (let i = nodes.length - 1; i >= 0; i--) {
-        const n = nodes[i];
-        const dx = p.x - n.x, dy = p.y - n.y;
-        if (dx * dx + dy * dy <= (n.r + 4) * (n.r + 4)) return n;
-      }
-      return null;
-    };
-
-    let dragNode: GNode | null = null;
-    let panning = false;
-    let last = { x: 0, y: 0 };
-    let downAt = { x: 0, y: 0 };
-    let moved = false;
-
-    const onDown = (e: MouseEvent) => {
-      downAt = { x: e.clientX, y: e.clientY };
-      moved = false;
-      const hit = hitTest(e.clientX, e.clientY);
-      if (hit) { dragNode = hit; const p = toWorld(e.clientX, e.clientY); hit.fx = p.x; hit.fy = p.y; alpha.current = Math.max(alpha.current, 0.4); }
-      else { panning = true; last = { x: e.clientX, y: e.clientY }; }
-    };
-    const onMove = (e: MouseEvent) => {
-      if (Math.abs(e.clientX - downAt.x) > 3 || Math.abs(e.clientY - downAt.y) > 3) moved = true;
-      if (dragNode) {
-        const p = toWorld(e.clientX, e.clientY);
-        dragNode.fx = p.x; dragNode.fy = p.y; alpha.current = Math.max(alpha.current, 0.3);
-      } else if (panning) {
-        view.current.x += e.clientX - last.x; view.current.y += e.clientY - last.y;
-        last = { x: e.clientX, y: e.clientY };
-      } else {
-        const hit = hitTest(e.clientX, e.clientY);
-        const id = hit?.id ?? null;
-        if (id !== hoverId.current) { hoverId.current = id; canvas.style.cursor = id ? "pointer" : "grab"; }
-      }
-    };
-    const onUp = (e: MouseEvent) => {
-      if (dragNode) {
-        if (!moved) onSelect(dragNode.type, dragNode.id);
-        dragNode.fx = null; dragNode.fy = null;  // release to the simulation
-        dragNode = null;
-      } else if (panning && !moved) {
-        // click on empty space — leave selection as-is
-      }
-      panning = false;
-    };
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-      const { x, y, k } = view.current;
-      const factor = Math.exp(-e.deltaY * 0.0015);
-      const nk = Math.min(4, Math.max(0.15, k * factor));
-      // Zoom around the cursor.
-      view.current.x = mx - ((mx - x) / k) * nk;
-      view.current.y = my - ((my - y) / k) * nk;
-      view.current.k = nk;
-    };
-
-    canvas.addEventListener("mousedown", onDown);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    canvas.addEventListener("wheel", onWheel, { passive: false });
-    canvas.style.cursor = "grab";
-
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      canvas.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      canvas.removeEventListener("wheel", onWheel);
-    };
-  }, [tree, onSelect]);
-
+  const { nodes, links } = useMemo(() => buildGraph(tree), [tree]);
+  const legend = Object.values(GTYPE).map(v => ({ label: v.label, color: v.color }));
   return (
-    <div ref={wrapRef} style={{ flex: 1, position: "relative", overflow: "hidden", background: C.bg }}>
-      <canvas ref={canvasRef} style={{ display: "block" }} />
-      {/* Legend */}
-      <div style={{ position: "absolute", top: 12, left: 12, display: "flex", flexDirection: "column", gap: 5, background: C.canvas + "EE", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px" }}>
-        {Object.entries(GTYPE).map(([key, v]) => (
-          <div key={key} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, fontFamily: head, color: C.textSoft }}>
-            <span style={{ width: 9, height: 9, borderRadius: "50%", background: v.color, flexShrink: 0 }} />
-            {v.label}
-          </div>
-        ))}
-      </div>
-      <div style={{ position: "absolute", bottom: 12, left: 12, fontSize: 10.5, fontFamily: mono, color: C.muted }}>
-        scroll to zoom · drag node to move · drag canvas to pan · click node for details
-      </div>
-    </div>
+    <ForceGraph
+      nodes={nodes}
+      links={links}
+      selectedId={selected?.id ?? null}
+      onSelect={(n) => onSelect(n.type, n.id)}
+      legend={legend}
+      hint="scroll to zoom · drag node to move · drag canvas to pan · click node for details"
+      theme={{ bg: C.bg, canvas: C.canvas, text: C.text, muted: C.muted, borderHi: C.borderHi, border: C.border, accent: C.accent }}
+    />
   );
 }
 
