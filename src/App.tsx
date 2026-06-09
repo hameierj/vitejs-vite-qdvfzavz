@@ -13930,14 +13930,11 @@ function StrategyChatPanel({ chats, onChatsChange, companyData, icps, perfLogs, 
     }
   };
 
-  // When the user is editing inside guided onboarding, keep them in the in-flow review views
-  // instead of jumping to the full editors (which drops them out of the onboarding flow).
-  const inOnboarding = currentView === "products-review" || currentView === "onboarding-hub" || !!scopeHint;
-  const resolveNavView = (v: string): string => {
-    if (!inOnboarding) return v;
-    if (v === "products") return "products-review";
-    return v; // research-brief / icp-scoring already map to their in-flow review views
-  };
+  // In a guided-onboarding step, NEVER navigate away — the user stays on the current step and uses
+  // the chat to make as many changes as they want (even edits that touch other artifacts) before
+  // moving on. Outside onboarding, navigate to where the change landed as usual.
+  const inOnboarding = currentView === "products-review" || currentView === "onboarding-hub" || currentView === "research-brief" || currentView === "icp-scoring" || !!scopeHint;
+  const resolveNavView = (v: string): string => (inOnboarding ? currentView : v);
 
   // Live preview: while a plan is awaiting approval, outline every area it would touch on the
   // current page (and emphasize the row being hovered). Cleared on apply / cancel / unmount.
