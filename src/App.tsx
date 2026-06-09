@@ -28639,6 +28639,9 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
 
             {view==="campaign-generator" && (
               <div style={{ overflow:"auto", height:"100%", animation:"pageFade .5s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+                <div style={{ position:"sticky" as const, top:0, zIndex:5, background:`${C2.bg}EE`, backdropFilter:"blur(6px)", padding:"12px 24px 6px" }}>
+                  <button onClick={() => setView("onboarding-hub")} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C2.border}`, background:C2.canvas, color:C2.textSoft, fontSize:12.5, fontWeight:600, fontFamily:head, cursor:"pointer" }}>← Back to Guided Onboarding</button>
+                </div>
                 <EmailCampaignGenerator
                   companyData={companyData}
                   products={products}
@@ -28648,7 +28651,6 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                     if (updates.companyData) setCompanyData((prev:any) => ({ ...prev, ...updates.companyData }));
                     if (updates.campaigns) setCampaigns(updates.campaigns);
                   }}
-                  onClose={() => setView("onboarding-hub")}
                 />
               </div>
             )}

@@ -47,12 +47,11 @@ interface Props {
   icps: any[];
   campaigns: any[];
   onSave: (updates: { companyData?: any; campaigns?: any[] }) => void;
-  onClose: () => void;
 }
 
 const SYSTEM = "You are an expert B2B cold-outreach copywriter. Write real, specific, human copy — never templates or placeholders. Follow the requested format and CTA style exactly.";
 
-export function EmailCampaignGenerator({ companyData, products, icps, campaigns, onSave, onClose }: Props) {
+export function EmailCampaignGenerator({ companyData, products, icps, campaigns, onSave }: Props) {
   const cd = companyData as any;
   const plans: Record<string, Result> = cd?._campaignPlans || {};
 
@@ -352,7 +351,7 @@ Return ONLY valid JSON:
   );
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px 48px", fontFamily: head }}>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 24px 48px", fontFamily: head }}>
       <ElapsedTimer running={generating} label="GENERATING" />
 
       {/* Header */}
@@ -383,10 +382,6 @@ Return ONLY valid JSON:
               {copied ? "✓ Copied!" : "Copy All"}
             </button>
           )}
-          <button onClick={onClose}
-            style={{ padding: "9px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, fontSize: 13, fontFamily: head, cursor: "pointer" }}>
-            ← Back
-          </button>
         </div>
       </div>
 
