@@ -47,15 +47,18 @@ interface Props {
   companyData: any;
   products: any[];
   icps: any[];
-  campaigns: any[];
-  onSave: (updates: { companyData?: any; campaigns?: any[] }) => void;
+  // Persist generator metadata (the rich plan + timestamp) onto companyData.
+  onSave: (updates: { companyData?: any }) => void;
+  // Write the generated set (1 LinkedIn + 3 email) into the canonical campaigns
+  // store — idempotent per (product × persona). Used so the Matrix/List see them.
+  onSaveCampaigns: (productId: string, personaId: string, plan: Result) => void;
   // Mark the Step 5 gate confirmed and return to the onboarding hub.
   onConfirm: () => void;
 }
 
 const SYSTEM = "You are an expert B2B cold-outreach copywriter. Write real, specific, human copy — never templates or placeholders. Follow the requested format and CTA style exactly.";
 
-export function EmailCampaignGenerator({ companyData, products, icps, campaigns, onSave, onConfirm }: Props) {
+export function EmailCampaignGenerator({ companyData, products, icps, onSave, onSaveCampaigns, onConfirm }: Props) {
   const cd = companyData as any;
   const plans: Record<string, Result> = cd?._campaignPlans || {};
 
@@ -77,7 +80,6 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
   // Load any previously-generated plan for the default product×persona combo.
   const [result, setResult] = useState<Result | null>(() => plans[`${productId}__${personaId}`] || null);
   const [emailTab, setEmailTab] = useState(0);
-  const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,7 +93,6 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
     const existing = plans[`${productId}__${personaId}`] || null;
     setResult(existing);
     setEmailTab(0);
-    setSaved(false);
     setError(null);
     if (existing) {
       setPlaybookKey(existing.playbookKey || "auto");
@@ -107,7 +108,6 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
     // Generation runs through the server-side ai-proxy (Supabase secret key), so
     // no user/localStorage key is required — same path the gated stages use.
     setGenerating(true);
-    setSaved(false);
     setResult(null);
     setError(null);
     setLog(["Building context…"]);
@@ -302,8 +302,9 @@ Return ONLY valid JSON:
         setError(null);
       }
 
-      // Persist so the step shows a "review" state and survives navigation
-      // (only when we actually produced something).
+      // Persist when we produced something: keep the rich plan on companyData
+      // (so the step shows "review" and the generator reloads it), AND write the
+      // 4 campaigns into the canonical store so the Matrix/List include them.
       if (anyContent) {
         const key = `${product.id}__${persona.id}`;
         onSave({
@@ -313,6 +314,7 @@ Return ONLY valid JSON:
             _campaignsGeneratedAt: new Date().toISOString(),
           },
         });
+        onSaveCampaigns(product.id, persona.id, res);
       }
     } catch (e: any) {
       addLog(`Error: ${e.message || e}`);
@@ -322,50 +324,11 @@ Return ONLY valid JSON:
     }
   };
 
-  const saveToCampaigns = () => {
+  // Campaigns are auto-saved to the canonical store on generate; this just
+  // re-saves defensively and marks Step 5 confirmed, then returns to the hub.
+  const confirmStep = () => {
     if (!result) return;
-    const pd = persona?.data || {};
-    const targeting = {
-      titles: pd.buyer || "", industries: pd.industries || "",
-      companySizes: Array.isArray(pd.co_sizes) ? pd.co_sizes.join(", ") : (pd.co_sizes || ""),
-    };
-    const base = {
-      status: "planning", source: "step5_campaigns", intentTier: "cold",
-      playbook: result.playbookKey, goal: "", goalType: "book_meetings",
-      personaIds: [persona.id].filter(Boolean), productId: product.id || "",
-      targeting, createdAt: new Date().toISOString(),
-    };
-    const emailCampaignObjs = result.emailCampaigns
-      .filter((c) => c.sequence.length > 0)
-      .map((c) => ({
-        ...base, id: uid(),
-        name: `${result.personaName} × ${result.productName} — ${c.label}`,
-        channel: "email", type: "cold_email",
-        sequence: c.sequence.map((t) => ({
-          id: uid(), type: "email", stepNumber: t.stepNumber, role: t.role,
-          dayOffset: t.dayOffset, subject: t.subject || "", body: t.body, variants: [],
-        })),
-      }));
-    const linkedinCampaignObj = {
-      ...base, id: uid(),
-      name: `${result.personaName} × ${result.productName} — LinkedIn`,
-      channel: "linkedin", type: "linkedin_message",
-      sequence: result.linkedinSequence.map((t) => ({
-        id: uid(), type: "linkedin", stepNumber: t.stepNumber, role: t.role,
-        dayOffset: t.dayOffset, body: t.body, variants: [],
-      })),
-    };
-    const newCampaigns = [...campaigns, ...emailCampaignObjs];
-    if (linkedinCampaignObj.sequence.length > 0) newCampaigns.push(linkedinCampaignObj);
-    onSave({ campaigns: newCampaigns });
-    setSaved(true);
-  };
-
-  // Save the campaigns (if not already) and mark Step 5 confirmed, then return
-  // to the onboarding hub.
-  const saveAndConfirm = () => {
-    if (!result) return;
-    if (!saved) saveToCampaigns();
+    onSaveCampaigns(result.productId, result.personaId, result);
     onConfirm();
   };
 
@@ -437,15 +400,9 @@ Return ONLY valid JSON:
             </button>
           )}
           {result && (
-            <button onClick={saveToCampaigns}
-              style={{ padding: "9px 18px", borderRadius: 8, border: `1px solid ${saved ? C.greenBorder : C.border}`, background: saved ? C.greenLo : "transparent", color: saved ? C.green : C.textSoft, fontSize: 13, fontWeight: 700, fontFamily: head, cursor: "pointer" }}>
-              {saved ? "✓ Saved to Campaigns" : "Save to Campaigns"}
-            </button>
-          )}
-          {result && (
-            <button onClick={saveAndConfirm}
+            <button onClick={confirmStep}
               style={{ padding: "9px 18px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: head, cursor: "pointer", boxShadow: `0 2px 8px ${C.green}30` }}>
-              Save &amp; Confirm Step ✓
+              Confirm Step ✓
             </button>
           )}
         </div>
@@ -538,6 +495,10 @@ Return ONLY valid JSON:
 
       {/* Results */}
       {result && !generating && (
+        <>
+        <div style={{ marginBottom: 14, padding: "9px 14px", background: C.greenLo, border: `1px solid ${C.greenBorder}`, borderRadius: 9, fontSize: 12.5, color: C.green, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+          ✓ Saved to your Campaigns (Matrix &amp; List). Regenerating replaces this combo — no duplicates. Click <strong style={{ fontWeight: 800 }}>Confirm Step</strong> to finish onboarding.
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           {/* LinkedIn (1 campaign) */}
           <div>
@@ -588,6 +549,7 @@ Return ONLY valid JSON:
             })()}
           </div>
         </div>
+        </>
       )}
 
       {/* Empty initial state */}
