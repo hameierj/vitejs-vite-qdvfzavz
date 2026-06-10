@@ -8631,8 +8631,6 @@ function CampaignsPage({ campaigns, onCampaignsChange, personas, products, offer
   const [seqSubtab, setSeqSubtab] = useState<"steps"|"offers"|"replies"|"preview">("steps");
   // Settings: Operations section collapse (Start Date, Volume, Schedule, Safety, Sender Config)
   const [opsOpen, setOpsOpen] = useState(false);
-  // List view groups campaigns by persona×product combo into one collapsed row each.
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [genOfferLoading, setGenOfferLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [bulkGenSeq, setBulkGenSeq] = useState(false);
@@ -11594,102 +11592,53 @@ Raw JSON only, no markdown.`;
                   </tr>
                 </thead>
                 <tbody>
-                  {(() => {
-                    // Group campaigns by persona×product combo → one collapsed row each,
-                    // expandable to its member campaigns (e.g. onboarding's 1 LinkedIn + 3 email).
-                    const groupMap = new Map<string, any>();
-                    campaigns.forEach((c:any) => {
-                      const personaId = (c.personaIds||[])[0] || "";
-                      const productId = c.productId || "";
-                      const key = `${personaId}__${productId}`;
-                      if (!groupMap.has(key)) groupMap.set(key, { key, personaId, productId, items: [] as any[] });
-                      groupMap.get(key).items.push(c);
-                    });
-                    const groups = Array.from(groupMap.values());
-                    const rows: any[] = [];
-                    groups.forEach((g:any, gi:number) => {
-                      const persona = personas.find((p:any) => p.id === g.personaId);
-                      const product = products.find((p:any) => p.id === g.productId);
-                      const liCount = g.items.filter((i:any)=>i.channel==="linkedin").length;
-                      const emailCount = g.items.filter((i:any)=>i.channel==="email").length;
-                      const otherCount = g.items.length - liCount - emailCount;
-                      const summary = [liCount&&`${liCount} LinkedIn`, emailCount&&`${emailCount} email`, otherCount&&`${otherCount} other`].filter(Boolean).join(" · ") || "—";
-                      const expanded = !!expandedGroups[g.key];
-                      const isLastGroup = gi === groups.length - 1;
-                      const comboLabel = `${persona ? persona.name : "Unassigned"} × ${product ? product.name : "No product"}`;
-                      const gCellSt:any = { padding:"12px 18px", fontSize:12, fontFamily:body, color:_C.textSoft, borderBottom:(expanded || !isLastGroup) ? `1px solid ${_C.faint}` : "none", verticalAlign:"middle", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" };
-                      // Combo (parent) row — click to expand/collapse
-                      rows.push(
-                        <tr key={g.key} className="camp-row"
-                          onClick={()=> setExpandedGroups(prev => ({ ...prev, [g.key]: !prev[g.key] }))}
-                          style={{ cursor:"pointer", transition:"background .12s", background: expanded ? _C.surface : "transparent" }}
-                          onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.background=_C.surface; }}
-                          onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.background= expanded ? _C.surface : "transparent"; }}>
-                          <td style={{ ...gCellSt, whiteSpace:"normal" as const }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                              <span style={{ color:_C.muted, fontSize:10, width:10, flexShrink:0 }}>{expanded ? "▾" : "▸"}</span>
-                              <div style={{ minWidth:0, flex:1, fontSize:13, fontWeight:700, fontFamily:head, color:_C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                {comboLabel}
-                              </div>
+                  {campaigns.map((c:any, ci:number) => {
+                    const persona = personas.find((p:any) => p.id === (c.personaIds||[])[0]);
+                    const product = products.find((p:any) => p.id === c.productId);
+                    const statusObj = CAMPAIGN_STATUSES.find(s => s.id === c.status) || CAMPAIGN_STATUSES[0];
+                    const seqLen = c.sequence?.length || 0;
+                    const hasEmptySteps = (c.sequence||[]).some((s:any) => !s.subject && !s.body && !s.message);
+                    const isLast = ci === campaigns.length - 1;
+                    const cellSt:any = { padding:"12px 18px", fontSize:12, fontFamily:body, color:_C.textSoft, borderBottom: isLast ? "none" : `1px solid ${_C.faint}`, verticalAlign:"middle", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" };
+                    return (
+                      <tr key={c.id} data-copilot-id={c.id} className="camp-row"
+                        onClick={()=>{ setSelectedId(c.id); setTab("settings"); }}
+                        style={{ cursor:"pointer", transition:"background .12s" }}
+                        onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.background=_C.surface; const d=e.currentTarget.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="1"; }}
+                        onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.background="transparent"; const d=e.currentTarget.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="0"; }}>
+                        <td style={{ ...cellSt, whiteSpace:"normal" as const }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+                            <span style={{ width:7, height:7, borderRadius:"50%", background:statusObj.color, flexShrink:0 }} />
+                            <div style={{ minWidth:0, flex:1, fontSize:12.5, fontWeight:600, fontFamily:head, color:_C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              {c.name || "Untitled Campaign"}
                             </div>
-                          </td>
-                          <td style={gCellSt}>{persona ? <span style={{ color:_C.text }}>{persona.name}</span> : <span style={{ color:_C.muted, fontStyle:"italic" }}>—</span>}</td>
-                          <td style={gCellSt}>{product ? <span style={{ color:_C.text }}>{product.name}</span> : <span style={{ color:_C.muted, fontStyle:"italic" }}>—</span>}</td>
-                          <td style={gCellSt}><span style={{ fontSize:11, fontFamily:mono, fontWeight:600, color:_C.textSoft }}>{summary}</span></td>
-                          <td style={gCellSt}><span style={{ fontSize:11, fontFamily:body, fontWeight:600, color:_C.muted }}>{g.items.length} campaign{g.items.length!==1?"s":""}</span></td>
-                        </tr>
-                      );
-                      // Member (child) rows when expanded
-                      if (expanded) {
-                        g.items.forEach((c:any, ci:number) => {
-                          const statusObj = CAMPAIGN_STATUSES.find(s => s.id === c.status) || CAMPAIGN_STATUSES[0];
-                          const seqLen = c.sequence?.length || 0;
-                          const hasEmptySteps = (c.sequence||[]).some((s:any) => !s.subject && !s.body && !s.message);
-                          const isLastChild = isLastGroup && ci === g.items.length - 1;
-                          const cellSt:any = { padding:"10px 18px", fontSize:12, fontFamily:body, color:_C.textSoft, borderBottom: isLastChild ? "none" : `1px solid ${_C.faint}`, verticalAlign:"middle", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", background:_C.canvas };
-                          rows.push(
-                            <tr key={c.id} data-copilot-id={c.id} className="camp-row"
-                              onClick={()=>{ setSelectedId(c.id); setTab("settings"); }}
-                              style={{ cursor:"pointer", transition:"background .12s" }}
-                              onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.background=_C.surface; const d=e.currentTarget.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="1"; }}
-                              onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.background=_C.canvas; const d=e.currentTarget.querySelector(".camp-del") as HTMLElement; if(d) d.style.opacity="0"; }}>
-                              <td style={{ ...cellSt, whiteSpace:"normal" as const, paddingLeft:42 }}>
-                                <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-                                  <span style={{ width:7, height:7, borderRadius:"50%", background:statusObj.color, flexShrink:0 }} />
-                                  <div style={{ minWidth:0, flex:1, fontSize:12.5, fontWeight:600, fontFamily:head, color:_C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                    {c.name || "Untitled Campaign"}
-                                  </div>
-                                </div>
-                              </td>
-                              <td style={cellSt}><span style={{ fontSize:10, fontFamily:mono, fontWeight:700, color:_C.muted, textTransform:"capitalize" as const }}>{c.channel}</span></td>
-                              <td style={cellSt}><span style={{ color:_C.muted, fontStyle:"italic" }}>—</span></td>
-                              <td style={cellSt}>
-                                <span style={{ fontSize:11, fontFamily:mono, fontWeight:600, color: seqLen ? (hasEmptySteps ? _C.amber : _C.textSoft) : _C.muted }}>
-                                  {seqLen ? `${seqLen} step${seqLen!==1?"s":""}${hasEmptySteps?" · empty":""}` : "—"}
-                                </span>
-                              </td>
-                              <td style={cellSt}>
-                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
-                                  <span style={{ fontSize:11, fontFamily:body, fontWeight:600, color:statusObj.color, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{statusObj.label}</span>
-                                  <button className="camp-del" onClick={e=>{
-                                    e.stopPropagation();
-                                    if (confirm(`Delete "${c.name || "Untitled Campaign"}"?`)) {
-                                      onCampaignsChange(campaigns.filter((x:any) => x.id !== c.id));
-                                      addToast({ title:"Campaign deleted", status:"success", message:c.name || "Campaign" });
-                                    }
-                                  }}
-                                    style={{ width:22, height:22, borderRadius:6, border:"none", background:"transparent", color:_C.muted, fontSize:13, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", opacity:0, transition:"opacity .15s, color .15s, background .15s", flexShrink:0 }}
-                                    onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.color=_C.red;(e.currentTarget as HTMLElement).style.background=`${_C.red}11`;}}
-                                    onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.color=_C.muted;(e.currentTarget as HTMLElement).style.background="transparent";}}>×</button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        });
-                      }
-                    });
-                    return rows;
-                  })()}
+                          </div>
+                        </td>
+                        <td style={cellSt}>{persona ? <span style={{ color:_C.text }}>{persona.name}</span> : <span style={{ color:_C.muted, fontStyle:"italic" }}>—</span>}</td>
+                        <td style={cellSt}>{product ? <span style={{ color:_C.text }}>{product.name}</span> : <span style={{ color:_C.muted, fontStyle:"italic" }}>—</span>}</td>
+                        <td style={cellSt}>
+                          <span style={{ fontSize:11, fontFamily:mono, fontWeight:600, color: seqLen ? (hasEmptySteps ? _C.amber : _C.textSoft) : _C.muted }}>
+                            {seqLen ? `${seqLen} step${seqLen!==1?"s":""}${hasEmptySteps?" · empty":""}` : "—"}
+                          </span>
+                        </td>
+                        <td style={cellSt}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                            <span style={{ fontSize:11, fontFamily:body, fontWeight:600, color:statusObj.color, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{statusObj.label}</span>
+                            <button className="camp-del" onClick={e=>{
+                              e.stopPropagation();
+                              if (confirm(`Delete "${c.name || "Untitled Campaign"}"?`)) {
+                                onCampaignsChange(campaigns.filter((x:any) => x.id !== c.id));
+                                addToast({ title:"Campaign deleted", status:"success", message:c.name || "Campaign" });
+                              }
+                            }}
+                              style={{ width:22, height:22, borderRadius:6, border:"none", background:"transparent", color:_C.muted, fontSize:13, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", opacity:0, transition:"opacity .15s, color .15s, background .15s", flexShrink:0 }}
+                              onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.color=_C.red;(e.currentTarget as HTMLElement).style.background=`${_C.red}11`;}}
+                              onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.color=_C.muted;(e.currentTarget as HTMLElement).style.background="transparent";}}>×</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               </div>
