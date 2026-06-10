@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { callClaudeProxy, parseJSON } from "../../lib/callClaude";
 import { PLAYBOOKS, buildPlaybookContext, type PlaybookKey } from "../../lib/playbooks";
 import { ElapsedTimer } from "./ElapsedTimer";
@@ -74,7 +74,8 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
   const [generating, setGenerating] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [phase, setPhase] = useState("");
-  const [result, setResult] = useState<Result | null>(null);
+  // Load any previously-generated plan for the default product×persona combo.
+  const [result, setResult] = useState<Result | null>(() => plans[`${productId}__${personaId}`] || null);
   const [emailTab, setEmailTab] = useState(0);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -82,6 +83,22 @@ export function EmailCampaignGenerator({ companyData, products, icps, campaigns,
 
   const product = (products || []).find((p: any) => p.id === productId) || products?.[0] || {};
   const persona = (icps || []).find((p: any) => p.id === personaId) || sortedPersonas?.[0] || {};
+
+  // When the product/persona selection changes, surface the saved plan for that
+  // combo (or clear to the empty state if none exists yet). Don't run mid-generation.
+  useEffect(() => {
+    if (generating) return;
+    const existing = plans[`${productId}__${personaId}`] || null;
+    setResult(existing);
+    setEmailTab(0);
+    setSaved(false);
+    setError(null);
+    if (existing) {
+      setPlaybookKey(existing.playbookKey || "auto");
+      setInstructions(existing.instructions || "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId, personaId]);
 
   const addLog = (m: string) => setLog((p) => [...p, m]);
 
