@@ -21896,26 +21896,30 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
             {/* Navigation */}
             <div style={{ flex:1, overflowY:"auto", padding:"0 12px" }}>
 
-              {/* Launch Pad — always visible at the top */}
-              {activeWorkspace && (
+              {/* Getting Started — sole entry point to the guided onboarding flow,
+                  always visible at the top. Highlights across all onboarding sub-views. */}
+              {activeWorkspace && (() => {
+                const onbActive = ["onboarding-hub","research-brief","products-review","personas-review","icp-scoring","campaign-plan","campaign-generator","launch","narrative","optimize"].includes(view);
+                return (
                 <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:6 }}>
                   <button onClick={()=>{ setView("onboarding-hub"); }}
                     style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 14px",
                       borderRadius:10, border:"none",
-                      background: view==="launchpad" ? C2.accent : `${C2.accent}14`,
+                      background: onbActive ? C2.accent : `${C2.accent}14`,
                       cursor:"pointer", textAlign:"left", transition:"all .15s" }}
-                    onMouseEnter={e=>{ if(view!=="launchpad")(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}22`; }}
-                    onMouseLeave={e=>{ if(view!=="launchpad")(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}14`; }}>
+                    onMouseEnter={e=>{ if(!onbActive)(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}22`; }}
+                    onMouseLeave={e=>{ if(!onbActive)(e.currentTarget as HTMLButtonElement).style.background=`${C2.accent}14`; }}>
                     <span style={{ fontSize:14 }}>🚀</span>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:12.5, fontFamily:head, fontWeight:700,
-                        color: view==="launchpad" ? "#fff" : C2.accent }}>Getting Started</div>
+                        color: onbActive ? "#fff" : C2.accent }}>Getting Started</div>
                       <div style={{ fontSize:10, fontFamily:body,
-                        color: view==="launchpad" ? "rgba(255,255,255,.7)" : C2.muted, marginTop:1 }}>URL → full program, auto</div>
+                        color: onbActive ? "rgba(255,255,255,.7)" : C2.muted, marginTop:1 }}>URL → full program, auto</div>
                     </div>
                   </button>
                 </div>
-              )}
+                );
+              })()}
 
               {/* Nav items — grouped, collapsed by default */}
               {activeWorkspace && (() => {
@@ -22123,20 +22127,6 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                       onMouseLeave={e=>{ if(view!=="icp-tree")(e.currentTarget as HTMLButtonElement).style.background=view==="icp-tree"?`${C2.accent}14`:"transparent"; }}>
                       <span style={{ fontSize:14, width:20, textAlign:"center", color:view==="icp-tree"?C2.accent:C2.muted }}>⎇</span>
                       <span style={{ fontSize:13, fontFamily:head, fontWeight:view==="icp-tree"?700:500, color:view==="icp-tree"?C2.text:C2.textSoft }}>ICP Tree</span>
-                    </button>
-                  )}
-
-                  {/* Onboarding Hub */}
-                  {currentRole !== "client" && (
-                    <button onClick={()=>guardedNav(()=>setView("onboarding-hub"))}
-                      style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
-                        borderRadius:12, border:"none",
-                        background: ["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view) ? `${C2.accent}14` : "transparent",
-                        cursor:"pointer", textAlign:"left", transition:"all .2s", marginBottom:2 }}
-                      onMouseEnter={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view))(e.currentTarget as HTMLButtonElement).style.background=C2.faint; }}
-                      onMouseLeave={e=>{ if(!["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view))(e.currentTarget as HTMLButtonElement).style.background="transparent"; }}>
-                      <span style={{ fontSize:14, width:20, textAlign:"center", color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view)?C2.accent:C2.muted }}>◉</span>
-                      <span style={{ fontSize:13, fontFamily:head, fontWeight:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view)?700:500, color:["onboarding-hub","research-brief","icp-scoring","campaign-plan","launch","narrative","optimize"].includes(view)?C2.text:C2.textSoft }}>Onboarding Hub</span>
                     </button>
                   )}
 
@@ -23056,7 +23046,7 @@ Return ONLY a JSON array of 6 phases. Each phase: id, name, monthRange, focus, s
                         desc: hasResearch
                           ? "AI research brief is ready — review it before the onboarding call, then share the intake form with your client."
                           : "Enter the client's website URL to generate a deep pre-call research brief automatically.",
-                        cta: "Open Onboarding Hub",
+                        cta: "Open Getting Started",
                         onClick: () => setView("onboarding-hub"),
                       };
                     } else if (stage === "onboarding") {
