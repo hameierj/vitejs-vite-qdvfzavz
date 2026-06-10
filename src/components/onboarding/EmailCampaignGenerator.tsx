@@ -62,14 +62,35 @@ export function EmailCampaignGenerator({ companyData, products, icps, onSave, on
   const cd = companyData as any;
   const plans: Record<string, Result> = cd?._campaignPlans || {};
 
-  const [productId, setProductId] = useState<string>(products?.[0]?.id || "");
   // Prefer enriched personas (those with real persona data) at the top of the picker.
   const sortedPersonas = [...(icps || [])].sort((a: any, b: any) => {
     const ea = a.data && (a.data.pain1 || a.data.buyer) ? 0 : 1;
     const eb = b.data && (b.data.pain1 || b.data.buyer) ? 0 : 1;
     return ea - eb;
   });
-  const [personaId, setPersonaId] = useState<string>(sortedPersonas?.[0]?.id || "");
+  // Default the selection to the product×persona combo that already has a saved
+  // plan, so reopening the generator shows what was generated. Defaulting to
+  // products[0]×personas[0] looked up an *unsaved* combo, so the generator showed
+  // the empty "Ready to generate" state even though the campaigns were saved.
+  // Fall back to the first product / enriched persona when nothing exists yet.
+  const initialSel = (() => {
+    let pid = products?.[0]?.id || "";
+    let perId = sortedPersonas?.[0]?.id || "";
+    const keys = Object.keys(plans);
+    const lastKey = keys[keys.length - 1]; // most recently generated combo (insertion order)
+    if (lastKey) {
+      const sep = lastKey.indexOf("__");
+      if (sep > -1) {
+        const kp = lastKey.slice(0, sep);
+        const kper = lastKey.slice(sep + 2);
+        if ((products || []).some((p: any) => p.id === kp)) pid = kp;
+        if ((icps || []).some((p: any) => p.id === kper)) perId = kper;
+      }
+    }
+    return { pid, perId };
+  })();
+  const [productId, setProductId] = useState<string>(initialSel.pid);
+  const [personaId, setPersonaId] = useState<string>(initialSel.perId);
   const [playbookKey, setPlaybookKey] = useState<PlaybookKey>("auto");
   const [instructions, setInstructions] = useState<string>("");
   const [freeOffers, setFreeOffers] = useState<string>("");
