@@ -6,6 +6,7 @@ import { Routes, Route, useParams, HashRouter, useNavigate } from "react-router-
 import { ICPTreeGenerator } from "./components/stages/ICPTreeGenerator";
 import { OnboardingGates } from "./components/onboarding/OnboardingGates";
 import { LaunchBoard } from "./components/launch/LaunchBoard";
+import { LaunchOrderView } from "./components/campaigns/LaunchOrderView";
 import { NarrativeView } from "./components/narrative/NarrativeView";
 import { OptimizeView } from "./components/optimize/OptimizeView";
 import { callClaude as callClaudeLib } from "./lib/callClaude";
@@ -25040,7 +25041,7 @@ Be brutally honest. If the positioning is weak, say so. If the ICPs are wrong, s
                 <div style={{ padding:"20px clamp(20px, 3vw, 48px) 0", flexShrink:0 }}>
                   <h2 style={{ fontSize:22, fontWeight:800, color:C2.text, fontFamily:head, margin:"0 0 12px" }}>Campaigns</h2>
                   <div style={{ display:"flex", gap:4, padding:4, background:C2.faint, borderRadius:8, marginBottom:12, width:"fit-content" }}>
-                    {[["matrix","Matrix"],["list","List"]].map(([id,label])=>(
+                    {[["matrix","Matrix"],["list","List"],["email","Email"],["linkedin","LinkedIn"]].map(([id,label])=>(
                       <button key={id} onClick={()=>setCampTab(id)}
                         style={{ padding:"6px 16px", borderRadius:6, border:"none", background:campTab===id?C2.canvas:"transparent",
                           color:campTab===id?C2.text:C2.muted, fontSize:11, fontFamily:head, fontWeight:campTab===id?700:500,
@@ -25176,6 +25177,19 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                       rtsLists={rtsLists}
                       initialSelectedId={pendingCampaignId}
                       onSelectedIdConsumed={() => setPendingCampaignId(null)} />
+                  )}
+                  {(campTab==="email" || campTab==="linkedin") && (
+                    <LaunchOrderView
+                      channel={campTab as "email" | "linkedin"}
+                      campaigns={campaigns} personas={icps} products={products} companyData={companyData}
+                      capacity={{
+                        linkedinAccounts: Number((companyData as any)?.linkedinAccounts) || Number((companyData as any)?._launchPlan?.linkedinAccounts) || 0,
+                        mailboxCount: Number((dfySetup as any)?.mailboxCount) || 0,
+                        domainCount: Number((dfySetup as any)?.domainCount) || 0,
+                      }}
+                      onReorder={(ch, map) => setCompanyData((prev:any) => ({ ...prev, _launchOrder: { ...(prev?._launchOrder || {}), [ch]: map } }))}
+                      onViewCampaign={(id: string) => { if (id) { setPendingCampaignId(id); setCampTab("list"); } }}
+                    />
                   )}
                 </div>
               </div>);
