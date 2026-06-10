@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { SUPABASE_URL, SUPABASE_KEY } from "../../lib/supabase";
 import { ForceGraph, type FNode, type FLink } from "./ForceGraph";
 
@@ -87,6 +87,24 @@ export interface Persona extends NodeBase {
   jtbds: JTBD[];
 }
 
+export interface ICPDimension {
+  key: string;
+  label: string;
+  weight: number;
+  score: number;
+  rationale: string;
+}
+
+export interface ICPScoring {
+  rank: number;
+  weightedScore: number;
+  recommendation: string;
+  dimensions: ICPDimension[];
+  topStrengths: string[];
+  topGaps: string[];
+  suggestedAngle: string;
+}
+
 export interface ICP extends NodeBase {
   name: string;
   motion: string;
@@ -101,6 +119,11 @@ export interface ICP extends NodeBase {
   pain_profile: string;
   revenue_potential: string;
   personas: Persona[];
+  // Carried over from the guided-onboarding TAM/ICP scoring (tam-icp-run), so the
+  // main page shows the same ranked ICPs the user saw in onboarding.
+  buyer_titles?: string;
+  tam_scope?: "unique" | "cross_product";
+  scoring?: ICPScoring;
 }
 
 export interface TAM extends NodeBase {
@@ -620,6 +643,106 @@ function computeStats(tree: ICPTree): TreeStats {
   return { total_icps: tree.tam.icps.length, total_personas: personas, total_jtbds: jtbds, total_triggers: triggers, total_readiness_states: rs, total_plays_authored: authored, total_plays_skeleton: skeleton };
 }
 
+// ─── Seed from guided-onboarding output ────────────────────────────────────────
+// The guided onboarding (tam-icp-run edge fn) already produced a TAM tree +
+// 5-dimension-scored ICPs, persisted to the workspace. Rather than regenerating
+// TAM/ICPs from scratch, the main page seeds its root from that output so the two
+// are one continuous artifact: onboarding ranks the ICPs → this page deepens them
+// into Persona → JTBD → Trigger → Readiness → Play subtrees on demand.
+function splitList(s: any): string[] {
+  if (Array.isArray(s)) return s.map(String).map((x) => x.trim()).filter(Boolean);
+  if (typeof s === "string") return s.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
+  return [];
+}
+
+function buildTreeFromOnboarding(ws: any): ICPTree | null {
+  const cd = ws.companyData || {};
+  const tamTree = cd._tamTree;
+  const sourceICPs: any[] = Array.isArray(ws.icps) ? ws.icps : [];
+  if (!tamTree || sourceICPs.length === 0) return null;
+
+  const tamId = uid("tam");
+  const treeId = uid("tree");
+  const company = tamTree.companyLevel || {};
+  const segments: any[] = Array.isArray(company.segments) ? company.segments : [];
+
+  // Index scoring rows by the onboarding ICP id so each node carries its ranking.
+  const scoreRows: any[] = cd._icpScoringResult?.icps || [];
+  const scoreById = new Map<string, any>();
+  for (const r of scoreRows) if (r?.icpId) scoreById.set(r.icpId, r);
+
+  const icps: ICP[] = sourceICPs.map((src: any) => {
+    const data = src.data || {};
+    const row = scoreById.get(src.id);
+    return {
+      ...nodeBase("icp", tamId, "expandable"),
+      id: src.id, // preserve the onboarding ICP id for continuity across surfaces
+      name: src.name || "Unnamed ICP",
+      motion: "sales-led",
+      description: data._tamExplanation || "",
+      firmographics: {
+        company_size: "",
+        industries: splitList(data.industries),
+        revenue: "",
+        geography: "",
+        business_model: "",
+      },
+      pain_profile: data.pain1 || "",
+      revenue_potential: "",
+      buyer_titles: data.buyer || "",
+      tam_scope: data._tamScope,
+      scoring: row
+        ? {
+            rank: row.rank || 0,
+            weightedScore: row.weightedScore || 0,
+            recommendation: row.recommendation || "",
+            dimensions: Array.isArray(row.dimensions) ? row.dimensions : [],
+            topStrengths: Array.isArray(row.topStrengths) ? row.topStrengths : [],
+            topGaps: Array.isArray(row.topGaps) ? row.topGaps : [],
+            suggestedAngle: row.suggestedAngle || "",
+          }
+        : undefined,
+      personas: [],
+    };
+  });
+
+  // Show the highest-ranked ICPs first (rank from onboarding; unscored sink last).
+  icps.sort((a, b) => (a.scoring?.rank || 999) - (b.scoring?.rank || 999));
+
+  const tam: TAM = {
+    ...nodeBase("tam", null, "complete"),
+    id: tamId,
+    total_market: company.tamSummary || "See segments",
+    addressable_market: "",
+    serviceable_market: "",
+    key_segments: segments
+      .map((s: any) => (s.sizeEstimate ? `${s.name} — ${s.sizeEstimate}` : s.name))
+      .filter(Boolean),
+    expansion_hints: [],
+    icps,
+  };
+
+  const tree: ICPTree = {
+    id: treeId,
+    generated_at: new Date().toISOString(),
+    company_name: cd.co_name || "Company",
+    generation_config: { max_icps: icps.length, max_personas_per_icp: 3, max_jtbds_per_persona: 3, max_triggers_per_jtbd: 3, max_total_plays: 20 },
+    stats: {} as TreeStats,
+    tam,
+    expansion_suggestions: [],
+  };
+  tree.stats = computeStats(tree);
+  return tree;
+}
+
+const RECO_META: Record<string, { label: string; color: string }> = {
+  launch_first:  { label: "Launch first",  color: C.green },
+  launch_second: { label: "Launch second", color: C.accent },
+  test_small:    { label: "Test small",    color: C.amber },
+  defer:         { label: "Defer",         color: C.muted },
+  skip:          { label: "Skip",          color: C.red },
+};
+
 // ─── Main generation orchestrator ─────────────────────────────────────────────
 async function generateTree(
   ws: any,
@@ -970,16 +1093,41 @@ function NodeDetail({
       {/* ICP fields */}
       {selected.type === "icp" && (<>
         <div style={{ marginBottom: 12 }}>
-          <Pill label={node.motion} color={C.accent} />
-          <Pill label={node.firmographics?.company_size} />
-          <Pill label={node.firmographics?.geography} />
-          <Pill label={node.revenue_potential} color={C.green} />
+          {node.scoring?.rank ? <Pill label={`Rank #${node.scoring.rank}`} color={C.accent} /> : null}
+          {node.scoring?.recommendation ? <Pill label={RECO_META[node.scoring.recommendation]?.label || node.scoring.recommendation} color={RECO_META[node.scoring.recommendation]?.color || C.muted} /> : null}
+          {node.tam_scope === "cross_product" ? <Pill label="cross-product" color={C.accent} /> : null}
+          {node.motion ? <Pill label={node.motion} /> : null}
+          {node.firmographics?.company_size ? <Pill label={node.firmographics.company_size} /> : null}
+          {node.firmographics?.geography ? <Pill label={node.firmographics.geography} /> : null}
+          {node.revenue_potential ? <Pill label={node.revenue_potential} color={C.green} /> : null}
         </div>
+        {typeof node.scoring?.weightedScore === "number" && node.scoring.weightedScore > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, fontFamily: head, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+              ICP Score · {node.scoring.weightedScore.toFixed(1)}/10
+            </div>
+            {node.scoring.dimensions?.map((d: ICPDimension) => (
+              <div key={d.key} style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, fontFamily: head, color: C.text, marginBottom: 3 }}>
+                  <span>{d.label}</span><span style={{ fontFamily: mono, color: C.textSoft }}>{d.score}/10</span>
+                </div>
+                <div style={{ height: 4, borderRadius: 2, background: C.border, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${Math.max(0, Math.min(10, d.score)) * 10}%`, background: C.accent, borderRadius: 2 }} />
+                </div>
+                {d.rationale ? <div style={{ fontSize: 11, color: C.muted, fontFamily: head, marginTop: 3, lineHeight: 1.5 }}>{d.rationale}</div> : null}
+              </div>
+            ))}
+          </div>
+        )}
+        <Field label="Buyer Titles" value={node.buyer_titles} />
         <Field label="Industries" value={node.firmographics?.industries} />
         <Field label="Pain Profile" value={node.pain_profile} />
         <Field label="Description" value={node.description} />
+        {node.scoring?.topStrengths?.length > 0 && <Field label="Top Strengths" value={node.scoring.topStrengths} />}
+        {node.scoring?.topGaps?.length > 0 && <Field label="Top Gaps" value={node.scoring.topGaps} />}
+        {node.scoring?.suggestedAngle && <Field label="Suggested Angle" value={node.scoring.suggestedAngle} />}
         {node.expansion_hints?.length > 0 && <Field label="Expansion Hints" value={node.expansion_hints} />}
-        <div style={{ marginTop: 16 }}>{btn("Expand ICP", () => onExpand(node.id))}</div>
+        <div style={{ marginTop: 16 }}>{btn(node.personas?.length ? "Expand ICP further" : "Build personas → plays", () => onExpand(node.id), true)}</div>
       </>)}
 
       {/* Persona fields */}
@@ -1263,12 +1411,24 @@ function TreePanel({ tree, selected, onSelect }: {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+export interface ExpandRequest {
+  action: "expand_icp" | "generate_play" | "regenerate_play";
+  icpId?: string;
+  rsId?: string;
+  hint?: string;
+}
+
 interface Props {
   ws: any;
   onSave: (updates: Partial<{ icpTree: ICPTree }>) => void;
+  // Phase 2 — when provided, expansion/play generation runs server-side via the
+  // icp-tree-expand job (App owns the invoke + poll). `job` surfaces that job's
+  // live status/log. When omitted, the component falls back to client-side gen.
+  onExpandRequest?: (req: ExpandRequest) => void;
+  job?: { status?: string; phase?: string; log?: string[] } | null;
 }
 
-export function ICPTreeGenerator({ ws, onSave }: Props) {
+export function ICPTreeGenerator({ ws, onSave, onExpandRequest, job }: Props) {
   const [tree, setTree] = useState<ICPTree | null>(() => ws.icpTree || null);
   const [generating, setGenerating] = useState(false);
   const [genLog, setGenLog] = useState<string[]>([]);
@@ -1280,6 +1440,21 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
   const [error, setError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Keep the local tree in sync when a server job (or initial load) hands us a new
+  // icpTree from outside. Compare by reference so the "Regenerate" clear-to-landing
+  // button (which only nulls local state) isn't immediately undone.
+  const appliedTreeRef = useRef<any>(ws.icpTree || null);
+  useEffect(() => {
+    if (ws.icpTree && ws.icpTree !== appliedTreeRef.current) {
+      appliedTreeRef.current = ws.icpTree;
+      setTree(ws.icpTree);
+    }
+  }, [ws.icpTree]);
+
+  const onboardingSeed = useMemo(() => buildTreeFromOnboarding(ws), [ws.companyData, ws.icps]);
+  const jobRunning = job?.status === "running";
+  const busy = generating || jobRunning;
 
   const config: GenerationConfig = {
     max_icps: 6,
@@ -1319,8 +1494,19 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
     }
   };
 
+  // Seed the deep tree from the guided-onboarding TAM + scored ICPs (no AI).
+  const handleSeedFromOnboarding = () => {
+    const seeded = buildTreeFromOnboarding(ws);
+    if (!seeded) { setError("No onboarding ICPs found to build from."); return; }
+    setError("");
+    setSelected(null);
+    setTree(seeded);
+    onSave({ icpTree: seeded });
+  };
+
   const handleGeneratePlay = async (rsId: string) => {
     if (!tree) return;
+    if (onExpandRequest) { onExpandRequest({ action: "generate_play", rsId }); return; }
     setGenerating(true);
     setError("");
     try {
@@ -1336,6 +1522,7 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
 
   const handleRegenPlay = async (rsId: string) => {
     if (!tree) return;
+    if (onExpandRequest) { onExpandRequest({ action: "regenerate_play", rsId, hint: regenHint }); setRegenHint(""); return; }
     setGenerating(true);
     setError("");
     try {
@@ -1352,6 +1539,7 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
 
   const handleExpand = async (nodeId: string) => {
     if (!tree) return;
+    if (onExpandRequest) { onExpandRequest({ action: "expand_icp", icpId: nodeId, hint: expandHint }); setExpandHint(""); return; }
     setGenerating(true);
     setError("");
     try {
@@ -1392,7 +1580,14 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
             Builds a living TAM → ICP → Persona → JTBD → Trigger → Readiness → Play tree from your company profile. Runs after Getting Started so it can use your research, ICPs, and product data as the seed.
           </p>
 
-          {!hasData && (
+          {onboardingSeed && (
+            <div style={{ padding: "12px 16px", background: C.greenLo, borderRadius: 10, border: `1px solid ${C.greenBorder}`, marginBottom: 20, textAlign: "left" }}>
+              <div style={{ fontSize: 13, color: C.text, fontWeight: 600, marginBottom: 4 }}>✓ {onboardingSeed.tam.icps.length} ranked ICPs from onboarding</div>
+              <div style={{ fontSize: 12.5, color: C.textSoft }}>Your guided onboarding already scored and ranked these ICPs. Build the deep tree from them, then expand any ICP into personas → JTBDs → triggers → plays when you need more campaigns.</div>
+            </div>
+          )}
+
+          {!hasData && !onboardingSeed && (
             <div style={{ padding: "12px 16px", background: C.amberLo, borderRadius: 10, border: `1px solid ${C.amberBorder}`, marginBottom: 20, textAlign: "left" }}>
               <div style={{ fontSize: 13, color: C.text, fontWeight: 600, marginBottom: 4 }}>Complete Getting Started first</div>
               <div style={{ fontSize: 12.5, color: C.textSoft }}>The ICP Tree uses your company profile, products, and existing personas as seed data. Run the Getting Started flow to populate this before generating.</div>
@@ -1416,13 +1611,27 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
 
           {error && <div style={{ padding: "10px 14px", background: C.redLo, borderRadius: 8, border: `1px solid ${C.red}33`, color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
 
-          <button onClick={handleGenerate} disabled={!hasData}
-            style={{ padding: "12px 32px", borderRadius: 10, border: "none", background: hasData ? C.accent : C.border, color: hasData ? "#fff" : C.muted, fontSize: 14, fontWeight: 700, fontFamily: head, cursor: hasData ? "pointer" : "not-allowed" }}>
-            Generate ICP Tree
-          </button>
-          <div style={{ fontSize: 11.5, color: C.muted, marginTop: 10 }}>
-            Uses Claude Haiku for structure, Sonnet for plays. Typical cost: $0.10–0.40
-          </div>
+          {onboardingSeed ? (<>
+            <button onClick={handleSeedFromOnboarding}
+              style={{ padding: "12px 32px", borderRadius: 10, border: "none", background: C.accent, color: "#fff", fontSize: 14, fontWeight: 700, fontFamily: head, cursor: "pointer" }}>
+              Build tree from onboarding ICPs
+            </button>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 10 }}>
+              Instant — reuses your scored ICPs. Personas → plays generate on demand per ICP.
+            </div>
+            <button onClick={handleGenerate} disabled={!hasData}
+              style={{ marginTop: 14, padding: "4px 8px", border: "none", background: "transparent", color: C.textSoft, fontSize: 12, fontFamily: head, textDecoration: "underline", cursor: hasData ? "pointer" : "not-allowed", opacity: hasData ? 1 : 0.5 }}>
+              or generate a fresh tree from scratch
+            </button>
+          </>) : (<>
+            <button onClick={handleGenerate} disabled={!hasData}
+              style={{ padding: "12px 32px", borderRadius: 10, border: "none", background: hasData ? C.accent : C.border, color: hasData ? "#fff" : C.muted, fontSize: 14, fontWeight: 700, fontFamily: head, cursor: hasData ? "pointer" : "not-allowed" }}>
+              Generate ICP Tree
+            </button>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 10 }}>
+              Uses Claude Haiku for structure, Sonnet for plays. Typical cost: $0.10–0.40
+            </div>
+          </>)}
         </div>
       </div>
     );
@@ -1475,7 +1684,7 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
         ))}
         <div style={{ flex: 1 }} />
         {error && <span style={{ fontSize: 12, color: C.red }}>{error}</span>}
-        {generating && <span style={{ fontSize: 12, color: C.accent, fontFamily: mono }}>Working…</span>}
+        {busy && <span style={{ fontSize: 12, color: C.accent, fontFamily: mono }}>{jobRunning ? (job?.phase || "Working…") : "Working…"}</span>}
         <div style={{ display: "flex", border: `1px solid ${C.border}`, borderRadius: 7, overflow: "hidden" }}>
           {(["graph", "outline"] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
@@ -1486,7 +1695,7 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
         </div>
         <button onClick={handleExportMD} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", fontSize: 12, color: C.textSoft, cursor: "pointer", fontFamily: head }}>↓ Markdown</button>
         <button onClick={handleExportJSON} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", fontSize: 12, color: C.textSoft, cursor: "pointer", fontFamily: head }}>↓ JSON</button>
-        <button onClick={() => { setTree(null); setGenLog([]); setGenProgress(0); setSelected(null); setError(""); }} disabled={generating}
+        <button onClick={() => { setTree(null); setGenLog([]); setGenProgress(0); setSelected(null); setError(""); }} disabled={busy}
           style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.accentBorder}`, background: C.accentLo, fontSize: 12, color: C.accent, cursor: "pointer", fontFamily: head, fontWeight: 600 }}>
           Regenerate
         </button>
@@ -1521,7 +1730,7 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
                   onGeneratePlay={handleGeneratePlay}
                   onRegenPlay={handleRegenPlay}
                   onExpand={handleExpand}
-                  generating={generating}
+                  generating={busy}
                 />
               </div>
             )}
@@ -1535,19 +1744,24 @@ export function ICPTreeGenerator({ ws, onSave }: Props) {
               onGeneratePlay={handleGeneratePlay}
               onRegenPlay={handleRegenPlay}
               onExpand={handleExpand}
-              generating={generating}
+              generating={busy}
             />
           </>
         )}
       </div>
 
-      {/* Generating overlay log (when regenerating/expanding with tree visible) */}
-      {generating && tree && genLog.length > 0 && (
-        <div style={{ position: "absolute" as const, bottom: 20, right: 20, width: 340, background: C.canvas, borderRadius: 10, border: `1px solid ${C.border}`, boxShadow: "0 4px 20px rgba(0,0,0,.12)", padding: 14, fontFamily: mono, fontSize: 11, color: C.textSoft, maxHeight: 180, overflowY: "auto", zIndex: 100 }}>
-          {genLog.slice(-8).map((line, i) => <div key={i}>{line}</div>)}
-          <div ref={logEndRef} />
-        </div>
-      )}
+      {/* Working overlay log (regenerating/expanding with tree visible). Prefers the
+          server job's live log; falls back to the local client-side gen log. */}
+      {(() => {
+        const lines = jobRunning ? (job?.log || []) : genLog;
+        if (!busy || !tree || lines.length === 0) return null;
+        return (
+          <div style={{ position: "absolute" as const, bottom: 20, right: 20, width: 340, background: C.canvas, borderRadius: 10, border: `1px solid ${C.border}`, boxShadow: "0 4px 20px rgba(0,0,0,.12)", padding: 14, fontFamily: mono, fontSize: 11, color: C.textSoft, maxHeight: 180, overflowY: "auto", zIndex: 100 }}>
+            {lines.slice(-8).map((line, i) => <div key={i}>{line}</div>)}
+            <div ref={logEndRef} />
+          </div>
+        );
+      })()}
     </div>
   );
 }

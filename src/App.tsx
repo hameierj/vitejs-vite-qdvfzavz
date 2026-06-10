@@ -19308,7 +19308,7 @@ function AppMain() {
   useEffect(() => {
     if (!activeWorkspace || !supabase) { setStageJobs({}); return; }
     const wsId = (activeWorkspace as any).id;
-    const STAGES = ["products", "tamicp", "personas", "infra", "launchplan"] as const;
+    const STAGES = ["products", "tamicp", "personas", "infra", "launchplan", "icptree"] as const;
     let cancelled = false;
     let timerId: any = null;
     const applied: Record<string, string> = {};
@@ -19382,6 +19382,8 @@ function AppMain() {
         setCompanyData((prev: any) => ({ ...prev, _personasGeneratedAt: new Date().toISOString() }));
       } else if (stage === "infra") {
         if (result.dfySetup) setDfySetup((prev: any) => ({ ...prev, ...result.dfySetup }));
+      } else if (stage === "icptree") {
+        if (result.icpTree) setIcpTree(result.icpTree);
       }
     };
 
@@ -21800,21 +21802,22 @@ Return ONLY valid JSON:
   };
 
   // ── Gated onboarding: start a stage generator (edge function) ──
-  const startStage = async (stage: string) => {
+  const startStage = async (stage: string, extraBody?: Record<string, any>) => {
     const wsId = activeWorkspace ? (activeWorkspace as any).id : null;
     if (!wsId || !supabase) { addToast({ title: "No active workspace", status: "error", message: "Open a client account first." }); return; }
-    const fnMap: Record<string, string> = { products: "products-run", tamicp: "tam-icp-run", personas: "personas-run", infra: "infra-run" };
+    const fnMap: Record<string, string> = { products: "products-run", tamicp: "tam-icp-run", personas: "personas-run", infra: "infra-run", icptree: "icp-tree-expand" };
     const fn = fnMap[stage];
     if (!fn) return;
     setStageJobs((prev) => ({ ...prev, [stage]: { status: "running", phase: "Starting...", log: ["Starting..."] } }));
     try {
       // Stage generators read ws_<wsId> from the DB. Cloud writes are debounced 5s, so flush
-      // pending saves (e.g. the just-confirmed research brief) BEFORE the server reads — otherwise
-      // products/tam/personas generate from stale/empty data (the "Unknown Product" bug).
+      // pending saves (e.g. the just-confirmed research brief, or a freshly-seeded ICP tree)
+      // BEFORE the server reads — otherwise generation runs against stale/empty data.
       await _flushCloudQueue();
       const userContext = ((companyData as any)?._gateNotes || {})[stage] || "";
       const body: any = { workspaceId: wsId, userContext };
       if (stage === "infra") body.infraInputs = (companyData as any)?._infraInputs || {};
+      if (extraBody) Object.assign(body, extraBody);
       const { error } = await supabase.functions.invoke(fn, { body });
       if (error) throw error;
       stagePollKickRef.current();
@@ -28594,6 +28597,8 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   onSave={(updates) => {
                     if (updates.icpTree !== undefined) setIcpTree(updates.icpTree);
                   }}
+                  job={stageJobs.icptree || null}
+                  onExpandRequest={(req) => startStage("icptree", req)}
                 />
               </div>
             )}
