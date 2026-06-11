@@ -30,6 +30,7 @@ interface Props {
   researchState: "idle" | "running" | "done";
   researchLog: string[];
   onRunResearch: (domain: string) => void;
+  onSetWebsite: (website: string) => void;
   onStartStage: (stage: StageKey) => void;
   onConfirmGate: (gateId: TrackAGate | "infra") => void;
   onRefine: (scopeLabel: string) => void;
@@ -64,12 +65,15 @@ const NEXT_GATE: Record<TrackAGate, TrackAGate | null> = {
 
 export function OnboardingGates(props: Props) {
   const { companyData: cd, products, icps, dfySetup, stageJobs, researchState, researchLog,
-          onRunResearch, onStartStage, onConfirmGate, onRefine, onSetGateNote,
+          onRunResearch, onSetWebsite, onStartStage, onConfirmGate, onRefine, onSetGateNote,
           researchContext, onSetResearchContext, researchDocs, onUploadResearchDocs, onRemoveResearchDoc,
           infraInputs, onSetInfraInputs, onNavigate } = props;
   const noteFor = (stage: StageKey): string => ((cd?._gateNotes || {})[stage]) || "";
   const gates = (cd?._gates || {}) as Record<string, any>;
-  const [domain, setDomain] = useState<string>(cd?.co_website || "");
+  // Website is the persisted source of truth (companyData.co_website) so it
+  // survives reload and feeds Track-B infra defaults — not local-only state.
+  const domain = (cd?.co_website || "") as string;
+  const setDomain = (v: string) => onSetWebsite(v);
   const [showInfraAll, setShowInfraAll] = useState(false);
 
   // ── Artifact presence per gate ──

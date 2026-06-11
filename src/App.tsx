@@ -27253,6 +27253,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   researchState={researchState}
                   researchLog={researchLog}
                   onRunResearch={(domain) => handleStartResearch(domain)}
+                  onSetWebsite={(w) => setCompanyData((prev: any) => ({ ...prev, co_website: w }))}
                   onStartStage={(stage) => startStage(stage)}
                   onConfirmGate={(gate) => handleConfirmGate(gate)}
                   onRefine={(scope) => handleRefineGate(scope)}

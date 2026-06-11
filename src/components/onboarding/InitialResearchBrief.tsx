@@ -131,7 +131,7 @@ export function InitialResearchBrief({ brief, generating, genLog, onGenerate, on
 
             {/* Products */}
             <Card title="Products / Services" anchor="productsServices">
-              {(brief.productsServices || []).slice(0, 3).map((p: any, i: number) => (
+              {(brief.productsServices || []).map((p: any, i: number) => (
                 <div key={i} style={{ marginBottom: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{p.name}</div>
                   <div style={{ fontSize: 11.5, color: C.textSoft, lineHeight: 1.5 }}>{p.description}</div>
