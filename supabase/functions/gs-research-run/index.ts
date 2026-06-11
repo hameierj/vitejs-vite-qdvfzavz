@@ -151,13 +151,24 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   if (blocks.length) await appendLog(sb, wsId, `Including ${blocks.length} uploaded document${blocks.length > 1 ? "s" : ""}`);
   await appendLog(sb, wsId, "Analyzing with Claude...");
 
-  const prompt = `Analyze the following website content for ${domain} and produce a comprehensive pre-onboarding research brief for a B2B outreach team.
+  const prompt = `Produce a comprehensive pre-onboarding research brief for a B2B outreach team about ${domain}.
+${userContext ? `
+═══════════════════════════════════════════════
+USER-PROVIDED CONTEXT — AUTHORITATIVE. THIS IS THE GROUND TRUTH.
+═══════════════════════════════════════════════
+${userContext}
 
-WEBSITE CONTENT:
+RULES FOR USING THIS CONTEXT (these override everything else):
+- The user knows this business better than the website does. When the website and this context disagree, the user is RIGHT — follow the user.
+- This context CONSTRAINS the brief, it doesn't just "inform" it. If the user states what the company sells (e.g. "they mainly sell X and sometimes Y, that's it"), then "productsServices" must contain ONLY those items. Do NOT add other products, services, or business lines from the website — even if the website prominently features them. Treat anything the user excluded as out of scope.
+- Use the website (and any attached documents) ONLY to enrich and add detail to what the user described — never to expand the scope beyond it.
+═══════════════════════════════════════════════
+` : ""}${blocks.length ? `\nThe user also attached ${blocks.length} document${blocks.length > 1 ? "s" : ""} (decks/PDFs/one-pagers) below. Treat them as authoritative primary sources, second only to the user-provided context above.\n` : ""}
+WEBSITE CONTENT${userContext ? " (use for enrichment only — do not let it override the user context above)" : ""}:
 ${pageContent || "(no content fetched — use domain knowledge about " + domain + ")"}
 
 DOMAIN: ${domain}
-${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily and let it steer the brief):\n${userContext}\n` : ""}${blocks.length ? `\nThe user also attached ${blocks.length} document${blocks.length > 1 ? "s" : ""} (decks/PDFs/one-pagers) below. Treat them as authoritative primary sources — extract products, value props, customers, and positioning from them.\n` : ""}
+
 Return a JSON object:
 {
   "generatedAt": "${new Date().toISOString()}",
@@ -171,7 +182,7 @@ Return a JSON object:
   },
   "productsServices": [
     { "name": "product name", "description": "what it does in 1-2 sentences", "targetBuyer": "who buys this", "differentiator": "what makes it different" }
-  ],
+  ],   // If the user-provided context scopes what they sell, this list must contain ONLY those items — nothing else from the website.
   "valuePropositions": [
     { "claim": "specific value claim", "evidence": "supporting evidence if any", "quantified": true/false }
   ],
