@@ -17711,7 +17711,7 @@ function AppMain() {
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
 
-  const handleUploadFiles = useCallback((fileList: FileList) => {
+  const handleUploadFiles = useCallback((fileList: FileList, forcedTags?: string[]) => {
     const filesArr = Array.from(fileList);
     const total = filesArr.length;
     const toastId = addToast({ title:`Uploading ${total} file${total>1?"s":""}…`, status:"loading", message:"Processing…", step:0, totalSteps:total, startTime:Date.now() });
@@ -17732,6 +17732,7 @@ function AppMain() {
           if (file.type.includes("word") || file.name.endsWith(".docx") || file.name.endsWith(".doc")) tags.push("document");
           if (file.name.toLowerCase().includes("email") || file.name.toLowerCase().includes("sequence")) tags.push("email copy");
           if (file.name.toLowerCase().includes("icp") || file.name.toLowerCase().includes("target")) tags.push("targeting");
+          for (const t of (forcedTags || [])) if (!tags.includes(t)) tags.push(t);
           // Save to IndexedDB first
           if (activeWorkspace) {
             await idbPut(`${activeWorkspace.id}_${fileId}`, b64);
@@ -20577,9 +20578,48 @@ Return ONLY valid JSON:
     try {
       // Flush pending saves so the server reads current company data (website, notes), not stale.
       await _flushCloudQueue();
-      const userContext = ((companyData as any)?._gateNotes || {}).research || "";
+
+      // Compose the structured Step-1 context (Products & Services / Company /
+      // special instructions) into one authoritative block for the model.
+      const rc = ((companyData as any)?._researchContext || {}) as { products?: string; company?: string; other?: string };
+      const legacyNote = ((companyData as any)?._gateNotes || {}).research || "";
+      const ctxParts: string[] = [];
+      if (rc.products?.trim()) ctxParts.push(`PRODUCTS & SERVICES (user-provided — text and/or links):\n${rc.products.trim()}`);
+      if (rc.company?.trim()) ctxParts.push(`ABOUT THE COMPANY (user-provided — text and/or links):\n${rc.company.trim()}`);
+      if (rc.other?.trim()) ctxParts.push(`SPECIAL INSTRUCTIONS (user-provided):\n${rc.other.trim()}`);
+      else if (legacyNote.trim()) ctxParts.push(`SPECIAL INSTRUCTIONS (user-provided):\n${legacyNote.trim()}`);
+
+      // Gather documents the user attached to Step 1 (wsFiles tagged "research").
+      // PDFs/images go to Claude as native document blocks; docx/text are
+      // extracted to plain text and folded into the context string.
+      const docs: { name: string; mediaType: string; base64: string }[] = [];
+      const MAX_DOC_BYTES = 24 * 1024 * 1024; // stay well under Anthropic's 32MB request cap
+      let docBytes = 0;
+      for (const f of (wsFiles || [])) {
+        if (!f.tags?.includes("research")) continue;
+        let b64 = f.b64;
+        if (!b64 || (f as any)._loading) { try { b64 = (await idbGet(`${wsId}_${f.id}`)) || ""; } catch { b64 = ""; } }
+        if (!b64) continue;
+        const mt = f.mime || f.type || "";
+        if (mt === "application/pdf" || mt.startsWith("image/")) {
+          const approxBytes = Math.floor(b64.length * 0.75);
+          if (docBytes + approxBytes > MAX_DOC_BYTES) { setResearchLog((p) => [...p, `Skipped ${f.name} — attachment size limit reached`]); continue; }
+          docBytes += approxBytes;
+          docs.push({ name: f.name, mediaType: mt, base64: b64 });
+        } else if (mt.includes("word") || f.name?.endsWith(".docx") || f.name?.endsWith(".doc")) {
+          try {
+            const raw = atob(b64); const texts: string[] = []; const re = /<w:t[^>]*>([^<]+)<\/w:t>/g; let m;
+            while ((m = re.exec(raw)) !== null && texts.length < 400) texts.push(m[1]);
+            if (texts.length) ctxParts.push(`DOCUMENT "${f.name}":\n${texts.join(" ").slice(0, 8000)}`);
+          } catch {}
+        } else if (mt.startsWith("text/") || mt.includes("json") || mt.includes("csv")) {
+          try { ctxParts.push(`DOCUMENT "${f.name}":\n${atob(b64).slice(0, 8000)}`); } catch {}
+        }
+      }
+
+      const userContext = ctxParts.join("\n\n");
       const { error } = await supabase.functions.invoke("gs-research-run", {
-        body: { workspaceId: wsId, domain: inputDomain, userContext },
+        body: { workspaceId: wsId, domain: inputDomain, userContext, documents: docs },
       });
       if (error) throw error;
       // The job runs server-side under EdgeRuntime.waitUntil. Progress and the
@@ -20644,6 +20684,16 @@ Return ONLY valid JSON:
   // Per-gate optional guidance the user gives the AI before generating.
   const handleSetGateNote = (stage: string, text: string) => {
     setCompanyData((prev: any) => ({ ...prev, _gateNotes: { ...(prev?._gateNotes || {}), [stage]: text } }));
+  };
+
+  // Step 1 (Company Research) structured context: { products, company, other }.
+  const handleSetResearchContext = (patch: any) => {
+    setCompanyData((prev: any) => ({ ...prev, _researchContext: { ...(prev?._researchContext || {}), ...patch } }));
+  };
+
+  // Remove a Step-1 attached document from the workspace files.
+  const handleRemoveResearchDoc = (id: string) => {
+    setWsFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   // Domains & Mailboxes configuration answers (collected before generating infra).
@@ -27207,6 +27257,11 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   onConfirmGate={(gate) => handleConfirmGate(gate)}
                   onRefine={(scope) => handleRefineGate(scope)}
                   onSetGateNote={(stage, text) => handleSetGateNote(stage, text)}
+                  researchContext={(companyData as any)?._researchContext || {}}
+                  onSetResearchContext={(patch) => handleSetResearchContext(patch)}
+                  researchDocs={(wsFiles || []).filter((f) => f.tags?.includes("research"))}
+                  onUploadResearchDocs={(fl: FileList) => handleUploadFiles(fl, ["research"])}
+                  onRemoveResearchDoc={(id: string) => handleRemoveResearchDoc(id)}
                   infraInputs={(companyData as any)?._infraInputs || {}}
                   onSetInfraInputs={(patch) => handleSetInfraInputs(patch)}
                   onNavigate={(v) => setView(v)}

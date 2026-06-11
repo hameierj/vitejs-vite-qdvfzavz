@@ -34,6 +34,12 @@ interface Props {
   onConfirmGate: (gateId: TrackAGate | "infra") => void;
   onRefine: (scopeLabel: string) => void;
   onSetGateNote: (stage: StageKey, text: string) => void;
+  // Step 1 structured context + attached documents
+  researchContext: { products?: string; company?: string; other?: string };
+  onSetResearchContext: (patch: { products?: string; company?: string; other?: string }) => void;
+  researchDocs: { id: string; name: string; type?: string; mime?: string; _loading?: boolean }[];
+  onUploadResearchDocs: (files: FileList) => void;
+  onRemoveResearchDoc: (id: string) => void;
   infraInputs: any;
   onSetInfraInputs: (patch: any) => void;
   onNavigate: (view: string) => void;
@@ -58,7 +64,9 @@ const NEXT_GATE: Record<TrackAGate, TrackAGate | null> = {
 
 export function OnboardingGates(props: Props) {
   const { companyData: cd, products, icps, dfySetup, stageJobs, researchState, researchLog,
-          onRunResearch, onStartStage, onConfirmGate, onRefine, onSetGateNote, infraInputs, onSetInfraInputs, onNavigate } = props;
+          onRunResearch, onStartStage, onConfirmGate, onRefine, onSetGateNote,
+          researchContext, onSetResearchContext, researchDocs, onUploadResearchDocs, onRemoveResearchDoc,
+          infraInputs, onSetInfraInputs, onNavigate } = props;
   const noteFor = (stage: StageKey): string => ((cd?._gateNotes || {})[stage]) || "";
   const gates = (cd?._gates || {}) as Record<string, any>;
   const [domain, setDomain] = useState<string>(cd?.co_website || "");
@@ -216,14 +224,24 @@ export function OnboardingGates(props: Props) {
               preview={renderPreview(g.id)}
               extraTop={(st === "idle" || st === "generating" || st === "review") ? (
                 <>
-                  {g.id === "companyResearch" && (st === "idle" || st === "generating") && (
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                      <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="company.com"
-                        disabled={st === "generating"}
-                        style={{ flex: 1, padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 12.5, fontFamily: head, color: C.text, background: C.canvas }} />
-                    </div>
+                  {g.id === "companyResearch" && (st === "idle" || st === "generating" || st === "review") && (
+                    <>
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>
+                          Company website <span style={{ color: "#E11D48" }}>*</span> <span style={{ fontWeight: 500 }}>required</span>
+                        </div>
+                        <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="company.com"
+                          disabled={st === "generating"}
+                          style={{ width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", borderRadius: 7, border: `1px solid ${domain.trim() ? C.border : "#F6C9D4"}`, fontSize: 12.5, fontFamily: head, color: C.text, background: C.canvas }} />
+                        {!domain.trim() && <div style={{ fontSize: 10.5, color: "#E11D48", marginTop: 4 }}>Enter the company website to run research.</div>}
+                      </div>
+                      <ResearchContextPanel
+                        ctx={researchContext} onChange={onSetResearchContext}
+                        docs={researchDocs} onUpload={onUploadResearchDocs} onRemove={onRemoveResearchDoc}
+                        disabled={st === "generating"} />
+                    </>
                   )}
-                  {(st === "idle" || st === "review") && g.id !== "emailCampaigns" && (
+                  {(st === "idle" || st === "review") && g.id !== "emailCampaigns" && g.id !== "companyResearch" && (
                     <GuidanceBox value={noteFor(g.stage)} onChange={(v) => onSetGateNote(g.stage, v)}
                       hint={st === "review" ? "Add guidance, then Regenerate to apply it" : "Steer the AI before it generates this step"} />
                   )}
@@ -372,6 +390,61 @@ function InfraConfigForm({ inputs, defaultWebsite, onChange }: { inputs: any; de
       </div>
     </div>
   );
+}
+
+// Step 1 structured context: separate fields for products/services, company
+// background, free-form instructions, plus document attachments (PDFs/decks).
+// Everything here is optional but steers the research heavily.
+function ResearchContextPanel({ ctx, onChange, docs, onUpload, onRemove, disabled }: {
+  ctx: { products?: string; company?: string; other?: string };
+  onChange: (patch: { products?: string; company?: string; other?: string }) => void;
+  docs: { id: string; name: string; type?: string; mime?: string; _loading?: boolean }[];
+  onUpload: (files: FileList) => void;
+  onRemove: (id: string) => void;
+  disabled?: boolean;
+}) {
+  const ta = (label: string, hint: string, value: string, key: "products" | "company" | "other") => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, color: C.textSoft, marginBottom: 4, fontWeight: 600 }}>{label} <span style={{ color: C.muted, fontWeight: 500 }}>(optional)</span></div>
+      <textarea value={value || ""} onChange={(e) => onChange({ [key]: e.target.value })} rows={3} disabled={disabled}
+        placeholder={hint}
+        style={{ width: "100%", boxSizing: "border-box" as const, padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 12, fontFamily: head, color: C.text, background: C.canvas, resize: "vertical" as const, lineHeight: 1.5 }} />
+    </div>
+  );
+  return (
+    <div style={{ marginTop: 12, padding: "12px 14px", background: C.surface, borderRadius: 9, border: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: 11, fontFamily: mono, fontWeight: 700, color: C.muted, marginBottom: 10 }}>CONTEXT FOR THE AI · ALL OPTIONAL</div>
+      {ta("Products & services", "What the company sells. Paste text or links — e.g. product pages, pricing, feature lists.", ctx.products || "", "products")}
+      {ta("About the company", "Company background, positioning, customers. Paste text or links — e.g. about page, press, case studies.", ctx.company || "", "company")}
+      {ta("Special instructions", `Steer the research. e.g. "focus on the enterprise product", "main competitor is X", "target manufacturing, not retail".`, ctx.other || "", "other")}
+      <div style={{ fontSize: 11, color: C.textSoft, marginBottom: 6, fontWeight: 600 }}>Documents <span style={{ color: C.muted, fontWeight: 500 }}>(optional — PDFs &amp; decks are read directly)</span></div>
+      {docs.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column" as const, gap: 4, marginBottom: 8 }}>
+          {docs.map((f) => (
+            <div key={f.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 9px", background: C.canvas, borderRadius: 7, border: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 11.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
+                <span style={{ color: C.muted, marginRight: 6 }}>{docIcon(f)}</span>{f.name}{f._loading ? <span style={{ color: C.muted, marginLeft: 6 }}>loading…</span> : null}
+              </span>
+              <button onClick={() => onRemove(f.id)} disabled={disabled} title="Remove"
+                style={{ border: "none", background: "none", color: C.muted, cursor: disabled ? "default" : "pointer", fontSize: 16, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 7, border: `1px dashed ${C.borderHi}`, color: disabled ? C.muted : C.accent, fontSize: 11.5, fontWeight: 700, fontFamily: head, cursor: disabled ? "default" : "pointer", background: C.canvas }}>
+        + Upload documents
+        <input type="file" multiple accept=".pdf,.doc,.docx,.txt,.csv,.json,image/*" disabled={disabled}
+          onChange={(e) => { if (e.target.files?.length) onUpload(e.target.files); e.currentTarget.value = ""; }}
+          style={{ display: "none" }} />
+      </label>
+    </div>
+  );
+}
+function docIcon(f: { name: string; type?: string; mime?: string }): string {
+  const mt = f.mime || f.type || "";
+  if (mt === "application/pdf" || f.name?.toLowerCase().endsWith(".pdf")) return "▣";
+  if (mt.startsWith("image/")) return "▤";
+  return "▢";
 }
 
 // ── Small presentational helpers ──

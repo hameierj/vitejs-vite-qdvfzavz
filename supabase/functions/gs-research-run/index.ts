@@ -66,7 +66,19 @@ async function fetchPage(url: string, timeoutMs: number, limit: number): Promise
   }
 }
 
-async function callClaude(anthropicKey: string, prompt: string): Promise<string> {
+// Documents the user attached to steer research. PDFs/images are sent to
+// Claude as native content blocks so the model actually reads decks and
+// one-pagers; the client extracts text from docx/txt and folds it into
+// userContext instead.
+interface ResearchDoc {
+  name?: string;
+  mediaType?: string;
+  base64?: string;
+}
+
+// content is the user message content — a plain prompt string, or an array of
+// content blocks (text + document/image) when attachments are present.
+async function callClaude(anthropicKey: string, content: string | unknown[]): Promise<string> {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -78,16 +90,33 @@ async function callClaude(anthropicKey: string, prompt: string): Promise<string>
       model: "claude-sonnet-4-6",
       max_tokens: 4000,
       system: "You are a senior B2B go-to-market researcher. Return only valid JSON.",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content }],
     }),
-    signal: AbortSignal.timeout(90000),
+    signal: AbortSignal.timeout(120000),
   });
   if (!r.ok) throw new Error(`Claude error ${r.status}`);
   const json = await r.json();
   return json.content?.[0]?.text ?? "";
 }
 
-async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, inputDomain: string, userContext = ""): Promise<void> {
+// Turn attached docs into Claude content blocks. PDFs → document blocks,
+// images → image blocks. Anything else is skipped (its text was already
+// folded into userContext client-side).
+function docBlocks(documents: ResearchDoc[]): unknown[] {
+  const blocks: unknown[] = [];
+  for (const d of documents) {
+    if (!d?.base64) continue;
+    const mt = d.mediaType || "";
+    if (mt === "application/pdf") {
+      blocks.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: d.base64 }, title: d.name || "document" });
+    } else if (mt.startsWith("image/")) {
+      blocks.push({ type: "image", source: { type: "base64", media_type: mt, data: d.base64 } });
+    }
+  }
+  return blocks;
+}
+
+async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, inputDomain: string, userContext = "", documents: ResearchDoc[] = []): Promise<void> {
   let normUrl = inputDomain.trim();
   if (normUrl && !/^https?:\/\//i.test(normUrl)) normUrl = `https://${normUrl}`;
   const domain = normUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
@@ -118,6 +147,8 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
     await appendLog(sb, wsId, `Fetched ${path}`);
   }
 
+  const blocks = docBlocks(documents);
+  if (blocks.length) await appendLog(sb, wsId, `Including ${blocks.length} uploaded document${blocks.length > 1 ? "s" : ""}`);
   await appendLog(sb, wsId, "Analyzing with Claude...");
 
   const prompt = `Analyze the following website content for ${domain} and produce a comprehensive pre-onboarding research brief for a B2B outreach team.
@@ -126,7 +157,7 @@ WEBSITE CONTENT:
 ${pageContent || "(no content fetched — use domain knowledge about " + domain + ")"}
 
 DOMAIN: ${domain}
-${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily and let it steer the brief):\n${userContext}\n` : ""}
+${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily and let it steer the brief):\n${userContext}\n` : ""}${blocks.length ? `\nThe user also attached ${blocks.length} document${blocks.length > 1 ? "s" : ""} (decks/PDFs/one-pagers) below. Treat them as authoritative primary sources — extract products, value props, customers, and positioning from them.\n` : ""}
 Return a JSON object:
 {
   "generatedAt": "${new Date().toISOString()}",
@@ -166,7 +197,10 @@ Return a JSON object:
 
 Return only valid JSON. Be specific and concrete — no vague marketing language.`;
 
-  const raw = await callClaude(anthropicKey, prompt);
+  // When docs are attached, send a content-block array (text prompt first,
+  // then the document/image blocks); otherwise just the prompt string.
+  const content = blocks.length ? [{ type: "text", text: prompt }, ...blocks] : prompt;
+  const raw = await callClaude(anthropicKey, content);
 
   let brief: any;
   try {
@@ -204,7 +238,7 @@ serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { workspaceId, domain, userContext } = body as { workspaceId?: string; domain?: string; userContext?: string };
+    const { workspaceId, domain, userContext, documents } = body as { workspaceId?: string; domain?: string; userContext?: string; documents?: ResearchDoc[] };
 
     if (!workspaceId || !domain) {
       return new Response(JSON.stringify({ error: "workspaceId and domain are required" }), {
@@ -240,7 +274,7 @@ serve(async (req: Request) => {
     // @ts-ignore — EdgeRuntime is available in Supabase Deno runtime
     EdgeRuntime.waitUntil((async () => {
       try {
-        await runPipeline(sb, anthropicKey, workspaceId, domain, userContext || "");
+        await runPipeline(sb, anthropicKey, workspaceId, domain, userContext || "", Array.isArray(documents) ? documents : []);
       } catch (err) {
         console.error("gs-research pipeline failed:", err);
         await writeJob(sb, workspaceId, {
