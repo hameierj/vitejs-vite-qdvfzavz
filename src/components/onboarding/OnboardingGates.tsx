@@ -41,6 +41,9 @@ interface Props {
   researchDocs: { id: string; name: string; type?: string; mime?: string; _loading?: boolean }[];
   onUploadResearchDocs: (files: FileList) => void;
   onRemoveResearchDoc: (id: string) => void;
+  // Step 2 editable product seed list (curate which products get profiled).
+  // Passing undefined clears the override and re-syncs to the research brief.
+  onSetProductSeeds: (seeds: { name: string; description?: string }[] | undefined) => void;
   infraInputs: any;
   onSetInfraInputs: (patch: any) => void;
   onNavigate: (view: string) => void;
@@ -67,7 +70,7 @@ export function OnboardingGates(props: Props) {
   const { companyData: cd, products, icps, dfySetup, stageJobs, researchState, researchLog,
           onRunResearch, onSetWebsite, onStartStage, onConfirmGate, onRefine, onSetGateNote,
           researchContext, onSetResearchContext, researchDocs, onUploadResearchDocs, onRemoveResearchDoc,
-          infraInputs, onSetInfraInputs, onNavigate } = props;
+          onSetProductSeeds, infraInputs, onSetInfraInputs, onNavigate } = props;
   const noteFor = (stage: StageKey): string => ((cd?._gateNotes || {})[stage]) || "";
   const gates = (cd?._gates || {}) as Record<string, any>;
   // Website is the persisted source of truth (companyData.co_website) so it
@@ -245,6 +248,12 @@ export function OnboardingGates(props: Props) {
                         disabled={st === "generating"} />
                     </>
                   )}
+                  {g.id === "products" && (st === "idle" || st === "review") && (
+                    <ProductSeedEditor
+                      seeds={Array.isArray(cd?._productSeeds) ? cd._productSeeds : (cd?._initialResearchBrief?.productsServices || [])}
+                      hasOverride={Array.isArray(cd?._productSeeds)}
+                      onChange={onSetProductSeeds} />
+                  )}
                   {(st === "idle" || st === "review") && g.id !== "emailCampaigns" && g.id !== "companyResearch" && (
                     <GuidanceBox value={noteFor(g.stage)} onChange={(v) => onSetGateNote(g.stage, v)}
                       hint={st === "review" ? "Add guidance, then Regenerate to apply it" : "Steer the AI before it generates this step"} />
@@ -391,6 +400,51 @@ function InfraConfigForm({ inputs, defaultWebsite, onChange }: { inputs: any; de
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
         <button onClick={addName} style={{ background: "none", border: `1px dashed ${C.borderHi}`, color: C.accent, fontSize: 11.5, fontWeight: 700, fontFamily: head, cursor: "pointer", padding: "5px 10px", borderRadius: 7 }}>+ Add name</button>
         {names.length > 0 && <span style={{ fontSize: 11, fontFamily: mono, color: pctTotal === 100 ? C.green : C.amber }}>{pctTotal}%{pctTotal !== 100 ? " — should total 100" : " ✓"}</span>}
+      </div>
+    </div>
+  );
+}
+
+// Step 2 editable seed checklist. Pre-fills from the research brief's products;
+// the user can rename, remove, or add rows before generation, and exactly these
+// are profiled (no silent cap-at-4). Editing creates an override on companyData;
+// "Reset to research" clears it so the list re-syncs to the latest brief.
+function ProductSeedEditor({ seeds, hasOverride, onChange }: {
+  seeds: { name?: string; description?: string }[];
+  hasOverride: boolean;
+  onChange: (seeds: { name: string; description?: string }[] | undefined) => void;
+}) {
+  // Normalize to a plain {name, description} list we own and rewrite on every edit.
+  const list = (seeds || []).map((s) => ({ name: s?.name || "", description: s?.description || "" }));
+  const commit = (next: { name: string; description?: string }[]) => onChange(next);
+  const setName = (i: number, name: string) => commit(list.map((s, j) => j === i ? { ...s, name } : s));
+  const remove = (i: number) => commit(list.filter((_, j) => j !== i));
+  const add = () => commit([...list, { name: "", description: "" }]);
+  const named = list.filter((s) => s.name.trim()).length;
+  return (
+    <div style={{ marginTop: 12, padding: "12px 14px", background: C.surface, borderRadius: 9, border: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontSize: 11, fontFamily: mono, fontWeight: 700, color: C.muted }}>PRODUCTS TO PROFILE</div>
+        {hasOverride && (
+          <button onClick={() => onChange(undefined)} style={{ background: "none", border: "none", color: C.accent, fontSize: 11, fontWeight: 700, fontFamily: head, cursor: "pointer", padding: 0 }}>Reset to research</button>
+        )}
+      </div>
+      {list.length === 0 && (
+        <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 8 }}>No products yet — add the ones to profile, or run Step 1 research first.</div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column" as const, gap: 6 }}>
+        {list.map((s, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 11, fontFamily: mono, color: C.muted, width: 16, flexShrink: 0 }}>{i + 1}</span>
+            <input value={s.name} onChange={(e) => setName(i, e.target.value)} placeholder="Product / service name"
+              style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 12.5, fontFamily: head, color: C.text, background: C.canvas, boxSizing: "border-box" as const }} />
+            <button onClick={() => remove(i)} title="Remove" style={{ border: "none", background: "none", color: C.muted, cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+        <button onClick={add} style={{ background: C.canvas, border: `1px dashed ${C.borderHi}`, color: C.accent, fontSize: 11.5, fontWeight: 700, fontFamily: head, cursor: "pointer", padding: "5px 10px", borderRadius: 7 }}>+ Add product</button>
+        <span style={{ fontSize: 11, color: C.muted, fontFamily: mono }}>{named} to profile{named > 5 ? " · 5–6 per run" : ""}</span>
       </div>
     </div>
   );

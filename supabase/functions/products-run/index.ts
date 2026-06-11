@@ -163,7 +163,9 @@ function parseJSON(raw: string): any {
   return JSON.parse(s);
 }
 
-async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, userContext = ""): Promise<void> {
+interface ProductSeed { name?: string; description?: string; targetBuyer?: string; differentiator?: string }
+
+async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: string, userContext = "", inputSeeds: ProductSeed[] = []): Promise<void> {
   // Hard wall: the whole pipeline (all products in parallel) must finish within this window so
   // it always writes a terminal status and never gets killed mid-run. Comfortably under the
   // edge function's wall-clock limit.
@@ -178,14 +180,20 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   const brief = jobBrief || cd._initialResearchBrief || {};
   await appendLog(sb, wsId, jobBrief ? "Loaded research brief from research job." : (cd._initialResearchBrief ? "Loaded research brief from workspace." : "No research brief found — using company fields."));
 
-  // Seed product list from the confirmed research brief (preferred) or the
-  // company product breakdown. Each seed is expanded into a full profile.
-  let seeds: any[] = Array.isArray(brief.productsServices) ? brief.productsServices : [];
-  if (seeds.length === 0 && cd.co_product) {
-    seeds = [{ name: cd.co_product, description: cd.co_prod_breakdown || cd.co_pitch || "" }];
+  // Seed product list. The user can curate it on the Step 2 gate (editable seed
+  // checklist) — when they do, those seeds are authoritative and used verbatim.
+  // Otherwise fall back to the confirmed research brief, then company fields.
+  let seeds: any[] = Array.isArray(inputSeeds) ? inputSeeds.filter((s) => s && (s.name || "").trim()) : [];
+  if (seeds.length > 0) {
+    await appendLog(sb, wsId, `Using ${seeds.length} user-curated product seed(s).`);
+  } else {
+    seeds = Array.isArray(brief.productsServices) ? brief.productsServices : [];
+    if (seeds.length === 0 && cd.co_product) {
+      seeds = [{ name: cd.co_product, description: cd.co_prod_breakdown || cd.co_pitch || "" }];
+    }
+    if (seeds.length === 0) seeds = [{ name: cd.co_name || "Core Offering", description: cd.co_pitch || "" }];
   }
-  if (seeds.length === 0) seeds = [{ name: cd.co_name || "Core Offering", description: cd.co_pitch || "" }];
-  seeds = seeds.slice(0, 4);
+  seeds = seeds.slice(0, 8);
 
   await appendLog(sb, wsId, `Building ${seeds.length} product profile(s)...`);
 
@@ -206,6 +214,8 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   const category = cp.category || cd.co_category || cd.co_industry || "";
   const competitors = (Array.isArray(cp.mainCompetitors) ? cp.mainCompetitors.join(", ") : "") || cd.co_competitors || "";
   const differentiators = (Array.isArray(cp.differentiators) ? cp.differentiators.join("; ") : "") || cd.co_diff || "";
+  const tme = brief.targetMarketEvidence || {};
+  const knownCustomers = Array.isArray(tme.knownCustomers) ? tme.knownCustomers.filter(Boolean).join(", ") : "";
   const briefContext = [
     `COMPANY (from the confirmed company research — ground every field in this; do NOT genericize):`,
     `Name: ${companyName}${co.size ? ` · Size: ${co.size}` : ""}${co.stage ? ` · Stage: ${co.stage}` : ""}`,
@@ -213,31 +223,35 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
     category ? `Category: ${category}` : "",
     competitors ? `Main competitors: ${competitors}` : "",
     differentiators ? `Key differentiators: ${differentiators}` : "",
-    valueProps ? `Value propositions:\n${valueProps}` : "",
+    valueProps ? `Value propositions (with any supporting evidence):\n${valueProps}` : "",
+    knownCustomers ? `Known customers (the ONLY customers you may cite as proof): ${knownCustomers}` : "",
     icpHints ? `Target buyers / ICP hypotheses:\n${icpHints}` : "",
   ].filter(Boolean).join("\n");
 
   const genProduct = async (p: any, pDeadline: number) => {
-    const prompt = `Create a COMPLETE product profile for a SPECIFIC company's product. Fill EVERY field — no empty values. Stay true to ${companyName}'s actual business; do NOT produce generic SaaS boilerplate.
-KEEP EVERY FIELD CONCISE: 1-2 sentences (or a short comma/newline list) per field — specific, not padded. Completing all fields matters more than length.
+    const prompt = `Create a product profile for a SPECIFIC company's product. Stay true to ${companyName}'s actual business; do NOT produce generic SaaS boilerplate.
+KEEP EVERY FILLED FIELD CONCISE: 1-2 sentences (or a short comma/newline list) per field — specific, not padded.
 
 ${PRODUCT_NAMING}
 
 ${briefContext}
 
-THIS PRODUCT (expand into a full profile — keep it specific to ${companyName}):
+THIS PRODUCT (expand into a profile — keep it specific to ${companyName}):
 Name: ${p.name}
 Description: ${p.description || ""}
 Target buyer: ${p.targetBuyer || ""}
 Differentiator: ${p.differentiator || ""}
-${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily):\n${userContext}\n` : ""}
-Every field below must reflect ${companyName} specifically — reuse the company's real category, competitors, differentiators, and value props above rather than inventing generic ones.
+${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily, it overrides the website):\n${userContext}\n` : ""}
+HOW TO FILL FIELDS — read carefully:
+1. REASONING FIELDS — fill these from the company research, context, and sound B2B reasoning: description, category, useCases, keyFeatures, problemsSolved, valueProposition, timeToValue, idealCustomer, marketMaturity, competitors, buyerObjections, switchTriggers, unsolvedImpact, elevatorPitch, positioningStatement, messagingDos, messagingDonts, dealType. Reuse ${companyName}'s real category, competitors, differentiators, and value props above — don't invent generic ones.
+2. EVIDENCE & COMMERCIAL FIELDS — DO NOT FABRICATE. These must be grounded in actual facts from the research/website/user context: proofPoints, roiMetrics, caseStudies, industryProof, socialProof, acv, mrr, contractLength, renewalRate, expansionRevenue, ltv, avgDealSize, repeatRate, referralRate, avgDaysToClose, closeRateByStage, dealStakeholders, discountAuthority, paymentTerms. NEVER invent customer names, metrics, ROI figures, pricing, contract values, or case studies. If a value is not explicitly supported by the provided sources, return an EMPTY STRING "" for that field. A blank field is correct and expected — the user will fill it. Do not guess.
+3. objectionRebuttals: you may write rebuttals, but they must NOT cite invented proof, numbers, or customers — keep them logic-based unless real proof exists above.
 
-Return ONLY JSON:
+Return ONLY JSON (use "" for any evidence/commercial field you cannot ground in real facts):
 {"name":"","description":"","category":"Software|Platform|Service|Hardware|Consulting|Other","useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"","marketMaturity":"Established category — buyers know what this is|Emerging category — some education needed|New category — significant education required|Replacing an existing behavior (not a tool)","competitors":"","buyerObjections":"","switchTriggers":"","dealType":"Recurring (subscription / retainer)|One-Time (project / purchase)|Both — recurring and one-time options","acv":"","mrr":"","contractLength":"Month-to-month|Quarterly|6 months|Annual|Multi-year|Custom","renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"","avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"","proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"","objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}
 
-unsolvedImpact: what happens if the customer does nothing — lost revenue, competitive disadvantage, scaling limits.
-IMPORTANT for dealType: Infer whether recurring (SaaS, subscription, retainer) or one-time (project, purchase). Fill the relevant commercial fields accordingly.`;
+unsolvedImpact: what happens if the customer does nothing — lost revenue, competitive disadvantage, scaling limits (reasoning is fine here).
+dealType: infer whether recurring (SaaS, subscription, retainer) or one-time (project, purchase) — this is a reasoning field, fill it. But the underlying commercial NUMBERS (acv, mrr, avgDealSize, etc.) stay BLANK unless the sources actually state them.`;
     // Up to 2 attempts for parse/thin issues — callClaude already handles transient API
     // overloads internally (bounded by the shared deadline), so we don't compound retries here.
     let lastErr = "";       // the real underlying failure (API/timeout/parse)
@@ -289,7 +303,7 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   try {
-    const { workspaceId, userContext } = await req.json() as { workspaceId?: string; userContext?: string };
+    const { workspaceId, userContext, seeds } = await req.json() as { workspaceId?: string; userContext?: string; seeds?: ProductSeed[] };
     if (!workspaceId) return new Response(JSON.stringify({ error: "workspaceId required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     if (!anthropicKey || !supabaseUrl || !supabaseKey) return new Response(JSON.stringify({ error: "server not configured" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -299,7 +313,7 @@ serve(async (req: Request) => {
 
     // @ts-ignore — EdgeRuntime is available in the Supabase Deno runtime
     EdgeRuntime.waitUntil((async () => {
-      try { await runPipeline(sb, anthropicKey, workspaceId, userContext || ""); }
+      try { await runPipeline(sb, anthropicKey, workspaceId, userContext || "", Array.isArray(seeds) ? seeds : []); }
       catch (err) {
         console.error("products pipeline failed:", err);
         await writeJob(sb, workspaceId, { status: "error", error: String((err as Error)?.message ?? err), completedAt: new Date().toISOString() });

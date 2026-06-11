@@ -20650,6 +20650,15 @@ Return ONLY valid JSON:
       const userContext = ((companyData as any)?._gateNotes || {})[stage] || "";
       const body: any = { workspaceId: wsId, userContext };
       if (stage === "infra") body.infraInputs = (companyData as any)?._infraInputs || {};
+      if (stage === "products") {
+        // The user can curate the product list on the Step 2 gate (editable seed
+        // checklist). Send it so generation profiles exactly those — otherwise the
+        // server falls back to the research brief's productsServices.
+        const cd = companyData as any;
+        const seeds = Array.isArray(cd?._productSeeds) ? cd._productSeeds : (cd?._initialResearchBrief?.productsServices || []);
+        const clean = (seeds || []).filter((s: any) => s && String(s.name || "").trim());
+        if (clean.length) body.seeds = clean;
+      }
       if (extraBody) Object.assign(body, extraBody);
       const { error } = await supabase.functions.invoke(fn, { body });
       if (error) throw error;
@@ -20689,6 +20698,17 @@ Return ONLY valid JSON:
   // Step 1 (Company Research) structured context: { products, company, other }.
   const handleSetResearchContext = (patch: any) => {
     setCompanyData((prev: any) => ({ ...prev, _researchContext: { ...(prev?._researchContext || {}), ...patch } }));
+  };
+
+  // Step 2 (Products & Services) curated seed list. Stored as an explicit
+  // override; clearing it (passing undefined) re-syncs to the research brief.
+  const handleSetProductSeeds = (seeds: any[] | undefined) => {
+    setCompanyData((prev: any) => {
+      const next = { ...prev };
+      if (seeds === undefined) delete next._productSeeds;
+      else next._productSeeds = seeds;
+      return next;
+    });
   };
 
   // Remove a Step-1 attached document from the workspace files.
@@ -27260,6 +27280,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   onSetGateNote={(stage, text) => handleSetGateNote(stage, text)}
                   researchContext={(companyData as any)?._researchContext || {}}
                   onSetResearchContext={(patch) => handleSetResearchContext(patch)}
+                  onSetProductSeeds={(seeds) => handleSetProductSeeds(seeds)}
                   researchDocs={(wsFiles || []).filter((f) => f.tags?.includes("research"))}
                   onUploadResearchDocs={(fl: FileList) => handleUploadFiles(fl, ["research"])}
                   onRemoveResearchDoc={(id: string) => handleRemoveResearchDoc(id)}
@@ -27294,6 +27315,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                 </div>
                 <ProductsReview
                   products={products}
+                  onProductsChange={setProducts}
                   onRefine={() => { setCopilotScope("Products & Services"); setShowCopilot(true); }}
                   onEdit={() => setView("products")}
                   onRegenerate={() => startStage("products")}
