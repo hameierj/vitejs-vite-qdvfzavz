@@ -21,6 +21,7 @@ const corsHeaders = {
 
 const JOB_KEY = (wsId: string) => `tamicp_job_${wsId}`;
 const WS_KEY = (wsId: string) => `ws_${wsId}`;
+const RESEARCH_JOB_KEY = (wsId: string) => `gs_research_job_${wsId}`;
 const ICP_COLORS = ["#6C5CE7","#00D68F","#FF6B6B","#54A0FF","#9B59B6","#FFC048","#E84393","#00CEC9"];
 
 // 5-dimension scoring rubric (matches the client ICPScoringMatrix weights).
@@ -52,6 +53,18 @@ async function readWs(sb: SupabaseClient, wsId: string): Promise<any> {
     const v = data?.value;
     return typeof v === "string" ? JSON.parse(v) : (v ?? {});
   } catch { return {}; }
+}
+
+// The research brief is written DIRECTLY to the research job row by gs-research-run, so it's always
+// present server-side — unlike ws_<id>.companyData._initialResearchBrief, which depends on the
+// client having polled + merged + saved it. Read the job row as the source of truth, fall back to
+// the workspace copy. (Same pattern as products-run.)
+async function readResearchBrief(sb: SupabaseClient, wsId: string): Promise<any> {
+  try {
+    const { data } = await sb.from("app_data").select("value").eq("key", RESEARCH_JOB_KEY(wsId)).single();
+    const job = data?.value ? JSON.parse(data.value as string) : {};
+    return (job && job.result) ? job.result : null;
+  } catch { return null; }
 }
 
 async function writeJob(sb: SupabaseClient, wsId: string, patch: Record<string, unknown>) {
@@ -95,6 +108,38 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
   const cd = ws.companyData || {};
   const products: any[] = Array.isArray(ws.products) ? ws.products : [];
 
+  // The gated flow populates _initialResearchBrief (NOT the co_* profile fields), so reading
+  // co_pitch / co_competitors here yields nothing and ICPs come out generic. Feed the confirmed
+  // research brief directly — competitive positioning, value props, known customers, and especially
+  // the brief's ICP hypotheses, which are the best seed candidates.
+  const jobBrief = await readResearchBrief(sb, wsId);
+  const brief = jobBrief || cd._initialResearchBrief || {};
+  await appendLog(sb, wsId, jobBrief ? "Loaded research brief from research job." : (cd._initialResearchBrief ? "Loaded research brief from workspace." : "No research brief found — using company fields."));
+
+  const co = brief.companyOverview || {};
+  const cp = brief.competitivePositioning || {};
+  const tme = brief.targetMarketEvidence || {};
+  const briefValueProps = Array.isArray(brief.valuePropositions)
+    ? brief.valuePropositions.map((v: any) => `- ${v.claim || v}${v.evidence ? ` (evidence: ${v.evidence})` : ""}`).join("\n") : "";
+  const briefCompetitors = (Array.isArray(cp.mainCompetitors) ? cp.mainCompetitors.join(", ") : "") || cd.co_competitors || "";
+  const briefDiff = (Array.isArray(cp.differentiators) ? cp.differentiators.join("; ") : "") || cd.co_diff || "";
+  const briefCustomers = (Array.isArray(tme.knownCustomers) ? tme.knownCustomers.filter(Boolean).join(", ") : "") || cd.co_customers || "";
+  const briefIndustries = Array.isArray(tme.industries) ? tme.industries.join(", ") : "";
+  const icpHypotheses = Array.isArray(brief.icpHypotheses)
+    ? brief.icpHypotheses.map((h: any) => `- ${h.name}${h.rationale ? `: ${h.rationale}` : ""}${Array.isArray(h.signals) && h.signals.length ? ` [signals: ${h.signals.join(", ")}]` : ""}`).join("\n") : "";
+  const companyName = co.name || cd.co_name || "";
+  const briefContext = [
+    `COMPANY (from the confirmed Step-1 research — this is the authoritative source; ground the TAM and ICPs in it):`,
+    `Name: ${companyName}${co.size ? ` · Size: ${co.size}` : ""}${co.stage ? ` · Stage: ${co.stage}` : ""}${co.businessModel ? ` · Model: ${co.businessModel}` : ""}`,
+    (cp.category || cd.co_industry) ? `Category / industry: ${cp.category || cd.co_industry}` : "",
+    briefValueProps ? `Value propositions:\n${briefValueProps}` : (cd.co_pitch ? `Value prop: ${cd.co_pitch}` : ""),
+    briefDiff ? `Key differentiators: ${briefDiff}` : "",
+    briefCompetitors ? `Main competitors: ${briefCompetitors}` : "",
+    briefCustomers ? `Known customers (real — use for the proof dimension): ${briefCustomers}` : "",
+    briefIndustries ? `Industries with market evidence: ${briefIndustries}` : "",
+    icpHypotheses ? `ICP HYPOTHESES from research (use as starting candidates — validate/refine/merge, don't blindly copy):\n${icpHypotheses}` : "",
+  ].filter(Boolean).join("\n");
+
   const productLines = products.length
     ? products.map((p: any, i: number) => `${i}. ${p.name} — ${p.description || p.valueProposition || ""} (ideal customer: ${p.idealCustomer || "?"})`).join("\n")
     : `0. ${cd.co_product || cd.co_name || "Core offering"} — ${cd.co_pitch || ""}`;
@@ -103,25 +148,19 @@ async function runPipeline(sb: SupabaseClient, anthropicKey: string, wsId: strin
 
   const prompt = `Build a TAM (Total Addressable Market) tree for this company and identify the Ideal Customer Profiles (ICPs) for outbound, branching by product/service.
 
-COMPANY: ${cd.co_name || ""} (${cd.co_industry || ""})
-VALUE PROP: ${cd.co_pitch || ""}
-KEY SELLING POINTS: ${cd.co_ksp || ""}
-DIFFERENTIATORS: ${cd.co_diff || ""}
-PROOF: ${cd.co_proof || ""}
-COMPETITORS: ${cd.co_competitors || ""}
-KNOWN CUSTOMERS: ${cd.co_customers || ""}
+${briefContext}
 
 PRODUCTS / SERVICES (branch the tree per product):
 ${productLines}
-${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily when identifying and scoring ICPs):\n${userContext}\n` : ""}
+${userContext ? `\nUSER-PROVIDED CONTEXT (authoritative — weight this heavily, it overrides the research when they conflict):\n${userContext}\n` : ""}
 INSTRUCTIONS:
-1. Company-level TAM: summarize the overall addressable market and break it into 2-4 broad market segments with a rough size estimate and rationale each.
+1. Company-level TAM: summarize the overall addressable market and break it into 2-4 broad market segments. For each segment's "sizeEstimate", give a ROUGH DIRECTIONAL estimate only (prefix with "~", ranges are fine, e.g. "~$2-4B") — this is a ballpark, not a researched figure; never present it as precise.
 2. Per-product TAM: for EACH product/service above, summarize its addressable market and identify 1-3 ICPs that would buy it.
 3. Flag each ICP's scope: "unique" (specific to one product) or "cross_product" (a buyer that fits multiple products — note which).
 4. For EACH ICP, score the 5 dimensions 1-10 with a one-line rationale:
    - market_size (Market Size & Accessibility)
    - pmf (Product-Market Fit)
-   - proof (Proof Availability — do we have evidence/case studies for them)
+   - proof (Proof Availability — do we have evidence/case studies for them) — score this HONESTLY against the known customers / proof above; if there's no real proof for a buyer, score it LOW. Do not assume proof exists.
    - outreach (Outreach Accessibility — can we reach them by email/LinkedIn)
    - advantage (Competitive Advantage vs incumbents for this buyer)
 5. Give each ICP: a 1-2 sentence explanation of WHY it's an ICP, top 2 strengths, top 2 gaps, a one-sentence suggested outbound angle, and a recommendation: "launch_first"|"launch_second"|"test_small"|"defer"|"skip".

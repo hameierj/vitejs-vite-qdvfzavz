@@ -44,6 +44,8 @@ interface Props {
   // Step 2 editable product seed list (curate which products get profiled).
   // Passing undefined clears the override and re-syncs to the research brief.
   onSetProductSeeds: (seeds: { name: string; description?: string }[] | undefined) => void;
+  // Step 4 ICP selection (which scored ICPs become personas).
+  onSetPersonaSelection: (ids: string[]) => void;
   infraInputs: any;
   onSetInfraInputs: (patch: any) => void;
   onNavigate: (view: string) => void;
@@ -55,7 +57,7 @@ const TRACK_A: { id: TrackAGate; stage: StageKey; num: number; title: string; de
   { id: "companyResearch", stage: "research", num: 1, title: "Company Research", desc: "Deep AI research on the company — products, value props, market evidence, ICP hypotheses, and call-prep notes." },
   { id: "products",        stage: "products", num: 2, title: "Products & Services", desc: "Full profiles for each product/service: value prop, deal economics, proof, objections, messaging. Generated from the confirmed research." },
   { id: "tamIcp",          stage: "tamicp",   num: 3, title: "TAM Tree → ICPs", desc: "Company-level TAM plus TAM per product/service, with ICPs identified per branch (unique or cross-product), explained and scored." },
-  { id: "personas",        stage: "personas", num: 4, title: "Personas", desc: "Complete outreach personas built from the highest-scoring ICPs — buyer, pains, triggers, channels, messaging." },
+  { id: "personas",        stage: "personas", num: 4, title: "Personas", desc: "Pick which scored ICPs to build into full outreach personas — buyer, pains, triggers, channels, messaging. The top-scoring ICPs are pre-selected." },
   { id: "emailCampaigns",  stage: "campaigns", num: 5, title: "Outreach Campaigns", desc: "Pick a product, persona, and writing tone (Hormozi, Vaynerchuk, etc.), then generate one LinkedIn sequence and three email campaigns — Conversation Starter, Meeting CTA, Value-Based CTA." },
 ];
 
@@ -70,7 +72,7 @@ export function OnboardingGates(props: Props) {
   const { companyData: cd, products, icps, dfySetup, stageJobs, researchState, researchLog,
           onRunResearch, onSetWebsite, onStartStage, onConfirmGate, onRefine, onSetGateNote,
           researchContext, onSetResearchContext, researchDocs, onUploadResearchDocs, onRemoveResearchDoc,
-          onSetProductSeeds, infraInputs, onSetInfraInputs, onNavigate } = props;
+          onSetProductSeeds, onSetPersonaSelection, infraInputs, onSetInfraInputs, onNavigate } = props;
   const noteFor = (stage: StageKey): string => ((cd?._gateNotes || {})[stage]) || "";
   const gates = (cd?._gates || {}) as Record<string, any>;
   // Website is the persisted source of truth (companyData.co_website) so it
@@ -224,6 +226,11 @@ export function OnboardingGates(props: Props) {
           const job = stageJobs[g.stage];
           const log = g.stage === "research" ? researchLog : (job?.log || []);
           const phase = g.stage === "research" ? (researchLog[researchLog.length - 1] || "") : (job?.phase || "");
+          // Personas can only generate once at least one ICP is picked (effective
+          // selection = explicit picks, or the default top-6 when untouched).
+          const personaSelCount = g.id !== "personas" ? 1
+            : (Array.isArray(cd?._personaIcpSelection) ? cd._personaIcpSelection.length
+               : Math.min(6, (cd?._icpScoringResult?.icps || []).length));
           return (
             <GateCard
               key={g.id} num={g.num} title={g.title} desc={g.desc} status={st} isLast={isLast}
@@ -254,6 +261,12 @@ export function OnboardingGates(props: Props) {
                       hasOverride={Array.isArray(cd?._productSeeds)}
                       onChange={onSetProductSeeds} />
                   )}
+                  {g.id === "personas" && (st === "idle" || st === "review") && (
+                    <IcpSelectEditor
+                      scoredIcps={(cd?._icpScoringResult?.icps || [])}
+                      selection={Array.isArray(cd?._personaIcpSelection) ? cd._personaIcpSelection : null}
+                      onChange={onSetPersonaSelection} />
+                  )}
                   {(st === "idle" || st === "review") && g.id !== "emailCampaigns" && g.id !== "companyResearch" && (
                     <GuidanceBox value={noteFor(g.stage)} onChange={(v) => onSetGateNote(g.stage, v)}
                       hint={st === "review" ? "Add guidance, then Regenerate to apply it" : "Steer the AI before it generates this step"} />
@@ -265,8 +278,8 @@ export function OnboardingGates(props: Props) {
                   status={st}
                   viewAction={(st === "review" || st === "confirmed") ? viewActionFor(g.id) : undefined}
                   onGenerate={() => g.id === "companyResearch" ? onRunResearch(domain.trim()) : g.id === "emailCampaigns" ? onNavigate("campaign-generator") : onStartStage(g.stage)}
-                  generateLabel={g.id === "companyResearch" ? "Run Research" : g.id === "emailCampaigns" ? "Open Generator" : `Generate`}
-                  canGenerate={g.id === "companyResearch" ? !!domain.trim() : true}
+                  generateLabel={g.id === "companyResearch" ? "Run Research" : g.id === "emailCampaigns" ? "Open Generator" : g.id === "personas" ? `Generate ${personaSelCount} persona${personaSelCount !== 1 ? "s" : ""}` : `Generate`}
+                  canGenerate={g.id === "companyResearch" ? !!domain.trim() : g.id === "personas" ? personaSelCount > 0 : true}
                   onRefine={() => onRefine(g.title)}
                   onConfirm={() => onConfirmGate(g.id)}
                   onRegenerate={() => g.id === "companyResearch" ? onRunResearch(domain.trim()) : g.id === "emailCampaigns" ? onNavigate("campaign-generator") : onStartStage(g.stage)}
@@ -445,6 +458,67 @@ function ProductSeedEditor({ seeds, hasOverride, onChange }: {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
         <button onClick={add} style={{ background: C.canvas, border: `1px dashed ${C.borderHi}`, color: C.accent, fontSize: 11.5, fontWeight: 700, fontFamily: head, cursor: "pointer", padding: "5px 10px", borderRadius: 7 }}>+ Add product</button>
         <span style={{ fontSize: 11, color: C.muted, fontFamily: mono }}>{named} to profile{named > 5 ? " · 5–6 per run" : ""}</span>
+      </div>
+    </div>
+  );
+}
+
+// Step 4 ICP picker. After TAM/ICP is confirmed, the user chooses which scored ICPs become full
+// personas (instead of a silent top-6). Defaults to the top 6 by rank; selection persists to
+// companyData._personaIcpSelection. Capped at 8 (parallel persona generation).
+const MAX_PERSONA_PICKS = 8;
+const DEFAULT_PERSONA_PICKS = 6;
+const RECO_LABEL: Record<string, string> = {
+  launch_first: "Launch first", launch_second: "Launch second", test_small: "Test small", defer: "Defer", skip: "Skip",
+};
+function IcpSelectEditor({ scoredIcps, selection, onChange }: {
+  scoredIcps: { icpId: string; icpName: string; rank?: number; weightedScore?: number; recommendation?: string; scope?: string }[];
+  selection: string[] | null;
+  onChange: (ids: string[]) => void;
+}) {
+  const rows = [...(scoredIcps || [])].sort((a, b) => (a.rank || 99) - (b.rank || 99));
+  if (rows.length === 0) {
+    return (
+      <div style={{ marginTop: 12, padding: "12px 14px", background: C.surface, borderRadius: 9, border: `1px solid ${C.border}`, fontSize: 11.5, color: C.muted }}>
+        No scored ICPs yet — confirm Step 3 (TAM Tree → ICPs) first.
+      </div>
+    );
+  }
+  // Default selection = top N by rank when the user hasn't chosen yet.
+  const defaultSel = rows.slice(0, DEFAULT_PERSONA_PICKS).map((r) => r.icpId);
+  const sel = selection ?? defaultSel;
+  const selSet = new Set(sel);
+  const atCap = sel.length >= MAX_PERSONA_PICKS;
+  const toggle = (id: string) => {
+    if (selSet.has(id)) onChange(sel.filter((x) => x !== id));
+    else if (!atCap) onChange([...sel, id]);
+  };
+  return (
+    <div style={{ marginTop: 12, padding: "12px 14px", background: C.surface, borderRadius: 9, border: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: 11, fontFamily: mono, fontWeight: 700, color: C.muted, marginBottom: 4 }}>PICK ICPs TO BUILD PERSONAS FOR</div>
+      <div style={{ fontSize: 11.5, color: C.textSoft, marginBottom: 10, lineHeight: 1.5 }}>The highest-scoring ICPs are pre-selected. Adjust, then Generate — only the checked ICPs become full personas.</div>
+      <div style={{ display: "flex", flexDirection: "column" as const, gap: 5 }}>
+        {rows.map((r) => {
+          const checked = selSet.has(r.icpId);
+          const disabled = !checked && atCap;
+          return (
+            <label key={r.icpId} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 10px", borderRadius: 7, border: `1px solid ${checked ? C.accentBorder : C.border}`, background: checked ? C.accentLo : C.canvas, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1 }}>
+              <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggle(r.icpId)} style={{ accentColor: C.accent, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontFamily: mono, color: C.accent, fontWeight: 700, flexShrink: 0 }}>#{r.rank ?? "—"}</span>
+              <span style={{ flex: 1, fontSize: 12.5, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{r.icpName}</span>
+              {r.scope === "cross_product" && <span style={{ fontSize: 9, fontFamily: mono, color: C.blue, background: C.blueLo, padding: "1px 5px", borderRadius: 3, flexShrink: 0 }}>CROSS</span>}
+              {r.recommendation && <span style={{ fontSize: 9.5, fontFamily: mono, color: C.muted, flexShrink: 0 }}>{RECO_LABEL[r.recommendation] || r.recommendation}</span>}
+              <span style={{ fontSize: 11, fontFamily: mono, color: C.muted, flexShrink: 0 }}>{typeof r.weightedScore === "number" ? r.weightedScore.toFixed(1) : "—"}</span>
+            </label>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+        <button onClick={() => onChange(rows.map((r) => r.icpId).slice(0, MAX_PERSONA_PICKS))}
+          style={{ background: "none", border: "none", color: C.accent, fontSize: 11, fontWeight: 700, fontFamily: head, cursor: "pointer", padding: 0 }}>
+          Select all{rows.length > MAX_PERSONA_PICKS ? ` (max ${MAX_PERSONA_PICKS})` : ""}
+        </button>
+        <span style={{ fontSize: 11, fontFamily: mono, color: atCap ? C.amber : C.muted }}>{sel.length} selected{atCap ? ` · max ${MAX_PERSONA_PICKS}` : ""}</span>
       </div>
     </div>
   );

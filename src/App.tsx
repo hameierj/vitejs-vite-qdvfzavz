@@ -18165,7 +18165,9 @@ function AppMain() {
       if (stage === "products") {
         setProducts(Array.isArray(result.products) ? result.products : []);
       } else if (stage === "tamicp") {
-        setCompanyData((prev: any) => ({ ...prev, _tamTree: result.tamTree || null, _icpScoringResult: result.scoring || null }));
+        // New ICPs get new ids — clear any stale persona ICP selection so the Step 4
+        // picker re-defaults to the new top-scoring ICPs instead of orphaned ids.
+        setCompanyData((prev: any) => { const n = { ...prev, _tamTree: result.tamTree || null, _icpScoringResult: result.scoring || null }; delete n._personaIcpSelection; return n; });
         if (Array.isArray(result.icps)) setIcps(result.icps);
       } else if (stage === "personas") {
         const enriched = Array.isArray(result.personas) ? result.personas : [];
@@ -20659,6 +20661,12 @@ Return ONLY valid JSON:
         const clean = (seeds || []).filter((s: any) => s && String(s.name || "").trim());
         if (clean.length) body.seeds = clean;
       }
+      if (stage === "personas") {
+        // The user curates which ICPs become personas on the Step 4 gate. Send the
+        // selection so only those are built — otherwise the server defaults to top-6.
+        const sel = (companyData as any)?._personaIcpSelection;
+        if (Array.isArray(sel) && sel.length) body.icpIds = sel;
+      }
       if (extraBody) Object.assign(body, extraBody);
       const { error } = await supabase.functions.invoke(fn, { body });
       if (error) throw error;
@@ -20671,15 +20679,16 @@ Return ONLY valid JSON:
 
   // Confirm a gate → lock it and auto-kick the next Track-A stage if its
   // artifact doesn't already exist. Track B (infra) has no successor.
+  // NOTE: tamIcp → personas is intentionally NOT auto-kicked — the user curates
+  // which ICPs become personas on the personas gate, then generates manually.
   const handleConfirmGate = (gateId: string) => {
     setCompanyData((prev: any) => ({ ...prev, _gates: { ...(prev?._gates || {}), [gateId]: { status: "confirmed", confirmedAt: new Date().toISOString() } } }));
-    const nextStage: Record<string, string> = { companyResearch: "products", products: "tamicp", tamIcp: "personas" };
+    const nextStage: Record<string, string> = { companyResearch: "products", products: "tamicp" };
     const next = nextStage[gateId];
     if (next) {
       const cd = companyData as any;
       const alreadyHas = (next === "products" && (products || []).length > 0)
-        || (next === "tamicp" && !!cd?._tamTree)
-        || (next === "personas" && !!cd?._personasGeneratedAt);
+        || (next === "tamicp" && !!cd?._tamTree);
       if (!alreadyHas) startStage(next);
     }
   };
@@ -20709,6 +20718,11 @@ Return ONLY valid JSON:
       else next._productSeeds = seeds;
       return next;
     });
+  };
+
+  // Step 4 (Personas): which scored ICPs the user picked to turn into personas.
+  const handleSetPersonaSelection = (ids: string[]) => {
+    setCompanyData((prev: any) => ({ ...prev, _personaIcpSelection: ids }));
   };
 
   // Remove a Step-1 attached document from the workspace files.
@@ -27281,6 +27295,7 @@ Every combination MUST appear in the array. Rationale under 160 characters each.
                   researchContext={(companyData as any)?._researchContext || {}}
                   onSetResearchContext={(patch) => handleSetResearchContext(patch)}
                   onSetProductSeeds={(seeds) => handleSetProductSeeds(seeds)}
+                  onSetPersonaSelection={(ids) => handleSetPersonaSelection(ids)}
                   researchDocs={(wsFiles || []).filter((f) => f.tags?.includes("research"))}
                   onUploadResearchDocs={(fl: FileList) => handleUploadFiles(fl, ["research"])}
                   onRemoveResearchDoc={(id: string) => handleRemoveResearchDoc(id)}

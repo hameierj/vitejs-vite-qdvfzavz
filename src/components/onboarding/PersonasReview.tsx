@@ -31,6 +31,12 @@ const toText = (v: any): string => {
 };
 // Fields that are conceptually lists — render their values as bullets when splittable.
 const LIST_FIELDS = new Set(["industries", "co_sizes", "tech", "keywords", "dream_accts", "intent_topics", "goals", "fears", "objections", "sub_personas", "pain2", "gains", "triggers", "buying_signals_direct", "buying_signals_indirect", "friction_points"]);
+// Factual/targeting fields the AI is told NOT to fabricate — when blank they're the user's to fill,
+// so we flag them (mirrors the products "needs your input" pattern).
+const NEEDS_INPUT_FIELDS = ["geo", "revenue", "tech", "keywords", "dream_accts", "real_filters", "intent_topics", "current_solutions", "win_loss_patterns", "icp_proof"];
+const amber = "#B45309", amberLo = "#FDF3E2", amberBorder = "#F4D89A";
+const fieldFilled = (v: any) => v !== undefined && v !== null && toText(v).trim() !== "";
+const needsInputFields = (data: any): string[] => NEEDS_INPUT_FIELDS.filter((id) => !fieldFilled(data?.[id]));
 const toItems = (value: string, isList: boolean): string[] | null => {
   const byLine = value.split(/\n|(?:^|\s)(?:\d+[.)]\s)|\s*[•\-–]\s+/).map((s) => s.trim()).filter(Boolean);
   if (byLine.length > 1) return byLine.map((s) => s.replace(/^[•\-–]\s*/, ""));
@@ -181,6 +187,7 @@ function PersonaCard({ icp, index }: { icp: any; index: number }) {
   const buyer = toText(data.buyer || "").split(/\n|,/)[0]?.trim();
   const preview = toText(data.pain1 || data._tamExplanation || "").slice(0, 120);
   const dot = icp.color || C.accent;
+  const needs = needsInputFields(data);
 
   return (
     <div data-copilot-id={icp.id} style={{ background: C.canvas, border: `1px solid ${open ? C.accentBorder : C.border}`, borderRadius: 16, boxShadow: "0 1px 3px rgba(0,0,0,.03)", overflow: "hidden", transition: "border-color .15s" }}>
@@ -193,6 +200,9 @@ function PersonaCard({ icp, index }: { icp: any; index: number }) {
             {buyer && (
               <span style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.accent, background: C.accentLo, border: `1px solid ${C.accentBorder}`, padding: "2px 8px", borderRadius: 6, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{buyer}</span>
             )}
+            {needs.length > 0 && (
+              <span style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: amber, background: amberLo, border: `1px solid ${amberBorder}`, padding: "2px 8px", borderRadius: 6, whiteSpace: "nowrap" as const }}>{needs.length} need input</span>
+            )}
           </div>
           {!open && preview && (
             <div style={{ fontSize: 12, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{preview}…</div>
@@ -201,6 +211,16 @@ function PersonaCard({ icp, index }: { icp: any; index: number }) {
         <span style={{ fontSize: 11, fontFamily: mono, color: C.muted, flexShrink: 0 }}>{fieldCount} fields</span>
         <span style={{ fontSize: 14, color: C.muted, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>›</span>
       </button>
+
+      {open && needs.length > 0 && (
+        <div style={{ margin: "0 20px 4px", padding: "9px 12px", background: amberLo, border: `1px solid ${amberBorder}`, borderRadius: 9 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: amber, marginBottom: 4, fontFamily: mono }}>NEEDS YOUR INPUT — not invented by AI</div>
+          <div style={{ fontSize: 12, color: "#7a5800", lineHeight: 1.5 }}>
+            {needs.map((id) => FIELD_META[id]?.label || prettyKey(id)).join(" · ")}
+          </div>
+          <div style={{ fontSize: 11, color: "#8a6400", marginTop: 4 }}>These are real targeting facts — click <strong>Open full editor</strong> to fill them.</div>
+        </div>
+      )}
 
       {open && (
         <div style={{ padding: "0 20px 20px" }}>

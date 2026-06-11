@@ -369,7 +369,7 @@ Score ALL ICPs provided.`;
               )}
               {(tamTree?.companyLevel?.segments || []).length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, alignItems: "center" }}>
-                  <span style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.muted, textTransform: "uppercase" as const, letterSpacing: 0.4 }}>Market segments</span>
+                  <span style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.muted, textTransform: "uppercase" as const, letterSpacing: 0.4 }}>Market segments <span style={{ fontWeight: 500, textTransform: "none" as const }}>· sizes are rough estimates</span></span>
                   {(tamTree.companyLevel.segments as any[]).map((s, i) => (
                     <span key={i} title={s.sizeEstimate || ""} style={{ fontSize: 11.5, fontFamily: head, color: C.text, background: C.faint, border: `1px solid ${C.border}`, borderRadius: 20, padding: "2px 10px" }}>
                       {s.name}{s.sizeEstimate ? ` · ${s.sizeEstimate}` : ""}
