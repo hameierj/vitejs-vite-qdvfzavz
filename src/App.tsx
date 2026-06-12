@@ -18415,8 +18415,13 @@ function AppMain() {
     if (match) {
       let changed = false;
       const patch: any = {};
-      if (cd.co_name && match.name !== cd.co_name) { patch.name = cd.co_name; changed = true; }
-      if (cd.co_industry && match.industry !== cd.co_industry) { patch.industry = cd.co_industry; changed = true; }
+      // Only POPULATE an empty account name/industry from research — never OVERWRITE
+      // one that's already set. Two accounts sharing a domain resolve the same co_name;
+      // overwriting renamed both to the same company, making them indistinguishable in
+      // the account list/switcher so the user could unknowingly re-run/edit the wrong one
+      // (looks like one account "corrupting" the other). Same URL ≠ same account.
+      if (cd.co_name && !String(match.name || "").trim()) { patch.name = cd.co_name; changed = true; }
+      if (cd.co_industry && !String(match.industry || "").trim()) { patch.industry = cd.co_industry; changed = true; }
       if (changed) {
         saveClients(cls.map(c => c.id === activeWorkspace.id ? { ...c, ...patch } : c));
         // Also update the active workspace reference so sidebar/header reflect the new name immediately
