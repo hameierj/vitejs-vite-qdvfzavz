@@ -17832,6 +17832,35 @@ function AppMain() {
     if (!String(loadedCd.co_website || "").trim() && loadedCd._initialResearchBrief?.domain) {
       loadedCd.co_website = loadedCd._initialResearchBrief.domain;
     }
+    // Backfill gated-onboarding confirmations from the artifacts that actually exist.
+    // Accounts onboarded via the auto "URL → full program" flow produce every artifact
+    // but never click through the review→confirm gates, so _gates is empty and the hub
+    // shows 0/5 with everything locked behind Step 1 even though it's all done. A stage
+    // counts as confirmed when its artifact exists AND a later stage also produced output
+    // (so the flow clearly moved past it); the final stage confirms on its own artifact.
+    // This never auto-confirms an in-progress gated account's not-yet-reviewed last step.
+    {
+      const gateArtifact: Record<string, boolean> = {
+        companyResearch: !!loadedCd._initialResearchBrief,
+        products: (saved?.products ?? []).length > 0,
+        tamIcp: !!loadedCd._tamTree,
+        personas: !!loadedCd._personasGeneratedAt || (saved?.icps ?? []).some((i: any) => i?.data && (i.data.pain1 || i.data.buyer)),
+        emailCampaigns: !!loadedCd._campaignsGeneratedAt || (saved?.campaigns ?? []).length > 0 || Object.keys(loadedCd._campaignPlans || {}).length > 0,
+      };
+      const order = ["companyResearch", "products", "tamIcp", "personas", "emailCampaigns"];
+      const gatesNext = { ...(loadedCd._gates || {}) };
+      let gatesChanged = false;
+      order.forEach((g, i) => {
+        if (gatesNext[g]?.status === "confirmed") return;
+        const isLast = i === order.length - 1;
+        const laterArtifact = order.slice(i + 1).some((g2) => gateArtifact[g2]);
+        if (gateArtifact[g] && (isLast || laterArtifact)) {
+          gatesNext[g] = { status: "confirmed", confirmedAt: new Date().toISOString(), _auto: true };
+          gatesChanged = true;
+        }
+      });
+      if (gatesChanged) loadedCd._gates = gatesNext;
+    }
     setCompanyData(loadedCd);
     setCompanyConf(saved?.companyConf ?? {});
     setIcps(saved?.icps ?? []);
