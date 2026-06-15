@@ -20753,6 +20753,10 @@ Return ONLY valid JSON:
         || (next === "tamicp" && !!cd?._tamTree);
       if (!alreadyHas) startStage(next);
     }
+    // Persist the confirmation to the cloud immediately. The normal save is debounced 5s; if the
+    // user reloads or switches accounts before it flushes, syncFromCloud would pull the stale cloud
+    // copy and the "Confirm & Lock" would be forgotten. Flush after the save effect has queued it.
+    setTimeout(() => { _flushCloudQueue(); }, 150);
   };
 
   // Open the Copilot focused on refining a specific gate's artifact.
