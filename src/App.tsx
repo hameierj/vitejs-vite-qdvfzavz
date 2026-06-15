@@ -262,6 +262,45 @@ const dbGetAll = async (table: string, prefix: string): Promise<{key:string;valu
   } catch { return []; }
 };
 
+// Repair gated-onboarding state on a stored workspace object so the hub reflects reality for
+// accounts produced by the auto "URL → full program" flow, which never clicks the review→confirm
+// gates. Mutates `ws.companyData` in place; returns true if anything changed. Shared by the
+// per-account load and the one-time bulk cloud migration so both stay in sync.
+//   • co_website: backfilled from the research brief's domain (the auto flow only stored it there)
+//   • _gates: a stage is confirmed when its artifact exists AND a later stage also produced output
+//     (so the flow clearly moved past it); the final stage confirms on its own artifact. Never
+//     auto-confirms an in-progress gated account's not-yet-reviewed last step.
+function backfillOnboardingState(ws: any): boolean {
+  if (!ws || typeof ws !== "object") return false;
+  const cd = ws.companyData;
+  if (!cd || typeof cd !== "object") return false;
+  let changed = false;
+  if (!String(cd.co_website || "").trim() && cd._initialResearchBrief?.domain) {
+    cd.co_website = cd._initialResearchBrief.domain; changed = true;
+  }
+  const gateArtifact: Record<string, boolean> = {
+    companyResearch: !!cd._initialResearchBrief,
+    products: (ws.products || []).length > 0,
+    tamIcp: !!cd._tamTree,
+    personas: !!cd._personasGeneratedAt || (ws.icps || []).some((i: any) => i?.data && (i.data.pain1 || i.data.buyer)),
+    emailCampaigns: !!cd._campaignsGeneratedAt || (ws.campaigns || []).length > 0 || Object.keys(cd._campaignPlans || {}).length > 0,
+  };
+  const order = ["companyResearch", "products", "tamIcp", "personas", "emailCampaigns"];
+  const gates = { ...(cd._gates || {}) };
+  let gatesChanged = false;
+  order.forEach((g, i) => {
+    if (gates[g]?.status === "confirmed") return;
+    const isLast = i === order.length - 1;
+    const laterArtifact = order.slice(i + 1).some((g2) => gateArtifact[g2]);
+    if (gateArtifact[g] && (isLast || laterArtifact)) {
+      gates[g] = { status: "confirmed", confirmedAt: new Date().toISOString(), _auto: true };
+      gatesChanged = true;
+    }
+  });
+  if (gatesChanged) { cd._gates = gates; changed = true; }
+  return changed;
+}
+
 // Pull all cloud data into localStorage on app start
 async function syncFromCloud() {
   if (!supabase) return;
@@ -307,7 +346,14 @@ async function syncFromCloud() {
     if (controller.signal.aborted) throw new Error("timeout");
     for (const ws of workspaces) {
       const clientId = ws.key.replace("ws_", "");
-      try { localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(ws.value)); } catch {}
+      // One-time migration: repair onboarding state for every account (not just the one
+      // a user happens to open). Idempotent — after the first fix, re-runs change nothing.
+      let val: any = ws.value;
+      try {
+        const obj = typeof val === "string" ? JSON.parse(val) : val;
+        if (backfillOnboardingState(obj)) { val = obj; syncToCloud(`ws_${clientId}`, obj); }
+      } catch { /* leave val as-is */ }
+      try { localStorage.setItem(`b2br_ws_${clientId}`, JSON.stringify(val)); } catch {}
     }
     // Sync API logs from all users
     if (!controller.signal.aborted) {
@@ -17825,42 +17871,11 @@ function AppMain() {
     if (!activeWorkspace) return;
     loadingRef.current = true;
     const saved = loadWorkspaceData(activeWorkspace.id);
-    // Backfill co_website from the research brief for accounts onboarded before
-    // co_website was wired (or via the auto "URL → full program" flow) — the URL
-    // only lived on _initialResearchBrief.domain, leaving Step 1 looking unstarted.
+    // Repair onboarding state for accounts onboarded via the auto "URL → full program" flow
+    // (backfills co_website + gate confirmations from the artifacts present). Shared with the
+    // one-time bulk cloud migration in syncFromCloud so both stay consistent.
+    if (saved) backfillOnboardingState(saved);
     const loadedCd = saved?.companyData ?? {};
-    if (!String(loadedCd.co_website || "").trim() && loadedCd._initialResearchBrief?.domain) {
-      loadedCd.co_website = loadedCd._initialResearchBrief.domain;
-    }
-    // Backfill gated-onboarding confirmations from the artifacts that actually exist.
-    // Accounts onboarded via the auto "URL → full program" flow produce every artifact
-    // but never click through the review→confirm gates, so _gates is empty and the hub
-    // shows 0/5 with everything locked behind Step 1 even though it's all done. A stage
-    // counts as confirmed when its artifact exists AND a later stage also produced output
-    // (so the flow clearly moved past it); the final stage confirms on its own artifact.
-    // This never auto-confirms an in-progress gated account's not-yet-reviewed last step.
-    {
-      const gateArtifact: Record<string, boolean> = {
-        companyResearch: !!loadedCd._initialResearchBrief,
-        products: (saved?.products ?? []).length > 0,
-        tamIcp: !!loadedCd._tamTree,
-        personas: !!loadedCd._personasGeneratedAt || (saved?.icps ?? []).some((i: any) => i?.data && (i.data.pain1 || i.data.buyer)),
-        emailCampaigns: !!loadedCd._campaignsGeneratedAt || (saved?.campaigns ?? []).length > 0 || Object.keys(loadedCd._campaignPlans || {}).length > 0,
-      };
-      const order = ["companyResearch", "products", "tamIcp", "personas", "emailCampaigns"];
-      const gatesNext = { ...(loadedCd._gates || {}) };
-      let gatesChanged = false;
-      order.forEach((g, i) => {
-        if (gatesNext[g]?.status === "confirmed") return;
-        const isLast = i === order.length - 1;
-        const laterArtifact = order.slice(i + 1).some((g2) => gateArtifact[g2]);
-        if (gateArtifact[g] && (isLast || laterArtifact)) {
-          gatesNext[g] = { status: "confirmed", confirmedAt: new Date().toISOString(), _auto: true };
-          gatesChanged = true;
-        }
-      });
-      if (gatesChanged) loadedCd._gates = gatesNext;
-    }
     setCompanyData(loadedCd);
     setCompanyConf(saved?.companyConf ?? {});
     setIcps(saved?.icps ?? []);
