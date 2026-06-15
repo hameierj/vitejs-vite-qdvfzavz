@@ -17825,7 +17825,14 @@ function AppMain() {
     if (!activeWorkspace) return;
     loadingRef.current = true;
     const saved = loadWorkspaceData(activeWorkspace.id);
-    setCompanyData(saved?.companyData ?? {});
+    // Backfill co_website from the research brief for accounts onboarded before
+    // co_website was wired (or via the auto "URL → full program" flow) — the URL
+    // only lived on _initialResearchBrief.domain, leaving Step 1 looking unstarted.
+    const loadedCd = saved?.companyData ?? {};
+    if (!String(loadedCd.co_website || "").trim() && loadedCd._initialResearchBrief?.domain) {
+      loadedCd.co_website = loadedCd._initialResearchBrief.domain;
+    }
+    setCompanyData(loadedCd);
     setCompanyConf(saved?.companyConf ?? {});
     setIcps(saved?.icps ?? []);
     setChats(saved?.chats ?? []);
@@ -18066,7 +18073,13 @@ function AppMain() {
           setResearchState("done");
           if (job.result && appliedBriefForJob !== (job.jobId || "_one_")) {
             appliedBriefForJob = job.jobId || "_one_";
-            setCompanyData((prev: any) => ({ ...prev, _initialResearchBrief: job.result }));
+            setCompanyData((prev: any) => ({
+              ...prev,
+              _initialResearchBrief: job.result,
+              // Persist the researched domain as co_website if not already set, so Step 1
+              // shows it and infra/other features can read it.
+              co_website: String(prev?.co_website || "").trim() || job.result?.domain || prev?.co_website || "",
+            }));
           }
           // Once done, slow down to a heartbeat so we still notice a re-run.
           schedule(8000);

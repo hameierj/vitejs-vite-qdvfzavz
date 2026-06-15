@@ -77,7 +77,11 @@ export function OnboardingGates(props: Props) {
   const gates = (cd?._gates || {}) as Record<string, any>;
   // Website is the persisted source of truth (companyData.co_website) so it
   // survives reload and feeds Track-B infra defaults — not local-only state.
-  const domain = (cd?.co_website || "") as string;
+  // Fall back to the domain captured in the research brief: accounts onboarded
+  // via the auto "URL → full program" flow (or before co_website was wired) have
+  // the URL only on _initialResearchBrief.domain, so without this the field reads
+  // empty and the step looks like it needs restarting even though it's done.
+  const domain = (cd?.co_website || cd?._initialResearchBrief?.domain || "") as string;
   const setDomain = (v: string) => onSetWebsite(v);
   const [showInfraAll, setShowInfraAll] = useState(false);
 
