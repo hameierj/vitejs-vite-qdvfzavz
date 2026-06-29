@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guided Onboarding — Complete AI Pipeline Spec</title>
+<style>
+  :root{
+    --bg:#F8F9FE; --canvas:#FFFFFF; --surface:#F3F4FB; --border:#E6E9F4; --borderHi:#D8DEE9;
+    --text:#2D3436; --soft:#636E82; --muted:#8E94A7;
+    --accent:#6C5CE7; --accentLo:#6C5CE70D; --accentBd:#6C5CE733;
+    --teal:#0E9F6E; --tealLo:#0E9F6E12;
+    --amber:#B45309; --amberLo:#B453090F;
+    --green:#00B894; --greenLo:#00B8940F;
+    --pink:#D4537E;
+    --mono:'JetBrains Mono','Fira Code',ui-monospace,monospace;
+    --sans:'Inter',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:var(--sans);color:var(--text);line-height:1.6;font-size:14px}
+  .wrap{max-width:1060px;margin:0 auto;padding:28px 24px 90px}
+  header h1{font-size:24px;font-weight:700;margin:0 0 4px}
+  header p{font-size:13.5px;color:var(--soft);margin:0;max-width:780px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0 0;font-size:12px;color:var(--soft)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  .tabs{position:sticky;top:0;z-index:20;background:var(--bg);padding:14px 0 10px;margin-top:18px;
+        display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--border)}
+  .tab{border:1px solid var(--border);background:var(--canvas);color:var(--soft);
+       padding:7px 13px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);
+       display:inline-flex;align-items:center;gap:7px;white-space:nowrap;transition:all .15s}
+  .tab:hover{border-color:var(--borderHi);color:var(--text)}
+  .tab.active{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 2px 10px var(--accentBd)}
+  .tab .n{font-family:var(--mono);font-size:11px;opacity:.7}
+  .tab.t-teal.active{background:var(--teal);border-color:var(--teal)}
+  .tab.t-amber.active{background:var(--amber);border-color:var(--amber)}
+  .tab.t-green.active{background:var(--green);border-color:var(--green)}
+
+  .panel{display:none;animation:fade .2s ease}
+  .panel.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .phead{display:flex;align-items:flex-start;gap:14px;margin:22px 0 6px}
+  .badge{flex-shrink:0;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+         font-family:var(--mono);font-weight:700;font-size:14px;color:#fff;background:var(--accent)}
+  .badge.teal{background:var(--teal)} .badge.amber{background:var(--amber)} .badge.green{background:var(--green)} .badge.gray{background:var(--muted)}
+  .phead h2{font-size:18px;margin:0;font-weight:700}
+  .phead .sub{font-size:12.5px;color:var(--soft);margin-top:2px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px}
+  .chip{font-family:var(--mono);font-size:11px;background:var(--surface);border:1px solid var(--border);
+        color:var(--soft);padding:3px 9px;border-radius:6px}
+  .chip b{color:var(--text);font-weight:700}
+
+  .card{background:var(--canvas);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+  .card.in{border-left:3px solid var(--teal)}
+  .card.ctx{border-left:3px solid var(--amber)}
+  .card.sys{border-left:3px solid var(--accent)}
+  .card.usr{border-left:3px solid var(--accent)}
+  .card.out{border-left:3px solid var(--green)}
+  .card.tool{border-left:3px solid var(--muted)}
+  .card h3{font-size:12px;font-family:var(--mono);font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+           margin:0 0 12px;color:var(--soft);display:flex;align-items:center;gap:8px}
+  .card h3 .ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;background:var(--accent)}
+  .ic.in{background:var(--teal)} .ic.ctx{background:var(--amber)} .ic.out{background:var(--green)} .ic.tool{background:var(--muted)}
+  .card h3 small{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted);font-family:var(--sans);font-size:11px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:2px 0}
+  th{text-align:left;font-size:10.5px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;
+     color:var(--muted);font-weight:700;padding:5px 8px;border-bottom:1px solid var(--border)}
+  td{padding:7px 8px;border-bottom:1px solid var(--surface);vertical-align:top}
+  td.k{font-family:var(--mono);font-size:12px;color:var(--accent);white-space:nowrap;font-weight:600}
+  td.en{font-family:var(--mono);font-size:11.5px;color:var(--soft)}
+  tr:last-child td{border-bottom:none}
+  .req{color:#E11D48;font-weight:700;margin-left:3px}
+  ul{margin:4px 0;padding-left:20px} li{margin:3px 0}
+  .small{font-size:12.5px;color:var(--soft)}
+
+  pre{background:#1E1F2B;color:#E4E6F0;border-radius:10px;padding:14px 16px;overflow:auto;max-height:560px;
+      font-family:var(--mono);font-size:11.5px;line-height:1.6;margin:6px 0;white-space:pre-wrap;word-break:break-word}
+  pre.short{max-height:none}
+  .v{color:#A5D6A7}  /* literal values / strings */
+  .cm{color:#7C84A8} /* comments */
+  .hd{color:#C5A5F5;font-weight:700} /* headings inside prompt */
+  .wr{color:#F0B86E} /* warnings / rules */
+  .ph{color:#6FB7E9} /* {placeholders} */
+  code{font-family:var(--mono);font-size:12px;background:var(--surface);padding:1px 6px;border-radius:5px;color:var(--text)}
+  .grp{margin:12px 0 4px;font-size:12px;font-weight:700;color:var(--text)}
+  .note{background:var(--amberLo);border:1px solid #B4530926;border-radius:9px;padding:10px 13px;font-size:12.5px;color:#7a3b08;margin:10px 0}
+  details{margin:6px 0}
+  summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--accent);font-family:var(--mono);user-select:none;padding:4px 0}
+  .pillrow{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+  .pill{font-size:11.5px;background:var(--surface);border:1px solid var(--border);color:var(--soft);padding:3px 9px;border-radius:20px;font-weight:600}
+  .flowstrip{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin:14px 0}
+  .fnode{background:var(--canvas);border:1px solid var(--border);border-radius:9px;padding:9px 12px;font-size:12px;font-weight:600;text-align:center;min-width:96px}
+  .fnode small{display:block;font-weight:400;color:var(--muted);font-size:10.5px;margin-top:1px}
+  .fsep{color:var(--muted);padding:0 7px;font-size:14px}
+  .ftrk{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Guided Onboarding — Complete AI Pipeline Spec</h1>
+    <p>Every step of the guided onboarding, in full: exact <b>inputs</b> (request params + workspace reads), the <b>context block assembled</b>, the <b>verbatim system + user prompts</b> sent to the model, the <b>tools &amp; mechanics</b>, and every <b>output field</b> with its enum values. Pulled directly from the edge functions and components in <code>cx-tool</code>.</p>
+    <div class="legend">
+      <span><i class="dot" style="background:#8E94A7"></i>Human / manual</span>
+      <span><i class="dot" style="background:#6C5CE7"></i>The form</span>
+      <span><i class="dot" style="background:#0E9F6E"></i>AI step — Track A</span>
+      <span><i class="dot" style="background:#B45309"></i>Infra — Track B</span>
+      <span><i class="dot" style="background:#00B894"></i>Launch</span>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-t="overview">Overview</button>
+    <button class="tab" data-t="intake"><span class="n">FORM</span> Intake form</button>
+    <button class="tab t-teal" data-t="s1"><span class="n">A1</span> Company research</button>
+    <button class="tab t-teal" data-t="s2"><span class="n">A2</span> Products</button>
+    <button class="tab t-teal" data-t="s3"><span class="n">A3</span> TAM → ICPs</button>
+    <button class="tab t-teal" data-t="s4"><span class="n">A4</span> Personas</button>
+    <button class="tab t-teal" data-t="s5"><span class="n">A5</span> Campaigns</button>
+    <button class="tab t-amber" data-t="infra"><span class="n">B</span> Domains &amp; mailboxes</button>
+    <button class="tab t-green" data-t="launch"><span class="n">→</span> Review &amp; launch</button>
+  </nav>
+
+  <!-- OVERVIEW -->
+  <section class="panel active" id="overview">
+    <div class="phead"><div class="badge gray">◎</div><div><h2>The full picture</h2><div class="sub">Two tracks running at once, converging at launch. Each Track-A step reads the previous step's job-row result.</div></div></div>
+
+    <div class="ftrk">Prelude · human</div>
+    <div class="flowstrip">
+      <div class="fnode">Onboarding call<small>AI brief optional</small></div><span class="fsep">→</span>
+      <div class="fnode">Invite team</div><span class="fsep">→</span>
+      <div class="fnode">Connect account</div><span class="fsep">→</span>
+      <div class="fnode" style="border-color:var(--accentBd);background:var(--accentLo)">Fill out intake form<small>client's only step</small></div>
+    </div>
+    <div class="ftrk">Track A · gated: AI generates → review → refine → confirm → unlock next</div>
+    <div class="flowstrip">
+      <div class="fnode">1 · Research</div><span class="fsep">→</span>
+      <div class="fnode">2 · Products</div><span class="fsep">→</span>
+      <div class="fnode">3 · TAM → ICPs</div><span class="fsep">→</span>
+      <div class="fnode">4 · Personas</div><span class="fsep">→</span>
+      <div class="fnode">5 · Campaigns</div>
+    </div>
+    <div class="ftrk">Track B · parallel — auto-kicks on form submit</div>
+    <div class="flowstrip">
+      <div class="fnode" style="border-color:#B4530940;background:var(--amberLo)">Domains &amp; mailboxes</div>
+      <span class="fsep">⇢</span>
+      <div class="fnode" style="border-style:dashed;color:var(--muted)">Audiences / lead lists<small>roadmap — not built</small></div>
+    </div>
+
+    <div class="card sys" style="margin-top:18px">
+      <h3><span class="ic">i</span>Data handoff between steps</h3>
+      <table>
+        <tr><th>Step</th><th>Reads (server-side, source of truth)</th><th>Writes job row</th><th>Merged into workspace as</th></tr>
+        <tr><td class="k">Intake</td><td>the client</td><td>—</td><td><code>companyData._intakeData</code> · <code>_intakeSubmittedAt</code></td></tr>
+        <tr><td class="k">A1</td><td>live website + uploads + context</td><td><code>gs_research_job_&lt;ws&gt;</code></td><td><code>companyData._initialResearchBrief</code></td></tr>
+        <tr><td class="k">A2</td><td><code>gs_research_job</code>.result</td><td><code>products_job_&lt;ws&gt;</code></td><td><code>products[]</code></td></tr>
+        <tr><td class="k">A3</td><td><code>ws.products[]</code> + research job</td><td><code>tamicp_job_&lt;ws&gt;</code></td><td><code>_tamTree</code> · <code>icps[]</code> · <code>_icpScoringResult</code></td></tr>
+        <tr><td class="k">A4</td><td><code>ws.icps[]</code> + <code>_icpScoringResult</code> + research job</td><td><code>personas_job_&lt;ws&gt;</code></td><td><code>icps[].fields</code> (by id)</td></tr>
+        <tr><td class="k">A5</td><td><code>ws.products[]</code> + <code>ws.icps[]</code></td><td>— (client-side via ai-proxy)</td><td><code>companyData._campaignPlans[…]</code></td></tr>
+        <tr><td class="k">B</td><td><code>companyData._intakeData</code> only</td><td><code>infra_job_&lt;ws&gt;</code></td><td><code>dfySetup</code></td></tr>
+      </table>
+    </div>
+    <div class="note"><b>Pattern.</b> Each Track-A edge function returns a <code>jobId</code> immediately, runs under <code>EdgeRuntime.waitUntil</code>, appends progress lines to its job row (<code>phase</code> + <code>log[]</code>), and writes <code>{status, result}</code> when done. The client polls, merges <code>result</code> into its state, and the normal save effect persists it. Downstream steps read the upstream <b>job row</b> (always present) rather than the client-saved workspace copy, to avoid a race.</div>
+  </section>
+
+  <!-- INTAKE -->
+  <section class="panel" id="intake">
+    <div class="phead"><div class="badge">▤</div><div><h2>Client Intake Form</h2><div class="sub">Public link <code>/#/intake/&lt;share_token&gt;</code>, no login. The single source of truth. Saved to <code>app_data[ws_&lt;id&gt;].companyData._intakeData</code>.</div></div></div>
+    <div class="meta"><span class="chip"><b>type</b> IntakeFormData</span><span class="chip"><b>submit requires</b> businessDescription + goal90day</span><span class="chip"><b>on submit</b> → Track B auto-kicks</span></div>
+
+    <div class="card in"><h3><span class="ic in">1</span>About your business</h3>
+      <table><tr><th>Field label</th><th>Key</th><th>Type</th></tr>
+        <tr><td>What does your company do? (plain English, no jargon)<span class="req">*</span></td><td class="k">businessDescription</td><td class="en">textarea</td></tr>
+        <tr><td>What specific problem do you solve?<span class="req">*</span></td><td class="k">coreProblem</td><td class="en">textarea</td></tr>
+        <tr><td>Who are your current best customers?</td><td class="k">currentCustomers</td><td class="en">textarea</td></tr>
+        <tr><td>Your 3 strongest proof points / case-study results</td><td class="k">topProofPoints</td><td class="en">textarea</td></tr>
+        <tr><td>Main competitors</td><td class="k">competitors</td><td class="en">text</td></tr>
+        <tr><td>Average deal size</td><td class="k">dealSize</td><td class="en">text</td></tr>
+        <tr><td>Average sales-cycle length</td><td class="k">salesCycle</td><td class="en">text</td></tr>
+      </table></div>
+
+    <div class="card in"><h3><span class="ic in">2</span>Products / services <small>array — one block per product</small></h3>
+      <table><tr><th>Field label</th><th>Key</th><th>Type / options</th></tr>
+        <tr><td>Product / service name<span class="req">*</span></td><td class="k">products[].name</td><td class="en">text</td></tr>
+        <tr><td>Category</td><td class="k">products[].category</td><td class="en">text</td></tr>
+        <tr><td>Key features (3 bullets)</td><td class="k">products[].keyFeatures</td><td class="en">textarea</td></tr>
+        <tr><td>Main pain it solves</td><td class="k">products[].painSolved</td><td class="en">textarea</td></tr>
+        <tr><td>Value proposition</td><td class="k">products[].valueProp</td><td class="en">textarea</td></tr>
+        <tr><td>Time to value</td><td class="k">products[].timeToValue</td><td class="en">text</td></tr>
+        <tr><td>Deal type</td><td class="k">products[].dealType</td><td class="en">One-time project · Monthly retainer · Annual SaaS subscription · Usage-based · Custom / enterprise</td></tr>
+        <tr><td>Average contract value</td><td class="k">products[].acv</td><td class="en">text</td></tr>
+      </table></div>
+
+    <div class="card in"><h3><span class="ic in">3</span>Target customers</h3>
+      <table><tr><th>Field label</th><th>Key</th><th>Type / options</th></tr>
+        <tr><td>Industries you primarily target<span class="req">*</span></td><td class="k">targetIndustries</td><td class="en">text</td></tr>
+        <tr><td>Company sizes (select all)</td><td class="k">companySizes[]</td><td class="en">1-10 · 11-50 · 51-200 · 201-500 · 501-1000 · 1001-5000 · 5000+</td></tr>
+        <tr><td>Job titles that sign the check<span class="req">*</span></td><td class="k">buyerTitles</td><td class="en">textarea</td></tr>
+        <tr><td>Who champions your product internally</td><td class="k">championRoles</td><td class="en">textarea</td></tr>
+        <tr><td>Main pain before finding you<span class="req">*</span></td><td class="k">mainPain</td><td class="en">textarea</td></tr>
+        <tr><td>What triggers a prospect to start looking</td><td class="k">triggerEvents</td><td class="en">textarea</td></tr>
+        <tr><td>Cost if they do nothing</td><td class="k">costOfInaction</td><td class="en">textarea</td></tr>
+      </table></div>
+
+    <div class="card in"><h3><span class="ic in">4</span>Messaging &amp; campaign preferences</h3>
+      <table><tr><th>Field label</th><th>Key</th><th>Type / options</th></tr>
+        <tr><td>Tone that resonates</td><td class="k">tone</td><td class="en">Professional &amp; direct · Conversational &amp; warm · Data-driven &amp; analytical · Bold &amp; energetic · Consultative &amp; thoughtful</td></tr>
+        <tr><td>What has worked in outreach before</td><td class="k">whatWorked</td><td class="en">textarea</td></tr>
+        <tr><td>Companies / industries / roles to exclude</td><td class="k">exclusions</td><td class="en">text</td></tr>
+        <tr><td>Main goal for the first 90 days<span class="req">*</span></td><td class="k">goal90day</td><td class="en">text</td></tr>
+        <tr><td>Can we reference your website / brand in copy?</td><td class="k">websitePermission</td><td class="en">yes · no · with_approval</td></tr>
+      </table></div>
+
+    <div class="card ctx"><h3><span class="ic ctx">5</span>Sending infrastructure &amp; volume <small>→ feeds Track B</small></h3>
+      <table><tr><th>Field label</th><th>Key</th><th>Type</th></tr>
+        <tr><td>Target outbound emails / month</td><td class="k">targetMonthlyVolume</td><td class="en">number</td></tr>
+        <tr><td># LinkedIn accounts available</td><td class="k">linkedinAccounts</td><td class="en">number</td></tr>
+        <tr><td>Preferred TLDs</td><td class="k">preferredTlds</td><td class="en">text (infra forces .com)</td></tr>
+        <tr><td>Preferred brand word for domains</td><td class="k">brandWords</td><td class="en">text</td></tr>
+        <tr><td>Existing infra to preserve / avoid</td><td class="k">existingInfra</td><td class="en">text</td></tr>
+      </table></div>
+
+    <div class="card in"><h3><span class="ic in">6</span>Optional reference materials</h3>
+      <table><tr><th>Field label</th><th>Key</th><th>Type</th></tr>
+        <tr><td>Paste high-performing outreach emails</td><td class="k">referenceEmails</td><td class="en">textarea</td></tr>
+        <tr><td>Anything else we should know</td><td class="k">notes</td><td class="en">textarea</td></tr>
+      </table></div>
+    <div class="note">On submit the form writes <code>{ _intakeData: form, _intakeSubmittedAt: ISO }</code> into <code>companyData</code> (merged into the existing <code>ws_&lt;id&gt;</code> object). Note: the intake form is <b>not yet wired as a direct input</b> to the A1–A5 prompts — those run off the website + research brief; intake currently feeds Track B sizing and is reference for the CSM. Wiring intake into A1 context is the obvious next improvement.</div>
+  </section>
+
+  <!-- STEP 1 -->
+  <section class="panel" id="s1">
+    <div class="phead"><div class="badge teal">A1</div><div><h2>Company Research</h2><div class="sub">Scrapes the site + reads uploads → grounded pre-onboarding brief.</div></div></div>
+    <div class="meta"><span class="chip"><b>fn</b> gs-research-run</span><span class="chip"><b>model</b> claude-sonnet-4-6</span><span class="chip"><b>max_tokens</b> 4000</span><span class="chip"><b>anthropic-version</b> 2023-06-01</span><span class="chip"><b>timeout</b> 120s</span></div>
+
+    <div class="card in"><h3><span class="ic in">▸</span>Inputs — request body</h3>
+      <table><tr><th>Param</th><th>Type</th><th>Required</th><th>Origin</th></tr>
+        <tr><td class="k">workspaceId</td><td class="en">string</td><td>yes</td><td>app</td></tr>
+        <tr><td class="k">domain</td><td class="en">string</td><td>yes <span class="req">*</span></td><td>gate "Company website" field</td></tr>
+        <tr><td class="k">userContext</td><td class="en">string</td><td>optional</td><td>3 structured fields (products / company / special-instructions) + extracted text from txt/docx uploads, concatenated client-side</td></tr>
+        <tr><td class="k">documents[]</td><td class="en">{name, mediaType, base64}</td><td>optional</td><td>uploaded PDFs / images</td></tr>
+      </table></div>
+
+    <div class="card tool"><h3><span class="ic tool">▸</span>Tools &amp; mechanics</h3>
+      <ul>
+        <li><b>Web scrape — Jina.ai reader</b>: <code>GET https://r.jina.ai/&lt;url&gt;</code> (Accept: text/plain). Fetches homepage (20s timeout, 12k-char cap) + 5 sub-pages concurrently (10s, 6k each): <code>/products /services /solutions /about /platform</code>. Keeps homepage + first sub-page returning &gt;500 chars.</li>
+        <li><b>Document blocks</b>: PDFs → <code>{type:"document", source:{type:"base64", media_type:"application/pdf", data}}</code>; images → <code>{type:"image", …}</code>. When present, the user message is a content-block array: <code>[{type:"text", text:prompt}, …blocks]</code>.</li>
+        <li><b>Parse</b>: extracts ```json fenced or first <code>{…}</code> block; on parse failure, stores raw output in <code>callPrepNotes</code>.</li>
+      </ul></div>
+
+    <div class="card sys"><h3><span class="ic">▸</span>System prompt <small>verbatim</small></h3>
+      <pre class="short"><span class="v">You are a senior B2B go-to-market researcher. Return only valid JSON.</span></pre></div>
+
+    <div class="card usr"><h3><span class="ic">▸</span>User prompt <small>verbatim — {…} = injected at runtime</small></h3>
+<pre>Produce a comprehensive pre-onboarding research brief for a B2B outreach team about <span class="ph">{domain}</span>.
+
+<span class="hd">═══════════════════════════════════════════════
+USER-PROVIDED CONTEXT — AUTHORITATIVE. THIS IS THE GROUND TRUTH.
+═══════════════════════════════════════════════</span>
+<span class="ph">{userContext}</span>
+
+<span class="wr">RULES FOR USING THIS CONTEXT (these override everything else):
+- The user knows this business better than the website does. When the website and this context disagree, the user is RIGHT — follow the user.
+- This context CONSTRAINS the brief, it doesn't just "inform" it. If the user states what the company sells (e.g. "they mainly sell X and sometimes Y, that's it"), then "productsServices" must contain ONLY those items. Do NOT add other products, services, or business lines from the website — even if the website prominently features them. Treat anything the user excluded as out of scope.
+- Use the website (and any attached documents) ONLY to enrich and add detail to what the user described — never to expand the scope beyond it.</span>
+<span class="hd">═══════════════════════════════════════════════</span>
+
+<span class="cm">[if documents attached:] The user also attached {N} document(s) (decks/PDFs/one-pagers) below. Treat them as authoritative primary sources, second only to the user-provided context above.</span>
+
+WEBSITE CONTENT<span class="cm"> (use for enrichment only — do not let it override the user context above)</span>:
+<span class="ph">{scraped page content, or "(no content fetched — use domain knowledge about {domain})"}</span>
+
+DOMAIN: <span class="ph">{domain}</span>
+
+Return a JSON object:
+{
+  <span class="v">"generatedAt"</span>: "{ISO}",
+  <span class="v">"domain"</span>: "{domain}",
+  <span class="v">"sources"</span>: ["{url}"],
+  <span class="v">"companyOverview"</span>: {
+    "name": "company name",
+    "size": "estimated employee count or range",
+    "stage": "startup/growth/established/enterprise",
+    "businessModel": "B2B SaaS / agency / services / marketplace / etc."
+  },
+  <span class="v">"productsServices"</span>: [
+    { "name": "product name", "description": "what it does in 1-2 sentences", "targetBuyer": "who buys this", "differentiator": "what makes it different" }
+  ],   <span class="cm">// If the user-provided context scopes what they sell, this list must contain ONLY those items — nothing else from the website.</span>
+  <span class="v">"valuePropositions"</span>: [
+    { "claim": "specific value claim", "evidence": "supporting evidence if any", "quantified": true/false }
+  ],
+  <span class="v">"targetMarketEvidence"</span>: {
+    "industries": ["industry1", "industry2"],
+    "companySizes": ["size range"],
+    "knownCustomers": ["customer1 if mentioned"]
+  },
+  <span class="v">"competitivePositioning"</span>: {
+    "category": "market category",
+    "mainCompetitors": ["competitor1"],
+    "differentiators": ["differentiator1", "differentiator2"]
+  },
+  <span class="v">"icpHypotheses"</span>: [
+    { "name": "ICP name e.g. 'Mid-Market SaaS — VP Sales'", "rationale": "why this is likely an ICP", "confidence": "high/medium/low", "signals": ["signal1", "signal2"] }
+  ],
+  <span class="v">"recommendedAngles"</span>: [
+    { "angle": "outbound angle name", "why": "why this angle works for this company", "bestChannel": "email/linkedin", "suggestedHook": "a concrete hook sentence to test" }
+  ],
+  <span class="v">"callPrepNotes"</span>: "A bulleted list of 5-8 things the CSM should confirm, ask, or validate during the onboarding call. Focus on gaps in the research and hypotheses that need validation.",
+  <span class="v">"confidenceNotes"</span>: "1 sentence about the quality/completeness of the research — what was unclear or missing"
+}
+
+Return only valid JSON. Be specific and concrete — no vague marketing language.</pre></div>
+
+    <div class="card out"><h3><span class="ic out">▸</span>Output → <code>companyData._initialResearchBrief</code></h3>
+      <table><tr><th>Field</th><th>Shape</th><th>Used downstream by</th></tr>
+        <tr><td class="k">companyOverview</td><td>{ name, size, stage, businessModel }</td><td>A2, A3</td></tr>
+        <tr><td class="k">productsServices[]</td><td>{ name, description, targetBuyer, differentiator }</td><td><b>A2 seeds</b></td></tr>
+        <tr><td class="k">valuePropositions[]</td><td>{ claim, evidence, quantified }</td><td>A2, A3</td></tr>
+        <tr><td class="k">targetMarketEvidence</td><td>{ industries[], companySizes[], knownCustomers[] }</td><td>A3, A4 (proof grounding)</td></tr>
+        <tr><td class="k">competitivePositioning</td><td>{ category, mainCompetitors[], differentiators[] }</td><td>A2, A3, A4</td></tr>
+        <tr><td class="k">icpHypotheses[]</td><td>{ name, rationale, confidence, signals[] }</td><td><b>A3 ICP candidates</b></td></tr>
+        <tr><td class="k">recommendedAngles[]</td><td>{ angle, why, bestChannel, suggestedHook }</td><td>reference</td></tr>
+        <tr><td class="k">callPrepNotes</td><td>string (5–8 bullets)</td><td>CSM call</td></tr>
+        <tr><td class="k">confidenceNotes</td><td>string (1 sentence)</td><td>CSM</td></tr>
+      </table></div>
+  </section>
+
+  <!-- STEP 2 -->
+  <section class="panel" id="s2">
+    <div class="phead"><div class="badge teal">A2</div><div><h2>Products &amp; Services</h2><div class="sub">One full ~40-field profile per product, generated strictly one at a time.</div></div></div>
+    <div class="meta"><span class="chip"><b>fn</b> products-run</span><span class="chip"><b>model</b> claude-sonnet-4-6</span><span class="chip"><b>stream</b> true</span><span class="chip"><b>max_tokens</b> 3500/product</span><span class="chip"><b>pipeline deadline</b> 350s</span></div>
+
+    <div class="card in"><h3><span class="ic in">▸</span>Inputs</h3>
+      <table><tr><th>Source</th><th>Detail</th></tr>
+        <tr><td class="k">workspaceId</td><td>request body</td></tr>
+        <tr><td class="k">seeds[]</td><td>request body (optional) — <code>{name, description, targetBuyer, differentiator}</code>; from the gate's editable seed checklist. Used verbatim if present.</td></tr>
+        <tr><td class="k">userContext</td><td>request body (optional) — authoritative steer</td></tr>
+        <tr><td class="k">gs_research_job.result</td><td>the confirmed research brief (read from job row first, <code>companyData._initialResearchBrief</code> as fallback)</td></tr>
+      </table>
+      <div class="grp">Seed cascade (first non-empty wins, capped at 8)</div>
+      <p class="small">user-curated <code>seeds[]</code> <span style="color:var(--muted)">→</span> <code>brief.productsServices</code> <span style="color:var(--muted)">→</span> <code>{co_product, co_prod_breakdown||co_pitch}</code> <span style="color:var(--muted)">→</span> <code>{co_name, co_pitch}</code></p>
+    </div>
+
+    <div class="card ctx"><h3><span class="ic ctx">▸</span>Context block assembled (<code>briefContext</code>, prepended to every product prompt)</h3>
+<pre class="short">COMPANY (from the confirmed company research — ground every field in this; do NOT genericize):
+Name: <span class="ph">{name}</span> · Size: <span class="ph">{size}</span> · Stage: <span class="ph">{stage}</span>
+Business model: <span class="ph">{businessModel}</span>
+Category: <span class="ph">{category}</span>
+Main competitors: <span class="ph">{mainCompetitors joined}</span>
+Key differentiators: <span class="ph">{differentiators joined}</span>
+Value propositions (with any supporting evidence):
+- <span class="ph">{claim}</span> (<span class="ph">{evidence}</span>)
+Known customers (the ONLY customers you may cite as proof): <span class="ph">{knownCustomers}</span>
+Target buyers / ICP hypotheses:
+- <span class="ph">{hypothesis name}</span>: <span class="ph">{rationale}</span></pre>
+      <p class="small">Each line is omitted if its source field is empty.</p></div>
+
+    <div class="card tool"><h3><span class="ic tool">▸</span>Tools &amp; mechanics</h3>
+      <ul>
+        <li><b>SSE streaming</b> — reads <code>content_block_delta</code> text events; aborts only on <b>40s inactivity</b> (a stall), not a fixed total timeout, so long-but-healthy generations finish.</li>
+        <li><b>Retries</b> — 429 / 529 / 5xx and transient error types (<code>overloaded_error, rate_limit_error, api_error, timeout_error</code>) with backoff, bounded by the shared deadline.</li>
+        <li><b>Sequential</b> — one product at a time (parallel caused mutual throttling). ~150s slice per product. Up to 3 attempts; a profile with &lt;6 filled fields is treated as a bad parse and retried.</li>
+      </ul></div>
+
+    <div class="card sys"><h3><span class="ic">▸</span>System prompt <small>verbatim</small></h3>
+      <pre class="short"><span class="v">Return only valid JSON. Be specific and actionable.</span></pre></div>
+
+    <div class="card usr"><h3><span class="ic">▸</span>User prompt <small>verbatim — sent once per product</small></h3>
+<pre>Create a product profile for a SPECIFIC company's product. Stay true to <span class="ph">{companyName}</span>'s actual business; do NOT produce generic SaaS boilerplate.
+KEEP EVERY FILLED FIELD CONCISE: 1-2 sentences (or a short comma/newline list) per field — specific, not padded.
+
+<span class="hd">PRODUCT NAMING RULES (strict):</span>
+- USE THE EXACT PRODUCT NAME as it appears on the company's website. Do NOT rename or genericize.
+- Only simplify when the company uses excessive marketing fluff.
+- Keep under 40 characters. Preserve the company's branding.
+
+<span class="ph">{briefContext — see above}</span>
+
+THIS PRODUCT (expand into a profile — keep it specific to <span class="ph">{companyName}</span>):
+Name: <span class="ph">{p.name}</span>
+Description: <span class="ph">{p.description}</span>
+Target buyer: <span class="ph">{p.targetBuyer}</span>
+Differentiator: <span class="ph">{p.differentiator}</span>
+
+<span class="cm">[if userContext:]</span> USER-PROVIDED CONTEXT (authoritative — weight this heavily, it overrides the website):
+<span class="ph">{userContext}</span>
+
+<span class="hd">HOW TO FILL FIELDS — read carefully:</span>
+<span class="wr">1. REASONING FIELDS — fill these from the company research, context, and sound B2B reasoning: description, category, useCases, keyFeatures, problemsSolved, valueProposition, timeToValue, idealCustomer, marketMaturity, competitors, buyerObjections, switchTriggers, unsolvedImpact, elevatorPitch, positioningStatement, messagingDos, messagingDonts, dealType. Reuse {companyName}'s real category, competitors, differentiators, and value props above — don't invent generic ones.
+2. EVIDENCE &amp; COMMERCIAL FIELDS — DO NOT FABRICATE. These must be grounded in actual facts from the research/website/user context: proofPoints, roiMetrics, caseStudies, industryProof, socialProof, acv, mrr, contractLength, renewalRate, expansionRevenue, ltv, avgDealSize, repeatRate, referralRate, avgDaysToClose, closeRateByStage, dealStakeholders, discountAuthority, paymentTerms. NEVER invent customer names, metrics, ROI figures, pricing, contract values, or case studies. If a value is not explicitly supported by the provided sources, return an EMPTY STRING "" for that field. A blank field is correct and expected — the user will fill it. Do not guess.
+3. objectionRebuttals: you may write rebuttals, but they must NOT cite invented proof, numbers, or customers — keep them logic-based unless real proof exists above.</span>
+
+Return ONLY JSON (use "" for any evidence/commercial field you cannot ground in real facts):
+{<span class="cm">…full 40-field schema with embedded enums — expand below…</span>}
+
+unsolvedImpact: what happens if the customer does nothing — lost revenue, competitive disadvantage, scaling limits (reasoning is fine here).
+dealType: infer whether recurring (SaaS, subscription, retainer) or one-time (project, purchase) — this is a reasoning field, fill it. But the underlying commercial NUMBERS (acv, mrr, avgDealSize, etc.) stay BLANK unless the sources actually state them.</pre>
+      <details><summary>▸ Full output JSON schema (verbatim, with enum constraints)</summary>
+<pre>{"name":"","description":"",
+"category":<span class="v">"Software|Platform|Service|Hardware|Consulting|Other"</span>,
+"useCases":"","keyFeatures":"","problemsSolved":"","valueProposition":"","timeToValue":"","idealCustomer":"",
+"marketMaturity":<span class="v">"Established category — buyers know what this is|Emerging category — some education needed|New category — significant education required|Replacing an existing behavior (not a tool)"</span>,
+"competitors":"","buyerObjections":"","switchTriggers":"",
+"dealType":<span class="v">"Recurring (subscription / retainer)|One-Time (project / purchase)|Both — recurring and one-time options"</span>,
+"acv":"","mrr":"",
+"contractLength":<span class="v">"Month-to-month|Quarterly|6 months|Annual|Multi-year|Custom"</span>,
+"renewalRate":"","expansionRevenue":"","ltv":"","avgDealSize":"","repeatRate":"","referralRate":"",
+"avgDaysToClose":"","closeRateByStage":"","dealStakeholders":"","discountAuthority":"","paymentTerms":"",
+"proofPoints":"","roiMetrics":"","caseStudies":"","industryProof":"","socialProof":"",
+"objectionRebuttals":"","unsolvedImpact":"","elevatorPitch":"","positioningStatement":"","messagingDos":"","messagingDonts":""}</pre></details></div>
+
+    <div class="card out"><h3><span class="ic out">▸</span>Output → <code>products[]</code> <small>each: id, sourceUrl, createdAt + 40 fields</small></h3>
+      <table><tr><th>Group</th><th>Fields</th><th>Fill rule</th></tr>
+        <tr><td>Identity</td><td class="en">name, description, category, useCases, keyFeatures, problemsSolved, valueProposition, timeToValue, idealCustomer, marketMaturity, competitors</td><td>reasoning</td></tr>
+        <tr><td>Sales motion</td><td class="en">buyerObjections, switchTriggers, dealType, dealStakeholders, discountAuthority, paymentTerms, avgDaysToClose, closeRateByStage</td><td>reasoning (dealType) / evidence</td></tr>
+        <tr><td>Economics</td><td class="en">acv, mrr, contractLength, renewalRate, expansionRevenue, ltv, avgDealSize, repeatRate, referralRate</td><td><b>evidence-gated → "" if unsourced</b></td></tr>
+        <tr><td>Proof</td><td class="en">proofPoints, roiMetrics, caseStudies, industryProof, socialProof</td><td><b>evidence-gated</b></td></tr>
+        <tr><td>Messaging</td><td class="en">objectionRebuttals, unsolvedImpact, elevatorPitch, positioningStatement, messagingDos, messagingDonts, prod_notes</td><td>reasoning</td></tr>
+      </table></div>
+  </section>
+
+  <!-- STEP 3 -->
+  <section class="panel" id="s3">
+    <div class="phead"><div class="badge teal">A3</div><div><h2>TAM Tree → ICPs (scored)</h2><div class="sub">One call builds the market tree, identifies ICPs per branch, scores + ranks them.</div></div></div>
+    <div class="meta"><span class="chip"><b>fn</b> tam-icp-run</span><span class="chip"><b>model</b> claude-sonnet-4-6</span><span class="chip"><b>max_tokens</b> 8000</span><span class="chip"><b>timeout</b> 150s</span></div>
+
+    <div class="card in"><h3><span class="ic in">▸</span>Inputs</h3>
+      <table><tr><th>Source</th><th>Detail</th></tr>
+        <tr><td class="k">workspaceId</td><td>request body</td></tr>
+        <tr><td class="k">userContext</td><td>request body (optional) — overrides research on conflict</td></tr>
+        <tr><td class="k">ws.products[]</td><td>confirmed product profiles → branches the tree</td></tr>
+        <tr><td class="k">gs_research_job.result</td><td>brief: competitive positioning, value props, known customers, industries, <b>icpHypotheses</b> (seed candidates)</td></tr>
+      </table></div>
+
+    <div class="card ctx"><h3><span class="ic ctx">▸</span>Context block (<code>briefContext</code>) + product lines</h3>
+<pre class="short">COMPANY (from the confirmed Step-1 research — this is the authoritative source; ground the TAM and ICPs in it):
+Name: <span class="ph">{name}</span> · Size: <span class="ph">{size}</span> · Stage: <span class="ph">{stage}</span> · Model: <span class="ph">{businessModel}</span>
+Category / industry: <span class="ph">{category}</span>
+Value propositions:
+- <span class="ph">{claim}</span> (evidence: <span class="ph">{evidence}</span>)
+Key differentiators: <span class="ph">{…}</span>
+Main competitors: <span class="ph">{…}</span>
+Known customers (real — use for the proof dimension): <span class="ph">{…}</span>
+Industries with market evidence: <span class="ph">{…}</span>
+ICP HYPOTHESES from research (use as starting candidates — validate/refine/merge, don't blindly copy):
+- <span class="ph">{name}</span>: <span class="ph">{rationale}</span> [signals: <span class="ph">{…}</span>]
+
+PRODUCTS / SERVICES (branch the tree per product):
+<span class="ph">{i}. {name} — {description||valueProposition} (ideal customer: {idealCustomer})</span></pre></div>
+
+    <div class="card sys"><h3><span class="ic">▸</span>System prompt <small>verbatim</small></h3>
+      <pre class="short"><span class="v">You are a senior B2B go-to-market strategist. Return only valid JSON.</span></pre></div>
+
+    <div class="card usr"><h3><span class="ic">▸</span>User prompt <small>verbatim</small></h3>
+<pre>Build a TAM (Total Addressable Market) tree for this company and identify the Ideal Customer Profiles (ICPs) for outbound, branching by product/service.
+
+<span class="ph">{briefContext}</span>
+
+PRODUCTS / SERVICES (branch the tree per product):
+<span class="ph">{productLines}</span>
+
+<span class="cm">[if userContext:]</span> USER-PROVIDED CONTEXT (authoritative — weight this heavily, it overrides the research when they conflict):
+<span class="ph">{userContext}</span>
+
+<span class="hd">INSTRUCTIONS:</span>
+<span class="wr">1. Company-level TAM: summarize the overall addressable market and break it into 2-4 broad market segments. For each segment's "sizeEstimate", give a ROUGH DIRECTIONAL estimate only (prefix with "~", ranges are fine, e.g. "~$2-4B") — this is a ballpark, not a researched figure; never present it as precise.
+2. Per-product TAM: for EACH product/service above, summarize its addressable market and identify 1-3 ICPs that would buy it.
+3. Flag each ICP's scope: "unique" (specific to one product) or "cross_product" (a buyer that fits multiple products — note which).
+4. For EACH ICP, score the 5 dimensions 1-10 with a one-line rationale:
+   - market_size (Market Size &amp; Accessibility)
+   - pmf (Product-Market Fit)
+   - proof (Proof Availability — do we have evidence/case studies for them) — score this HONESTLY against the known customers / proof above; if there's no real proof for a buyer, score it LOW. Do not assume proof exists.
+   - outreach (Outreach Accessibility — can we reach them by email/LinkedIn)
+   - advantage (Competitive Advantage vs incumbents for this buyer)
+5. Give each ICP: a 1-2 sentence explanation of WHY it's an ICP, top 2 strengths, top 2 gaps, a one-sentence suggested outbound angle, and a recommendation: "launch_first"|"launch_second"|"test_small"|"defer"|"skip".</span>
+
+Use a SHORT ICP name format: "[Industry/Vertical] — [Buyer Role]" (e.g. "Mid-Market SaaS — VP Sales"). Identify 3-8 distinct ICPs total across all branches; merge true duplicates into one cross_product ICP.
+
+Return ONLY valid JSON:
+{
+  <span class="v">"companyLevel"</span>: { "tamSummary": "", "segments": [{ "name": "", "sizeEstimate": "", "rationale": "" }] },
+  <span class="v">"perProduct"</span>: [
+    { "productIndex": 0, "productName": "", "tamSummary": "",
+      "icps": [
+        { "name": "", "scope": "unique|cross_product", "alsoFitsProducts": ["product name"],
+          "explanation": "", "industries": "", "buyerTitles": "", "primaryPain": "",
+          "dimensions": { "market_size": {"score":0,"rationale":""}, "pmf": {"score":0,"rationale":""}, "proof": {"score":0,"rationale":""}, "outreach": {"score":0,"rationale":""}, "advantage": {"score":0,"rationale":""} },
+          "topStrengths": ["",""], "topGaps": ["",""], "suggestedAngle": "", "recommendation": "launch_first" }
+      ] }
+  ]
+}
+Raw JSON only. Be specific and concrete — no vague marketing language.</pre></div>
+
+    <div class="card out"><h3><span class="ic out">▸</span>Scoring rubric (server-side weights) + outputs</h3>
+      <table><tr><th>key</th><th>dimension</th><th>weight</th></tr>
+        <tr><td class="k">pmf</td><td>Product-Market Fit</td><td><b>0.25</b></td></tr>
+        <tr><td class="k">market_size</td><td>Market Size &amp; Accessibility</td><td>0.20</td></tr>
+        <tr><td class="k">proof</td><td>Proof Availability</td><td>0.20</td></tr>
+        <tr><td class="k">outreach</td><td>Outreach Accessibility</td><td>0.20</td></tr>
+        <tr><td class="k">advantage</td><td>Competitive Advantage</td><td>0.15</td></tr>
+      </table>
+      <p class="small"><code>weightedScore = round(Σ(clamp(score,0,10) × weight), 2)</code>; rows sorted desc → <code>rank</code> assigned 1..n; duplicate ICP names merged (becomes cross_product, links both products).</p>
+      <div class="grp">Three objects written</div>
+      <table><tr><th>Merged into</th><th>Shape</th></tr>
+        <tr><td class="k">_tamTree</td><td>{ companyLevel {tamSummary, segments[{name,sizeEstimate,rationale}]}, perProduct[{productIndex,productName,tamSummary,icps[]}] }</td></tr>
+        <tr><td class="k">icps[]</td><td>{ id, color, name, data{industries, buyer, pain1, _tamScope, _tamExplanation}, linkedProductIds[], linkedProductFit{}, approval:"draft", sectionApprovals{}, comments[], confidence{} }</td></tr>
+        <tr><td class="k">_icpScoringResult</td><td>{ generatedAt, rubric, icps[{ icpId, icpName, dimensions[{key,label,weight,score,rationale}], weightedScore, rank, recommendation, topStrengths[], topGaps[], suggestedAngle, scope }] }</td></tr>
+      </table></div>
+  </section>
+
+  <!-- STEP 4 -->
+  <section class="panel" id="s4">
+    <div class="phead"><div class="badge teal">A4</div><div><h2>Personas <span style="font-size:13px;color:var(--muted);font-weight:400">— the AI agents' brains</span></h2><div class="sub">Enriches each selected ICP into a complete cold-outreach persona, in parallel.</div></div></div>
+    <div class="meta"><span class="chip"><b>fn</b> personas-run</span><span class="chip"><b>model</b> claude-sonnet-4-6</span><span class="chip"><b>max_tokens</b> 6000 → retry 8000</span><span class="chip"><b>default</b> top 6 · <b>max</b> 8</span></div>
+
+    <div class="card in"><h3><span class="ic in">▸</span>Inputs</h3>
+      <table><tr><th>Source</th><th>Detail</th></tr>
+        <tr><td class="k">workspaceId</td><td>request body</td></tr>
+        <tr><td class="k">icpIds[]</td><td>request body (optional) — the ICPs checked on the gate picker; if omitted, top 6 by weightedScore. Capped at 8.</td></tr>
+        <tr><td class="k">userContext</td><td>request body (optional)</td></tr>
+        <tr><td class="k">ws.icps[]</td><td>ICP data from A3, ordered by score</td></tr>
+        <tr><td class="k">_icpScoringResult.icps</td><td>weighted scores (for ordering)</td></tr>
+        <tr><td class="k">gs_research_job.result</td><td>real competitors + known customers grounding</td></tr>
+      </table></div>
+
+    <div class="card ctx"><h3><span class="ic ctx">▸</span>Context handed in (per persona)</h3>
+      <ul>
+        <li>Company name, industry/category, value prop.</li>
+        <li><b>Real competitors</b> — "the ONLY competitors you may name"; if none known, "leave competitor names out".</li>
+        <li><b>Real known customers</b> — "the ONLY customers you may cite"; if none, "do NOT invent customer names".</li>
+        <li>This ICP: name, buyer, industries, primary pain, why-it's-an-ICP.</li>
+        <li><b>Dedup list</b> — a one-line summary of every persona being created, so each comes out distinct.</li>
+      </ul></div>
+
+    <div class="card sys"><h3><span class="ic">▸</span>System prompt <small>verbatim</small></h3>
+      <pre class="short"><span class="v">Return only valid JSON. Be specific and actionable.</span></pre></div>
+
+    <div class="card usr"><h3><span class="ic">▸</span>User prompt <small>verbatim</small></h3>
+<pre>Draft a B2B persona for cold outreach.
+
+<span class="hd">PERSONA NAMING RULES (strict):</span>
+- Format: "[Industry/Vertical] — [Buyer Role]"
+- Keep under 40 characters. No marketing fluff, no full sentences.
+
+Company: <span class="ph">{co_name}</span> (<span class="ph">{industry/category}</span>)
+Value Prop: <span class="ph">{co_pitch}</span>
+Real competitors (the ONLY competitors you may name): <span class="ph">{realCompetitors || "(none known — leave competitor names out)"}</span>
+Real known customers (the ONLY customers you may cite): <span class="ph">{realCustomers || "(none known — do NOT invent customer names)"}</span>
+Persona: <span class="ph">{icp.name}</span> — <span class="ph">{icp.buyer}</span>
+Industries: <span class="ph">{icp.industries}</span>
+Primary pain: <span class="ph">{icp.pain1}</span>
+Why this is an ICP: <span class="ph">{icp._tamExplanation}</span>
+
+<span class="cm">[if userContext:]</span> USER-PROVIDED CONTEXT (authoritative — weight this heavily, it overrides everything else):
+<span class="ph">{userContext}</span>
+
+ALL PERSONAS being created (ensure yours is DISTINCT — different industries, titles, pains, messaging):
+<span class="ph">{dedup list}</span>
+
+<span class="hd">HOW TO FILL FIELDS — read carefully:</span>
+<span class="wr">1. REASONING FIELDS — fill these from the research, context, and sound B2B reasoning: buyer, champ, goals, fears, metrics, objections, sub_personas, pain1, pain2, gains, triggers, sq_cost, friction_points, buying_signals_direct, buying_signals_indirect, hook, tone, cta, why_client_wins, seq_strategy, seq_cta_style, incumbent_strengths, switching_triggers, displacement_messaging, best_channel, best_time, linkedin_activity, phone_accessibility, email_preference, interested_criteria, warm_criteria, meeting_ready_criteria, not_now_criteria, dead_criteria, industries, co_sizes.
+2. DO-NOT-FABRICATE FIELDS — leave these as an EMPTY STRING "" unless the value is explicitly supported by the research/context above: geo, revenue, tech, keywords, dream_accts, real_filters, intent_topics, current_solutions, win_loss_patterns, icp_proof. NEVER invent specific company names, tool/vendor names, exact targeting filters, revenue/geo specifics, or deal-history figures. A blank field is correct — the user fills these. For icp_proof, only reference the real known customers above; if none, leave "".</span>
+
+Return ONLY JSON (use "" for any do-not-fabricate field you cannot ground in real facts):
+{"name":"","fields":{ <span class="cm">…~50 fields…</span> },"confidence":{}}
+
+<span class="hd">[constrained-vocabulary fields appended after the schema:]</span>
+co_sizes: array from ["SMB 1–50","Mid-Market 51–500","Enterprise 500+"]
+tone: one of "Consultative &amp; Educational"|"Direct &amp; Punchy"|"Casual &amp; Conversational"|"Formal &amp; Executive"|"Data-driven &amp; Analytical"|"Blue Collar &amp; Human"|"Blunt &amp; Edgy"|"Confrontational"
+cta: one of "15-min call ask"|"Soft permission ('worth a chat?')"|"Video/resource share"|"Direct demo ask"|"Open-ended question"|"Easy yes/no reply"|"Direct callback ask"
+best_channel: one of "Email"|"LinkedIn"|"Phone"|"Multi-channel (Email + LinkedIn)"|"Multi-channel (All)"
+linkedin_activity: one of "Very Active (posts/comments weekly)"|"Moderate (engages occasionally)"|"Low (profile exists, rarely active)"
+phone_accessibility: one of "Direct dial available"|"Gatekeeper (assistant)"|"Voicemail only"
+email_preference: one of "Responds to short punchy emails"|"Prefers detailed/professional"|"Responds to personalization"|"Responds to data/stats"</pre>
+      <details><summary>▸ Full <code>fields</code> object (verbatim key order as sent)</summary>
+<pre>{"industries":"","co_sizes":["SMB 1–50","Mid-Market 51–500","Enterprise 500+"],"geo":"","revenue":"","tech":"","keywords":"","dream_accts":"","neg":"","intent_topics":"","real_filters":"","buyer":"","champ":"","goals":"","fears":"","metrics":"","objections":"","sub_personas":"","pain1":"","pain2":"","gains":"","triggers":"","buying_signals_direct":"","buying_signals_indirect":"","sq_cost":"","friction_points":"","tone":"","hook":"","cta":"","why_client_wins":"","icp_proof":"","seq_strategy":"","seq_cta_style":"","current_solutions":"","incumbent_strengths":"","switching_triggers":"","displacement_messaging":"","win_loss_patterns":"","best_channel":"","best_time":"","linkedin_activity":"","phone_accessibility":"","email_preference":"","interested_criteria":"","warm_criteria":"","meeting_ready_criteria":"","not_now_criteria":"","dead_criteria":""}</pre></details></div>
+
+    <div class="card out"><h3><span class="ic out">▸</span>Output → merged into <code>icps[].fields</code> by id</h3>
+      <p class="small">Returns <code>{ id, name, fields{…}, confidence{} }</code> per persona. Field groups:</p>
+      <table><tr><th>Group</th><th>Fields</th><th>Rule</th></tr>
+        <tr><td>Firmographics</td><td class="en">industries, co_sizes, geo, revenue, tech, keywords, dream_accts, neg, intent_topics, real_filters</td><td>geo/revenue/tech/keywords/dream_accts/intent_topics/real_filters = <b>do-not-fabricate</b></td></tr>
+        <tr><td>Buyer psychology</td><td class="en">buyer, champ, goals, fears, metrics, objections, sub_personas</td><td>reasoning</td></tr>
+        <tr><td>Pain &amp; triggers</td><td class="en">pain1, pain2, gains, triggers, buying_signals_direct, buying_signals_indirect, sq_cost, friction_points</td><td>reasoning</td></tr>
+        <tr><td>Messaging</td><td class="en">tone, hook, cta, why_client_wins, icp_proof, seq_strategy, seq_cta_style</td><td>reasoning (icp_proof gated)</td></tr>
+        <tr><td>Competitive</td><td class="en">current_solutions, incumbent_strengths, switching_triggers, displacement_messaging, win_loss_patterns</td><td>current_solutions/win_loss = <b>do-not-fabricate</b></td></tr>
+        <tr><td>Channel / timing</td><td class="en">best_channel, best_time, linkedin_activity, phone_accessibility, email_preference</td><td>enum</td></tr>
+        <tr><td>Qualification</td><td class="en">interested_criteria, warm_criteria, meeting_ready_criteria, not_now_criteria, dead_criteria</td><td>reasoning</td></tr>
+      </table></div>
+  </section>
+
+  <!-- STEP 5 -->
+  <section class="panel" id="s5">
+    <div class="phead"><div class="badge teal">A5</div><div><h2>Outreach Campaigns</h2><div class="sub">Per product × persona × tone: 5 chained Claude calls → 1 LinkedIn sequence + 3 email campaigns.</div></div></div>
+    <div class="meta"><span class="chip"><b>component</b> EmailCampaignGenerator</span><span class="chip"><b>via</b> ai-proxy → claude-sonnet-4-6</span><span class="chip"><b>calls</b> 5 sequential</span></div>
+
+    <div class="card in"><h3><span class="ic in">▸</span>Inputs (CSM selects) + plumbing</h3>
+      <table><tr><th>Input</th><th>Field</th></tr>
+        <tr><td>Product</td><td class="k">productId</td></tr>
+        <tr><td>Persona</td><td class="k">personaId</td></tr>
+        <tr><td>Writing tone / voice</td><td class="k">playbookKey</td></tr>
+        <tr><td>Extra instructions (highest priority, applied throughout)</td><td class="k">instructions</td></tr>
+        <tr><td>Free offers (one per line, for the Value-Based campaign)</td><td class="k">freeOffers</td></tr>
+      </table>
+      <p class="small"><b>ai-proxy</b> (<code>callClaudeProxy(prompt, system, max_tokens, model)</code>) posts <code>{messages, system, max_tokens, model}</code> to Anthropic server-side — no user API key needed. <code>model:"sonnet"</code> → <code>claude-sonnet-4-6</code>. Sequence days fixed: <b>email</b> [0,3,7,14,21], <b>LinkedIn</b> [0,2,5,10,17].</p>
+      <div class="grp">Tone playbooks (<code>playbookKey</code>)</div>
+      <div class="pillrow">
+        <span class="pill">auto — follow persona tone</span><span class="pill">value_stack — Value-Stack Operator</span><span class="pill">high_energy — High-Energy Hustler</span>
+        <span class="pill">trust_patient — Trust-Led Analyst</span><span class="pill">tactical_negotiator — Tactical Negotiator</span><span class="pill">craft_copywriter — Classic Craft Copywriter</span>
+        <span class="pill">concise_idea — Idea-Forward Minimalist</span><span class="pill">data_story — Data Storyteller</span><span class="pill">permission_challenger — Permission Challenger</span>
+        <span class="pill">technical_founder — Technical Founder Essayist</span><span class="pill">plainspoken_trade — Plainspoken Trade Voice</span>
+      </div>
+      <p class="small"><code>buildPlaybookContext(key, {channel})</code> injects a voice/style/examples block per channel. <code>auto</code> injects nothing (uses the persona's own tone field).</p>
+    </div>
+
+    <div class="card ctx"><h3><span class="ic ctx">▸</span>Context object (<code>ctxStr</code>, JSON sliced to 4000 chars, in every call)</h3>
+<pre class="short">{
+  "company": { name, industry, pitch, … from companyData },
+  "product": { name, description, valueProposition, keyFeatures, problemsSolved, elevatorPitch },
+  "icp":     { …all persona fields…, name }
+}</pre></div>
+
+    <div class="card sys"><h3><span class="ic">▸</span>System prompt <small>verbatim — same for all 5 calls</small></h3>
+      <pre class="short"><span class="v">You are an expert B2B cold-outreach copywriter. Write real, specific, human copy — never templates or placeholders. Follow the requested format and CTA style exactly.</span></pre></div>
+
+    <div class="card usr"><h3><span class="ic">▸</span>Call 1 — Email strategy brief <small>max_tokens 900</small></h3>
+<pre>Generate a campaign strategy brief for EMAIL cold outreach.
+Context: <span class="ph">{ctxStr}</span>
+<span class="ph">{emailPlaybookBlock}{instructionsBlock}</span>
+Write a focused strategy brief that the email copy will be based on. Cover:
+
+<span class="hd">**ICP SNAPSHOT**</span> (2 sentences — who they are and what drives them)
+<span class="hd">**LEAD PAIN**</span> (the sharpest pain — must stop a scroll)
+<span class="hd">**MESSAGE ARCHITECTURE**</span>
+Hook: [opening angle]
+Value: [what we offer against the pain]
+Proof: [credibility signal]
+CTA: [low-friction ask]
+<span class="hd">**5-EMAIL SEQUENCE STRATEGY**</span>
+Email 1 (Day 0): [angle]   …   Email 5 (Day 21): [angle — breakup]
+<span class="hd">**PERSONALIZATION LAYERS**</span>  1. [layer] 2. [layer] 3. [layer]
+
+<span class="wr">HARD RULE: No links or URLs anywhere in the email sequence. All CTAs must be reply-based only.</span></pre></div>
+
+    <div class="card usr"><h3><span class="ic">▸</span>Call 2 — LinkedIn strategy brief <small>max_tokens 800</small></h3>
+<pre>Generate a campaign strategy brief for LINKEDIN outreach.
+Context: <span class="ph">{ctxStr}</span>
+<span class="ph">{linkedinPlaybookBlock}{instructionsBlock}</span>
+Write a focused LinkedIn strategy that the message sequence will be based on. Cover:
+
+<span class="hd">**ICP SNAPSHOT**</span> (2 sentences)
+<span class="hd">**LINKEDIN-SPECIFIC ANGLE**</span> (what makes this persona responsive on LinkedIn)
+<span class="hd">**5-TOUCH MESSAGE ARC**</span>
+Touch 1 (Day 0 — connection): [angle]  …  Touch 5 (Day 17 — breakup): [angle]
+<span class="hd">**CTA APPROACH**</span> (ultra-low-friction)
+<span class="hd">**PERSONALIZATION SIGNALS**</span> (what to look for in their LinkedIn profile)</pre></div>
+
+    <div class="card usr"><h3><span class="ic">▸</span>Call 3 — LinkedIn sequence <small>max_tokens 1000</small></h3>
+<pre>Write a 5-touch LinkedIn outreach sequence. Max 300 chars for connection request, 500 chars for messages.
+
+Context: <span class="ph">{ctxStr}</span>
+<span class="ph">{linkedinPlaybookBlock}{instructionsBlock}</span>
+LINKEDIN STRATEGY (follow this exactly):
+<span class="ph">{linkedinStrategy from call 2, sliced to 1000 chars}</span>
+
+<span class="wr">Rules:
+- Touch 1 (Day 0): connection request only — personal reason to connect, NO pitch
+- Touch 2-5: conversational DMs adapted for LinkedIn format
+- CTAs ultra-low-friction</span>
+
+Return ONLY valid JSON:
+{"steps":[{"stepNumber":1,"role":"connection","dayOffset":0,"body":"connection request text"},{"stepNumber":2,"role":"follow_up","dayOffset":2,"body":"message"},{"stepNumber":3,"role":"value","dayOffset":5,"body":"message"},{"stepNumber":4,"role":"proof","dayOffset":10,"body":"message"},{"stepNumber":5,"role":"breakup","dayOffset":17,"body":"message"}]}</pre></div>
+
+    <div class="card usr"><h3><span class="ic">▸</span>Calls 4–6 — three email campaigns <small>max_tokens 1500 each, looped over EMAIL_DEFS</small></h3>
+      <table><tr><th>#</th><th>short</th><th>ctaInstr (injected as "CTA STYLE FOR THIS CAMPAIGN")</th></tr>
+        <tr><td>1</td><td>Conversation Starter</td><td class="small">Lead with value (free audit, consultation, or industry insight). No hard ask. Soft CTA only — e.g. 'Worth a quick look?', 'Thoughts?'. Never ask for a meeting.</td></tr>
+        <tr><td>2</td><td>Meeting CTA</td><td class="small">Direct ask for a meeting or demo. Short, confident, clear. CTA must directly ask for a meeting — e.g. 'Open to a 15-min call?', 'Worth 20 minutes?'. No soft hedging.</td></tr>
+        <tr><td>3</td><td>Value-Based CTA <span class="small">(offerFocus)</span></td><td class="small">Lead with a SPECIFIC, tangible, FREE offer (a real lead magnet — not vague 'value'), then ask for the meeting. Structure: pain → the free thing they get, named concretely → meeting ask.</td></tr>
+      </table>
+<pre>Write a 5-email cold outreach sequence. Real emails, not templates. Max 100 words each body.
+
+Context: <span class="ph">{ctxStr}</span>
+<span class="ph">{emailPlaybookBlock}{instructionsBlock}</span>
+EMAIL STRATEGY (follow this exactly):
+<span class="ph">{emailStrategy from call 1, sliced to 1200 chars}</span>
+
+CTA STYLE FOR THIS CAMPAIGN: <span class="ph">{def.ctaInstr}</span>
+<span class="cm">[Value-Based only — FREE-OFFER REQUIREMENT block:]</span>
+<span class="wr">Every email must feature a SPECIFIC, tangible, FREE offer that {company} can hand over — a real lead magnet. Name the exact asset; never say just "value", "insights", or "a resource".
+[if freeOffers provided: rotate/vary these across the 5 emails; else: invent concrete plausible free offers grounded in {company}'s products — free sample/starter lead list, free month/trial, free audit/teardown, playbook/template pack, data/benchmark report.]
+The meeting ask comes only AFTER the free offer is on the table, framed as "want the [free thing] first?".</span>
+
+<span class="wr">Rules:
+- Email 1 (Day 0): lead with the LEAD PAIN — hook, short, personal
+- Email 2 (Day 3): different angle + trigger event
+- Email 3 (Day 7): proof/social proof + objection addressed
+- Email 4 (Day 14): gain angle
+- Email 5 (Day 21): breakup — direct, human, low-friction
+- ALL CTAs must strictly follow the CTA STYLE above.
+- ZERO links or URLs in any email. CTAs must be reply-based only.</span>
+
+Return ONLY valid JSON:
+{"steps":[{"stepNumber":1,"role":"hook","dayOffset":0,"subject":"...","body":"..."},{"stepNumber":2,"role":"proof","dayOffset":3,…},{"stepNumber":3,"role":"value","dayOffset":7,…},{"stepNumber":4,"role":"urgency","dayOffset":14,…},{"stepNumber":5,"role":"breakup","dayOffset":21,…}]}</pre></div>
+
+    <div class="card out"><h3><span class="ic out">▸</span>Output → <code>companyData._campaignPlans[productId__personaId]</code></h3>
+      <table><tr><th>Field</th><th>Shape</th></tr>
+        <tr><td class="k">productId · personaId · productName · personaName</td><td>identifiers</td></tr>
+        <tr><td class="k">playbookKey · instructions · generatedAt</td><td>run metadata</td></tr>
+        <tr><td class="k">emailStrategy · linkedinStrategy</td><td>the two briefs (text)</td></tr>
+        <tr><td class="k">linkedinSequence[]</td><td>5 steps {id, stepNumber, role, dayOffset, body}</td></tr>
+        <tr><td class="k">emailCampaigns[]</td><td>3 × {label, short, ctaInstr, sequence[5]{id, stepNumber, role, dayOffset, subject, body}}</td></tr>
+      </table>
+      <p class="small">"Save to Campaigns" writes campaign records with <code>source='onboarding_plan'</code>. Compliance/spintax is applied later by <code>launch-plan-run</code> at launch (see Launch tab).</p></div>
+  </section>
+
+  <!-- INFRA -->
+  <section class="panel" id="infra">
+    <div class="phead"><div class="badge amber">B</div><div><h2>Domains &amp; Mailboxes</h2><div class="sub">Track B — parallel from form submit. Mostly deterministic; Haiku only tops up domain stems.</div></div></div>
+    <div class="meta"><span class="chip"><b>fn</b> infra-run</span><span class="chip"><b>model</b> claude-haiku-4-5-20251001</span><span class="chip"><b>timeout</b> 60s</span></div>
+
+    <div class="card in"><h3><span class="ic in" style="background:var(--amber)">▸</span>Inputs</h3>
+      <table><tr><th>Source</th><th>Field</th><th>Detail</th></tr>
+        <tr><td>request</td><td class="k">infraInputs.domainCount</td><td>clamped 1–300</td></tr>
+        <tr><td>request</td><td class="k">infraInputs.mailboxCount</td><td>else domainCount × 3</td></tr>
+        <tr><td>request</td><td class="k">infraInputs.primaryWebsite</td><td>else <code>cd.co_website</code></td></tr>
+        <tr><td>request</td><td class="k">infraInputs.forwardingDomain</td><td>where domains redirect</td></tr>
+        <tr><td>request</td><td class="k">infraInputs.brandWord</td><td>else <code>intake.brandWords</code> → website stem → company name</td></tr>
+        <tr><td>request</td><td class="k">infraInputs.mailboxNames[]</td><td>{name | firstName/lastName, percent}</td></tr>
+        <tr><td>intake</td><td class="k">_intakeData.targetMonthlyVolume</td><td>volume-based sizing fallback</td></tr>
+      </table></div>
+
+    <div class="card ctx"><h3><span class="ic ctx" style="background:var(--amber)">▸</span>Sizing logic <small>deterministic, no AI</small></h3>
+      <p class="small">Constants: <code>PER_MAILBOX_DAILY=30</code>, <code>WORKING_DAYS=22</code>, <code>MAILBOXES_PER_DOMAIN=3</code>, defaults <code>67 domains / 201 mailboxes</code>.</p>
+      <table><tr><th>Branch</th><th>Calculation</th><th>sizingBasis</th></tr>
+        <tr><td>explicit counts given</td><td>use them (domains clamped 1–300)</td><td class="en">user_specified</td></tr>
+        <tr><td>else volume &gt; 0</td><td>mailboxes = ceil(volume / (30 × 22)); domains = ceil(mailboxes / 3) [≤200]; mailboxes = domains × 3</td><td class="en">intake_target_volume</td></tr>
+        <tr><td>else</td><td>67 / 201</td><td class="en">default</td></tr>
+      </table></div>
+
+    <div class="card tool"><h3><span class="ic tool">▸</span>Domain + mailbox generation</h3>
+      <ul>
+        <li><b>Stems (deterministic)</b>: 21 prefixes (<code>get try go my meet join use run hello ask all top best fast new pro we by hey with hi</code>) + 40 suffixes (<code>hq app team co hub labs pro now up biz mail digital online direct global works cloud send reach zone base desk box line edge plus one center corp studio agency web first core flow link key ace net io</code>) around the brand word, filtered to 5–26 chars, with/without hyphen.</li>
+        <li><b>TLD</b>: <code>.com</code> only.</li>
+        <li><b>Mailboxes</b>: sender names allocated by % across domains, 3 per domain; local-part variants <code>first · first.last · firstL · flast</code>.</li>
+      </ul>
+      <div class="grp">Claude top-up prompt (only if deterministic stems &lt; target) — system <code>"Return only valid JSON."</code></div>
+<pre class="short">Generate <span class="ph">{(target − have) × 3}</span> creative cold-email domain stems for "<span class="ph">{co_name}</span>" (<span class="ph">{co_industry}</span>). Brand word: "<span class="ph">{brand}</span>". Every stem MUST contain the brand word. Stems only — no TLD. Already used: <span class="ph">{first 40 stems}</span>. Return ONLY JSON array of stems: ["name1","name2",...]</pre></div>
+
+    <div class="card out"><h3><span class="ic out">▸</span>Output → <code>dfySetup</code></h3>
+      <table><tr><th>Field</th><th>Shape</th></tr>
+        <tr><td class="k">tlds</td><td>[".com"]</td></tr>
+        <tr><td class="k">domainCount · mailboxCount · mailboxesPerDomain</td><td>numbers (3)</td></tr>
+        <tr><td class="k">suggestedDomains[]</td><td>{ domain, tld, full }</td></tr>
+        <tr><td class="k">approvedDomains[]</td><td>all stems preselected</td></tr>
+        <tr><td class="k">mailboxes[]</td><td>{ address, domain, senderName }</td></tr>
+        <tr><td class="k">mailboxNames[]</td><td>{ name, firstName, lastName, percent, allocation }</td></tr>
+        <tr><td class="k">primaryWebsite · forwardingDomain · forwardingVerified</td><td>routing</td></tr>
+        <tr><td class="k">customAmount · sizingBasis · generatedAt</td><td>metadata</td></tr>
+      </table>
+      <p class="small">Gate is <b>Confirm &amp; Lock</b> — one-time setup, locked after confirm (Copilot's <code>update_dfy_setup</code> disabled thereafter).</p></div>
+  </section>
+
+  <!-- LAUNCH -->
+  <section class="panel" id="launch">
+    <div class="phead"><div class="badge green">→</div><div><h2>Review &amp; Launch</h2><div class="sub">The review loop is the gate on every node. Launch activates campaigns + applies compliance.</div></div></div>
+
+    <div class="card"><h3><span class="ic">▸</span>The gate loop (every Track-A step)</h3>
+      <div class="flowstrip">
+        <div class="fnode">AI generates<small>status: generating</small></div><span class="fsep">→</span>
+        <div class="fnode">Review</div><span class="fsep">→</span>
+        <div class="fnode">Refine in chat<small>Copilot edits in place</small></div><span class="fsep">→</span>
+        <div class="fnode">Confirm<small>status: confirmed</small></div><span class="fsep">→</span>
+        <div class="fnode" style="border-color:var(--greenLo);background:var(--greenLo)">Unlocks next</div>
+      </div>
+      <p class="small">Gate state lives on <code>companyData._gates[gate].status</code> ∈ locked · idle · generating · review · confirmed. "Refine in chat" opens the Copilot with a scope hint and in-place edit tools: <code>update_research_brief</code> · <code>update_product</code> · <code>update_persona</code> · <code>update_company_fields</code> · <code>update_tam_icp</code> · <code>update_dfy_setup</code> (locked after infra confirm). Per-stage guidance can be typed into <code>_gateNotes[stage]</code> and applied on regenerate.</p></div>
+
+    <div class="card out"><h3><span class="ic out">▸</span>Launch — <code>launch-plan-run</code></h3>
+      <ul>
+        <li><b>mode "plan"</b> (Sonnet 4.6, 1500 tok): assigns top-N scored ICPs to LinkedIn accounts (1 each, max 4), queues email waves one ICP at a time (lowest unfinished rank first), AI-picks the best email campaign type per ICP ∈ <code>intent_signal · conversation_starter · free_value · meeting_booking</code>. → <code>companyData._launchPlan</code>.</li>
+        <li><b>mode "generate"</b> (Sonnet 4.6, 4000 email / 2500 LinkedIn): writes the sequence copy for one wave or LinkedIn arc. Campaigns appended to <code>campaigns[]</code> with <code>source:"launch"</code>, status active.</li>
+        <li><b>Compliance layer</b> (deterministic, enforced on generated copy): <code>enforceCompliance</code> scans <code>SPAM_WORDS</code> and applies <code>SPINTAX_MAP</code> (e.g. Hi→{Hi|Hey|Hello}) to email subject + body. Per-campaign <code>_compliance</code> {spintaxApplied, spamFlags[], scannedAt}.</li>
+        <li>Merge tags restricted to an allow-list: <code>{{prospect_first_name}}</code>, <code>{{prospect_title}}</code>, <code>{{sender_name}}</code>, <code>{{sender_company_name}}</code>, … reply-based CTAs only, zero URLs.</li>
+      </ul></div>
+
+    <div class="note"><b>Roadmap gap — "Audiences / lead lists".</b> Sourcing &amp; enriching the actual contacts that match each confirmed ICP/persona is <b>not an edge function yet</b>. Personas define <i>who</i>; pulling/enriching the list is the next build. Show it as a distinct (dashed) node.</div>
+  </section>
+</div>
+
+<script>
+  const tabs = document.getElementById('tabs');
+  tabs.addEventListener('click', e => {
+    const b = e.target.closest('.tab'); if(!b) return;
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById(b.dataset.t).classList.add('active');
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+</script>
+</body>
+</html>

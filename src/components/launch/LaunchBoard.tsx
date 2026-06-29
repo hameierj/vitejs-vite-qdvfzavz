@@ -57,7 +57,7 @@ export function LaunchBoard({ companyData: cd, icps, products, campaigns, launch
         <EmptyCard
           title="No scored ICPs yet"
           body="Launch is driven off the confirmed personas and ICP scores from onboarding. Finish the TAM tree / ICP scoring gate first."
-          cta="Go to Onboarding Hub" onClick={() => onNavigate("onboarding-hub")} />
+          cta="Go to Getting Started" onClick={() => onNavigate("onboarding-hub")} />
       </Wrap>
     );
   }
@@ -149,11 +149,18 @@ export function LaunchBoard({ companyData: cd, icps, products, campaigns, launch
                         ))}
                       </div>
                       {genHere && <div style={{ marginTop: 8, fontSize: 11.5, color: C.accent, fontFamily: mono }}>{launchJob?.phase || "Generating…"}</div>}
-                      {camps.length > 0 && (
-                        <div style={{ marginTop: 8, fontSize: 11.5, color: C.green }}>
-                          {camps.length} email campaign{camps.length === 1 ? "" : "s"} generated · <LinkBtn label="view →" onClick={() => onNavigate("campaigns")} inline />
-                        </div>
-                      )}
+                      {camps.length > 0 && (() => {
+                        const flags = camps.reduce((n: number, c: any) => n + ((c._compliance?.spamFlags || []).length), 0);
+                        const allFlags = Array.from(new Set(camps.flatMap((c: any) => c._compliance?.spamFlags || [])));
+                        return (
+                          <div style={{ marginTop: 8, fontSize: 11.5, color: C.green }}>
+                            {camps.length} email campaign{camps.length === 1 ? "" : "s"} generated · <LinkBtn label="view →" onClick={() => onNavigate("campaigns")} inline />
+                            <div style={{ marginTop: 3, fontSize: 11, color: flags ? C.amber : C.textSoft }}>
+                              Compliance: spintax applied{flags ? ` · ⚠ ${flags} spam-word flag${flags === 1 ? "" : "s"}: ${allFlags.slice(0, 4).join(", ")}` : " · no spam flags ✓"}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div style={{ flexShrink: 0, display: "flex", flexDirection: "column" as const, gap: 6, alignItems: "flex-end" }}>
                       {isFinalized && <span style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.green, background: C.greenLo, padding: "3px 8px", borderRadius: 4 }}>FINALIZED ✓</span>}
